@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+.env export-ignore
+.pytest_cache export-ignore
+.ruff_cache export-ignore
+.mypy_cache export-ignore
+.venv export-ignore
+run export-ignore
+dist export-ignore
+build export-ignore
+.local_secrets export-ignore
+trading_system.db export-ignore
+AGENTS.md export-ignore

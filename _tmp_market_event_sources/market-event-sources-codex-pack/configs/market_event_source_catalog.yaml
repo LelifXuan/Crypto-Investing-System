@@ -1,0 +1,670 @@
+version: 1.0.0
+generated_at: '2026-04-05'
+scope: market_event_sources_for_mainland_china_no_vpn_preferred
+global_notes:
+- 优先选择中国大陆可直接访问的官方站点、国内财经门户与中文 Web3 媒体；接入前仍需在目标部署网络实测可用性。
+- official_priority 表示数据治理优先级：official > semi_official > domestic_aggregator > media
+  > onchain_vendor。
+- access_confidence 是工程判断，不是从中国大陆网络逐一实测得到的 SLA。
+canonical_event_types:
+- macro_release
+- macro_policy
+- macro_calendar
+- market_holiday
+- exchange_announcement
+- listing
+- delisting
+- maintenance
+- crypto_project_event
+- token_unlock
+- airdrop
+- governance_vote
+- liquidation_cluster
+- whale_transfer
+- exchange_flow
+- onchain_spike
+- regulatory
+- risk_warning
+- newsflash
+sources:
+- source_id: cn.stats.release_schedule
+  provider_name: 国家统计局
+  official_priority: official
+  access_confidence: high
+  category: macro_release
+  market_scope:
+  - CN macro
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 21600
+  base_url: https://www.stats.gov.cn/
+  entry_url: https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html
+  supports:
+  - release schedule
+  - PMI
+  - PPI
+  - 国民经济运行情况
+  - 新闻发布会时间预告
+  normalization_defaults:
+    event_type: macro_calendar
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_table
+    primary_signals:
+    - 主要统计信息发布日程表
+    - 采购经理指数月度报告
+    - 工业生产者价格指数月度报告
+    - 国民经济运行情况
+    fields:
+    - release_title
+    - scheduled_at
+    - note_text
+  dedupe_key_template: sha256(source_id + release_title + scheduled_at)
+- source_id: cn.stats.home_preview
+  provider_name: 国家统计局首页发布预告
+  official_priority: official
+  access_confidence: high
+  category: macro_calendar
+  market_scope:
+  - CN macro
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 1800
+  base_url: https://www.stats.gov.cn/
+  entry_url: https://www.stats.gov.cn/
+  supports:
+  - 首页发布预告
+  - 数据查询入口
+  - 临近发布提醒
+  normalization_defaults:
+    event_type: macro_calendar
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_list
+    primary_signals:
+    - 发布预告
+    - 数据查询
+    - 月度数据
+    - 季度数据
+    fields:
+    - scheduled_at
+    - title
+  dedupe_key_template: sha256(source_id + title + scheduled_at)
+- source_id: cn.stats.data_library
+  provider_name: 国家统计局数据发布库
+  official_priority: official
+  access_confidence: high
+  category: macro_release
+  market_scope:
+  - CN macro
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 21600
+  base_url: https://data.stats.gov.cn/
+  entry_url: https://data.stats.gov.cn/
+  supports:
+  - 结构化数据补录
+  - 发布后细项核对
+  normalization_defaults:
+    event_type: macro_release
+    region: CN
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: manual_or_headless
+    primary_signals:
+    - 新版国家统计局数据发布库
+    - 数据查询
+    fields:
+    - dataset_name
+    - updated_at
+    - dataset_url
+- source_id: cn.pbc.home
+  provider_name: 中国人民银行
+  official_priority: official
+  access_confidence: high
+  category: macro_policy
+  market_scope:
+  - CN rates
+  - CN FX
+  - CN liquidity
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 900
+  base_url: https://www.pbc.gov.cn/
+  entry_url: https://www.pbc.gov.cn/
+  supports:
+  - 公开市场业务
+  - 人民币汇率
+  - LPR入口
+  - 统计数据与标准
+  - 政策解读
+  normalization_defaults:
+    event_type: macro_policy
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_section
+    primary_signals:
+    - 公开市场业务
+    - 人民币汇率
+    - 贷款市场报价利率
+    - 统计数据与标准
+    fields:
+    - title
+    - published_at
+    - detail_url
+    - section_name
+- source_id: cn.pbc.omo_announcements
+  provider_name: 中国人民银行公开市场业务公告
+  official_priority: official
+  access_confidence: high
+  category: macro_policy
+  market_scope:
+  - CN liquidity
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 900
+  base_url: https://www.pbc.gov.cn/
+  entry_url: https://www.pbc.gov.cn/zhengcehuobisi/125207/125213/125431/125469/index.html
+  supports:
+  - OMO规则调整
+  - 逆回购/MLF制度变化
+  normalization_defaults:
+    event_type: macro_policy
+    region: CN
+    importance: critical
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_list
+    primary_signals:
+    - 公开市场业务公告
+    - 中国人民银行公开市场业务公告
+    fields:
+    - title
+    - published_at
+    - detail_url
+- source_id: cn.lpr.index
+  provider_name: Shibor / LPR 官方页
+  official_priority: semi_official
+  access_confidence: high
+  category: macro_release
+  market_scope:
+  - CN rates
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 1800
+  base_url: https://www.shibor.org/
+  entry_url: https://www.shibor.org/chinese/bklpr/
+  supports:
+  - LPR公布规则
+  - LPR当月发布时间
+  - LPR数据下载
+  normalization_defaults:
+    event_type: macro_release
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_text
+    primary_signals:
+    - 每月20日
+    - 9时前
+    - LPR
+    fields:
+    - title
+    - published_at
+    - value_1y
+    - value_5y
+    - effective_until
+- source_id: cn.safe.statistics
+  provider_name: 国家外汇管理局
+  official_priority: official
+  access_confidence: high
+  category: macro_release
+  market_scope:
+  - CN FX
+  - BoP
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 21600
+  base_url: https://www.safe.gov.cn/
+  entry_url: https://www.safe.gov.cn/safe/2026/0327/27299.html
+  supports:
+  - 国际收支货物和服务贸易数据
+  - 国际收支平衡表
+  - 数据解读
+  normalization_defaults:
+    event_type: macro_release
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_article
+    primary_signals:
+    - 国际收支
+    - 货物和服务贸易数据
+    - 平衡表
+    fields:
+    - title
+    - published_at
+    - period
+    - summary
+    - attachment_hint
+- source_id: cn.gov.policy
+  provider_name: 中国政府网
+  official_priority: official
+  access_confidence: high
+  category: macro_policy
+  market_scope:
+  - CN policy
+  access_mode: rss_or_html
+  auth_required: false
+  poll_interval_sec: 1800
+  base_url: https://www.gov.cn/
+  entry_url: https://www.gov.cn/?rss=
+  supports:
+  - 国务院常务会议
+  - 最新政策
+  - 政策解读
+  - 政府RSS
+  normalization_defaults:
+    event_type: macro_policy
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: rss_preferred
+    primary_signals:
+    - 国务院常务会议
+    - 最新政策
+    - 政策解读
+    fields:
+    - title
+    - published_at
+    - summary
+    - detail_url
+- source_id: cn.csrc.news
+  provider_name: 中国证监会
+  official_priority: official
+  access_confidence: high
+  category: regulatory
+  market_scope:
+  - CN capital market
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 1800
+  base_url: https://www.csrc.gov.cn/
+  entry_url: https://www.csrc.gov.cn/csrc/xwfb/index.shtml
+  supports:
+  - 证监会要闻
+  - 新闻发布会
+  - 政策解读
+  - 证券市场快报
+  normalization_defaults:
+    event_type: regulatory
+    region: CN
+    importance: high
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_section
+    primary_signals:
+    - 证监会要闻
+    - 新闻发布会
+    - 政策解读
+    - 证券市场快报
+    fields:
+    - section_name
+    - title
+    - published_at
+    - detail_url
+- source_id: cn.sse.market_calendar
+  provider_name: 上海证券交易所市场日历
+  official_priority: official
+  access_confidence: high
+  category: market_holiday
+  market_scope:
+  - CN equities
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 21600
+  base_url: https://www.sse.com.cn/
+  entry_url: https://www.sse.com.cn/disclosure/dealinstruc/calendar/
+  supports:
+  - 市场日历
+  - 股东会
+  - 分红送转/除权除息
+  normalization_defaults:
+    event_type: market_holiday
+    region: CN
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_table
+    primary_signals:
+    - 市场日历
+    - 股东会
+    - 分红送转
+    fields:
+    - event_date
+    - event_type
+    - entity_name
+    - detail_url
+- source_id: domestic.jin10.calendar
+  provider_name: 金十财经日历
+  official_priority: domestic_aggregator
+  access_confidence: high
+  category: macro_calendar
+  market_scope:
+  - Global macro
+  - Commodities
+  - FX
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 300
+  base_url: https://cal.jin10.com/
+  entry_url: https://cal.jin10.com/
+  supports:
+  - 经济数据一览
+  - 财经大事一览
+  - 假期休市
+  normalization_defaults:
+    event_type: macro_calendar
+    region: GLOBAL
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: headless_html
+    primary_signals:
+    - 经济数据一览
+    - 财经大事一览
+    - 假期休市一览
+    fields:
+    - scheduled_at
+    - country
+    - event_name
+    - importance
+    - previous
+    - forecast
+    - actual
+    - impact
+- source_id: domestic.eastmoney.calendar
+  provider_name: 东方财富财经日历
+  official_priority: domestic_aggregator
+  access_confidence: high
+  category: macro_calendar
+  market_scope:
+  - CN equities
+  - Global macro
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 600
+  base_url: https://data.eastmoney.com/
+  entry_url: https://data.eastmoney.com/dcrl/
+  supports:
+  - 财经日历
+  - 会议数据
+  - 新股日历
+  - 股市日历
+  normalization_defaults:
+    event_type: macro_calendar
+    region: CN
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_sections
+    primary_signals:
+    - 今日大事提醒
+    - 休市安排
+    - 会议数据
+    - 股市日历
+    fields:
+    - section_name
+    - scheduled_at
+    - event_name
+    - entity_name
+    - detail_url
+- source_id: crypto.gate.announcements
+  provider_name: Gate Announcements
+  official_priority: official
+  access_confidence: high
+  category: exchange_announcement
+  market_scope:
+  - Crypto exchange
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 120
+  base_url: https://www.gate.com/
+  entry_url: https://www.gate.com/announcements/24058
+  supports:
+  - Announcements
+  - API Updates
+  - Maintenance
+  - Delistings
+  - Activities
+  normalization_defaults:
+    event_type: exchange_announcement
+    region: GLOBAL
+    importance: high
+    timezone: UTC
+  parse_hints:
+    strategy: html_list
+    primary_signals:
+    - Announcement
+    - API Updates
+    - Maintenance
+    - Delistings
+    fields:
+    - title
+    - published_at
+    - detail_url
+    - view_count_hint
+- source_id: crypto.gate.new_listings
+  provider_name: Gate New Crypto Listings
+  official_priority: official
+  access_confidence: high
+  category: listing
+  market_scope:
+  - Crypto exchange
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 120
+  base_url: https://www.gate.com/
+  entry_url: https://www.gate.com/announcements/newlisted
+  supports:
+  - New Spot Listings
+  - New Futures Listings
+  - Convert
+  - Delistings
+  normalization_defaults:
+    event_type: listing
+    region: GLOBAL
+    importance: high
+    timezone: UTC
+  parse_hints:
+    strategy: html_list
+    primary_signals:
+    - New Spot Listings
+    - New Futures Listings
+    - Delistings
+    fields:
+    - title
+    - published_at
+    - detail_url
+    - asset_symbols_guess
+- source_id: crypto.gate.calendar
+  provider_name: Gate Crypto Calendar
+  official_priority: semi_official
+  access_confidence: high
+  category: crypto_project_event
+  market_scope:
+  - Crypto projects
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 600
+  base_url: https://www.gate.com/
+  entry_url: https://www.gate.com/zh/upcoming-event
+  supports:
+  - 代币解锁
+  - 升级
+  - 大会
+  - 项目事件
+  normalization_defaults:
+    event_type: crypto_project_event
+    region: GLOBAL
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_calendar
+    primary_signals:
+    - 热门事件
+    - 代币解锁
+    - 项目事件
+    fields:
+    - event_name
+    - scheduled_at
+    - event_subtype
+    - asset_symbol_guess
+    - detail_url
+- source_id: crypto.panews.rss
+  provider_name: PANews RSS
+  official_priority: media
+  access_confidence: high
+  category: newsflash
+  market_scope:
+  - Web3 news
+  - Project news
+  access_mode: rss
+  auth_required: false
+  poll_interval_sec: 180
+  base_url: https://www.panewslab.com/
+  entry_url: https://www.panewslab.com/zh/rss
+  supports:
+  - 文章RSS
+  - 快讯RSS
+  - 中文输出
+  normalization_defaults:
+    event_type: newsflash
+    region: GLOBAL
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: rss_or_generated_feed
+    primary_signals:
+    - RSS订阅
+    - 快讯
+    - 文章
+    fields:
+    - title
+    - published_at
+    - summary
+    - detail_url
+    - content_type
+- source_id: crypto.panews.event_calendar
+  provider_name: PANews 事件日历
+  official_priority: media
+  access_confidence: high
+  category: crypto_project_event
+  market_scope:
+  - Web3 events
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 900
+  base_url: https://www.panewslab.com/
+  entry_url: https://www.panewslab.com/zh/search/
+  supports:
+  - 事件日历入口
+  - 热门活动
+  normalization_defaults:
+    event_type: crypto_project_event
+    region: GLOBAL
+    importance: low
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: manual_or_headless
+    primary_signals:
+    - 事件日历
+    - 热门活动
+    fields:
+    - event_name
+    - scheduled_at
+    - location
+    - detail_url
+- source_id: crypto.odaily.newsflash
+  provider_name: Odaily 24小时快讯
+  official_priority: media
+  access_confidence: high
+  category: newsflash
+  market_scope:
+  - Web3 news
+  access_mode: html
+  auth_required: false
+  poll_interval_sec: 180
+  base_url: https://www.odaily.news/
+  entry_url: https://www.odaily.news/zh-CN/newsflash
+  supports:
+  - 24小时快讯
+  - 早讯/午讯/晚讯
+  - 宏观与链上混合快讯
+  normalization_defaults:
+    event_type: newsflash
+    region: GLOBAL
+    importance: medium
+    timezone: Asia/Shanghai
+  parse_hints:
+    strategy: html_feed
+    primary_signals:
+    - 24小时快讯
+    - 星球早讯
+    - 星球午讯
+    - 星球晚讯
+    fields:
+    - published_at
+    - title
+    - summary
+    - detail_url
+- source_id: onchain.tokenview.api
+  provider_name: Tokenview API
+  official_priority: onchain_vendor
+  access_confidence: high
+  category: onchain_spike
+  market_scope:
+  - BTC
+  - ETH
+  - TRON
+  - multi-chain
+  access_mode: api
+  auth_required: true
+  poll_interval_sec: 60
+  base_url: https://services.tokenview.io/cn/
+  entry_url: https://services.tokenview.io/cn/docs/api/overview.html
+  supports:
+  - 120+链数据
+  - 地址/交易/区块/Token
+  - 地址监控/交易监控/实时通知机器人
+  normalization_defaults:
+    event_type: onchain_spike
+    region: GLOBAL
+    importance: medium
+    timezone: UTC
+  parse_hints:
+    strategy: rest_api
+    primary_signals:
+    - 地址监控
+    - 交易监控
+    - 实时通知机器人
+    - Webhook
+    fields:
+    - chain
+    - address
+    - tx_hash
+    - amount
+    - from
+    - to
+    - token_symbol
+    - block_time

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-system-fastapi"
+version = "0.3.0"
+description = "Local-first FastAPI crypto trading management app"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "aiosqlite>=0.20",
+  "sqlalchemy>=2.0",
+  "asyncpg>=0.29",
+  "alembic>=1.13",
+  "jinja2>=3.1",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.2",
+  "python-dotenv>=1.0",
+  "python-multipart>=0.0.9",
+  "PyYAML>=6.0",
+  "PyJWT>=2.8",
+  "httpx>=0.27",
+  "websockets>=16.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-name/trading-system-fastapi"
+Issues = "https://github.com/your-name/trading-system-fastapi/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "httpx>=0.27",
+  "ruff>=0.5",
+  "pandas>=2.2",
+  "pandas-ta>=0.3.14b0; python_version < '3.14'",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*.py" = ["E501"]

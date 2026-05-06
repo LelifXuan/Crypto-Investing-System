@@ -1,0 +1,306 @@
+version: 1
+refresh_policies:
+  technical:
+    - indicator_key: ema_20
+      scope_type: instrument
+      timeframe: 1m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 60
+      priority: 3
+    - indicator_key: ema_50
+      scope_type: instrument
+      timeframe: 5m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 300
+      priority: 3
+    - indicator_key: ema_200
+      scope_type: instrument
+      timeframe: 1h
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 900
+      priority: 4
+    - indicator_key: adx_14
+      scope_type: instrument
+      timeframe: 1h
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 900
+      priority: 4
+    - indicator_key: macd_12_26_9
+      scope_type: instrument
+      timeframe: 5m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 300
+      priority: 3
+    - indicator_key: rsi_14
+      scope_type: instrument
+      timeframe: 1m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 60
+      priority: 2
+    - indicator_key: atr_14
+      scope_type: instrument
+      timeframe: 5m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 300
+      priority: 3
+    - indicator_key: natr_14
+      scope_type: instrument
+      timeframe: 5m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 300
+      priority: 3
+    - indicator_key: bbands_20_2
+      scope_type: instrument
+      timeframe: 5m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 300
+      priority: 3
+    - indicator_key: obv
+      scope_type: instrument
+      timeframe: 5m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 300
+      priority: 3
+    - indicator_key: volume_surge_ratio
+      scope_type: instrument
+      timeframe: 1m
+      mode: event_driven_preferred
+      event_key: market.candle.closed
+      fallback_interval_seconds: 60
+      priority: 2
+    - indicator_key: mark_price
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 5
+      priority: 1
+    - indicator_key: index_price
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 5
+      priority: 1
+    - indicator_key: funding_rate
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 60
+      priority: 2
+    - indicator_key: basis_rate
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 60
+      priority: 2
+    - indicator_key: funding_rate_zscore
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 3600
+      priority: 4
+    - indicator_key: basis_rate_zscore
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 3600
+      priority: 4
+    - indicator_key: price_to_mark_deviation
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 5
+      priority: 1
+    - indicator_key: price_to_index_deviation
+      scope_type: instrument
+      mode: interval
+      interval_seconds: 5
+      priority: 1
+    - indicator_key: cvd_delta
+      scope_type: instrument
+      timeframe: 1m
+      mode: interval
+      interval_seconds: 60
+      priority: 2
+    - indicator_key: open_interest_notional
+      scope_type: instrument
+      timeframe: 1m
+      mode: interval
+      interval_seconds: 60
+      priority: 2
+    - indicator_key: depth_liquidity
+      scope_type: instrument
+      timeframe: 1m
+      mode: interval
+      interval_seconds: 60
+      priority: 2
+    - indicator_key: slippage_bps
+      scope_type: instrument
+      timeframe: 1m
+      mode: interval
+      interval_seconds: 60
+      priority: 2
+  macro:
+    - indicator_key: us_dff
+      scope_type: global
+      mode: cron
+      cron_expr: "0 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 5
+    - indicator_key: us_2y_yield
+      scope_type: global
+      mode: cron
+      cron_expr: "5 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 5
+    - indicator_key: us_10y_yield
+      scope_type: global
+      mode: cron
+      cron_expr: "10 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 5
+    - indicator_key: us_10y_2y_spread
+      scope_type: global
+      mode: chained
+      priority: 6
+    - indicator_key: hy_oas
+      scope_type: global
+      mode: cron
+      cron_expr: "15 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: tga
+      scope_type: global
+      mode: cron
+      cron_expr: "20 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: on_rrp
+      scope_type: global
+      mode: cron
+      cron_expr: "25 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: financial_conditions
+      scope_type: global
+      mode: cron
+      cron_expr: "30 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: us_cpi_yoy
+      scope_type: global
+      mode: calendar_release
+      calendar_source: bls
+      release_key: us_cpi
+      fallback_interval_seconds: 21600
+      priority: 6
+    - indicator_key: us_core_cpi_yoy
+      scope_type: global
+      mode: calendar_release
+      calendar_source: bls
+      release_key: us_cpi
+      fallback_interval_seconds: 21600
+      priority: 6
+    - indicator_key: us_nfp
+      scope_type: global
+      mode: calendar_release
+      calendar_source: bls
+      release_key: us_nfp
+      fallback_interval_seconds: 21600
+      priority: 6
+    - indicator_key: ism_mfg_pmi
+      scope_type: global
+      mode: calendar_release
+      calendar_source: ism
+      release_key: ism_mfg
+      fallback_interval_seconds: 21600
+      priority: 6
+    - indicator_key: ism_srv_pmi
+      scope_type: global
+      mode: calendar_release
+      calendar_source: ism
+      release_key: ism_srv
+      fallback_interval_seconds: 21600
+      priority: 6
+    - indicator_key: fomc_event_window
+      scope_type: global
+      mode: calendar_release
+      calendar_source: federal_reserve
+      release_key: fomc
+      fallback_interval_seconds: 43200
+      priority: 6
+    - indicator_key: dollar_index
+      scope_type: global
+      mode: cron
+      cron_expr: "35 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: gold
+      scope_type: global
+      mode: cron
+      cron_expr: "40 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: vix
+      scope_type: global
+      mode: cron
+      cron_expr: "45 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: ust_10y_yield
+      scope_type: global
+      mode: cron
+      cron_expr: "50 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+  onchain:
+    - indicator_key: btc_mvrv
+      scope_type: asset
+      asset_code: BTC
+      mode: interval
+      interval_seconds: 3600
+      priority: 7
+    - indicator_key: eth_mvrv
+      scope_type: asset
+      asset_code: ETH
+      mode: interval
+      interval_seconds: 3600
+      priority: 7
+    - indicator_key: btc_sth_mvrv
+      scope_type: asset
+      asset_code: BTC
+      mode: interval
+      interval_seconds: 21600
+      priority: 7
+    - indicator_key: btc_lth_mvrv
+      scope_type: asset
+      asset_code: BTC
+      mode: interval
+      interval_seconds: 21600
+      priority: 7
+    - indicator_key: btc_exchange_net_position_change
+      scope_type: asset
+      asset_code: BTC
+      mode: interval
+      interval_seconds: 21600
+      priority: 7
+    - indicator_key: eth_exchange_net_position_change
+      scope_type: asset
+      asset_code: ETH
+      mode: interval
+      interval_seconds: 21600
+      priority: 7
+    - indicator_key: btc_active_addresses
+      scope_type: asset
+      asset_code: BTC
+      mode: interval
+      interval_seconds: 3600
+      priority: 7
+    - indicator_key: eth_active_addresses
+      scope_type: asset
+      asset_code: ETH
+      mode: interval
+      interval_seconds: 3600
+      priority: 7

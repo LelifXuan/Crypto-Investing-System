@@ -1,0 +1,943 @@
+﻿import {
+  escapeHtml,
+  formatDateTime,
+  formatNumber,
+  knowledgeTooltip,
+  setRoot,
+  statusChip,
+} from "../core/dom.js";
+import { scheduleIdlePrecompute } from "../core/precompute.js";
+import { api, invalidateCache } from "../core/api.js";
+import { appState, getInstrumentMeta, persistState } from "../core/state.js";
+
+const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
+const SYSTEMS = [
+  { key: "all", label: "鍏ㄩ儴绯荤粺" },
+  { key: "swing", label: "鎽嗗姩缁撴瀯" },
+  { key: "classic", label: "缁忓吀鍥惧舰" },
+  { key: "profile", label: "鎴愪氦閲?/ 甯傚満杞粨" },
+];
+
+const state = {
+  selectedSystem: "all",
+  minConfidence: 0.5,
+  viewMode: localStorage.getItem("structureViewportMode") || "focus",
+  requestToken: 0,
+  recoveryKeys: new Set(),
+  bundle: null,
+};
+
+const VIEWPORT_LABELS = {
+  focus: "鑱氱劍褰㈡€?,
+  context: "缁撴瀯鑳屾櫙",
+  snapshot: "瀹屾暣蹇収",
+};
+
+const VIEWPORT_CONFIG = {
+  "15m": { minBars: 80, maxBars: 240, defaultFocusBars: 160, contextBars: 300, snapshotBars: 480, minPadding: 24, rightPadding: 8 },
+  "1h": { minBars: 100, maxBars: 300, defaultFocusBars: 180, contextBars: 360, snapshotBars: 720, minPadding: 24, rightPadding: 8 },
+  "4h": { minBars: 80, maxBars: 240, defaultFocusBars: 140, contextBars: 300, snapshotBars: 520, minPadding: 20, rightPadding: 6 },
+  "1d": { minBars: 50, maxBars: 160, defaultFocusBars: 90, contextBars: 180, snapshotBars: 260, minPadding: 15, rightPadding: 5 },
+  "1w": { minBars: 40, maxBars: 156, defaultFocusBars: 80, contextBars: 156, snapshotBars: 260, minPadding: 10, rightPadding: 4 },
+  "1M": { minBars: 40, maxBars: 156, defaultFocusBars: 80, contextBars: 156, snapshotBars: 260, minPadding: 10, rightPadding: 4 },
+};
+
+if (!VIEWPORT_LABELS[state.viewMode]) {
+  state.viewMode = "focus";
+}
+
+const BIAS_LABELS = {
+  bullish: "鍋忓",
+  weak_bullish: "寮卞亸澶?,
+  bearish: "鍋忕┖",
+  weak_bearish: "寮卞亸绌?,
+  uncertain: "缁撴瀯鍒嗘 / 涓嶇‘瀹?,
+  neutral: "涓€?,
+  no_clear_structure: "鏃犳竻鏅扮粨鏋?,
+};
+
+const STATUS_LABELS = {
+  confirmed: "宸茬‘璁?,
+  candidate: "鍊欓€?,
+  armed: "寰呯‘璁?,
+  invalidated: "澶辨晥",
+  expired: "杩囨湡",
+  high: "楂?,
+  medium: "涓?,
+  low: "浣?,
+};
+
+const REGIME_LABELS = {
+  trend: "瓒嬪娍",
+  balance: "骞宠　",
+  transition: "杩囨浮",
+};
+
+const SYSTEM_LABELS = {
+  swing: "鎽嗗姩缁撴瀯",
+  classic: "缁忓吀鍥惧舰",
+  profile: "鎴愪氦閲?/ 甯傚満杞粨",
+  fused: "缁煎悎鍒ゆ柇",
+};
+
+const CHART_SERIES = {
+  price: { label: "浠锋牸", color: "#16232b", dash: "", width: 3.15 },
+  swing: { label: "鎽嗗姩缁撴瀯", color: "#2563eb", dash: "", width: 2.85 },
+  classic: { label: "缁忓吀鍥惧舰", color: "#ea580c", dash: "10 6", width: 2.75 },
+  profile: { label: "鎴愪氦閲?/ 甯傚満杞粨", color: "#9333ea", dash: "4 7", width: 2.75 },
+  fused: { label: "缁煎悎鍒ゆ柇", color: "#0891b2", dash: "6 5", width: 2.45 },
+};
+
+function labelFor(map, value, fallback = "-") {
+  return map[value] || value || fallback;
+}
+
+function biasTone(value) {
+  const text = String(value || "");
+  if (text.includes("bull")) return "bullish";
+  if (text.includes("bear")) return "bearish";
+  return "neutral";
+}
+
+function normalizeCandles(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.candles)) return payload.candles;
+  return [];
+}
+
+function normalizeTextList(items) {
+  return Array.isArray(items) ? items.filter(Boolean).map((item) => String(item)) : [];
+}
+
+function matchesSelectedSystem(system) {
+  return state.selectedSystem === "all" || system === state.selectedSystem;
+}
+
+function renderShell() {
+  const instrument = getInstrumentMeta(appState.selectedInstrumentId);
+  return setRoot(`
+    <section class="structure-page structure-page-compact">
+      <section class="hero-card structure-toolbar-card">
+        <div class="toolbar-grid">
+          <label class="field">
+            <span>浜ゆ槗鍝佺</span>
+            <select id="structure-instrument">
+              ${appState.instruments
+                .map(
+                  (item) =>
+                    `<option value="${item.id}" ${item.id === appState.selectedInstrumentId ? "selected" : ""}>${item.code} 路 ${item.name}</option>`,
+                )
+                .join("")}
+            </select>
+          </label>
+          <label class="field">
+            <span>鍛ㄦ湡</span>
+            <select id="structure-timeframe">
+              ${TIMEFRAMES.map(
+                (item) => `<option value="${item}" ${item === appState.selectedTimeframe ? "selected" : ""}>${item}</option>`,
+              ).join("")}
+            </select>
+          </label>
+          <label class="field">
+            <span>绯荤粺 ${knowledgeTooltip("Structure System Filter / 缁撴瀯绯荤粺绛涢€?, "tone-neutral")}</span>
+            <select id="structure-system">
+              ${SYSTEMS.map(
+                (item) => `<option value="${item.key}" ${item.key === state.selectedSystem ? "selected" : ""}>${item.label}</option>`,
+              ).join("")}
+            </select>
+          </label>
+          <label class="field">
+            <span>鏈€浣庣疆淇″害 ${knowledgeTooltip("Minimum Confidence Filter / 鏈€浣庣疆淇″害绛涢€?, "tone-neutral")}</span>
+            <select id="structure-confidence">
+              ${[0, 0.3, 0.5, 0.7]
+                .map((item) => `<option value="${item}" ${item === state.minConfidence ? "selected" : ""}>${item.toFixed(2)}+</option>`)
+                .join("")}
+            </select>
+          </label>
+          <label class="field">
+            <span>瑙嗗浘妯″紡 ${knowledgeTooltip("Overlay View / 鍙犲姞瑙嗗浘", "tone-neutral")}</span>
+            <select id="structure-viewmode">
+              <option value="focus" ${state.viewMode === "focus" ? "selected" : ""}>聚焦形态</option>
+              <option value="context" ${state.viewMode === "context" ? "selected" : ""}>结构背景</option>
+              <option value="snapshot" ${state.viewMode === "snapshot" ? "selected" : ""}>完整快照</option>
+            </select>
+          </label>
+          <div class="field action">
+            <button id="structure-refresh" class="primary-button">鎵嬪姩鍒锋柊蹇収</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="structure-statusbar"></section>
+
+      <section class="structure-overview-grid">
+        <article class="card structure-main-card">
+          <div class="structure-main-head">
+            <div>
+              <p class="eyebrow">褰㈡€佸彔鍔犲浘</p>
+              <h2>${escapeHtml(instrument.code)} 路 ${escapeHtml(appState.selectedTimeframe)}</h2>
+            </div>
+            <div id="structure-chart-bias"></div>
+          </div>
+          <div id="structure-chart-panel" class="structure-chart-panel loading">姝ｅ湪鍔犺浇缁撴瀯蹇収鈥?/div>
+        </article>
+
+        <article class="card structure-summary-card" id="structure-summary-panel"></article>
+      </section>
+
+      <section class="card structure-detail-card">
+        <div id="structure-detail-panel" class="structure-detail-grid"></div>
+      </section>
+    </section>
+  `);
+}
+
+function formatAxisPrice(value) {
+  if (!Number.isFinite(value)) return "-";
+  if (Math.abs(value) >= 1000) return formatNumber(value, 0);
+  if (Math.abs(value) >= 10) return formatNumber(value, 2);
+  return formatNumber(value, 4);
+}
+
+function formatAxisTime(value, timeframe) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  if (timeframe === "1h" || timeframe === "4h") {
+    return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:00`;
+  }
+  if (timeframe === "1M") return `${date.getFullYear()}/${date.getMonth() + 1}`;
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function buildChartScale(candles, width, height, minPrice, maxPrice) {
+  const margin = { top: 42, right: 28, bottom: 58, left: 78 };
+  const plot = {
+    x: margin.left,
+    y: margin.top,
+    width: width - margin.left - margin.right,
+    height: height - margin.top - margin.bottom,
+  };
+  const rawRange = Math.max(maxPrice - minPrice, Math.abs(maxPrice) * 0.01, 1);
+  const paddedMin = minPrice - rawRange * 0.08;
+  const paddedMax = maxPrice + rawRange * 0.08;
+  const xForIndex = (index) => plot.x + (candles.length > 1 ? (index / (candles.length - 1)) * plot.width : plot.width / 2);
+  const yForPrice = (price) => plot.y + plot.height - ((Number(price) - paddedMin) / (paddedMax - paddedMin)) * plot.height;
+  return { margin, plot, minPrice: paddedMin, maxPrice: paddedMax, xForIndex, yForPrice };
+}
+
+function buildLinePath(points, scale) {
+  if (!points.length) return "";
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${scale.xForIndex(index).toFixed(2)} ${scale.yForPrice(Number(point.close ?? 0)).toFixed(2)}`)
+    .join(" ");
+}
+
+function buildAxisMarkup(candles, scale) {
+  const yTicks = Array.from({ length: 5 }, (_, index) => scale.minPrice + ((scale.maxPrice - scale.minPrice) * index) / 4);
+  const xTickCount = Math.min(6, candles.length);
+  const xTicks = Array.from({ length: xTickCount }, (_, index) => Math.round(((candles.length - 1) * index) / Math.max(xTickCount - 1, 1)));
+  const yMarkup = yTicks
+    .map((tick) => {
+      const y = scale.yForPrice(tick);
+      return `
+        <line class="structure-svg-grid" x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}"></line>
+        <text class="structure-svg-axis" x="${scale.plot.x - 12}" y="${(y + 4).toFixed(2)}" text-anchor="end">${escapeHtml(formatAxisPrice(tick))}</text>
+      `;
+    })
+    .join("");
+  const xMarkup = xTicks
+    .map((index) => {
+      const x = scale.xForIndex(index);
+      const label = formatAxisTime(candles[index]?.ts_open, appState.selectedTimeframe);
+      return `
+        <line class="structure-svg-grid vertical" x1="${x.toFixed(2)}" y1="${scale.plot.y}" x2="${x.toFixed(2)}" y2="${(scale.plot.y + scale.plot.height).toFixed(2)}"></line>
+        <text class="structure-svg-axis" x="${x.toFixed(2)}" y="${(scale.plot.y + scale.plot.height + 32).toFixed(2)}" text-anchor="middle">${escapeHtml(label)}</text>
+      `;
+    })
+    .join("");
+  return `
+    <rect class="structure-svg-bg" x="${scale.plot.x}" y="${scale.plot.y}" width="${scale.plot.width}" height="${scale.plot.height}" rx="16"></rect>
+    ${yMarkup}
+    ${xMarkup}
+    <path class="structure-axis-line" d="M ${scale.plot.x} ${scale.plot.y} V ${scale.plot.y + scale.plot.height} H ${scale.plot.x + scale.plot.width}"></path>
+  `;
+}
+
+function normalizeTs(value) {
+  const ts = new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function getGeometryPoints(item) {
+  if (Array.isArray(item.points_json)) return item.points_json;
+  if (Array.isArray(item.points)) return item.points;
+  if (Array.isArray(item.meta_json?.points)) return item.meta_json.points;
+  return [];
+}
+
+function pointTime(point) {
+  return normalizeTs(point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time);
+}
+
+function pointPrice(point) {
+  const value = Number(point?.price ?? point?.value ?? point?.close ?? point?.level);
+  return Number.isFinite(value) ? value : null;
+}
+
+function viewportConfig() {
+  return VIEWPORT_CONFIG[appState.selectedTimeframe] || VIEWPORT_CONFIG["1d"];
+}
+
+function calculateViewport(candles, geometry, backendViewport = null) {
+  const config = viewportConfig();
+  const fullBars = candles.length;
+  if (!fullBars) {
+    return { candles: [], offset: 0, visibleBars: 0, fullBars: 0, overlayBars: 0, coverage: 0, autoFocused: false };
+  }
+  const latestIndex = fullBars - 1;
+  const latestTs = normalizeTs(candles[latestIndex]?.ts_open);
+  const firstTs = normalizeTs(candles[0]?.ts_open);
+  const starts = geometry
+    .flatMap((item) => getGeometryPoints(item).map(pointTime))
+    .filter((value) => value !== null && (!latestTs || value <= latestTs) && (!firstTs || value >= firstTs));
+  const activeStartTs = backendViewport?.active_start_ts ?? (starts.length ? Math.min(...starts) : null);
+  const activeStartIndex =
+    activeStartTs === null
+      ? null
+      : candles.findIndex((item) => {
+          const ts = normalizeTs(item.ts_open);
+          return ts !== null && ts >= activeStartTs;
+        });
+  const overlayBars = activeStartIndex === null || activeStartIndex < 0 ? 0 : latestIndex - activeStartIndex + 1;
+  const coverage = fullBars ? overlayBars / fullBars : 0;
+  const mode = VIEWPORT_LABELS[state.viewMode] ? state.viewMode : "focus";
+  let displayBars;
+  if (mode === "snapshot") {
+    displayBars = Math.min(fullBars, config.snapshotBars);
+  } else if (mode === "context") {
+    displayBars = Math.min(fullBars, config.contextBars);
+  } else if (backendViewport?.display_bars) {
+    displayBars = Math.min(fullBars, Number(backendViewport.display_bars));
+  } else if (overlayBars > 0) {
+    const leftPadding = Math.max(Math.round(overlayBars * 0.25), config.minPadding);
+    displayBars = Math.min(fullBars, Math.max(config.minBars, Math.min(config.maxBars, overlayBars + leftPadding + config.rightPadding)));
+  } else {
+    displayBars = Math.min(fullBars, config.defaultFocusBars);
+  }
+  const startIndex = Math.max(0, latestIndex - displayBars + 1);
+  return {
+    candles: candles.slice(startIndex),
+    offset: startIndex,
+    visibleBars: fullBars - startIndex,
+    fullBars,
+    overlayBars,
+    coverage,
+    activeStartTs,
+    autoFocused: mode === "focus" && coverage > 0 && coverage < 0.45,
+  };
+}
+
+function visibleGeometryForViewport(geometry, candles, offset) {
+  const visibleTimes = new Set(candles.map((item) => String(item.ts_open)));
+  return geometry
+    .map((item) => {
+      const points = getGeometryPoints(item);
+      const filtered = points.filter((point, index) => {
+        const ts = point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time;
+        if (ts === undefined || ts === null) return index >= offset;
+        return visibleTimes.has(String(ts)) || normalizeTs(ts) >= normalizeTs(candles[0]?.ts_open);
+      });
+      return { ...item, points_json: filtered };
+    })
+    .filter((item) => getGeometryPoints(item).length > 0);
+}
+
+function legendAvailability(geometry) {
+  const hasSystem = (system, minPoints = 1) =>
+    geometry.some((item) => item.system === system && getGeometryPoints(item).filter((point) => pointPrice(point) !== null).length >= minPoints);
+  return {
+    price: true,
+    swing: hasSystem("swing", 2),
+    classic: hasSystem("classic", 2),
+    profile: hasSystem("profile", 1),
+  };
+}
+
+function buildLegendMarkup(availability) {
+  return Object.entries(CHART_SERIES)
+    .filter(([key]) => key !== "fused" && availability[key])
+    .map(
+      ([key, series], index) => `
+        <g transform="translate(${78 + index * 168}, 22)">
+          <line x1="0" y1="0" x2="28" y2="0" stroke="${series.color}" stroke-width="3" stroke-dasharray="${series.dash}"></line>
+          <text class="structure-svg-axis structure-axis-label" x="36" y="4">${escapeHtml(series.label)}</text>
+        </g>
+      `,
+    )
+    .join("");
+}
+
+function buildOverlayMarkup(geometry, candles, scale) {
+  const xIndex = new Map(candles.map((item, index) => [String(item.ts_open || index), index]));
+
+  return geometry
+    .map((item) => {
+      if (item.system === "profile") return "";
+      const points = getGeometryPoints(item);
+      const mapped = points
+        .map((point, index) => {
+          const pointTs = point.ts ?? point.timestamp ?? point.ts_open ?? point.time ?? index;
+          const candleIndex = xIndex.get(String(pointTs)) ?? index;
+          const price = pointPrice(point);
+          return { x: scale.xForIndex(candleIndex), y: price === null ? NaN : scale.yForPrice(price) };
+        })
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      if (!mapped.length) return "";
+
+      const series = CHART_SERIES[item.system] || CHART_SERIES.fused;
+      if (mapped.length === 1) {
+        return `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${series.color}" stroke="#fff8ed" stroke-width="2" />`;
+      }
+
+      const path = mapped
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+        .join(" ");
+      return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="${series.width}" stroke-dasharray="${series.dash}" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />`;
+    })
+    .join("");
+}
+
+function buildMarketProfileMarkup(geometry, scale) {
+  const profile = geometry.filter((item) => item.system === "profile");
+  const levels = [];
+  profile.forEach((item) => {
+    getGeometryPoints(item).forEach((point) => {
+      const price = pointPrice(point);
+      if (price !== null) levels.push({ price, label: point.label || point.kind || item.structure_type || "profile" });
+    });
+  });
+  const uniqueLevels = [...new Map(levels.map((item) => [`${item.label}:${item.price}`, item])).values()].slice(0, 8);
+  if (!uniqueLevels.length) return "";
+  return uniqueLevels
+    .map((item) => {
+      const y = scale.yForPrice(item.price);
+      if (!Number.isFinite(y)) return "";
+      const label = String(item.label).toUpperCase().includes("VAH")
+        ? "VAH"
+        : String(item.label).toUpperCase().includes("VAL")
+          ? "VAL"
+          : String(item.label).toUpperCase().includes("POC")
+            ? "POC"
+            : "Profile";
+      const opacity = label === "POC" ? 0.85 : 0.5;
+      return `
+        <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${CHART_SERIES.profile.color}" stroke-width="${label === "POC" ? 2.4 : 1.6}" stroke-dasharray="8 7" opacity="${opacity}"></line>
+        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 6).toFixed(2)}" text-anchor="end">${escapeHtml(label)}</text>
+      `;
+    })
+    .join("");
+}
+
+function renderChart(snapshot, candles) {
+  const chartPanel = document.getElementById("structure-chart-panel");
+  const chartBias = document.getElementById("structure-chart-bias");
+  const geometry = (snapshot.geometry || []).filter((item) => {
+    const confidence = Number(item.meta_json?.confidence ?? item.meta?.confidence ?? 1);
+    return matchesSelectedSystem(item.system) && confidence >= state.minConfidence;
+  });
+
+  chartBias.innerHTML = `<span class="impact-chip impact-${biasTone(snapshot.overall?.overall_bias)}">${escapeHtml(
+    labelFor(BIAS_LABELS, snapshot.overall?.overall_bias),
+  )}</span>`;
+
+  if (!candles.length) {
+    chartPanel.className = "structure-chart-panel empty";
+    chartPanel.innerHTML = `<div class="empty-state">鏆傛棤鍙粯鍒剁殑缁撴瀯鍥俱€?/div>`;
+    return;
+  }
+
+  const backendViewport = snapshot.pattern_overlay?.viewport || snapshot.pattern_overlay?.pattern_overlay?.viewport || null;
+  const viewport = calculateViewport(candles, geometry, backendViewport);
+  const visibleCandles = viewport.candles.length ? viewport.candles : candles;
+  const visibleGeometry = visibleGeometryForViewport(geometry, visibleCandles, viewport.offset);
+  const availability = legendAvailability(visibleGeometry);
+  const overlayPrices = visibleGeometry.flatMap((item) => getGeometryPoints(item).map(pointPrice)).filter((value) => value !== null);
+  const prices = [...visibleCandles.map((item) => Number(item.close)), ...overlayPrices];
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const width = 1040;
+  const height = 520;
+  const scale = buildChartScale(visibleCandles, width, height, minPrice, maxPrice);
+  const pricePath = buildLinePath(visibleCandles, scale);
+  const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale);
+  const profileMarkup = buildMarketProfileMarkup(visibleGeometry, scale);
+  const overlayCount = visibleGeometry.filter((item) => item.system !== "profile").length;
+  const profileCount = visibleGeometry.filter((item) => item.system === "profile").length;
+  const classicCount = visibleGeometry.filter((item) => item.system === "classic").length;
+  const coverageLabel = viewport.coverage ? `${(viewport.coverage * 100).toFixed(1)}%` : "-";
+
+  chartPanel.className = "structure-chart-panel";
+  chartPanel.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg" role="img" aria-label="褰㈡€佺粨鏋勫浘">
+      ${buildAxisMarkup(visibleCandles, scale)}
+      ${buildLegendMarkup(availability)}
+      <path d="${pricePath}" fill="none" stroke="${CHART_SERIES.price.color}" stroke-width="${CHART_SERIES.price.width}" stroke-linecap="round" stroke-linejoin="round"></path>
+      ${profileMarkup}
+      ${overlayMarkup}
+    </svg>
+    <div class="structure-chart-meta">
+      <span>快照版本：${escapeHtml(snapshot.snapshot_version || "-")}</span>
+      <span>视图：${escapeHtml(VIEWPORT_LABELS[state.viewMode] || VIEWPORT_LABELS.focus)}</span>
+      <span>可见 K 线：${visibleCandles.length}/${candles.length}</span>
+      <span>结构点：${overlayCount}</span>
+      <span>图形：${classicCount}</span>
+      <span>市场轮廓：${profileCount ? "POC/VAH/VAL" : "未绘制"}</span>
+      <span>覆盖率：${coverageLabel}</span>
+      ${viewport.autoFocused ? `<span>已自动聚焦：当前形态仅覆盖完整快照的 ${coverageLabel}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderSummary(snapshot) {
+  const overall = snapshot.overall || {};
+  const systems = Array.isArray(snapshot.systems) ? snapshot.systems : [];
+  const panel = document.getElementById("structure-summary-panel");
+  const orderedSystems = ["swing", "classic", "profile"].map((key) => systems.find((item) => item.system === key) || null);
+
+  panel.innerHTML = `
+    <div class="structure-summary-grid">
+      <article class="structure-summary-tile structure-summary-overall">
+        <div class="structure-summary-head">
+          <div>
+            <p class="eyebrow">缁煎悎鍒ゆ柇</p>
+            <h3 class="structure-summary-title">${escapeHtml(labelFor(BIAS_LABELS, overall.overall_bias))}</h3>
+          </div>
+          ${overall.conflict_state ? `<div class="warning-banner structure-mini-warning">绯荤粺涔嬮棿瀛樺湪鏂瑰悜鍐茬獊锛岀粨璁哄凡鍋氶檷绾у鐞嗐€?/div>` : ""}
+        </div>
+        <div class="metric-grid metric-grid-compact structure-summary-metrics">
+          <div class="metric-box"><span>缁煎悎鍒嗘暟</span><strong>${escapeHtml(formatNumber(overall.overall_score ?? overall.score ?? 0, 2))}</strong></div>
+          <div class="metric-box"><span>缁煎悎缃俊搴?/span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence ?? 0, 2))}</strong></div>
+          <div class="metric-box"><span>Regime</span><strong>${escapeHtml(labelFor(REGIME_LABELS, overall.regime))}</strong></div>
+          <div class="metric-box"><span>鏉冮噸妯℃澘</span><strong>${escapeHtml(overall.weight_template || "-")}</strong></div>
+        </div>
+        ${
+          overall.meaning
+            ? `<div class="structure-copy structure-summary-copy">
+                <p>${escapeHtml(overall.meaning)}</p>
+                ${overall.need_confirmation ? `<p>${escapeHtml(overall.need_confirmation)}</p>` : ""}
+                ${overall.invalidation ? `<p>${escapeHtml(overall.invalidation)}</p>` : ""}
+                ${overall.suggested_mode ? `<p>${escapeHtml(overall.suggested_mode)}</p>` : ""}
+              </div>`
+            : ""
+        }
+      </article>
+
+      ${orderedSystems
+        .map((system) => {
+          if (!system) {
+            return `
+              <article class="structure-summary-tile structure-system-merge">
+                <div class="structure-system-merge-head">
+                  <div>
+                    <p class="eyebrow">绯荤粺缁撴灉</p>
+                    <strong>寰呰ˉ榻?/strong>
+                  </div>
+                  ${statusChip("蹇収琛ュ叏涓?)}
+                </div>
+                <div class="structure-inline-metrics">
+                  <span>鏈夋晥鍒?-</span>
+                  <span>鏉冮噸 -</span>
+                  <span>璐＄尞 -</span>
+                  <span>璇佹嵁 -</span>
+                </div>
+                <ul class="plain-list compact">
+                  <li>璇ョ郴缁熷崱鐗囨殏鏈惤鍏ュ綋鍓嶅揩鐓э紝椤甸潰浼氳嚜鍔ㄥ皾璇曡ˉ鍒锋柊銆?/li>
+                </ul>
+              </article>
+            `;
+          }
+          const reasons = normalizeTextList(system.top_reasons || system.drivers_json).slice(0, 2);
+          return `
+            <article class="structure-summary-tile structure-system-merge">
+              <div class="structure-system-merge-head">
+                <div>
+                  <p class="eyebrow">${escapeHtml(labelFor(SYSTEM_LABELS, system.system))}</p>
+                  <strong class="structure-system-title">${escapeHtml(labelFor(BIAS_LABELS, system.direction || system.bias))}</strong>
+                </div>
+                ${statusChip(labelFor(STATUS_LABELS, system.status || "confirmed"))}
+              </div>
+              <div class="structure-inline-metrics">
+                <span>鏈夋晥鍒?${escapeHtml(formatNumber(system.effective_score ?? system.score ?? 0, 2))}</span>
+                <span>鏉冮噸 ${escapeHtml(formatNumber(system.weight ?? 0, 2))}</span>
+                <span>璐＄尞 ${escapeHtml(formatNumber(system.weighted_contribution ?? 0, 2))}</span>
+                <span>璇佹嵁 ${escapeHtml(String(system.evidence_count ?? 0))}</span>
+              </div>
+              <ul class="plain-list compact">
+                ${(reasons.length ? reasons : ["鏆傛棤棰濆璇存槑"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+              </ul>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderCurrentStructures(items) {
+  if (!items.length) return `<div class="empty-state">褰撳墠娌℃湁娲昏穬缁撴瀯銆?/div>`;
+  return `
+    <div class="structure-detail-list">
+      ${items
+        .map((item) => {
+          const reasons = normalizeTextList(item.reasoning_json).slice(0, 2);
+          return `
+            <article class="structure-mini-card">
+              <div class="list-card-head">
+                <strong>${escapeHtml(item.display_name || item.structure_type || "-")}</strong>
+                ${statusChip(labelFor(STATUS_LABELS, item.lifecycle_status || item.status || "confirmed"))}
+              </div>
+              <p>${escapeHtml(item.summary || "鏆傛棤鎽樿璇存槑銆?)}</p>
+              ${
+                reasons.length
+                  ? `<ul class="plain-list compact">${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>`
+                  : ""
+              }
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderEventHistory(items) {
+  if (!items.length) return `<div class="empty-state">杩戞湡娌℃湁缁撴瀯浜嬩欢銆?/div>`;
+  return `
+    <div class="structure-detail-list">
+      ${items
+        .slice(0, 8)
+        .map(
+          (item) => `
+            <article class="structure-mini-card">
+              <div class="list-card-head">
+                <strong>${escapeHtml(labelFor(SYSTEM_LABELS, item.system))}</strong>
+                ${statusChip(labelFor(STATUS_LABELS, item.status || "confirmed"))}
+              </div>
+              <p>${escapeHtml(item.event_name || "-")}</p>
+              <small>${escapeHtml(formatDateTime(item.event_ts))}</small>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderAlertHistory(items) {
+  if (!items.length) return `<div class="empty-state">杩戞湡娌℃湁缁撴瀯鍛婅銆?/div>`;
+  return `
+    <div class="structure-detail-list">
+      ${items
+        .slice(0, 6)
+        .map(
+          (item) => `
+            <article class="structure-mini-card">
+              <div class="list-card-head">
+                <strong>${escapeHtml(item.title || item.alert_name || "-")}</strong>
+                ${statusChip(labelFor(STATUS_LABELS, item.severity || "medium"))}
+              </div>
+              <p>${escapeHtml(item.message || "鏆傛棤璇︾粏璇存槑銆?)}</p>
+              <small>${escapeHtml(formatDateTime(item.triggered_at))}</small>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderDiagnostics(snapshot, diagnostics) {
+  const effectiveDiagnostics = diagnostics || snapshot.diagnostics || {};
+  const notes = normalizeTextList(effectiveDiagnostics.notes);
+  return `
+    <article class="structure-detail-section structure-detail-block">
+      <div class="list-card-head">
+        <strong>妫€娴嬭瘖鏂?/strong>
+        ${statusChip("鍙蹇収")}
+      </div>
+      <div class="structure-inline-metrics">
+        <span>鍔犺浇 K 绾?${escapeHtml(String(effectiveDiagnostics.candles_loaded ?? 0))}</span>
+        <span>鍑犱綍鏁伴噺 ${escapeHtml(String(effectiveDiagnostics.geometry_count ?? 0))}</span>
+        <span>浜嬩欢鏁伴噺 ${escapeHtml(String(effectiveDiagnostics.event_count ?? 0))}</span>
+        <span>鍛婅鏁伴噺 ${escapeHtml(String(effectiveDiagnostics.alert_count ?? 0))}</span>
+      </div>
+      ${
+        notes.length
+          ? `<ul class="plain-list compact">${notes.slice(0, 3).map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>`
+          : `<p class="structure-copy">褰撳墠蹇収鏈繑鍥為澶栬瘖鏂娉ㄣ€?/p>`
+      }
+      <p class="structure-copy">鍥炴祴鏃惰鍙娇鐢ㄥ凡纭鐨?pivot銆乥reakout 涓?value area 淇″彿锛岄伩鍏嶆妸鍊欓€夊舰鎬佺洿鎺ュ綋鎴愭渶缁堢粨璁恒€?/p>
+    </article>
+  `;
+}
+
+function renderDetailPanel(payload) {
+  const detailPanel = document.getElementById("structure-detail-panel");
+  const systemFilter = state.selectedSystem;
+  const snapshot = payload.snapshot || {};
+  const activeItems = (snapshot.active_items || []).filter((item) => systemFilter === "all" || item.system === systemFilter);
+  const events = (payload.events || []).filter((item) => systemFilter === "all" || item.system === systemFilter);
+  const alerts = (payload.alerts || []).filter((item) => {
+    if (systemFilter === "all") return true;
+    const system = item.event_payload_json?.system || item.event_payload_json?.event?.system;
+    return !system || system === systemFilter;
+  });
+
+  detailPanel.innerHTML = `
+    <article class="structure-detail-section structure-detail-block">
+      <div class="list-card-head">
+        <strong>褰撳墠缁撴瀯</strong>
+        ${statusChip(systemFilter === "all" ? "鍏ㄩ儴绯荤粺" : labelFor(SYSTEM_LABELS, systemFilter))}
+      </div>
+      ${renderCurrentStructures(activeItems)}
+    </article>
+
+    <article class="structure-detail-section structure-detail-block">
+      <div class="list-card-head">
+        <strong>杩戞湡浜嬩欢</strong>
+        ${statusChip(`${events.length} 鏉)}
+      </div>
+      ${renderEventHistory(events)}
+    </article>
+
+    <article class="structure-detail-section structure-detail-block">
+      <div class="list-card-head">
+        <strong>鍛婅鍘嗗彶</strong>
+        ${statusChip(`${alerts.length} 鏉)}
+      </div>
+      ${renderAlertHistory(alerts)}
+    </article>
+
+    ${renderDiagnostics(snapshot, payload.diagnostics)}
+  `;
+
+  const detailCards = detailPanel.querySelectorAll(".structure-detail-section");
+  if (detailCards.length >= 3) {
+    detailPanel.insertBefore(detailCards[2], detailCards[1]);
+  }
+}
+
+function renderFromBundle(bundle) {
+  if (!bundle) {
+    return;
+  }
+  updateChartTitle();
+  state.bundle = bundle;
+  const candles = normalizeCandles(bundle.candles);
+  const snapshot = bundle.snapshot || null;
+  if (!snapshot) {
+    const chartPanel = document.getElementById("structure-chart-panel");
+    const summaryPanel = document.getElementById("structure-summary-panel");
+    const detailPanel = document.getElementById("structure-detail-panel");
+    if (chartPanel) {
+      chartPanel.className = "structure-chart-panel empty";
+      chartPanel.innerHTML = `<div class="empty-state">褰撳墠杩樻病鏈夊彲鐢ㄧ殑缁撴瀯蹇収锛岃鍏堟墜鍔ㄥ埛鏂般€?/div>`;
+    }
+    if (summaryPanel) {
+      summaryPanel.innerHTML = `
+        <article class="structure-summary-tile">
+          <p class="eyebrow">缂撳瓨鐘舵€?/p>
+          <h3>${escapeHtml(bundle.cache_state === "missing" ? "缂哄皯蹇収" : "鏆傛棤缁撴瀯缁撴灉")}</h3>
+          <p class="structure-copy">${escapeHtml(bundle.status_message || "褰撳墠浠呰兘灞曠ず缂撳瓨琛屾儏锛岃鎵嬪姩鍒锋柊缁撴瀯蹇収銆?)}</p>
+        </article>
+      `;
+    }
+    if (detailPanel) {
+      detailPanel.innerHTML = `
+        <article class="structure-detail-section structure-detail-block">
+          <div class="list-card-head">
+            <strong>妫€娴嬭瘖鏂?/strong>
+            ${statusChip("鍙缂撳瓨")}
+          </div>
+          <p class="structure-copy">${escapeHtml(bundle.status_message || "灏氭湭鐢熸垚缁撴瀯蹇収銆?)}</p>
+        </article>
+      `;
+    }
+    renderStatus(bundle.status_message || "褰撳墠灏氭棤缁撴瀯蹇収锛岃鎵嬪姩鍒锋柊銆?, bundle.cache_state === "missing" ? "warning" : "neutral");
+    return;
+  }
+  const safeSnapshot = {
+    active_items: [],
+    systems: [],
+    geometry: [],
+    diagnostics: {},
+    overall: {},
+    ...snapshot,
+  };
+  renderChart(safeSnapshot, candles);
+  renderSummary(safeSnapshot);
+  renderDetailPanel({
+    snapshot: safeSnapshot,
+    events: bundle.events || [],
+    alerts: bundle.alerts || [],
+    diagnostics: bundle.diagnostics,
+  });
+  const lastCandleTs = candles[candles.length - 1]?.ts_open;
+  const scopeLabel = state.selectedSystem === "all" ? "缁煎悎鍒ゆ柇" : labelFor(SYSTEM_LABELS, state.selectedSystem);
+  renderStatus(
+    bundle.status_message ||
+      `快照时间：${formatDateTime(safeSnapshot.generated_at || safeSnapshot.overall?.last_updated_at)} ｜ 最新价格时间：${formatDateTime(lastCandleTs)} ｜ 当前范围：${scopeLabel}`,
+    bundle.is_stale ? "warning" : "neutral",
+  );
+}
+
+function renderStatus(message, tone = "neutral") {
+  const el = document.getElementById("structure-statusbar");
+  el.innerHTML = message ? `<div class="status-banner status-${tone}">${escapeHtml(message)}</div>` : "";
+}
+
+function updateChartTitle() {
+  const titleNode = document.querySelector(".structure-main-head h2");
+  if (!titleNode) return;
+  const instrument = getInstrumentMeta(appState.selectedInstrumentId);
+  titleNode.textContent = `${instrument.code} 路 ${appState.selectedTimeframe}`;
+}
+
+function attachEvents(loadData) {
+  const handlers = [];
+  const listen = (selector, eventName, handler) => {
+    const node = document.querySelector(selector);
+    if (!node) return;
+    node.addEventListener(eventName, handler);
+    handlers.push(() => node.removeEventListener(eventName, handler));
+  };
+
+  listen("#structure-instrument", "change", async (event) => {
+    appState.selectedInstrumentId = event.target.value;
+    persistState();
+    await loadData();
+  });
+
+  listen("#structure-timeframe", "change", async (event) => {
+    appState.selectedTimeframe = event.target.value;
+    persistState();
+    await loadData();
+  });
+
+  listen("#structure-system", "change", async (event) => {
+    state.selectedSystem = event.target.value;
+    renderFromBundle(state.bundle);
+  });
+
+  listen("#structure-confidence", "change", async (event) => {
+    state.minConfidence = Number(event.target.value || 0);
+    renderFromBundle(state.bundle);
+  });
+
+  listen("#structure-viewmode", "change", async (event) => {
+    state.viewMode = VIEWPORT_LABELS[event.target.value] ? event.target.value : "focus";
+    localStorage.setItem("structureViewportMode", state.viewMode);
+    renderFromBundle(state.bundle);
+  });
+
+  listen("#structure-refresh", "click", async () => {
+    const button = document.getElementById("structure-refresh");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "鐢熸垚涓?;
+    }
+    try {
+      renderStatus("姝ｅ湪鎷夊彇 K 绾垮苟鐢熸垚缁撴瀯蹇収", "loading");
+      invalidateCache("/marketdata/candles");
+      invalidateCache("/market-prices/marks/latest");
+      await api.refreshStructure(appState.selectedInstrumentId, appState.selectedTimeframe);
+      await loadData({ forceRefresh: true });
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "鎵嬪姩鍒锋柊蹇収";
+      }
+    }
+  });
+
+  return () => handlers.forEach((dispose) => dispose());
+}
+
+export async function renderStructure() {
+  renderShell();
+  let disposed = false;
+  let activeController = null;
+  const detachEvents = attachEvents(loadData);
+
+  async function loadData({ forceRefresh = false } = {}) {
+    const requestToken = ++state.requestToken;
+    const instrumentId = appState.selectedInstrumentId;
+    const timeframe = appState.selectedTimeframe;
+    const limit = timeframe === "1h" ? 220 : 180;
+
+    updateChartTitle();
+    renderStatus("姝ｅ湪鍔犺浇缁撴瀯蹇収鈥?, "info");
+
+    try {
+      activeController?.abort();
+      activeController = new AbortController();
+      let bundle = await api.getStructureBundle(instrumentId, timeframe, {
+        includeGeometry: true,
+        candlesLimit: limit,
+        force: forceRefresh,
+        signal: activeController.signal,
+      });
+
+      const recoveryKey = `${instrumentId}:${timeframe}`;
+      const candles = normalizeCandles(bundle.candles);
+      if (
+        !forceRefresh &&
+        !state.recoveryKeys.has(recoveryKey) &&
+        (bundle.cache_state === "missing" || candles.length === 0)
+      ) {
+        state.recoveryKeys.add(recoveryKey);
+        renderStatus("姝ｅ湪鎷夊彇 K 绾垮苟鐢熸垚缁撴瀯蹇収", "loading");
+        await scheduleIdlePrecompute({
+          page: "market-structure",
+          instrumentId,
+          timeframe: timeframe === "1M" ? "30d" : timeframe,
+          reason: "structure_bundle_read",
+          priority: 3,
+        });
+      }
+
+      if (disposed || requestToken !== state.requestToken) return;
+      renderFromBundle(bundle);
+    } catch (error) {
+      if (error?.name === "AbortError" || error?.name === "TimeoutError") {
+        return;
+      }
+      if (disposed) return;
+
+      console.error("structure:renderer:error", error);
+      document.getElementById("structure-chart-panel").className = "structure-chart-panel error";
+      document.getElementById("structure-chart-panel").innerHTML = `<div class="error-state">褰㈡€佺粨鏋勫姞杞藉け璐ャ€?br>${escapeHtml(String(error.message || error))}</div>`;
+      document.getElementById("structure-summary-panel").innerHTML = `
+        <article class="structure-summary-tile">
+          <p class="eyebrow">鍔犺浇澶辫触</p>
+          <h3>缁撴瀯蹇収鏆傛椂涓嶅彲鐢?/h3>
+          <p class="structure-copy">${escapeHtml(String(error.message || error))}</p>
+        </article>
+      `;
+      document.getElementById("structure-detail-panel").innerHTML = `
+        <article class="list-card structure-detail-block">
+          <strong>鏁版嵁鏆備笉鍙敤</strong>
+          <p class="structure-copy">璇风◢鍚庨噸璇曪紝鎴栫偣鍑烩€滄墜鍔ㄥ埛鏂板揩鐓р€濄€?/p>
+        </article>
+      `;
+      renderStatus("缁撴瀯蹇収璇诲彇澶辫触锛岃绋嶅悗閲嶈瘯銆?, "danger");
+    }
+  }
+
+  await loadData();
+
+  return () => {
+    disposed = true;
+    detachEvents?.();
+  };
+}

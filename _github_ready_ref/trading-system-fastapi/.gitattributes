@@ -1,0 +1,20 @@
+# Normalize text files
+* text=auto eol=lf
+
+# Keep source archives clean
+.github/ISSUE_TEMPLATE/config.yml export-ignore
+.pytest_cache/ export-ignore
+.local_secrets/ export-ignore
+__pycache__/ export-ignore
+*.pyc export-ignore
+*.pyo export-ignore
+*.pyd export-ignore
+*.sqlite3 export-ignore
+.env export-ignore
+.venv/ export-ignore
+htmlcov/ export-ignore
+coverage.xml export-ignore
+
+# Local-only or maintainer-only docs/scripts that don't need to ship in source zip
+prompts/ export-ignore
+AGENTS.md export-ignore

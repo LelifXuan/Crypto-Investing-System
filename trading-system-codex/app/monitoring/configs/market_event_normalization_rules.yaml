@@ -1,0 +1,63 @@
+version: 1.0.0
+category_rules:
+  macro:
+    - cpi
+    - ppi
+    - pmi
+    - fomc
+    - fed
+    - inflation
+    - yield
+    - rate cut
+    - rate hike
+    - payrolls
+    - nfp
+    - etf
+  exchange:
+    - exchange
+    - binance
+    - okx
+    - gate
+    - coinbase
+    - bybit
+    - listing
+    - delisting
+    - maintenance
+    - futures launch
+  regulatory:
+    - sec
+    - regulation
+    - regulatory
+    - lawsuit
+    - approval
+    - ban
+  onchain:
+    - whale
+    - on-chain
+    - onchain
+    - inflow
+    - outflow
+    - liquidations
+    - liquidation
+    - active address
+importance_rules:
+  high:
+    - etf
+    - fomc
+    - cpi
+    - nfp
+    - listing
+    - delisting
+    - maintenance
+    - sec
+  medium:
+    - upgrade
+    - treasury
+    - unlock
+    - partnership
+symbol_keywords:
+  BTC: [BTC, BITCOIN, BTCUSDT, BTC_USDT]
+  ETH: [ETH, ETHEREUM, ETHUSDT, ETH_USDT]
+  HYPE: [HYPE, HYPERLIQUID]
+  BNB: [BNB, BINANCE COIN]
+  OKB: [OKB]

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "Lx0N2IBDeE6i+ke9SWNHLT5sxXZ17JHoQUjho92vfHt2dvKKmZXwSm/IlA6U8ea3BfDPA28TbYqOPEIVaIF4Cw==",
+  "success": true,
+  "projectFilePath": "E:\\Personal\\Research\\Crypto Investing System\\trading-system-codex\\tools\\launcher\\TradingSystemLauncher.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\h2278\\.nuget\\packages\\microsoft.net.illink.tasks\\8.0.13\\microsoft.net.illink.tasks.8.0.13.nupkg.sha512"
+  ],
+  "logs": []
+}

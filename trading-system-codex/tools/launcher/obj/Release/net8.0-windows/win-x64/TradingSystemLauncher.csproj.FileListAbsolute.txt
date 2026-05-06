@@ -1,0 +1,14 @@
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\bin\Release\net8.0-windows\win-x64\TradingSystemLauncher.exe
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\bin\Release\net8.0-windows\win-x64\TradingSystemLauncher.deps.json
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\bin\Release\net8.0-windows\win-x64\TradingSystemLauncher.runtimeconfig.json
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\bin\Release\net8.0-windows\win-x64\TradingSystemLauncher.dll
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\bin\Release\net8.0-windows\win-x64\TradingSystemLauncher.pdb
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.GeneratedMSBuildEditorConfig.editorconfig
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.AssemblyInfoInputs.cache
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.AssemblyInfo.cs
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.csproj.CoreCompileInputs.cache
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.dll
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\refint\TradingSystemLauncher.dll
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.pdb
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\TradingSystemLauncher.genruntimeconfig.cache
+E:\Personal\Research\Crypto Investing System\trading-system-codex\tools\launcher\obj\Release\net8.0-windows\win-x64\ref\TradingSystemLauncher.dll

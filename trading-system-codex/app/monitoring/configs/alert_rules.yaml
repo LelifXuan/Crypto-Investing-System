@@ -1,0 +1,141 @@
+version: 1
+alert_rules:
+  - rule_key: perp_funding_extreme_positive
+    enabled: true
+    severity: high
+    category: technical
+    indicator_key: funding_rate_zscore
+    scope_type: instrument
+    condition_type: threshold
+    comparator: gte
+    threshold_num: 2.0
+    dedupe_window_seconds: 1800
+    cooldown_seconds: 1800
+    action_channels: [db, api, ui]
+    message_template: "{instrument_id} funding rate z-score >= 2.0"
+    extra_config: {}
+  - rule_key: perp_price_mark_deviation_extreme
+    enabled: true
+    severity: critical
+    category: technical
+    indicator_key: price_to_mark_deviation
+    scope_type: instrument
+    condition_type: abs_threshold
+    threshold_num: 0.003
+    dedupe_window_seconds: 60
+    cooldown_seconds: 60
+    action_channels: [db, api, ui]
+    message_template: "{instrument_id} price-to-mark deviation >= 0.30%"
+    extra_config: {}
+  - rule_key: atr_expansion_warning
+    enabled: true
+    severity: medium
+    category: technical
+    indicator_key: natr_14
+    scope_type: instrument_timeframe
+    condition_type: percentile_band
+    percentile_ref_window_points: 90
+    upper_threshold_num: 90
+    dedupe_window_seconds: 1800
+    cooldown_seconds: 1800
+    action_channels: [db, api, ui]
+    message_template: "{instrument_id} NATR entered 90th percentile window"
+    extra_config: {}
+  - rule_key: macro_fomc_pre_window
+    enabled: true
+    severity: high
+    category: macro
+    indicator_key: fomc_event_window
+    scope_type: global
+    condition_type: state_equals
+    state_value: pre_event
+    dedupe_window_seconds: 21600
+    cooldown_seconds: 21600
+    action_channels: [db, api, ui]
+    message_template: "FOMC pre-event window is active"
+    extra_config: {}
+  - rule_key: macro_cpi_hot_surprise
+    enabled: true
+    severity: high
+    category: macro
+    indicator_key: us_cpi_yoy
+    scope_type: global
+    condition_type: threshold
+    comparator: gte
+    threshold_num: 0.2
+    dedupe_window_seconds: 21600
+    cooldown_seconds: 21600
+    action_channels: [db, api, ui]
+    message_template: "CPI surprise >= 0.2"
+    extra_config: {value_field: surprise_num}
+  - rule_key: macro_curve_deep_inversion
+    enabled: true
+    severity: medium
+    category: macro
+    indicator_key: us_10y_2y_spread
+    scope_type: global
+    condition_type: threshold
+    comparator: lte
+    threshold_num: -0.5
+    dedupe_window_seconds: 86400
+    cooldown_seconds: 86400
+    action_channels: [db, api, ui]
+    message_template: "US 10Y-2Y spread <= -0.5"
+    extra_config: {}
+  - rule_key: onchain_btc_mvrv_overheated
+    enabled: true
+    severity: medium
+    category: onchain
+    indicator_key: btc_mvrv
+    scope_type: asset
+    condition_type: threshold
+    comparator: gte
+    threshold_num: 3.5
+    dedupe_window_seconds: 86400
+    cooldown_seconds: 86400
+    action_channels: [db, api, ui]
+    message_template: "BTC MVRV >= 3.5"
+    extra_config: {}
+  - rule_key: onchain_btc_mvrv_capitulation
+    enabled: true
+    severity: medium
+    category: onchain
+    indicator_key: btc_mvrv
+    scope_type: asset
+    condition_type: threshold
+    comparator: lt
+    threshold_num: 1.0
+    dedupe_window_seconds: 86400
+    cooldown_seconds: 86400
+    action_channels: [db, api, ui]
+    message_template: "BTC MVRV < 1.0"
+    extra_config: {}
+  - rule_key: onchain_exchange_outflow_persistent
+    enabled: true
+    severity: medium
+    category: onchain
+    indicator_key: btc_exchange_net_position_change
+    scope_type: asset
+    condition_type: consecutive_threshold
+    comparator: lt
+    threshold_num: 0
+    consecutive_points: 3
+    dedupe_window_seconds: 86400
+    cooldown_seconds: 86400
+    action_channels: [db, api, ui]
+    message_template: "BTC exchange net position change < 0 for 3 periods"
+    extra_config: {}
+  - rule_key: onchain_activity_expanding
+    enabled: true
+    severity: low
+    category: onchain
+    indicator_key: btc_active_addresses
+    scope_type: asset
+    condition_type: threshold
+    comparator: gte
+    threshold_num: 2.0
+    dedupe_window_seconds: 21600
+    cooldown_seconds: 21600
+    action_channels: [db, api, ui]
+    message_template: "BTC active addresses z-score >= 2.0"
+    extra_config: {value_field: zscore_num}

@@ -1,0 +1,76 @@
+version: 1.0.0
+profiles:
+- profile_id: tier0_official_macro
+  match_source_ids:
+  - cn.stats.home_preview
+  - cn.pbc.home
+  - cn.pbc.omo_announcements
+  - cn.lpr.index
+  - cn.safe.statistics
+  - cn.gov.policy
+  - cn.csrc.news
+  schedule:
+    poll_interval_sec: 300
+    jitter_sec: 30
+    backfill_window_hours: 24
+  failure_policy:
+    max_consecutive_failures_before_alert: 3
+    cooldown_sec: 600
+    fallback_source_ids:
+    - domestic.jin10.calendar
+    - domestic.eastmoney.calendar
+- profile_id: tier1_domestic_calendars
+  match_source_ids:
+  - domestic.jin10.calendar
+  - domestic.eastmoney.calendar
+  - cn.sse.market_calendar
+  schedule:
+    poll_interval_sec: 600
+    jitter_sec: 60
+    backfill_window_hours: 48
+  failure_policy:
+    max_consecutive_failures_before_alert: 5
+    cooldown_sec: 900
+- profile_id: tier2_crypto_exchange_events
+  match_source_ids:
+  - crypto.gate.announcements
+  - crypto.gate.new_listings
+  - crypto.gate.calendar
+  schedule:
+    poll_interval_sec: 120
+    jitter_sec: 15
+    backfill_window_hours: 12
+  failure_policy:
+    max_consecutive_failures_before_alert: 3
+    cooldown_sec: 300
+    fallback_source_ids:
+    - crypto.panews.rss
+    - crypto.odaily.newsflash
+- profile_id: tier3_web3_media
+  match_source_ids:
+  - crypto.panews.rss
+  - crypto.panews.event_calendar
+  - crypto.odaily.newsflash
+  schedule:
+    poll_interval_sec: 180
+    jitter_sec: 20
+    backfill_window_hours: 12
+  failure_policy:
+    max_consecutive_failures_before_alert: 5
+    cooldown_sec: 600
+- profile_id: tier4_onchain_vendor
+  match_source_ids:
+  - onchain.tokenview.api
+  schedule:
+    poll_interval_sec: 60
+    jitter_sec: 5
+    backfill_window_hours: 2
+  failure_policy:
+    max_consecutive_failures_before_alert: 3
+    cooldown_sec: 120
+cache_ttls:
+  official_calendar_sec: 86400
+  official_article_sec: 259200
+  crypto_announcements_sec: 259200
+  newsflash_sec: 86400
+  onchain_alert_sec: 604800

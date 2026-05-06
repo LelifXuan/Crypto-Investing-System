@@ -1,0 +1,53 @@
+version: 1.0.0
+sources:
+  - source_id: crypto.cointelegraph.markets
+    provider_name: Cointelegraph Markets
+    entry_url: https://cointelegraph.com/rss/tag/markets
+    access_mode: rss
+    category: news
+    reliability: high
+    official_priority: media
+    access_confidence: high
+    poll_interval_sec: 1800
+    item_limit: 20
+    enabled: true
+    tags: [global, crypto, markets]
+
+  - source_id: crypto.theblock.rss
+    provider_name: The Block
+    entry_url: https://www.theblock.co/rss.xml
+    access_mode: rss
+    category: news
+    reliability: high
+    official_priority: media
+    access_confidence: high
+    poll_interval_sec: 1800
+    item_limit: 20
+    enabled: true
+    tags: [global, crypto, institutional]
+
+  - source_id: crypto.decrypt.feed
+    provider_name: Decrypt
+    entry_url: https://decrypt.co/feed
+    access_mode: rss
+    category: news
+    reliability: high
+    official_priority: media
+    access_confidence: high
+    poll_interval_sec: 1800
+    item_limit: 20
+    enabled: true
+    tags: [global, crypto, retail]
+
+  - source_id: crypto.panews.rss
+    provider_name: PANews
+    entry_url: https://www.panewslab.com/zh/rss
+    access_mode: rss
+    category: newsflash
+    reliability: medium
+    official_priority: media
+    access_confidence: high
+    poll_interval_sec: 1800
+    item_limit: 25
+    enabled: true
+    tags: [china, chinese, web3, newsflash]

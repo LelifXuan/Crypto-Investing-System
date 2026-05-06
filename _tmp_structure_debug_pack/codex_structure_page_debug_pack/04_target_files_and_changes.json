@@ -1,0 +1,75 @@
+{
+  "summary": "Fix missing/blank Structure page by wiring route, template, bootstrap, API, renderer, and DB-backed snapshot flow.",
+  "root_cause": [
+    "No committed structure page route in app/web/router.py",
+    "No structure template in app/templates/page.html",
+    "No structure branch in app/static/app.js bootPage()",
+    "No structure API/router/schema/service/repository in backend",
+    "No structure tables in SQLite schema"
+  ],
+  "workflow_optimization": [
+    "Stop appending new page logic into monolithic app/static/app.js",
+    "Introduce page registry and page-scoped boot functions",
+    "Add loading/empty/error states for every new chart page",
+    "Log page boot, API result counts, renderer readiness, and resize events"
+  ],
+  "target_files": [
+    {
+      "path": "app/web/router.py",
+      "action": "modify",
+      "reason": "Add /structure-page route and page_id='structure'."
+    },
+    {
+      "path": "app/templates/page.html",
+      "action": "modify",
+      "reason": "Add nav entry and structure-template markup."
+    },
+    {
+      "path": "app/static/app.js",
+      "action": "modify_or_split",
+      "reason": "Register structure page boot flow; ideally extract structure page logic to dedicated module."
+    },
+    {
+      "path": "app/static/styles.css",
+      "action": "modify",
+      "reason": "Add structure page layout, chart host sizing, loading/empty/error states."
+    },
+    {
+      "path": "app/api/router.py",
+      "action": "modify",
+      "reason": "Include new structure API router."
+    },
+    {
+      "path": "app/api/v1/endpoints/structure.py",
+      "action": "new",
+      "reason": "Expose snapshot and recompute endpoints."
+    },
+    {
+      "path": "app/schemas/structure.py",
+      "action": "new",
+      "reason": "Define response and request schemas."
+    },
+    {
+      "path": "app/services/structure_service.py",
+      "action": "new",
+      "reason": "Assemble snapshot payload for structure page."
+    },
+    {
+      "path": "app/repositories/structure_repository.py",
+      "action": "new",
+      "reason": "Read/write structure snapshots and overlay geometry."
+    },
+    {
+      "path": "alembic/versions/<new_revision>_structure_snapshots.py",
+      "action": "new",
+      "reason": "Create structure-related tables and indexes."
+    }
+  ],
+  "acceptance_targets": {
+    "page_load": "< 1.5s local first paint for structure page shell",
+    "snapshot_api": "< 300ms when served from local snapshot/cache",
+    "chart_first_render": "< 500ms after snapshot payload returns",
+    "empty_state": "Must display explicit empty message when candles or overlays are unavailable",
+    "error_state": "Must display explicit error card when API or renderer fails"
+  }
+}

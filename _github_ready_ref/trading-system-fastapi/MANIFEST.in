@@ -1,0 +1,8 @@
+include README.md LICENSE CHANGELOG.md SECURITY.md DISCLAIMER.md
+recursive-include app *.py
+recursive-include alembic *.py *.mako
+recursive-include docs *.md
+recursive-include api *.yaml
+recursive-include db *.sql
+recursive-include tests *.py
+global-exclude __pycache__ *.py[cod]
