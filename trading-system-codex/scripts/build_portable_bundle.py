@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -11,6 +14,46 @@ from release_common import PROJECT_ROOT, should_skip  # noqa: E402
 
 PORTABLE_ROOT = DIST_ROOT / "portable_bundle"
 PORTABLE_ZIP = DIST_ROOT / "portable_bundle.zip"
+PORTABLE_SHA256 = DIST_ROOT / "portable_bundle.zip.sha256"
+
+
+def _archive_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_manifest() -> None:
+    files = [
+        str(path.relative_to(PORTABLE_ROOT)).replace("\\", "/")
+        for path in sorted(PORTABLE_ROOT.rglob("*"))
+        if path.is_file()
+    ]
+    forbidden = [
+        name
+        for name in files
+        if name == "runtime/config/portable.env"
+        or name.startswith(("runtime/", "run/", "logs/", "data/", "cache/", "tmp/"))
+        or "/.git/" in f"/{name}/"
+        or "/.venv/" in f"/{name}/"
+        or name.endswith((".db", ".db-wal", ".db-shm", ".log", ".pyc"))
+    ]
+    if forbidden:
+        joined = ", ".join(forbidden[:10])
+        raise RuntimeError(f"portable bundle contains forbidden runtime artifacts: {joined}")
+    manifest = {
+        "release_type": "source_portable",
+        "description": "Source portable bundle. Python 3.11 or 3.14 must already be installed.",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "file_count": len(files),
+        "files": files,
+    }
+    (PORTABLE_ROOT / "release_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def main() -> int:
@@ -19,6 +62,8 @@ def main() -> int:
     PORTABLE_ROOT.mkdir(parents=True, exist_ok=True)
     if PORTABLE_ZIP.exists():
         PORTABLE_ZIP.unlink()
+    if PORTABLE_SHA256.exists():
+        PORTABLE_SHA256.unlink()
 
     for path in PROJECT_ROOT.iterdir():
         if should_skip(path, root=PROJECT_ROOT):
@@ -39,10 +84,17 @@ def main() -> int:
     shutil.copy2(PROJECT_ROOT / "start_portable.bat", PORTABLE_ROOT / "start_portable.bat")
     shutil.copy2(PROJECT_ROOT / "start_portable.sh", PORTABLE_ROOT / "start_portable.sh")
     shutil.copy2(PROJECT_ROOT / "portable.env.example", PORTABLE_ROOT / "portable.env.example")
+    shutil.copy2(PROJECT_ROOT / "README_PORTABLE.md", PORTABLE_ROOT / "README_PORTABLE.md")
+    _write_manifest()
     archive_base = str(PORTABLE_ZIP.with_suffix(""))
     shutil.make_archive(archive_base, "zip", root_dir=PORTABLE_ROOT)
+    PORTABLE_SHA256.write_text(
+        f"{_archive_sha256(PORTABLE_ZIP)}  {PORTABLE_ZIP.name}\n",
+        encoding="utf-8",
+    )
     print(f"portable bundle created at {PORTABLE_ROOT}")
     print(f"portable zip created at {PORTABLE_ZIP}")
+    print(f"portable sha256 created at {PORTABLE_SHA256}")
     return 0
 
 

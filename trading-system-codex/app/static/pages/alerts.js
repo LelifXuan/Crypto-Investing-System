@@ -191,12 +191,12 @@ function chipDirectionMarkup(score) {
 
 function chipConfidenceMarkup(label) {
   const mapping = {
-    invalid: ["置信无效", "chip-bearish alert-pill"],
-    low: ["置信较低", "chip-bearish alert-pill"],
+    invalid: ["状态置信无效", "chip-bearish alert-pill"],
+    low: ["状态置信较低", "chip-bearish alert-pill"],
     watch_only: ["仅供观察", "chip-event alert-pill"],
-    usable: ["置信可用", "chip-neutral alert-pill"],
-    high: ["置信较高", "chip-bullish-soft alert-pill"],
-    execution_ready: ["置信可执行", "chip-bullish alert-pill"],
+    usable: ["状态置信可用", "chip-neutral alert-pill"],
+    high: ["状态置信较高", "chip-bullish-soft alert-pill"],
+    execution_ready: ["状态置信可执行", "chip-bullish alert-pill"],
   };
   const [text, className] = mapping[label] || ["仅供观察", "chip-event alert-pill"];
   return statusChip(text, className);
@@ -204,13 +204,13 @@ function chipConfidenceMarkup(label) {
 
 function chipExecutionMarkup(label) {
   const mapping = {
-    blocked: ["执行阻塞", "chip-bearish alert-pill"],
-    poor: ["执行较弱", "chip-bearish-soft alert-pill"],
-    acceptable: ["执行可接受", "chip-event alert-pill"],
-    good: ["执行良好", "chip-bullish-soft alert-pill"],
-    strong: ["执行很强", "chip-bullish alert-pill"],
+    blocked: ["盘口执行阻塞", "chip-bearish alert-pill"],
+    poor: ["盘口执行较弱", "chip-bearish-soft alert-pill"],
+    acceptable: ["盘口执行可接受", "chip-event alert-pill"],
+    good: ["盘口执行良好", "chip-bullish-soft alert-pill"],
+    strong: ["盘口执行很强", "chip-bullish alert-pill"],
   };
-  const [text, className] = mapping[label] || ["执行待定", "chip-neutral alert-pill"];
+  const [text, className] = mapping[label] || ["盘口执行待定", "chip-neutral alert-pill"];
   return statusChip(text, className);
 }
 
@@ -235,6 +235,36 @@ function formatChipComponentLabel(key) {
     regime_fit_score: "Regime 匹配",
   };
   return mapping[key] || key;
+}
+
+const EXPLAIN_TRANSLATIONS = [
+  ["Direction bias is", "方向判断为"],
+  ["Confidence cap is", "当前置信上限为"],
+  ["Penalties applied:", "已扣分："],
+  ["Risk gates triggered:", "已触发风控门禁："],
+  ["Recommended action is", "建议动作："],
+  ["No usable candles were available, so confidence is capped at zero.", "缺少可用 K 线，置信度被压制为 0，当前仅返回缺失状态。"],
+];
+
+function localizeExplainText(value) {
+  let text = String(value || "");
+  for (const [source, target] of EXPLAIN_TRANSLATIONS) {
+    text = text.replaceAll(source, target);
+  }
+  return text
+    .replaceAll("NO_USABLE_CANDLES", "缺少可用 K 线")
+    .replaceAll("EXECUTION_SCORE_TOO_LOW", "盘口执行分过低")
+    .replaceAll("SLIPPAGE_HARD_LIMIT", "滑点超过硬限制")
+    .replaceAll("SPREAD_HARD_LIMIT", "买卖价差超过硬限制")
+    .replaceAll("PRICE_INDEX_DEVIATION_EXTREME", "成交价相对指数价偏离过大")
+    .replaceAll("PRICE_MARK_DEVIATION_EXTREME", "成交价相对标记价偏离过大")
+    .replaceAll("observe", "仅观察")
+    .replaceAll("wait_for_confirmation", "等待确认")
+    .replaceAll("probe", "小仓试探")
+    .replaceAll("normal_trade", "正常参与")
+    .replaceAll("add_on_confirmation", "确认后加仓")
+    .replaceAll("no_trade", "不参与")
+    .replaceAll("reduce_or_exit", "减仓或退出");
 }
 
 function fallbackChipStructureCard(errorMessage = "") {
@@ -349,6 +379,18 @@ function renderChipStructureCard(payload) {
   const executionLabel = payload.execution_label || "blocked";
   const riskLabel = payload.risk_label || "normal";
   const recommendedAction = payload.recommended_action_v2 || payload.recommended_action;
+  const allowFuturesLong = payload.allow_futures_long === true;
+  const stateConfidenceLabel = payload.state_confidence_label || chipActionLabel(payload.confidence_label) || "状态置信待定";
+  const executionQualityLabel = payload.execution_quality_label || "盘口执行质量待定";
+  const entryTriggerLabel = payload.entry_trigger_label || "交易触发待定";
+  const positionReason = payload.allocation_reason || payload.position_sizing_reason || "当前暂无明确仓位建议。";
+  const scoreItems = [
+    ["方向分", formatNumber(payload.direction_score, 0)],
+    ["状态置信", formatNumber(payload.confidence_score, 0)],
+    ["执行分", formatNumber(payload.execution_score, 0)],
+    ["风险分", formatNumber(payload.risk_score, 0)],
+    ["总资本", payload.capital_allocation_label || "0%"],
+  ];
 
   return `
     <section class="card alert-chip-hero">
@@ -366,86 +408,62 @@ function renderChipStructureCard(payload) {
         </div>
       </div>
       <div class="alert-chip-headline">
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>主结论</strong></div>
+        <article class="alert-chip-primary-card">
+          <div class="list-card-head"><strong>主结论</strong>${chipStateLabelMarkup(payload)}</div>
           <h3>${escapeHtml(chipRegimeLabel(payload.primary_regime))}</h3>
           <p class="section-summary">${escapeHtml(payload.instrument_id)} · ${escapeHtml(payload.timeframe)} · 次级情景：${escapeHtml(chipRegimeLabel(payload.secondary_regime))}</p>
+          <div class="alert-chip-primary-actions">
+            ${statusChip(chipActionLabel(recommendedAction), "chip-event alert-pill")}
+            ${statusChip(allowFuturesLong ? "允许评估合约" : "合约 0%", allowFuturesLong ? "chip-bullish alert-pill" : "chip-bearish alert-pill")}
+          </div>
+          <p>${escapeHtml(positionReason)}</p>
         </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>状态说明</strong></div>
-          <p><strong>${escapeHtml(payload.state_label || "观察")}</strong></p>
-          <p>${escapeHtml(payload.state_reason || "当前状态说明暂不可用。")}</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>置信等级</strong></div>
-          <p>${chipConfidenceMarkup(confidenceLabel)}</p>
-          <p>置信上限：${formatNumber(payload.confidence_cap, 0)} · 证据质量：${escapeHtml(payload.evidence_quality || "-")}</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>执行质量</strong></div>
-          <p>${chipExecutionMarkup(executionLabel)}</p>
-          <p>执行准备度：${escapeHtml(payload.execution_readiness || "-")}</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>风险等级</strong></div>
-          <p>${chipRiskMarkup(riskLabel)}</p>
-          <p>${riskGates.length ? `风控门禁：${escapeHtml(riskGates.join(" / "))}` : "当前未触发额外风控门禁。"}</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>现货建议占比</strong></div>
-          <p><strong>${escapeHtml(payload.spot_allocation_label || "0%")}</strong></p>
-          <p>${escapeHtml(payload.allocation_reason || payload.position_sizing_reason || "当前暂无明确仓位建议。")}</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>合约建议占比</strong></div>
-          <p><strong>${escapeHtml(payload.futures_allocation_label || "0%")}</strong></p>
-          <p>总资本上限：${formatNumber(payload.capital_ceiling_pct, 0)}%</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>单次试探仓上限</strong></div>
-          <p><strong>${escapeHtml(payload.probe_position_label || "0%")}</strong></p>
-          <p>执行准备度：${escapeHtml(payload.execution_readiness || "-")}</p>
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>建议动作</strong></div>
-          <p>${statusChip(chipActionLabel(recommendedAction), "chip-event alert-pill")}</p>
-          <p>${escapeHtml(payload.position_sizing_reason || "当前暂无明确动作建议。")}</p>
-        </article>
+        <div class="alert-chip-status-grid">
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>状态说明</strong></div>
+            <p><strong>${escapeHtml(payload.state_label || "观察")}</strong></p>
+            <p>${escapeHtml(payload.state_reason || "当前状态说明暂不可用。")}</p>
+          </article>
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>状态置信</strong></div>
+            <p>${chipConfidenceMarkup(confidenceLabel)}</p>
+            <p>${escapeHtml(stateConfidenceLabel)} · 上限 ${formatNumber(payload.confidence_cap, 0)} · 证据 ${escapeHtml(payload.evidence_quality || "-")}</p>
+          </article>
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>盘口执行质量</strong></div>
+            <p>${chipExecutionMarkup(executionLabel)}</p>
+            <p>${escapeHtml(executionQualityLabel)}</p>
+          </article>
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>风险等级</strong></div>
+            <p>${chipRiskMarkup(riskLabel)}</p>
+            <p>${riskGates.length ? `风控门禁：${escapeHtml(riskGates.join(" / "))}` : "当前未触发额外风控门禁。"}</p>
+          </article>
+        </div>
       </div>
-      <div class="metric-grid alert-chip-metrics">
-        <article class="metric-box">
-          <span>方向分</span>
-          <strong>${formatNumber(payload.direction_score, 0)}</strong>
+      <div class="alert-chip-score-strip">
+        ${scoreItems.map(([label, value]) => `<span><em>${escapeHtml(label)}</em><strong>${escapeHtml(String(value))}</strong></span>`).join("")}
+      </div>
+      <div class="alert-chip-position-grid">
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>交易触发状态</strong></div>
+          <p>${statusChip(entryTriggerLabel, entryTriggerLabel.includes("可用") ? "chip-bullish alert-pill" : "chip-event alert-pill")}</p>
+          <p>执行准备度：${escapeHtml(payload.execution_readiness || "-")}</p>
         </article>
-        <article class="metric-box">
-          <span>置信度</span>
-          <strong>${formatNumber(payload.confidence_score, 0)}</strong>
-        </article>
-        <article class="metric-box">
-          <span>执行分</span>
-          <strong>${formatNumber(payload.execution_score, 0)}</strong>
-        </article>
-        <article class="metric-box">
-          <span>风险分</span>
-          <strong>${formatNumber(payload.risk_score, 0)}</strong>
-        </article>
-        <article class="metric-box">
-          <span>冲突等级</span>
-          <strong>${formatNumber(payload.conflict_level, 0)}</strong>
-        </article>
-        <article class="metric-box">
-          <span>总资本建议区间</span>
-          <strong>${escapeHtml(payload.capital_allocation_label || "0%")}</strong>
-        </article>
-        <article class="metric-box">
-          <span>总资本上限</span>
-          <strong>${formatNumber(payload.capital_ceiling_pct, 0)}%</strong>
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>仓位解释</strong></div>
+          <div class="alert-chip-allocation-row">
+            <span>现货 <strong>${escapeHtml(payload.spot_allocation_label || "0%")}</strong></span>
+            <span>合约 <strong>${escapeHtml(payload.futures_allocation_label || "0%")}</strong></span>
+            <span>试探 <strong>${escapeHtml(payload.probe_position_label || "0%")}</strong></span>
+          </div>
+          <p>${allowFuturesLong ? "合约开多门槛已通过。" : "合约开多门槛未通过，合约仓位保持 0%。"}</p>
         </article>
       </div>
       <div class="alert-chip-support-grid">
         <article class="alert-chip-block">
           <div class="list-card-head"><strong>引擎解释</strong></div>
-          ${explain.length ? `<ul class="structure-bullet-list">${explain.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>当前暂无引擎解释。</p>`}
+          ${explain.length ? `<ul class="structure-bullet-list">${explain.map((item) => `<li>${escapeHtml(localizeExplainText(item))}</li>`).join("")}</ul>` : `<p>当前暂无引擎解释。</p>`}
         </article>
         <article class="alert-chip-block">
           <div class="list-card-head"><strong>核心组件</strong></div>

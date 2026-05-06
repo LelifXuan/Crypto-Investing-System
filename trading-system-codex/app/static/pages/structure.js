@@ -12,25 +12,16 @@ import { appState, getInstrumentMeta, persistState } from "../core/state.js";
 
 const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
 const SYSTEMS = [
-  { key: "all", label: "鍏ㄩ儴绯荤粺" },
-  { key: "swing", label: "鎽嗗姩缁撴瀯" },
-  { key: "classic", label: "缁忓吀鍥惧舰" },
-  { key: "profile", label: "鎴愪氦閲?/ 甯傚満杞粨" },
+  { key: "all", label: "全部系统" },
+  { key: "swing", label: "摆动结构" },
+  { key: "classic", label: "经典图形" },
+  { key: "profile", label: "成交量 / 市场轮廓" },
 ];
 
-const state = {
-  selectedSystem: "all",
-  minConfidence: 0.5,
-  viewMode: localStorage.getItem("structureViewportMode") || "focus",
-  requestToken: 0,
-  recoveryKeys: new Set(),
-  bundle: null,
-};
-
 const VIEWPORT_LABELS = {
-  focus: "鑱氱劍褰㈡€?,
-  context: "缁撴瀯鑳屾櫙",
-  snapshot: "瀹屾暣蹇収",
+  focus: "聚焦形态",
+  context: "结构背景",
+  snapshot: "完整快照",
 };
 
 const VIEWPORT_CONFIG = {
@@ -42,50 +33,67 @@ const VIEWPORT_CONFIG = {
   "1M": { minBars: 40, maxBars: 156, defaultFocusBars: 80, contextBars: 156, snapshotBars: 260, minPadding: 10, rightPadding: 4 },
 };
 
+function getStoredViewportMode() {
+  try {
+    return localStorage.getItem("structureViewportMode") || "focus";
+  } catch {
+    return "focus";
+  }
+}
+
+const state = {
+  selectedSystem: "all",
+  minConfidence: 0.5,
+  viewMode: getStoredViewportMode(),
+  requestToken: 0,
+  recoveryKeys: new Set(),
+  bundle: null,
+};
+
 if (!VIEWPORT_LABELS[state.viewMode]) {
   state.viewMode = "focus";
 }
 
 const BIAS_LABELS = {
-  bullish: "鍋忓",
-  weak_bullish: "寮卞亸澶?,
-  bearish: "鍋忕┖",
-  weak_bearish: "寮卞亸绌?,
-  uncertain: "缁撴瀯鍒嗘 / 涓嶇‘瀹?,
-  neutral: "涓€?,
-  no_clear_structure: "鏃犳竻鏅扮粨鏋?,
+  bullish: "偏多",
+  weak_bullish: "弱偏多",
+  bearish: "偏空",
+  weak_bearish: "弱偏空",
+  uncertain: "结构分歧 / 不确定",
+  neutral: "中性",
+  no_clear_structure: "无清晰结构",
 };
 
 const STATUS_LABELS = {
-  confirmed: "宸茬‘璁?,
-  candidate: "鍊欓€?,
-  armed: "寰呯‘璁?,
-  invalidated: "澶辨晥",
-  expired: "杩囨湡",
-  high: "楂?,
-  medium: "涓?,
-  low: "浣?,
+  confirmed: "已确认",
+  candidate: "候选",
+  armed: "待确认",
+  invalidated: "失效",
+  expired: "过期",
+  high: "高",
+  medium: "中",
+  low: "低",
 };
 
 const REGIME_LABELS = {
-  trend: "瓒嬪娍",
-  balance: "骞宠　",
-  transition: "杩囨浮",
+  trend: "趋势",
+  balance: "平衡",
+  transition: "过渡",
 };
 
 const SYSTEM_LABELS = {
-  swing: "鎽嗗姩缁撴瀯",
-  classic: "缁忓吀鍥惧舰",
-  profile: "鎴愪氦閲?/ 甯傚満杞粨",
-  fused: "缁煎悎鍒ゆ柇",
+  swing: "摆动结构",
+  classic: "经典图形",
+  profile: "成交量 / 市场轮廓",
+  fused: "综合判断",
 };
 
 const CHART_SERIES = {
-  price: { label: "浠锋牸", color: "#16232b", dash: "", width: 3.15 },
-  swing: { label: "鎽嗗姩缁撴瀯", color: "#2563eb", dash: "", width: 2.85 },
-  classic: { label: "缁忓吀鍥惧舰", color: "#ea580c", dash: "10 6", width: 2.75 },
-  profile: { label: "鎴愪氦閲?/ 甯傚満杞粨", color: "#9333ea", dash: "4 7", width: 2.75 },
-  fused: { label: "缁煎悎鍒ゆ柇", color: "#0891b2", dash: "6 5", width: 2.45 },
+  price: { label: "价格", color: "rgba(22, 35, 43, 0.58)", dash: "", width: 2.45 },
+  swing: { label: "摆动结构", color: "#2563eb", dash: "", width: 2.85 },
+  classic: { label: "经典图形", color: "#ea580c", dash: "10 6", width: 2.75 },
+  profile: { label: "成交量 / 市场轮廓", color: "#9333ea", dash: "4 7", width: 2.75 },
+  fused: { label: "综合判断", color: "#0891b2", dash: "6 5", width: 2.45 },
 };
 
 function labelFor(map, value, fallback = "-") {
@@ -120,18 +128,18 @@ function renderShell() {
       <section class="hero-card structure-toolbar-card">
         <div class="toolbar-grid">
           <label class="field">
-            <span>浜ゆ槗鍝佺</span>
+            <span>交易品种</span>
             <select id="structure-instrument">
               ${appState.instruments
                 .map(
                   (item) =>
-                    `<option value="${item.id}" ${item.id === appState.selectedInstrumentId ? "selected" : ""}>${item.code} 路 ${item.name}</option>`,
+                    `<option value="${item.id}" ${item.id === appState.selectedInstrumentId ? "selected" : ""}>${item.code} · ${item.name}</option>`,
                 )
                 .join("")}
             </select>
           </label>
           <label class="field">
-            <span>鍛ㄦ湡</span>
+            <span>周期</span>
             <select id="structure-timeframe">
               ${TIMEFRAMES.map(
                 (item) => `<option value="${item}" ${item === appState.selectedTimeframe ? "selected" : ""}>${item}</option>`,
@@ -139,7 +147,7 @@ function renderShell() {
             </select>
           </label>
           <label class="field">
-            <span>绯荤粺 ${knowledgeTooltip("Structure System Filter / 缁撴瀯绯荤粺绛涢€?, "tone-neutral")}</span>
+            <span>系统 ${knowledgeTooltip("Structure System Filter", "tone-neutral")}</span>
             <select id="structure-system">
               ${SYSTEMS.map(
                 (item) => `<option value="${item.key}" ${item.key === state.selectedSystem ? "selected" : ""}>${item.label}</option>`,
@@ -147,7 +155,7 @@ function renderShell() {
             </select>
           </label>
           <label class="field">
-            <span>鏈€浣庣疆淇″害 ${knowledgeTooltip("Minimum Confidence Filter / 鏈€浣庣疆淇″害绛涢€?, "tone-neutral")}</span>
+            <span>最低置信度 ${knowledgeTooltip("Minimum Confidence Filter", "tone-neutral")}</span>
             <select id="structure-confidence">
               ${[0, 0.3, 0.5, 0.7]
                 .map((item) => `<option value="${item}" ${item === state.minConfidence ? "selected" : ""}>${item.toFixed(2)}+</option>`)
@@ -155,7 +163,7 @@ function renderShell() {
             </select>
           </label>
           <label class="field">
-            <span>瑙嗗浘妯″紡 ${knowledgeTooltip("Overlay View / 鍙犲姞瑙嗗浘", "tone-neutral")}</span>
+            <span>视图模式 ${knowledgeTooltip("Overlay View", "tone-neutral")}</span>
             <select id="structure-viewmode">
               <option value="focus" ${state.viewMode === "focus" ? "selected" : ""}>聚焦形态</option>
               <option value="context" ${state.viewMode === "context" ? "selected" : ""}>结构背景</option>
@@ -163,7 +171,7 @@ function renderShell() {
             </select>
           </label>
           <div class="field action">
-            <button id="structure-refresh" class="primary-button">鎵嬪姩鍒锋柊蹇収</button>
+            <button id="structure-refresh" class="primary-button">手动刷新快照</button>
           </div>
         </div>
       </section>
@@ -174,12 +182,12 @@ function renderShell() {
         <article class="card structure-main-card">
           <div class="structure-main-head">
             <div>
-              <p class="eyebrow">褰㈡€佸彔鍔犲浘</p>
-              <h2>${escapeHtml(instrument.code)} 路 ${escapeHtml(appState.selectedTimeframe)}</h2>
+              <p class="eyebrow">形态叠加图</p>
+              <h2>${escapeHtml(instrument.code)} · ${escapeHtml(appState.selectedTimeframe)}</h2>
             </div>
             <div id="structure-chart-bias"></div>
           </div>
-          <div id="structure-chart-panel" class="structure-chart-panel loading">姝ｅ湪鍔犺浇缁撴瀯蹇収鈥?/div>
+          <div id="structure-chart-panel" class="structure-chart-panel loading">正在加载结构快照…</div>
         </article>
 
         <article class="card structure-summary-card" id="structure-summary-panel"></article>
@@ -452,7 +460,7 @@ function renderChart(snapshot, candles) {
 
   if (!candles.length) {
     chartPanel.className = "structure-chart-panel empty";
-    chartPanel.innerHTML = `<div class="empty-state">鏆傛棤鍙粯鍒剁殑缁撴瀯鍥俱€?/div>`;
+    chartPanel.innerHTML = `<div class="empty-state">暂无可绘制的结构图。</div>`;
     return;
   }
 
@@ -478,7 +486,7 @@ function renderChart(snapshot, candles) {
 
   chartPanel.className = "structure-chart-panel";
   chartPanel.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg" role="img" aria-label="褰㈡€佺粨鏋勫浘">
+    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg" role="img" aria-label="形态结构图">
       ${buildAxisMarkup(visibleCandles, scale)}
       ${buildLegendMarkup(availability)}
       <path d="${pricePath}" fill="none" stroke="${CHART_SERIES.price.color}" stroke-width="${CHART_SERIES.price.width}" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -509,16 +517,16 @@ function renderSummary(snapshot) {
       <article class="structure-summary-tile structure-summary-overall">
         <div class="structure-summary-head">
           <div>
-            <p class="eyebrow">缁煎悎鍒ゆ柇</p>
+            <p class="eyebrow">综合判断</p>
             <h3 class="structure-summary-title">${escapeHtml(labelFor(BIAS_LABELS, overall.overall_bias))}</h3>
           </div>
-          ${overall.conflict_state ? `<div class="warning-banner structure-mini-warning">绯荤粺涔嬮棿瀛樺湪鏂瑰悜鍐茬獊锛岀粨璁哄凡鍋氶檷绾у鐞嗐€?/div>` : ""}
+          ${overall.conflict_state ? `<div class="warning-banner structure-mini-warning">系统之间存在方向冲突，结论已做降级处理。</div>` : ""}
         </div>
         <div class="metric-grid metric-grid-compact structure-summary-metrics">
-          <div class="metric-box"><span>缁煎悎鍒嗘暟</span><strong>${escapeHtml(formatNumber(overall.overall_score ?? overall.score ?? 0, 2))}</strong></div>
-          <div class="metric-box"><span>缁煎悎缃俊搴?/span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence ?? 0, 2))}</strong></div>
+          <div class="metric-box"><span>综合分数</span><strong>${escapeHtml(formatNumber(overall.overall_score ?? overall.score ?? 0, 2))}</strong></div>
+          <div class="metric-box"><span>综合置信度</span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence ?? 0, 2))}</strong></div>
           <div class="metric-box"><span>Regime</span><strong>${escapeHtml(labelFor(REGIME_LABELS, overall.regime))}</strong></div>
-          <div class="metric-box"><span>鏉冮噸妯℃澘</span><strong>${escapeHtml(overall.weight_template || "-")}</strong></div>
+          <div class="metric-box"><span>权重模板</span><strong>${escapeHtml(overall.weight_template || "-")}</strong></div>
         </div>
         ${
           overall.meaning
@@ -539,19 +547,19 @@ function renderSummary(snapshot) {
               <article class="structure-summary-tile structure-system-merge">
                 <div class="structure-system-merge-head">
                   <div>
-                    <p class="eyebrow">绯荤粺缁撴灉</p>
-                    <strong>寰呰ˉ榻?/strong>
+                    <p class="eyebrow">系统结果</p>
+                    <strong>待补齐</strong>
                   </div>
-                  ${statusChip("蹇収琛ュ叏涓?)}
+                  ${statusChip("快照补全中")}
                 </div>
                 <div class="structure-inline-metrics">
-                  <span>鏈夋晥鍒?-</span>
-                  <span>鏉冮噸 -</span>
-                  <span>璐＄尞 -</span>
-                  <span>璇佹嵁 -</span>
+                  <span>有效分 -</span>
+                  <span>权重 -</span>
+                  <span>贡献 -</span>
+                  <span>证据 -</span>
                 </div>
                 <ul class="plain-list compact">
-                  <li>璇ョ郴缁熷崱鐗囨殏鏈惤鍏ュ綋鍓嶅揩鐓э紝椤甸潰浼氳嚜鍔ㄥ皾璇曡ˉ鍒锋柊銆?/li>
+                  <li>该系统卡片暂未落入当前快照，页面会自动尝试补刷新。</li>
                 </ul>
               </article>
             `;
@@ -567,13 +575,13 @@ function renderSummary(snapshot) {
                 ${statusChip(labelFor(STATUS_LABELS, system.status || "confirmed"))}
               </div>
               <div class="structure-inline-metrics">
-                <span>鏈夋晥鍒?${escapeHtml(formatNumber(system.effective_score ?? system.score ?? 0, 2))}</span>
-                <span>鏉冮噸 ${escapeHtml(formatNumber(system.weight ?? 0, 2))}</span>
-                <span>璐＄尞 ${escapeHtml(formatNumber(system.weighted_contribution ?? 0, 2))}</span>
-                <span>璇佹嵁 ${escapeHtml(String(system.evidence_count ?? 0))}</span>
+                <span>有效分 ${escapeHtml(formatNumber(system.effective_score ?? system.score ?? 0, 2))}</span>
+                <span>权重 ${escapeHtml(formatNumber(system.weight ?? 0, 2))}</span>
+                <span>贡献 ${escapeHtml(formatNumber(system.weighted_contribution ?? 0, 2))}</span>
+                <span>证据 ${escapeHtml(String(system.evidence_count ?? 0))}</span>
               </div>
               <ul class="plain-list compact">
-                ${(reasons.length ? reasons : ["鏆傛棤棰濆璇存槑"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                ${(reasons.length ? reasons : ["暂无额外说明"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
               </ul>
             </article>
           `;
@@ -584,7 +592,7 @@ function renderSummary(snapshot) {
 }
 
 function renderCurrentStructures(items) {
-  if (!items.length) return `<div class="empty-state">褰撳墠娌℃湁娲昏穬缁撴瀯銆?/div>`;
+  if (!items.length) return `<div class="empty-state">当前没有活跃结构。</div>`;
   return `
     <div class="structure-detail-list">
       ${items
@@ -596,7 +604,7 @@ function renderCurrentStructures(items) {
                 <strong>${escapeHtml(item.display_name || item.structure_type || "-")}</strong>
                 ${statusChip(labelFor(STATUS_LABELS, item.lifecycle_status || item.status || "confirmed"))}
               </div>
-              <p>${escapeHtml(item.summary || "鏆傛棤鎽樿璇存槑銆?)}</p>
+              <p>${escapeHtml(item.summary || "暂无摘要说明。")}</p>
               ${
                 reasons.length
                   ? `<ul class="plain-list compact">${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>`
@@ -611,7 +619,7 @@ function renderCurrentStructures(items) {
 }
 
 function renderEventHistory(items) {
-  if (!items.length) return `<div class="empty-state">杩戞湡娌℃湁缁撴瀯浜嬩欢銆?/div>`;
+  if (!items.length) return `<div class="empty-state">近期没有结构事件。</div>`;
   return `
     <div class="structure-detail-list">
       ${items
@@ -634,7 +642,7 @@ function renderEventHistory(items) {
 }
 
 function renderAlertHistory(items) {
-  if (!items.length) return `<div class="empty-state">杩戞湡娌℃湁缁撴瀯鍛婅銆?/div>`;
+  if (!items.length) return `<div class="empty-state">近期没有结构告警。</div>`;
   return `
     <div class="structure-detail-list">
       ${items
@@ -646,7 +654,7 @@ function renderAlertHistory(items) {
                 <strong>${escapeHtml(item.title || item.alert_name || "-")}</strong>
                 ${statusChip(labelFor(STATUS_LABELS, item.severity || "medium"))}
               </div>
-              <p>${escapeHtml(item.message || "鏆傛棤璇︾粏璇存槑銆?)}</p>
+              <p>${escapeHtml(item.message || "暂无详细说明。")}</p>
               <small>${escapeHtml(formatDateTime(item.triggered_at))}</small>
             </article>
           `,
@@ -662,21 +670,21 @@ function renderDiagnostics(snapshot, diagnostics) {
   return `
     <article class="structure-detail-section structure-detail-block">
       <div class="list-card-head">
-        <strong>妫€娴嬭瘖鏂?/strong>
-        ${statusChip("鍙蹇収")}
+        <strong>检测诊断</strong>
+        ${statusChip("只读快照")}
       </div>
       <div class="structure-inline-metrics">
-        <span>鍔犺浇 K 绾?${escapeHtml(String(effectiveDiagnostics.candles_loaded ?? 0))}</span>
-        <span>鍑犱綍鏁伴噺 ${escapeHtml(String(effectiveDiagnostics.geometry_count ?? 0))}</span>
-        <span>浜嬩欢鏁伴噺 ${escapeHtml(String(effectiveDiagnostics.event_count ?? 0))}</span>
-        <span>鍛婅鏁伴噺 ${escapeHtml(String(effectiveDiagnostics.alert_count ?? 0))}</span>
+        <span>加载 K 线 ${escapeHtml(String(effectiveDiagnostics.candles_loaded ?? 0))}</span>
+        <span>几何数量 ${escapeHtml(String(effectiveDiagnostics.geometry_count ?? 0))}</span>
+        <span>事件数量 ${escapeHtml(String(effectiveDiagnostics.event_count ?? 0))}</span>
+        <span>告警数量 ${escapeHtml(String(effectiveDiagnostics.alert_count ?? 0))}</span>
       </div>
       ${
         notes.length
           ? `<ul class="plain-list compact">${notes.slice(0, 3).map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>`
-          : `<p class="structure-copy">褰撳墠蹇収鏈繑鍥為澶栬瘖鏂娉ㄣ€?/p>`
+          : `<p class="structure-copy">当前快照未返回额外诊断备注。</p>`
       }
-      <p class="structure-copy">鍥炴祴鏃惰鍙娇鐢ㄥ凡纭鐨?pivot銆乥reakout 涓?value area 淇″彿锛岄伩鍏嶆妸鍊欓€夊舰鎬佺洿鎺ュ綋鎴愭渶缁堢粨璁恒€?/p>
+      <p class="structure-copy">回测时请只使用已确认的 pivot、breakout 与 value area 信号，避免把候选形态直接当成最终结论。</p>
     </article>
   `;
 }
@@ -696,24 +704,24 @@ function renderDetailPanel(payload) {
   detailPanel.innerHTML = `
     <article class="structure-detail-section structure-detail-block">
       <div class="list-card-head">
-        <strong>褰撳墠缁撴瀯</strong>
-        ${statusChip(systemFilter === "all" ? "鍏ㄩ儴绯荤粺" : labelFor(SYSTEM_LABELS, systemFilter))}
+        <strong>当前结构</strong>
+        ${statusChip(systemFilter === "all" ? "全部系统" : labelFor(SYSTEM_LABELS, systemFilter))}
       </div>
       ${renderCurrentStructures(activeItems)}
     </article>
 
     <article class="structure-detail-section structure-detail-block">
       <div class="list-card-head">
-        <strong>杩戞湡浜嬩欢</strong>
-        ${statusChip(`${events.length} 鏉)}
+        <strong>近期事件</strong>
+        ${statusChip(`${events.length} 条`)}
       </div>
       ${renderEventHistory(events)}
     </article>
 
     <article class="structure-detail-section structure-detail-block">
       <div class="list-card-head">
-        <strong>鍛婅鍘嗗彶</strong>
-        ${statusChip(`${alerts.length} 鏉)}
+        <strong>告警历史</strong>
+        ${statusChip(`${alerts.length} 条`)}
       </div>
       ${renderAlertHistory(alerts)}
     </article>
@@ -741,14 +749,14 @@ function renderFromBundle(bundle) {
     const detailPanel = document.getElementById("structure-detail-panel");
     if (chartPanel) {
       chartPanel.className = "structure-chart-panel empty";
-      chartPanel.innerHTML = `<div class="empty-state">褰撳墠杩樻病鏈夊彲鐢ㄧ殑缁撴瀯蹇収锛岃鍏堟墜鍔ㄥ埛鏂般€?/div>`;
+      chartPanel.innerHTML = `<div class="empty-state">当前还没有可用的结构快照，请先手动刷新。</div>`;
     }
     if (summaryPanel) {
       summaryPanel.innerHTML = `
         <article class="structure-summary-tile">
-          <p class="eyebrow">缂撳瓨鐘舵€?/p>
-          <h3>${escapeHtml(bundle.cache_state === "missing" ? "缂哄皯蹇収" : "鏆傛棤缁撴瀯缁撴灉")}</h3>
-          <p class="structure-copy">${escapeHtml(bundle.status_message || "褰撳墠浠呰兘灞曠ず缂撳瓨琛屾儏锛岃鎵嬪姩鍒锋柊缁撴瀯蹇収銆?)}</p>
+          <p class="eyebrow">缓存状态</p>
+          <h3>${escapeHtml(bundle.cache_state === "missing" ? "缺少快照" : "暂无结构结果")}</h3>
+          <p class="structure-copy">${escapeHtml(bundle.status_message || "当前仅能展示缓存行情，请手动刷新结构快照。")}</p>
         </article>
       `;
     }
@@ -756,14 +764,14 @@ function renderFromBundle(bundle) {
       detailPanel.innerHTML = `
         <article class="structure-detail-section structure-detail-block">
           <div class="list-card-head">
-            <strong>妫€娴嬭瘖鏂?/strong>
-            ${statusChip("鍙缂撳瓨")}
+            <strong>检测诊断</strong>
+            ${statusChip("只读缓存")}
           </div>
-          <p class="structure-copy">${escapeHtml(bundle.status_message || "灏氭湭鐢熸垚缁撴瀯蹇収銆?)}</p>
+          <p class="structure-copy">${escapeHtml(bundle.status_message || "尚未生成结构快照。")}</p>
         </article>
       `;
     }
-    renderStatus(bundle.status_message || "褰撳墠灏氭棤缁撴瀯蹇収锛岃鎵嬪姩鍒锋柊銆?, bundle.cache_state === "missing" ? "warning" : "neutral");
+    renderStatus(bundle.status_message || "当前尚无结构快照，请手动刷新。", bundle.cache_state === "missing" ? "warning" : "neutral");
     return;
   }
   const safeSnapshot = {
@@ -783,7 +791,7 @@ function renderFromBundle(bundle) {
     diagnostics: bundle.diagnostics,
   });
   const lastCandleTs = candles[candles.length - 1]?.ts_open;
-  const scopeLabel = state.selectedSystem === "all" ? "缁煎悎鍒ゆ柇" : labelFor(SYSTEM_LABELS, state.selectedSystem);
+  const scopeLabel = state.selectedSystem === "all" ? "综合判断" : labelFor(SYSTEM_LABELS, state.selectedSystem);
   renderStatus(
     bundle.status_message ||
       `快照时间：${formatDateTime(safeSnapshot.generated_at || safeSnapshot.overall?.last_updated_at)} ｜ 最新价格时间：${formatDateTime(lastCandleTs)} ｜ 当前范围：${scopeLabel}`,
@@ -800,7 +808,7 @@ function updateChartTitle() {
   const titleNode = document.querySelector(".structure-main-head h2");
   if (!titleNode) return;
   const instrument = getInstrumentMeta(appState.selectedInstrumentId);
-  titleNode.textContent = `${instrument.code} 路 ${appState.selectedTimeframe}`;
+  titleNode.textContent = `${instrument.code} · ${appState.selectedTimeframe}`;
 }
 
 function attachEvents(loadData) {
@@ -844,10 +852,10 @@ function attachEvents(loadData) {
     const button = document.getElementById("structure-refresh");
     if (button) {
       button.disabled = true;
-      button.textContent = "鐢熸垚涓?;
+      button.textContent = "生成中";
     }
     try {
-      renderStatus("姝ｅ湪鎷夊彇 K 绾垮苟鐢熸垚缁撴瀯蹇収", "loading");
+      renderStatus("正在拉取 K 线并生成结构快照", "loading");
       invalidateCache("/marketdata/candles");
       invalidateCache("/market-prices/marks/latest");
       await api.refreshStructure(appState.selectedInstrumentId, appState.selectedTimeframe);
@@ -855,7 +863,7 @@ function attachEvents(loadData) {
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = "鎵嬪姩鍒锋柊蹇収";
+        button.textContent = "手动刷新快照";
       }
     }
   });
@@ -876,7 +884,7 @@ export async function renderStructure() {
     const limit = timeframe === "1h" ? 220 : 180;
 
     updateChartTitle();
-    renderStatus("姝ｅ湪鍔犺浇缁撴瀯蹇収鈥?, "info");
+    renderStatus("正在加载结构快照…", "info");
 
     try {
       activeController?.abort();
@@ -896,7 +904,7 @@ export async function renderStructure() {
         (bundle.cache_state === "missing" || candles.length === 0)
       ) {
         state.recoveryKeys.add(recoveryKey);
-        renderStatus("姝ｅ湪鎷夊彇 K 绾垮苟鐢熸垚缁撴瀯蹇収", "loading");
+        renderStatus("正在拉取 K 线并生成结构快照", "loading");
         await scheduleIdlePrecompute({
           page: "market-structure",
           instrumentId,
@@ -916,21 +924,21 @@ export async function renderStructure() {
 
       console.error("structure:renderer:error", error);
       document.getElementById("structure-chart-panel").className = "structure-chart-panel error";
-      document.getElementById("structure-chart-panel").innerHTML = `<div class="error-state">褰㈡€佺粨鏋勫姞杞藉け璐ャ€?br>${escapeHtml(String(error.message || error))}</div>`;
+      document.getElementById("structure-chart-panel").innerHTML = `<div class="error-state">形态结构加载失败。<br>${escapeHtml(String(error.message || error))}</div>`;
       document.getElementById("structure-summary-panel").innerHTML = `
         <article class="structure-summary-tile">
-          <p class="eyebrow">鍔犺浇澶辫触</p>
-          <h3>缁撴瀯蹇収鏆傛椂涓嶅彲鐢?/h3>
+          <p class="eyebrow">加载失败</p>
+          <h3>结构快照暂时不可用</h3>
           <p class="structure-copy">${escapeHtml(String(error.message || error))}</p>
         </article>
       `;
       document.getElementById("structure-detail-panel").innerHTML = `
         <article class="list-card structure-detail-block">
-          <strong>鏁版嵁鏆備笉鍙敤</strong>
-          <p class="structure-copy">璇风◢鍚庨噸璇曪紝鎴栫偣鍑烩€滄墜鍔ㄥ埛鏂板揩鐓р€濄€?/p>
+          <strong>数据暂不可用</strong>
+          <p class="structure-copy">请稍后重试，或点击“手动刷新快照”。</p>
         </article>
       `;
-      renderStatus("缁撴瀯蹇収璇诲彇澶辫触锛岃绋嶅悗閲嶈瘯銆?, "danger");
+      renderStatus("结构快照读取失败，请稍后重试。", "danger");
     }
   }
 

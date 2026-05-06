@@ -15,6 +15,33 @@ COMPONENT_WEIGHTS = {
     "regime_fit_score": 0.06,
 }
 
+DIRECTION_LABEL_ZH = {
+    "strong_long": "强偏多",
+    "long": "偏多",
+    "neutral": "中性",
+    "short": "偏空",
+    "strong_short": "强偏空",
+}
+
+ACTION_LABEL_ZH = {
+    "observe": "仅观察",
+    "wait_for_confirmation": "等待确认",
+    "probe": "小仓试探",
+    "normal_trade": "正常参与",
+    "add_on_confirmation": "确认后加仓",
+    "no_trade": "不参与",
+    "reduce_or_exit": "减仓或退出",
+}
+
+RISK_GATE_LABEL_ZH = {
+    "NO_USABLE_CANDLES": "缺少可用 K 线",
+    "EXECUTION_SCORE_TOO_LOW": "盘口执行分过低",
+    "SLIPPAGE_HARD_LIMIT": "滑点超过硬限制",
+    "SPREAD_HARD_LIMIT": "买卖价差超过硬限制",
+    "PRICE_INDEX_DEVIATION_EXTREME": "成交价相对指数价偏离过大",
+    "PRICE_MARK_DEVIATION_EXTREME": "成交价相对标记价偏离过大",
+}
+
 PAIR_WEIGHTS = {
     ("1w", "1d"): 0.35,
     ("1d", "4h"): 0.35,
@@ -550,27 +577,29 @@ class ConfidenceEngine:
     ) -> list[str]:
         lines = [
             (
-                f"Direction bias is {direction_label} with weighted confidence components "
-                "assembled from data quality, multi-timeframe alignment, structure, "
-                "momentum, derivatives, and regime fit."
+                f"方向判断为{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}；"
+                "置信度由数据质量、多周期一致性、结构确认、量价动能、"
+                "衍生品/微观结构和市场状态加权得到。"
             ),
             (
-                f"Confidence cap is {confidence_cap:.0f} because of evidence quality, "
-                "conflict level, execution quality, and missing-input restrictions."
+                f"当前置信上限为 {confidence_cap:.0f}，主要受证据质量、冲突等级、"
+                "盘口执行质量和缺失输入共同限制。"
             ),
         ]
         if penalties["total"] > 0:
             lines.append(
-                "Penalties applied: "
-                f"missing inputs {penalties['missing_inputs']:.0f}, "
-                f"conflict {penalties['conflict']:.0f}, "
-                f"abnormal market {penalties['abnormal_market']:.0f}."
+                "已扣分："
+                f"缺失输入 {penalties['missing_inputs']:.0f}，"
+                f"周期/结构冲突 {penalties['conflict']:.0f}，"
+                f"异常市场状态 {penalties['abnormal_market']:.0f}。"
             )
         if payload.structure.available and payload.structure.top_reasons:
-            lines.append(f"Structure confirmation leans on: {payload.structure.top_reasons[0]}")
+            lines.append(f"结构确认依据：{payload.structure.top_reasons[0]}")
         if risk_gates:
-            lines.append(f"Risk gates triggered: {', '.join(risk_gates)}.")
-        lines.append(f"Recommended action is {recommended_action}.")
+            gate_text = "、".join(RISK_GATE_LABEL_ZH.get(item, item) for item in risk_gates)
+            lines.append(f"已触发风控门禁：{gate_text}。")
+        action_text = ACTION_LABEL_ZH.get(recommended_action, recommended_action)
+        lines.append(f"建议动作：{action_text}。")
         return lines
 
     def _pair_alignment(self, left: str, right: str) -> float:

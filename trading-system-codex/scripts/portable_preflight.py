@@ -10,6 +10,9 @@ sys.dont_write_bytecode = True
 
 os.environ.setdefault("APP_DISTRIBUTION_MODE", "portable")
 os.environ.setdefault("APP_BUNDLE_ROOT", str(Path(__file__).resolve().parents[1]))
+PROJECT_ROOT = Path(os.environ["APP_BUNDLE_ROOT"]).resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.paths import app_paths, bootstrap_runtime_environment  # noqa: E402
 

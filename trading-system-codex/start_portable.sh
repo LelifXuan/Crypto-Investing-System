@@ -8,5 +8,6 @@ export APP_RUNTIME_ROOT="$SCRIPT_DIR/runtime"
 export APP_PORT="${APP_PORT:-8000}"
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
+export PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 python "$SCRIPT_DIR/scripts/portable_preflight.py" || exit 1
 python -m uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT"

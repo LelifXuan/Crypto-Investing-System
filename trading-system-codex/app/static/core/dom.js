@@ -1,4 +1,4 @@
-import { findKnowledgeTerm } from "./knowledge.js";
+﻿import { findKnowledgeTerm } from "./knowledge.js";
 
 const IMPACT_META = {
   bullish: { label: "偏多", className: "impact-bullish", tooltipTone: "tone-bullish" },
@@ -246,3 +246,4 @@ export function observationValue(value) {
 export function tableEmptyRow(colspan, text = "暂无数据") {
   return `<tr><td colspan="${colspan}" class="empty-row">${escapeHtml(text)}</td></tr>`;
 }
+

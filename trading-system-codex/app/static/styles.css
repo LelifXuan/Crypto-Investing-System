@@ -3524,16 +3524,45 @@ button:hover,
 
 .alert-chip-headline {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.6fr);
+  gap: 12px;
   align-items: stretch;
 }
 
-.alert-chip-headline h3 {
+.alert-chip-primary-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid rgba(20, 129, 119, 0.26);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(224, 246, 240, 0.72), rgba(255, 255, 255, 0.92)),
+    var(--card-bg);
+  box-shadow: 0 18px 44px rgba(20, 129, 119, 0.12);
+}
+
+.alert-chip-primary-card h3 {
   margin: 0 0 4px;
-  font-size: clamp(22px, 1.65vw, 28px);
+  font-size: clamp(28px, 2.3vw, 40px);
   line-height: 1.08;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
+}
+
+.alert-chip-primary-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.alert-chip-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alert-chip-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .alert-chip-action {
@@ -3543,14 +3572,71 @@ button:hover,
 }
 
 .alert-chip-metrics {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   margin: 0;
   gap: 10px;
 }
 
+.alert-chip-score-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.alert-chip-score-strip span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.alert-chip-score-strip em {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.alert-chip-score-strip strong {
+  color: var(--text-primary);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.alert-chip-position-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: 10px;
+}
+
+.alert-chip-allocation-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.alert-chip-allocation-row span {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.alert-chip-allocation-row strong {
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
 .alert-chip-support-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -3565,7 +3651,7 @@ button:hover,
 .alert-chip-evidence-item {
   display: grid;
   gap: 8px;
-  padding: 13px 14px;
+  padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid rgba(170, 151, 124, 0.18);
   background: rgba(255, 255, 255, 0.5);
@@ -4025,11 +4111,18 @@ button:hover,
   .alert-chip-headline,
   .alert-chip-metrics,
   .alert-chip-support-grid,
+  .alert-chip-position-grid,
+  .alert-chip-status-grid,
   .alert-chip-timeframes,
   .alert-chip-bottom-grid,
   .alert-chip-evidence,
   .alert-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .alert-chip-score-strip,
+  .alert-chip-allocation-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .alert-chip-action,

@@ -9,6 +9,10 @@ from app.models.confidence import ConfidenceEngineInput, StructureConfidenceInpu
 from app.quant.indicators import adx_wilder_series, bbands_series, ema_series, obv_series
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import CandleRead
+from app.services.chip_structure_decision_policy import (
+    decide_chip_structure_action,
+    suppress_futures_allocation,
+)
 from app.services.confidence_engine import ConfidenceEngine
 from app.services.data_quality import DataQualityAssessment, DataQualityMonitor
 from app.services.indicator_matrix import IndicatorMatrixService
@@ -229,6 +233,28 @@ class ChipStructureService:
                 "当前风控 veto 生效，现货、合约和试探仓都建议暂不参与。"
             )
 
+        futures_decision = decide_chip_structure_action(
+            direction_score=confidence_report.direction_score,
+            confidence_score=confidence_report.confidence_score,
+            execution_score=confidence_report.execution_score,
+            risk_score=confidence_report.risk_score,
+            risk_label=confidence_report.risk_label,
+            primary_state=primary_regime,
+            secondary_scenario=secondary_regime,
+            recommended_action=recommended_action,
+            execution_readiness=execution_readiness,
+            higher_timeframe_conflict=(direction_permission == "mixed" or conflict_level >= 2),
+            data_state="available" if state == "ready" else state,
+            evidence_quality=context.evidence_quality,
+        )
+        capital = suppress_futures_allocation(capital, futures_decision)
+        if (
+            not futures_decision.allow_futures_long
+            and capital["total_max_pct"] <= 10
+            and recommended_action in {"normal_trade", "add_on_confirmation", "probe"}
+        ):
+            recommended_action = "wait_confirmation" if state == "ready" else "observe_only"
+
         confirmation = self._confirmation_requirements(primary_regime)
         invalidation = self._invalidation_conditions(primary_regime)
         evidence = self._build_evidence(
@@ -263,6 +289,9 @@ class ChipStructureService:
             "confidence_label": confidence_report.confidence_label,
             "execution_score": confidence_report.execution_score,
             "execution_label": confidence_report.execution_label,
+            "state_confidence_label": futures_decision.state_confidence_label,
+            "execution_quality_label": futures_decision.execution_quality_label,
+            "entry_trigger_label": futures_decision.entry_trigger_label,
             "risk_score": confidence_report.risk_score,
             "risk_label": confidence_report.risk_label,
             "confidence_cap": confidence_report.confidence_cap,
@@ -293,6 +322,7 @@ class ChipStructureService:
             "missing_inputs": list(dict.fromkeys(missing_inputs)),
             "evidence": evidence,
             "risk_gates": confidence_report.risk_gates,
+            **futures_decision.payload(),
             "components": confidence_report.component_payload(),
             "explain": confidence_report.explain,
             "timeframes": [self._timeframe_payload(item) for item in (weekly, daily, h4, h1)],
@@ -1223,6 +1253,9 @@ class ChipStructureService:
             "confidence_label": "invalid",
             "execution_score": 0.0,
             "execution_label": "blocked",
+            "state_confidence_label": "状态置信无效",
+            "execution_quality_label": "盘口执行阻塞",
+            "entry_trigger_label": "交易触发阻塞",
             "risk_score": 100.0,
             "risk_label": "extreme",
             "confidence_cap": 0.0,
@@ -1260,8 +1293,12 @@ class ChipStructureService:
             "missing_inputs": context.missing_inputs,
             "evidence": [],
             "risk_gates": ["NO_USABLE_CANDLES"],
+            "allow_futures_long": False,
+            "futures_gate_checks": [],
+            "failed_gate_reasons": ["当前缺少可分析 K 线，所有合约开多门槛默认失败。"],
+            "why_no_futures_long": "当前不建议开多合约，因为缺少可分析 K 线和关键输入。",
             "components": {},
-            "explain": ["No usable candles were available, so confidence is capped at zero."],
+            "explain": ["缺少可用 K 线，置信度被压制为 0，当前仅返回缺失状态。"],
             "timeframes": [
                 self._timeframe_payload(snapshot) for snapshot in context.snapshots.values()
             ],

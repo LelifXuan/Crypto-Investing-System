@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -28,8 +29,10 @@ def test_release_zip_and_portable_bundle_exclude_local_artifacts() -> None:
 
     release_zip = DIST_DIR / "trading-system-fastapi-github.zip"
     portable_zip = DIST_DIR / "portable_bundle.zip"
+    portable_sha = DIST_DIR / "portable_bundle.zip.sha256"
     assert release_zip.exists()
     assert portable_zip.exists()
+    assert portable_sha.exists()
 
     forbidden = (
         "run/",
@@ -52,6 +55,18 @@ def test_release_zip_and_portable_bundle_exclude_local_artifacts() -> None:
         for entry in names:
             normalized = entry.replace("\\", "/")
             assert not any(token in normalized for token in forbidden), normalized
+    with zipfile.ZipFile(portable_zip) as archive:
+        names = archive.namelist()
+        assert "README_PORTABLE.md" in names
+        assert "portable.env.example" in names
+        assert "release_manifest.json" in names
+        manifest = json.loads(archive.read("release_manifest.json").decode("utf-8"))
+    assert manifest["release_type"] == "source_portable"
+    assert manifest["file_count"] == len(manifest["files"])
+    manifest_text = json.dumps(manifest, ensure_ascii=False)
+    assert "E:\\" not in manifest_text
+    assert "C:\\" not in manifest_text
+    assert "runtime/config/portable.env" not in manifest_text
 
 
 def test_portable_bundle_preflight_and_healthcheck() -> None:

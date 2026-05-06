@@ -95,3 +95,19 @@ def test_confidence_engine_blocks_poor_execution() -> None:
     assert "SLIPPAGE_HARD_LIMIT" in report.risk_gates
     assert report.recommended_action == "no_trade"
     assert report.position_multiplier == 0
+
+
+def test_confidence_engine_explain_is_chinese() -> None:
+    report = ConfidenceEngine().evaluate(_payload())
+    joined = "\n".join(report.explain)
+
+    assert "方向判断" in joined
+    assert "当前置信上限" in joined
+    assert "建议动作" in joined
+    for phrase in (
+        "Direction bias is",
+        "Confidence cap is",
+        "Penalties applied",
+        "Recommended action is",
+    ):
+        assert phrase not in joined

@@ -8,6 +8,7 @@ set "APP_RUNTIME_ROOT=%~dp0runtime"
 if not defined APP_PORT set "APP_PORT=8000"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
+set "PYTHONPATH=%~dp0;%PYTHONPATH%"
 
 where python >nul 2>nul
 if %errorlevel% neq 0 (

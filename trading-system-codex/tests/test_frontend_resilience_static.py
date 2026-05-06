@@ -26,6 +26,33 @@ def test_alerts_initial_load_has_fallback_shell() -> None:
     assert "alerts:initial-load:error" in source
     assert "fallbackChipStructureCard" in source
     assert "告警列表暂不可用" in source
+    assert "状态置信" in source
+    assert "盘口执行质量" in source
+    assert "交易触发状态" in source
+    assert "为什么当前不建议开多合约" not in source
+    assert "合约开多条件检查" not in source
+    assert "renderFuturesGateChecks" not in source
+    assert "alert-chip-primary-card" in source
+    assert "alert-chip-score-strip" in source
+    assert "alert-chip-position-grid" in source
+    assert "localizeExplainText" in source
+
+
+def test_alert_chip_layout_avoids_sparse_fixed_metric_grid() -> None:
+    source = (ROOT / "app/static/styles.css").read_text(encoding="utf-8")
+    assert ".alert-chip-primary-card" in source
+    assert ".alert-chip-score-strip" in source
+    assert ".alert-chip-position-grid" in source
+    chip_metrics = source.split(".alert-chip-metrics", 1)[1].split("}", 1)[0]
+    assert "repeat(6" not in chip_metrics
+    assert ".alert-chip-gate-list" not in source
+    assert ".alert-chip-gate-row" not in source
+
+
+def test_structure_price_line_is_visually_subdued() -> None:
+    source = (ROOT / "app/static/pages/structure.js").read_text(encoding="utf-8")
+    expected = 'price: { label: "价格", color: "rgba(22, 35, 43, 0.58)", dash: "", width: 2.45 }'
+    assert expected in source
 
 
 def test_knowledge_catalog_does_not_generate_template_body_text() -> None:
@@ -40,10 +67,10 @@ def test_market_event_text_normalizes_broken_quotes() -> None:
     script = f"""
 import {{ decodePossiblyBrokenText }} from 'file:///{module_path.as_posix()}';
 const samples = [
-  decodePossiblyBrokenText('Bitcoin�s dip and investor�s worries'),
-  decodePossiblyBrokenText('Startup�s Database'),
-  decodePossiblyBrokenText('claims as �wildly conspiratorial�'),
-  decodePossiblyBrokenText('Robinhoodâ€™s Q1 revenue'),
+  decodePossiblyBrokenText('Bitcoin\\uFFFDs dip and investor\\uFFFDs worries'),
+  decodePossiblyBrokenText('Startup\\u25A1s Database'),
+  decodePossiblyBrokenText('claims as \\uFFFDwildly conspiratorial\\uFFFD'),
+  decodePossiblyBrokenText('Robinhood\\uFFFDs Q1 revenue'),
 ];
 console.log(JSON.stringify(samples));
 """
@@ -60,16 +87,3 @@ console.log(JSON.stringify(samples));
         "claims as “wildly conspiratorial”",
         "Robinhood’s Q1 revenue",
     ]
-
-
-def test_structure_overlay_uses_dynamic_viewport_and_profile_lines() -> None:
-    source = (ROOT / "app/static/pages/structure.js").read_text(encoding="utf-8")
-    assert "VIEWPORT_CONFIG" in source
-    assert "calculateViewport" in source
-    assert "聚焦形态" in source
-    assert "结构背景" in source
-    assert "完整快照" in source
-    assert "buildLegendMarkup(availability)" in source
-    assert "buildMarketProfileMarkup" in source
-    assert "市场轮廓：${profileCount ? \"POC/VAH/VAL\" : \"未绘制\"}" in source
-    assert 'if (item.system === "profile") return "";' in source

@@ -138,6 +138,10 @@ async def test_chip_structure_balanced_auction_degraded(monkeypatch) -> None:
     assert payload["futures_allocation_label"]
     assert payload["probe_position_label"]
     assert payload["missing_inputs"]
+    assert payload["allow_futures_long"] is False
+    assert payload["futures_allocation_pct_min"] == 0
+    assert payload["futures_allocation_pct_max"] == 0
+    assert payload["why_no_futures_long"]
     assert payload["timeframes"][0]["timeframe"] == "1W"
 
 
@@ -223,6 +227,21 @@ async def test_range_position_does_not_directly_change_direction_score() -> None
     lower_score = service._direction_score(lower, lower, lower, lower, None, None)
 
     assert upper_score == lower_score
+
+
+@pytest.mark.asyncio
+async def test_chip_structure_missing_payload_explain_is_chinese(monkeypatch) -> None:
+    snapshots = {
+        tf: _snapshot(tf, quality_status="missing", bb_width=0.0)
+        for tf in PRIMARY_TIMEFRAMES
+    }
+    for snapshot in snapshots.values():
+        snapshot.candles = []
+        snapshot.quality = _quality("missing", can_analyze=False, can_alert=False)
+    payload = await _run_service(monkeypatch, snapshots)
+
+    assert "缺少可用 K 线" in "".join(payload["explain"])
+    assert "No usable candles" not in "".join(payload["explain"])
 
 
 @pytest.mark.asyncio
