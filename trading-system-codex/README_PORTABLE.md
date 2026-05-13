@@ -57,6 +57,20 @@ and degraded states, but background precompute and sync workers will not start.
 
 ## Release Integrity
 
+Maintainer release commands:
+
+```powershell
+$env:RELEASE_STRICT = "1"
+python scripts/build_portable_bundle.py
+python scripts/verify_portable_release.py --repo . --portable-root dist/portable_bundle --zip dist/portable_bundle.zip --strict --json-out reports/verify_portable_release.json
+```
+
+To refresh the local direct-run folder from source:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/sync_portable_local.ps1
+```
+
 The build creates release metadata:
 
 - `release_manifest.json`

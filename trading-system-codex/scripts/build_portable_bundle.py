@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,35 @@ def _archive_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _strict_release_enabled() -> bool:
+    return os.getenv("RELEASE_STRICT") == "1" or os.getenv("CI_RELEASE") == "1"
+
+
+def _stub_runtime_requested() -> bool:
+    return os.getenv("PORTABLE_RUNTIME_STUB") == "1"
+
+
+def _run_verifier(*, strict: bool) -> None:
+    verifier = PROJECT_ROOT / "scripts" / "verify_portable_release.py"
+    if not verifier.exists():
+        raise RuntimeError(f"portable release verifier is missing: {verifier}")
+    command = [
+        sys.executable,
+        str(verifier),
+        "--repo",
+        str(PROJECT_ROOT),
+        "--portable-root",
+        str(PORTABLE_ROOT),
+        "--zip",
+        str(PORTABLE_ZIP),
+        "--json-out",
+        str(PROJECT_ROOT / "reports" / "verify_portable_release.json"),
+    ]
+    if strict:
+        command.append("--strict")
+    subprocess.run(command, cwd=str(PROJECT_ROOT), check=True)
 
 
 def _write_manifest(runtime_metadata: dict[str, object]) -> None:
@@ -75,6 +105,13 @@ def _write_manifest(runtime_metadata: dict[str, object]) -> None:
 
 
 def main() -> int:
+    strict_release = _strict_release_enabled()
+    stub_runtime = _stub_runtime_requested()
+    if strict_release and stub_runtime:
+        raise RuntimeError(
+            "PORTABLE_RUNTIME_STUB=1 is only allowed for fast tests; official releases must "
+            "use the embedded Python runtime."
+        )
     if PORTABLE_ROOT.exists():
         shutil.rmtree(PORTABLE_ROOT)
     PORTABLE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -103,7 +140,7 @@ def main() -> int:
         PORTABLE_ROOT / "runtime_env" / "python",
         lock_path=RUNTIME_LOCK,
         requirements=PORTABLE_REQUIREMENTS,
-        stub=os.getenv("PORTABLE_RUNTIME_STUB") == "1",
+        stub=stub_runtime,
     )
 
     shutil.copy2(PROJECT_ROOT / "start_portable.bat", PORTABLE_ROOT / "start_portable.bat")
@@ -124,6 +161,8 @@ def main() -> int:
     print(f"portable bundle created at {PORTABLE_ROOT}")
     print(f"portable zip created at {PORTABLE_ZIP}")
     print(f"portable sha256 created at {PORTABLE_SHA256}")
+    if not stub_runtime:
+        _run_verifier(strict=strict_release)
     return 0
 
 

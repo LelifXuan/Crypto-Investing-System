@@ -33,6 +33,7 @@ EXCLUDED_TOP_LEVEL_DIRS = {
     "tools",
     "docs",
     "tests",
+    "reports",
 }
 
 EXCLUDED_DIRS = EXCLUDED_ANY_DIRS | EXCLUDED_TOP_LEVEL_DIRS

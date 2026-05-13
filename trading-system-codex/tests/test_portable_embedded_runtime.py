@@ -51,5 +51,13 @@ def test_launcher_prefers_embedded_runtime_and_utf8_messages():
     assert "python.exe" in source
     assert "未找到内置 Python 运行时" in source
     assert "应用启动超时" in source
-    assert "Python 环境" not in source
-    assert "�" not in source
+    assert "Python 鐜" not in source
+    assert "锟" not in source
+
+
+def test_local_sync_script_defines_portable_workflow():
+    source = (ROOT / "scripts" / "sync_portable_local.ps1").read_text(encoding="utf-8")
+    assert "RELEASE_STRICT" in source
+    assert "build_portable_bundle.py" in source
+    assert "portable_preflight.py" in source
+    assert "TradingSystemPortable" in source

@@ -272,6 +272,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     stub = args.stub or os.getenv("PORTABLE_RUNTIME_STUB") == "1"
+    strict_release = os.getenv("RELEASE_STRICT") == "1" or os.getenv("CI_RELEASE") == "1"
+    if stub and strict_release:
+        raise RuntimeError(
+            "stub portable runtime is forbidden when RELEASE_STRICT=1 or CI_RELEASE=1"
+        )
     metadata = build_runtime(
         args.target,
         lock_path=args.lock,
