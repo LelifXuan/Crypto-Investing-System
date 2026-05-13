@@ -13,18 +13,12 @@ from app.core.config import settings
 from app.core.db import db_manager
 from app.core.paths import app_paths, bootstrap_runtime_environment
 from app.db.models.market import PageSnapshotCache
-from app.events.bus import event_bus_worker
 from app.middleware.local_only import LocalOnlyMiddleware
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.bootstrap_repository import BootstrapRepository
 from app.repositories.market_repository import MarketRepository
 from app.services.bootstrap import seed_local_defaults, warm_local_market_data
 from app.web.router import web_router
-from app.workers.indicator_monitor import indicator_monitor_worker
-from app.workers.market_event_translation import market_event_translation_worker
-from app.workers.market_events_feed import market_event_feed_worker
-from app.workers.precompute_worker import precompute_worker
-from app.workers.realtime_market import market_stream_worker
 
 
 def _should_start_worker(name: str) -> bool:
@@ -45,6 +39,34 @@ def _should_start_worker(name: str) -> bool:
         }
         return name in enabled
     return True
+
+
+def _load_worker(name: str):
+    if name == "event_bus":
+        from app.events.bus import event_bus_worker
+
+        return event_bus_worker
+    if name == "market_stream":
+        from app.workers.realtime_market import market_stream_worker
+
+        return market_stream_worker
+    if name == "indicator_monitor":
+        from app.workers.indicator_monitor import indicator_monitor_worker
+
+        return indicator_monitor_worker
+    if name == "market_events_feed":
+        from app.workers.market_events_feed import market_event_feed_worker
+
+        return market_event_feed_worker
+    if name == "market_event_translation":
+        from app.workers.market_event_translation import market_event_translation_worker
+
+        return market_event_translation_worker
+    if name == "precompute":
+        from app.workers.precompute_worker import precompute_worker
+
+        return precompute_worker
+    raise KeyError(name)
 
 
 @asynccontextmanager
@@ -84,17 +106,17 @@ async def lifespan(app: FastAPI):
             if settings.local_bootstrap_warmup_all_instruments:
                 warmup_instrument_ids = [instrument.instrument_id for instrument in instruments]
     if _should_start_worker("event_bus"):
-        await event_bus_worker.start()
+        await _load_worker("event_bus").start()
     if _should_start_worker("market_stream"):
-        await market_stream_worker.start()
+        await _load_worker("market_stream").start()
     if _should_start_worker("indicator_monitor"):
-        await indicator_monitor_worker.start()
+        await _load_worker("indicator_monitor").start()
     if _should_start_worker("market_events_feed"):
-        await market_event_feed_worker.start()
+        await _load_worker("market_events_feed").start()
     if _should_start_worker("market_event_translation"):
-        await market_event_translation_worker.start()
+        await _load_worker("market_event_translation").start()
     if _should_start_worker("precompute"):
-        await precompute_worker.start()
+        await _load_worker("precompute").start()
     if settings.local_auto_bootstrap_enabled and warmup_instrument_ids:
         async def run_startup_warmup(instrument_ids: list[str]) -> None:
             # Let interactive page requests and precompute hints take the lead first.
@@ -115,12 +137,16 @@ async def lifespan(app: FastAPI):
             warmup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await warmup_task
-        await precompute_worker.stop()
-        await market_event_translation_worker.stop()
-        await market_event_feed_worker.stop()
-        await indicator_monitor_worker.stop()
-        await market_stream_worker.stop()
-        await event_bus_worker.stop()
+        for worker_name in (
+            "precompute",
+            "market_event_translation",
+            "market_events_feed",
+            "indicator_monitor",
+            "market_stream",
+            "event_bus",
+        ):
+            with suppress(Exception):
+                await _load_worker(worker_name).stop()
         await db_manager.disconnect()
 
 

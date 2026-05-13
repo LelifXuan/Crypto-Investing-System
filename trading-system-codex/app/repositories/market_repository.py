@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, desc, or_, select, tuple_
@@ -28,6 +28,9 @@ from app.db.models.market import (
     MarkPrice,
     PageSnapshotCache,
     SignalOutcome,
+    StrategyDecision,
+    StrategyDecisionOutcome,
+    StrategyIterationProposal,
     StructureActiveItem,
     StructureAlert,
     StructureEvent,
@@ -39,6 +42,8 @@ from app.db.models.market import (
     TranslationJob,
     TranslationTextCache,
 )
+
+UTC = timezone.utc
 
 
 class MarketRepository:
@@ -293,7 +298,7 @@ class MarketRepository:
     async def delete_expired_page_snapshot_cache(
         self, now: datetime | None = None, limit: int = 500
     ) -> int:
-        now = now or datetime.now(UTC)
+        now = now or datetime.now(timezone.utc)
         rows = await self.session.execute(
             select(PageSnapshotCache.cache_id)
             .where(
@@ -376,7 +381,7 @@ class MarketRepository:
     async def delete_expired_computed_dataset_cache(
         self, now: datetime | None = None, limit: int = 500
     ) -> int:
-        now = now or datetime.now(UTC)
+        now = now or datetime.now(timezone.utc)
         rows = await self.session.execute(
             select(ComputedDatasetCache.dataset_cache_id)
             .where(
@@ -1059,7 +1064,9 @@ class MarketRepository:
         if event is None:
             return None
         event.status = status
-        event.resolved_at = datetime.now(UTC) if status in {"resolved", "suppressed"} else None
+        event.resolved_at = (
+            datetime.now(timezone.utc) if status in {"resolved", "suppressed"} else None
+        )
         await self.session.flush()
         return event
 
@@ -1169,7 +1176,7 @@ class MarketRepository:
         run.rows_written = rows_written
         run.error_code = error_code
         run.error_message = error_message
-        run.finished_at = finished_at or datetime.now(UTC)
+        run.finished_at = finished_at or datetime.now(timezone.utc)
         if stats_json is not None:
             run.stats_json = stats_json
         await self.session.flush()
@@ -1469,5 +1476,107 @@ class MarketRepository:
         if signal_type is not None:
             stmt = stmt.where(SignalOutcome.signal_type == signal_type)
         stmt = stmt.order_by(desc(SignalOutcome.signal_ts)).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def add_strategy_decision(self, decision: StrategyDecision) -> StrategyDecision:
+        self.session.add(decision)
+        await self.session.flush()
+        return decision
+
+    async def get_strategy_decision(self, decision_id: str) -> StrategyDecision | None:
+        result = await self.session.execute(
+            select(StrategyDecision).where(StrategyDecision.decision_id == decision_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def list_strategy_decisions(
+        self,
+        *,
+        instrument_id: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 100,
+    ) -> list[StrategyDecision]:
+        stmt = select(StrategyDecision)
+        if instrument_id is not None:
+            stmt = stmt.where(StrategyDecision.instrument_id == instrument_id)
+        if timeframe is not None:
+            stmt = stmt.where(StrategyDecision.timeframe == timeframe)
+        stmt = stmt.order_by(desc(StrategyDecision.decision_ts)).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def add_strategy_decision_outcome(
+        self, outcome: StrategyDecisionOutcome
+    ) -> StrategyDecisionOutcome:
+        self.session.add(outcome)
+        await self.session.flush()
+        return outcome
+
+    async def list_strategy_decision_outcomes(
+        self,
+        *,
+        decision_ids: list[str] | None = None,
+        limit: int = 200,
+    ) -> list[StrategyDecisionOutcome]:
+        stmt = select(StrategyDecisionOutcome)
+        if decision_ids:
+            stmt = stmt.where(StrategyDecisionOutcome.decision_id.in_(decision_ids))
+        stmt = stmt.order_by(desc(StrategyDecisionOutcome.created_at)).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def upsert_strategy_iteration_proposal(
+        self, proposal: StrategyIterationProposal
+    ) -> StrategyIterationProposal:
+        result = await self.session.execute(
+            select(StrategyIterationProposal).where(
+                StrategyIterationProposal.proposal_id == proposal.proposal_id
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.instrument_id = proposal.instrument_id
+            existing.timeframe = proposal.timeframe
+            existing.proposal_type = proposal.proposal_type
+            existing.target_module = proposal.target_module
+            existing.priority = proposal.priority
+            existing.evidence_count = proposal.evidence_count
+            existing.reason = proposal.reason
+            existing.suggested_change_json = proposal.suggested_change_json
+            existing.status = proposal.status
+            existing.updated_at = proposal.updated_at
+            await self.session.flush()
+            return existing
+        self.session.add(proposal)
+        await self.session.flush()
+        return proposal
+
+    async def list_strategy_iteration_proposals(
+        self,
+        *,
+        instrument_id: str | None = None,
+        timeframe: str | None = None,
+        status: str | None = "open",
+        limit: int = 50,
+    ) -> list[StrategyIterationProposal]:
+        stmt = select(StrategyIterationProposal)
+        if instrument_id is not None:
+            stmt = stmt.where(
+                or_(
+                    StrategyIterationProposal.instrument_id == instrument_id,
+                    StrategyIterationProposal.instrument_id.is_(None),
+                )
+            )
+        if timeframe is not None:
+            stmt = stmt.where(
+                or_(
+                    StrategyIterationProposal.timeframe == timeframe,
+                    StrategyIterationProposal.timeframe.is_(None),
+                )
+            )
+        if status is not None:
+            stmt = stmt.where(StrategyIterationProposal.status == status)
+        stmt = stmt.order_by(desc(StrategyIterationProposal.created_at)).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
+
+UTC = timezone.utc
 
 
 @dataclass(slots=True)
@@ -267,7 +269,7 @@ class GateWSParser:
     @staticmethod
     def _coerce_ts(value) -> datetime:
         if value is None:
-            return datetime.now(UTC)
+            return datetime.now(timezone.utc)
         raw = float(value)
         if raw > 10_000_000_000:
             raw /= 1000

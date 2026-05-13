@@ -71,6 +71,10 @@ class Settings(BaseSettings):
         alias="LOCAL_BOOTSTRAP_WARMUP_ALL_INSTRUMENTS",
     )
     local_bootstrap_candle_limit: int = Field(default=240, alias="LOCAL_BOOTSTRAP_CANDLE_LIMIT")
+    local_bootstrap_candle_limits_by_timeframe: str = Field(
+        default='{"1h":1000,"4h":1000,"1d":1000,"1w":520,"30d":360}',
+        alias="LOCAL_BOOTSTRAP_CANDLE_LIMITS_BY_TIMEFRAME",
+    )
     local_bootstrap_warmup_timeframes: list[str] = Field(
         default_factory=lambda: ["1h", "4h", "1d", "1w", "30d"],
         alias="LOCAL_BOOTSTRAP_WARMUP_TIMEFRAMES",

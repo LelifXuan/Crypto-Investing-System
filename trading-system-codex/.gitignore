@@ -27,4 +27,15 @@ trading_system.db
 trading_system.db-shm
 trading_system.db-wal
 trading_system.db-journal
+data/trading_system.db*
+data/cache/
+cache/
+logs/*.log
+tmp/
 *.egg-info/
+reports/*.json
+.opencode_backups/
+*.db-journal
+*.db-shm
+*.db-wal
+data/trading_system.db*

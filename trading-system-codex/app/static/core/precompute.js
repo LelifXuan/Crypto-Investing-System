@@ -32,3 +32,35 @@ export function scheduleIdlePrecompute({
     window.setTimeout(invoke, 300);
   });
 }
+
+export function schedulePageWarmup({ page, instrumentId, timeframe, instruments = [], reason = "first_paint_warmup" }) {
+  const important = [instrumentId, "btc-usdt-perp", "eth-usdt-perp", "sol-usdt-perp", ...instruments]
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .slice(0, 5);
+  const timeframes = [timeframe, "1h", "4h", "1d"]
+    .map((item) => (item === "1M" ? "30d" : item))
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.indexOf(value) === index);
+  const jobs = [];
+  important.forEach((targetInstrument, i) => {
+    timeframes.forEach((targetTimeframe, j) => {
+      jobs.push(() => api.precomputeHint({
+        current_page: page,
+        instrument_id: targetInstrument,
+        timeframe: targetTimeframe,
+        view_window: "default",
+        visible: i === 0 && j === 0,
+        candidates: ["analysis", "structure", "alerts", "monitoring"],
+        reason,
+        priority: i === 0 ? 5 : 7,
+      }).catch(() => null));
+    });
+  });
+  const run = () => jobs.reduce((chain, job) => chain.then(job), Promise.resolve());
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(() => run(), { timeout: 1500 });
+  } else {
+    window.setTimeout(() => run(), 500);
+  }
+}

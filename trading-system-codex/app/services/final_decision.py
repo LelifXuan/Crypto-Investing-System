@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.repositories.market_repository import MarketRepository
-from app.services.chip_structure import ChipStructureService
-from app.services.macro_overview import MacroOverviewService
+
+UTC = timezone.utc
 
 
 class FinalDecisionService:
@@ -13,9 +13,8 @@ class FinalDecisionService:
         self.repository = repository
 
     async def build(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
-        chip = await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
-        macro = await MacroOverviewService(self.repository).build_overview()
-        macro_payload = macro.model_dump(mode="json")
+        chip = await self._chip_payload(instrument_id, timeframe)
+        macro_payload = await self._macro_payload()
         macro_bias = self._macro_bias(macro_payload)
         conflicts = self._conflicts(chip, macro_bias)
         action = self._final_action(chip, conflicts)
@@ -64,8 +63,51 @@ class FinalDecisionService:
                     "risk_level": macro_payload.get("risk_level"),
                 },
             },
-            "generated_at": datetime.now(UTC),
-        }
+            "generated_at": datetime.now(timezone.utc),
+            }
+
+    async def _chip_payload(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
+        try:
+            from app.services.chip_structure import ChipStructureService
+
+            return await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
+        except Exception as exc:
+            return {
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
+                "state": "unavailable",
+                "direction_score": 0.0,
+                "direction_label": "neutral",
+                "confidence_score": 0.0,
+                "confidence_label": "invalid",
+                "execution_score": 0.0,
+                "execution_label": "blocked",
+                "risk_score": 100.0,
+                "risk_label": "extreme",
+                "confidence_cap": 0.0,
+                "recommended_action": "risk_off",
+                "recommended_action_v2": "no_trade",
+                "position_multiplier": 0.0,
+                "capital_ceiling_pct": 0.0,
+                "evidence_quality": "proxy_only",
+                "conflict_level": 3,
+                "risk_gates": ["CHIP_STRUCTURE_UNAVAILABLE"],
+                "explain": [f"筹码结构暂不可用，最终决策降级为仅观察：{exc}"],
+                "components": {},
+            }
+
+    async def _macro_payload(self) -> dict[str, Any]:
+        try:
+            from app.services.macro_overview import MacroOverviewService
+
+            macro = await MacroOverviewService(self.repository).build_overview()
+            return macro.model_dump(mode="json")
+        except Exception as exc:
+            return {
+                "status": "unavailable",
+                "risk_level": "unknown",
+                "explain": [f"宏观概览暂不可用，已按中性处理：{exc}"],
+            }
 
     def _direction(self, chip: dict[str, Any]) -> str:
         label = str(chip.get("direction_label") or "")
@@ -100,7 +142,7 @@ class FinalDecisionService:
         }
         if macro_bias == "risk_off" and action not in allowed_when_macro_risk_off:
             conflicts.append("macro_risk_off_vs_trade_action")
-        if chip.get("state") in {"missing", "degraded"} and chip.get("capital_ceiling_pct", 0) > 10:
+        if chip.get("state") in {"missing", "unavailable"} and chip.get("capital_ceiling_pct", 0) > 10:
             conflicts.append("weak_data_quality_vs_position_size")
         if float(chip.get("risk_score") or 0.0) >= 80:
             conflicts.append("risk_score_extreme")

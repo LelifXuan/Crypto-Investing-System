@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 
 from app.repositories.market_repository import MarketRepository
 from app.services.cache_registry import (
@@ -62,4 +63,4 @@ class PageCacheService:
 
     @staticmethod
     def now() -> datetime:
-        return datetime.now(UTC)
+        return datetime.now(timezone.utc)

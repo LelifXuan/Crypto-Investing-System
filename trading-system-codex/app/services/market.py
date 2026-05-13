@@ -15,6 +15,8 @@ from app.repositories.event_repository import EventRepository
 from app.repositories.market_repository import MarketRepository
 from app.services.eventing import EventPublisher
 
+UTC = timezone.utc
+
 
 class MarketService:
     def __init__(

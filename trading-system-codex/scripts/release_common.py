@@ -5,7 +5,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIST_DIR = PROJECT_ROOT / "dist"
 
-EXCLUDED_DIRS = {
+EXCLUDED_ANY_DIRS = {
     ".git",
     ".github",
     ".venv",
@@ -15,6 +15,9 @@ EXCLUDED_DIRS = {
     ".mypy_cache",
     "__pycache__",
     ".local_secrets",
+}
+
+EXCLUDED_TOP_LEVEL_DIRS = {
     "dist",
     "bin",
     "prompts",
@@ -26,10 +29,13 @@ EXCLUDED_DIRS = {
     "config",
     "data",
     "tmp",
+    "runtime_env",
     "tools",
     "docs",
     "tests",
 }
+
+EXCLUDED_DIRS = EXCLUDED_ANY_DIRS | EXCLUDED_TOP_LEVEL_DIRS
 
 EXCLUDED_FILES = {
     ".env",
@@ -43,6 +49,7 @@ EXCLUDED_FILES = {
     "trading_system.db-wal",
     "trading_system.db-journal",
     "double-client.err.log",
+    "storage_manifest.json",
 }
 
 EXCLUDED_SUFFIXES = {
@@ -54,6 +61,7 @@ EXCLUDED_SUFFIXES = {
     ".pyc",
     ".pyo",
     ".pyd",
+    ".dll",
     ".sqlite3",
 }
 
@@ -66,6 +74,7 @@ RESIDUE_DIRS = {
     "obj",
     "cache",
     "tmp",
+    "runtime_env",
     "__pycache__",
     ".pytest_cache",
     ".playwright-mcp",
@@ -79,6 +88,7 @@ RESIDUE_FILES = {
     "trading_system.db-shm",
     "trading_system.db-wal",
     "trading_system.db-journal",
+    "storage_manifest.json",
 }
 
 RESIDUE_SUFFIXES = {
@@ -90,13 +100,17 @@ RESIDUE_SUFFIXES = {
     ".pyc",
     ".pyo",
     ".pyd",
+    ".dll",
 }
 
 
 def should_skip(path: Path, *, root: Path = PROJECT_ROOT) -> bool:
     relative = path.relative_to(root)
     parts = set(relative.parts)
-    if parts & EXCLUDED_DIRS:
+    top_level = relative.parts[0] if relative.parts else ""
+    if parts & EXCLUDED_ANY_DIRS:
+        return True
+    if top_level in EXCLUDED_TOP_LEVEL_DIRS:
         return True
     if path.name in EXCLUDED_FILES:
         return True

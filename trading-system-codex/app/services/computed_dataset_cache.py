@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 from decimal import Decimal
 
 from fastapi.encoders import jsonable_encoder
@@ -116,7 +117,7 @@ class ComputedDatasetCacheService:
             payload_json=jsonable_encoder(payload),
             cache_state="fresh",
             source_version=CACHE_SOURCE_VERSION,
-            calculated_at=source_data_ts if source_data_ts else datetime.now(UTC),
+            calculated_at=source_data_ts if source_data_ts else datetime.now(timezone.utc),
             expires_at=expires_at_for_dataset(f"indicator_series_{indicator_group}"),
             cost_ms=cost_ms,
             meta_json={"points": len(candles)},

@@ -34,6 +34,16 @@ function severityLabel(value) {
   return "低";
 }
 
+function trendContextLabel(value) {
+  const mapping = {
+    uptrend: "上升趋势",
+    downtrend: "下降趋势",
+    sideways: "震荡整理",
+    unknown: "未知",
+  };
+  return mapping[value] || value || "未知";
+}
+
 function severityChip(value) {
   const tone = severityImpact(value);
   const classMap = {
@@ -114,7 +124,7 @@ function divergenceToneLabel(tone) {
 function chipStateMarkup(state) {
   const mapping = {
     ready: ["可用", "chip-bullish alert-pill"],
-    degraded: ["数据不完整", "chip-event alert-pill"],
+    low_confidence: ["置信度较低", "chip-event alert-pill"],
     missing: ["无法判断", "chip-bearish alert-pill"],
   };
   const [label, className] = mapping[state] || ["观察", "chip-neutral alert-pill"];
@@ -147,17 +157,21 @@ function chipStateLabelMarkup(payload) {
 
 function chipRegimeLabel(value) {
   const mapping = {
-    balanced_auction: "平衡拍卖",
-    accumulation_candidate: "吸筹候选",
+    balanced_auction: "均衡状态",
+    accumulation_proxy: "积累倾向",
+    accumulation_candidate: "积累候选",
+    distribution_proxy: "派发倾向",
     distribution_candidate: "派发候选",
+    accumulation_confirmed: "积累确认",
+    distribution_confirmed: "派发确认",
     leverage_compression: "杠杆压缩",
-    liquidity_drought: "流动性干涸",
-    bullish_continuation_range: "多头延续区间",
-    bearish_continuation_range: "空头延续区间",
+    liquidity_drought: "流动性枯竭",
+    bullish_continuation_range: "偏多延续",
+    bearish_continuation_range: "偏空延续",
     false_breakout: "假突破",
     false_breakdown: "假跌破",
   };
-  return mapping[value] || value || "-";
+  return mapping[value] || "未知状态";
 }
 
 function chipActionLabel(value) {
@@ -178,7 +192,7 @@ function chipActionLabel(value) {
     reduce_size: "轻仓参与",
     risk_off: "风险关闭",
   };
-  return mapping[value] || value || "-";
+  return mapping[value] || "未知状态";
 }
 
 function chipDirectionMarkup(score) {
@@ -232,7 +246,7 @@ function formatChipComponentLabel(key) {
     structure_confirmation_score: "结构确认",
     momentum_volume_score: "量价动能",
     derivatives_micro_score: "衍生品/微观",
-    regime_fit_score: "Regime 匹配",
+    regime_fit_score: "市场状态 匹配",
   };
   return mapping[key] || key;
 }
@@ -273,7 +287,7 @@ function fallbackChipStructureCard(errorMessage = "") {
     <section class="card alert-chip-hero">
       <div class="section-head">
         <div>
-          <p class="eyebrow">CHIP STRUCTURE</p>
+          <p class="eyebrow">筹码结构</p>
           <h2>筹码结构</h2>
         </div>
         <div class="alert-chip-hero-tags">
@@ -338,7 +352,7 @@ function renderChipAppendix(payload) {
     <section class="card alert-block">
       <div class="section-head">
         <div>
-          <p class="eyebrow">SUPPORTING NOTES</p>
+          <p class="eyebrow">附加说明</p>
           <h2>附加说明</h2>
         </div>
       </div>
@@ -396,7 +410,7 @@ function renderChipStructureCard(payload) {
     <section class="card alert-chip-hero">
       <div class="section-head">
         <div>
-          <p class="eyebrow">CHIP STRUCTURE</p>
+          <p class="eyebrow">筹码结构</p>
           <h2>筹码结构</h2>
         </div>
         <div class="alert-chip-hero-tags">
@@ -531,7 +545,7 @@ export async function renderAlerts() {
     <section class="card divergence-alert-card alert-block">
       <div class="section-head">
         <div>
-          <p class="eyebrow">DIVERGENCE</p>
+          <p class="eyebrow">背离检测</p>
           <h2>背离风险提醒</h2>
         </div>
       </div>
@@ -540,7 +554,7 @@ export async function renderAlerts() {
     <section class="card alert-list-card alert-block">
         <div class="section-head">
           <div>
-            <p class="eyebrow">OPEN & HISTORY</p>
+            <p class="eyebrow">活跃及历史告警</p>
             <h2>告警列表</h2>
           </div>
           <div class="toolbar compact-toolbar"><button id="alerts-refresh" type="button">刷新告警</button></div>
@@ -679,15 +693,15 @@ export async function renderAlerts() {
 
     const openItems = items.filter((item) => item.status === "open");
     document.getElementById("alerts-summary").innerHTML = [
-      metricCard("当前待处理", openItems.length, "仍处于 open 状态的站内告警。"),
-      metricCard("最高优先级", openItems.find((item) => item.severity === "critical") ? "critical" : "normal", "当前顶部状态。"),
+      metricCard("当前待处理", openItems.length, "仍处于待处理状态的站内告警。"),
+      metricCard("最高优先级", openItems.find((item) => item.severity === "critical") ? "严重" : "普通", "当前最高告警等级。"),
       metricCard("最新触发", items[0] ? formatIndicatorName(items[0].indicator_key) : "-", items[0]?.message || "暂无告警说明。"),
     ].join("");
 
     const divergenceItems = [...divergence.signals, ...divergence.filters].slice(0, 7);
     document.getElementById("alerts-divergence").innerHTML = `
       <p class="section-summary divergence-context">
-        ${escapeHtml(appState.selectedInstrumentId)} · ${escapeHtml(appState.selectedTimeframe)}，背离仅作为 warning signal，不直接作为入场信号。
+        ${escapeHtml(appState.selectedInstrumentId)} · ${escapeHtml(appState.selectedTimeframe)}，背离仅作为预警参考，不直接作为入场信号。
       </p>
       <article class="divergence-overall divergence-${divergence.overall.tone}">
         <div class="list-card-head">
@@ -700,7 +714,7 @@ export async function renderAlerts() {
           <span>主导指标 <strong>${escapeHtml(divergence.overall.leaders.join(" / ") || "-")}</strong></span>
         </div>
         <p>${escapeHtml(divergence.overall.message)}</p>
-        ${divergence.overall.trend_context ? `<p class="divergence-subcopy">趋势环境：${escapeHtml(divergence.overall.trend_context)}</p>` : ""}
+        ${divergence.overall.trend_context ? `<p class="divergence-subcopy">趋势环境：${escapeHtml(trendContextLabel(divergence.overall.trend_context))}</p>` : ""}
       </article>
       <div class="divergence-alert-list">
         ${divergenceItems.length ? divergenceItems.map((item) => `

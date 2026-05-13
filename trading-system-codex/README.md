@@ -4,7 +4,7 @@ Windows-first local crypto research and trading management app built with `FastA
 
 ## Source Of Truth
 
-- Main project directory: `E:\Personal\Research\Crypto Investing System\trading-system-codex`
+- Main project directory: this repository root
 - Recommended runtime: local single-user mode
 - Supported Python: `3.11` and `3.14`
 - Recommended local host: `127.0.0.1`

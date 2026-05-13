@@ -17,12 +17,10 @@ from release_common import DIST_DIR  # noqa: E402
 PORTABLE_ZIP = DIST_DIR / "portable_bundle.zip"
 HEALTH_ENDPOINTS = (
     "/health",
+    "/strategy-page",
     "/monitoring-page",
     "/alerts-page",
     "/structure-page",
-    "/api/v1/structure/tab/bundle?instrument_id=btc-usdt-perp&timeframe=1h",
-    "/api/v1/alerts/chip-structure?instrument_id=btc-usdt-perp&timeframe=1h",
-    "/api/v1/alerts/divergence?instrument_id=btc-usdt-perp&timeframe=1h",
 )
 
 
@@ -66,6 +64,11 @@ def main() -> int:
                 raise SystemExit("portable bundle extraction failed: cannot determine bundle root")
 
         runtime_root = bundle_root / "runtime"
+        embedded_python = bundle_root / "runtime_env" / "python" / (
+            "python.exe" if os.name == "nt" else "python"
+        )
+        if not embedded_python.exists():
+            raise SystemExit(f"embedded Python runtime missing: {embedded_python}")
         port = pick_port()
         env = os.environ.copy()
         env.update(
@@ -76,11 +79,12 @@ def main() -> int:
                 "APP_PORT": str(port),
                 "PYTHONUTF8": "1",
                 "PYTHONIOENCODING": "utf-8",
+                "PYTHONPATH": str(bundle_root),
             }
         )
 
         subprocess.run(
-            [sys.executable, str(bundle_root / "scripts" / "portable_preflight.py")],
+            [str(embedded_python), str(bundle_root / "scripts" / "portable_preflight.py")],
             cwd=bundle_root,
             env=env,
             check=True,
@@ -88,7 +92,7 @@ def main() -> int:
 
         server = subprocess.Popen(
             [
-                sys.executable,
+                str(embedded_python),
                 "-m",
                 "uvicorn",
                 "app.main:app",

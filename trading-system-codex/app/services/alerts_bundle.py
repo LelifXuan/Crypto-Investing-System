@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import (
@@ -11,9 +12,7 @@ from app.schemas.market import (
     DivergenceSummaryRead,
 )
 from app.services.cache_registry import CACHE_SOURCE_VERSION
-from app.services.chip_structure import ChipStructureService
 from app.services.contract_snapshot import ContractSnapshotService
-from app.services.divergence import DivergenceService
 from app.services.final_decision import FinalDecisionService
 from app.services.indicator_matrix import IndicatorMatrixService
 from app.services.market_data_bundle import MarketDataBundleService
@@ -25,6 +24,10 @@ from app.services.page_snapshot_cache import (
     expires_at_for_page,
     microstructure_cache_key,
 )
+
+logger = logging.getLogger(__name__)
+
+UTC = timezone.utc
 
 
 def _candle_ts(candle, fallback: datetime) -> datetime:
@@ -40,11 +43,23 @@ class AlertsBundleService:
     def __init__(self, repository: MarketRepository) -> None:
         self.repository = repository
 
-    async def get_bundle(self, instrument_id: str, timeframe: str) -> AlertsBundleRead:
+    async def get_bundle(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        *,
+        allow_refresh: bool = True,
+    ) -> AlertsBundleRead:
         cache = await self.repository.get_page_snapshot_cache(
             alerts_bundle_cache_key(instrument_id, timeframe)
         )
         status = cache_status(cache)
+        if allow_refresh and (cache is None or status in {"missing", "stale", "error", "updating"}):
+            try:
+                return await self.refresh_bundle(instrument_id, timeframe)
+            except Exception:
+                logger.warning("alerts bundle auto-refresh failed", exc_info=True)
+                pass
         payload = cache.payload_json if cache is not None else {}
         return AlertsBundleRead.model_validate(
             {
@@ -54,7 +69,7 @@ class AlertsBundleService:
                 "divergence_summary": payload.get("divergence_summary"),
                 "alert_events": payload.get("alert_events", []),
                 "final_decision": payload.get("final_decision", {}),
-                "status": status,
+                "status": "ready" if status == "fresh" else status,
                 "cache_state": status,
                 "snapshot_at": cache.snapshot_at if cache else None,
                 "data_ts": cache.data_ts if cache else None,
@@ -69,13 +84,13 @@ class AlertsBundleService:
 
     async def refresh_bundle(self, instrument_id: str, timeframe: str) -> AlertsBundleRead:
         started = time.perf_counter()
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         market_bundle = await MarketDataBundleService(self.repository).get_bundle(
             instrument_id=instrument_id,
             timeframe=timeframe,
             limit=220,
             allow_stale=False,
-            refresh=False,
+            refresh=True,
         )
         normalized_timeframe = market_bundle.get("cache_timeframe", timeframe)
         candles = market_bundle.get("candles", [])
@@ -84,10 +99,8 @@ class AlertsBundleService:
             timeframe=normalized_timeframe,
             limit=220,
         )
-        chip = await ChipStructureService(self.repository).analyze(
-            instrument_id, normalized_timeframe
-        )
-        divergence = DivergenceService().analyze(
+        chip = await self._chip_payload(instrument_id, normalized_timeframe)
+        divergence = self._divergence_payload(
             instrument_id,
             normalized_timeframe,
             candles,
@@ -142,7 +155,7 @@ class AlertsBundleService:
                 "instrument_id": instrument_id,
                 "timeframe": normalized_timeframe,
                 **payload,
-                "status": "fresh",
+                "status": "ready",
                 "cache_state": "fresh",
                 "snapshot_at": cache.snapshot_at,
                 "data_ts": cache.data_ts,
@@ -179,7 +192,63 @@ class AlertsBundleService:
             payload_json=payload,
             cache_state="fresh",
             source_version=CACHE_SOURCE_VERSION,
-            calculated_at=datetime.now(UTC),
-            expires_at=expires_at_for_dataset("microstructure", datetime.now(UTC)),
+            calculated_at=datetime.now(timezone.utc),
+            expires_at=expires_at_for_dataset("microstructure", datetime.now(timezone.utc)),
             meta_json={"source": "chip_structure"},
         )
+
+    async def _chip_payload(self, instrument_id: str, timeframe: str) -> dict:
+        try:
+            from app.services.chip_structure import ChipStructureService
+
+            return await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
+        except Exception as exc:
+            logger.warning("chip payload fetch failed: %s", exc)
+            return {
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
+                "state": "low_confidence",
+                "primary_regime": "missing",
+                "primary_regime_label": "数据缺失",
+                "secondary_scenario": "missing",
+                "direction_score": 0.0,
+                "confidence_score": 0.0,
+                "confidence_label": "invalid",
+                "execution_score": 0.0,
+                "risk_score": 100.0,
+                "recommended_action": "risk_off",
+                "recommended_action_v2": "no_trade",
+                "evidence_quality": "proxy_only",
+                "missing_inputs": ["chip_structure"],
+                "risk_gates": ["CHIP_STRUCTURE_UNAVAILABLE"],
+                "components": {},
+                "explain": [f"筹码结构暂不可用，告警包使用低置信度占位数据：{exc}"],
+            }
+
+    def _divergence_payload(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        candles: list,
+        *,
+        indicator_matrix: dict,
+    ) -> dict:
+        try:
+            from app.services.divergence import DivergenceService
+
+            return DivergenceService().analyze(
+                instrument_id,
+                timeframe,
+                candles,
+                indicator_matrix=indicator_matrix,
+            )
+        except Exception as exc:
+            logger.warning("divergence payload fetch failed: %s", exc)
+            return {
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
+                "overall_state": "low_confidence",
+                "summary": "背离分析暂不可用。",
+                "items": [],
+                "explain": [f"背离模块暂不可用，告警包使用低置信度占位数据：{exc}"],
+            }

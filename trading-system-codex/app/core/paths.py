@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ class AppPaths:
     bundle_root: Path
     distribution_mode: str
     runtime_root: Path
+    immutable_runtime_root: Path
+    embedded_python_dir: Path
     config_dir: Path
     data_dir: Path
     log_dir: Path
@@ -48,18 +51,23 @@ def resolve_app_paths() -> AppPaths:
     log_dir = runtime_root / "logs"
     cache_dir = runtime_root / "cache"
     tmp_dir = runtime_root / "tmp"
+    immutable_runtime_root = bundle_root / "runtime_env"
+    embedded_python_dir = immutable_runtime_root / "python"
+    asset_root = bundle_root if distribution_mode == "portable" else repo_root
     return AppPaths(
         repo_root=repo_root,
         bundle_root=bundle_root,
         distribution_mode=distribution_mode,
         runtime_root=runtime_root,
+        immutable_runtime_root=immutable_runtime_root,
+        embedded_python_dir=embedded_python_dir,
         config_dir=config_dir,
         data_dir=data_dir,
         log_dir=log_dir,
         cache_dir=cache_dir,
         tmp_dir=tmp_dir,
-        templates_dir=repo_root / "app" / "templates",
-        static_dir=repo_root / "app" / "static",
+        templates_dir=asset_root / "app" / "templates",
+        static_dir=asset_root / "app" / "static",
         portable_env_path=config_dir / "portable.env",
         database_path=data_dir / "trading_system.db",
     )
@@ -99,11 +107,43 @@ def bootstrap_runtime_environment() -> AppPaths:
                     f"JWT_SECRET_KEY={secret}",
                     "BOOTSTRAP_ADMIN_USERNAME=localadmin",
                     f"BOOTSTRAP_ADMIN_PASSWORD={admin_password}",
-                    "",
                 ]
             ),
             encoding="utf-8",
         )
+
+    manifest_path = app_paths.runtime_root / "storage_manifest.json"
+    try:
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "distribution_mode": app_paths.distribution_mode,
+                    "bundle_root": app_paths.bundle_root.as_posix(),
+                    "runtime_root": app_paths.runtime_root.as_posix(),
+                    "immutable_runtime_root": app_paths.immutable_runtime_root.as_posix(),
+                    "embedded_python_dir": app_paths.embedded_python_dir.as_posix(),
+                    "database_path": app_paths.database_path.as_posix(),
+                    "config_dir": app_paths.config_dir.as_posix(),
+                    "data_dir": app_paths.data_dir.as_posix(),
+                    "cache_dir": app_paths.cache_dir.as_posix(),
+                    "log_dir": app_paths.log_dir.as_posix(),
+                    "tmp_dir": app_paths.tmp_dir.as_posix(),
+                    "long_term": [
+                        "market_candles",
+                        "mark_prices",
+                        "strategy_decision",
+                        "signal_outcome",
+                        "translation_text_cache",
+                    ],
+                    "ttl_cache": ["page_snapshot_cache", "computed_dataset_cache"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
     diagnostics_path = app_paths.log_dir / "portable_startup_diagnostics.log"
     try:
@@ -113,9 +153,9 @@ def bootstrap_runtime_environment() -> AppPaths:
                     f"distribution_mode={app_paths.distribution_mode}",
                     f"bundle_root={app_paths.bundle_root}",
                     f"runtime_root={app_paths.runtime_root}",
+                    f"embedded_python_dir={app_paths.embedded_python_dir}",
                     f"database_path={app_paths.database_path}",
                     f"portable_env_path={app_paths.portable_env_path}",
-                    "",
                 ]
             ),
             encoding="utf-8",

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 from decimal import Decimal
 
 from fastapi.encoders import jsonable_encoder
@@ -55,7 +56,7 @@ class ContractSnapshotService:
             "index_price": self._to_string(contract.get("index_price")),
             "funding_rate": self._to_string(contract.get("funding_rate")),
             "basis_rate": self._basis_rate(contract),
-            "ts": datetime.now(UTC),
+            "ts": datetime.now(timezone.utc),
             "cache_state": "fresh",
         }
         if include_stats:

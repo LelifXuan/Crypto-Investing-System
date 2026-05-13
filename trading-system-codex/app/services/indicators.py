@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from datetime import datetime, timezone
+UTC = timezone.utc
 from decimal import Decimal, getcontext
 
 from app.core.config import settings

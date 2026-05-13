@@ -66,3 +66,8 @@ async def alerts_page(request: Request):
 @web_router.get("/knowledge-page")
 async def knowledge_page(request: Request):
     return render_page(request, "知识百科", "knowledge-base")
+
+
+@web_router.get("/strategy-page")
+async def strategy_page(request: Request):
+    return render_page(request, "AI策略", "ai-strategy")

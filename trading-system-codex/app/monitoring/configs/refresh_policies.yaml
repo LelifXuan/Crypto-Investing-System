@@ -249,6 +249,18 @@ refresh_policies:
       cron_expr: "45 7,13,19 * * 1-5"
       timezone: UTC
       priority: 6
+    - indicator_key: wti_crude
+      scope_type: global
+      mode: cron
+      cron_expr: "48 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
+    - indicator_key: nasdaq
+      scope_type: global
+      mode: cron
+      cron_expr: "52 7,13,19 * * 1-5"
+      timezone: UTC
+      priority: 6
     - indicator_key: ust_10y_yield
       scope_type: global
       mode: cron

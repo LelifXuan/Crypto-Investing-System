@@ -577,7 +577,7 @@ indicators:
     source_provider: fred
     source_kind: raw_series
     calc_engine: raw
-    calc_params: {external_symbol: GOLDAMGBD228NLBM}
+    calc_params: {external_symbol: GOLDAMGBD229NLBR}
     supported_assets: [global]
     supported_timeframes: [1d]
     output_fields: [value]
@@ -599,6 +599,36 @@ indicators:
     signal_states: [calm, neutral, stressed]
     default_thresholds: {}
     use_cases: [macro_regime]
+    is_enabled: true
+  - indicator_key: wti_crude
+    display_name: WTI Crude Oil
+    category: macro
+    family: cross_asset
+    source_provider: fred
+    source_kind: raw_series
+    calc_engine: raw
+    calc_params: {external_symbol: DCOILWTICO}
+    supported_assets: [global]
+    supported_timeframes: [1d]
+    output_fields: [value]
+    signal_states: [bearish, neutral, bullish]
+    default_thresholds: {}
+    use_cases: [macro_regime, crypto_correlation]
+    is_enabled: true
+  - indicator_key: nasdaq
+    display_name: NASDAQ Composite
+    category: macro
+    family: cross_asset
+    source_provider: fred
+    source_kind: raw_series
+    calc_engine: raw
+    calc_params: {external_symbol: NASDAQCOM}
+    supported_assets: [global]
+    supported_timeframes: [1d]
+    output_fields: [value]
+    signal_states: [bearish, neutral, bullish]
+    default_thresholds: {}
+    use_cases: [macro_regime, crypto_correlation]
     is_enabled: true
   - indicator_key: ust_10y_yield
     display_name: UST 10Y Yield

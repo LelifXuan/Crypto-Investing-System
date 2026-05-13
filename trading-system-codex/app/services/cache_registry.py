@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.core.timeframes import (
@@ -10,8 +10,30 @@ from app.core.timeframes import (
 )
 from app.db.models.market import ComputedDatasetCache, PageSnapshotCache
 
+UTC = timezone.utc
+
 CACHE_SOURCE_VERSION = "v3"
 KNOWLEDGE_CATALOG_VERSION = "v4"
+
+STRATEGY_TTL_SECONDS = {
+    "15m": 120,
+    "1h": 300,
+    "4h": 900,
+    "1d": 3600,
+    "1w": 21600,
+    "30d": 43200,
+    "1M": 43200,
+}
+
+STRATEGY_DEPENDENCY_MAX_STALE_SECONDS = {
+    "15m": 300,
+    "1h": 600,
+    "4h": 1800,
+    "1d": 7200,
+    "1w": 43200,
+    "30d": 86400,
+    "1M": 86400,
+}
 
 
 def analysis_cache_key(
@@ -67,6 +89,18 @@ def monitoring_dashboard_cache_key(
     )
 
 
+def strategy_bundle_cache_key(
+    instrument_id: str,
+    timeframe: str,
+    source_version: str = CACHE_SOURCE_VERSION,
+) -> str:
+    return (
+        "strategy_bundle:"
+        f"{normalize_instrument_id(instrument_id)}:"
+        f"{normalize_timeframe_for_cache(timeframe)}:{source_version}"
+    )
+
+
 def macro_calendar_cache_key(
     limit: int,
     status: str | None,
@@ -116,6 +150,23 @@ def knowledge_catalog_cache_key(version: str = KNOWLEDGE_CATALOG_VERSION) -> str
     return f"knowledge_catalog:{version}"
 
 
+def strategy_ttl_seconds_for_timeframe(timeframe: str) -> int:
+    normalized = normalize_timeframe_for_cache(timeframe)
+    if normalized == "30d":
+        return STRATEGY_TTL_SECONDS["30d"]
+    return STRATEGY_TTL_SECONDS.get(normalized, STRATEGY_TTL_SECONDS["1d"])
+
+
+def strategy_dependency_max_stale_seconds_for_timeframe(timeframe: str) -> int:
+    normalized = normalize_timeframe_for_cache(timeframe)
+    if normalized == "30d":
+        return STRATEGY_DEPENDENCY_MAX_STALE_SECONDS["30d"]
+    return STRATEGY_DEPENDENCY_MAX_STALE_SECONDS.get(
+        normalized,
+        STRATEGY_DEPENDENCY_MAX_STALE_SECONDS["1d"],
+    )
+
+
 def ttl_seconds_for_page(page_type: str) -> int:
     mapping = {
         "analysis": settings.page_snapshot_analysis_ttl_seconds,
@@ -124,6 +175,7 @@ def ttl_seconds_for_page(page_type: str) -> int:
         "monitoring": settings.page_snapshot_monitoring_ttl_seconds,
         "macro": settings.page_snapshot_macro_ttl_seconds,
         "events": settings.page_snapshot_events_ttl_seconds,
+        "strategy": settings.page_snapshot_analysis_ttl_seconds,
     }
     return mapping.get(page_type, settings.page_snapshot_analysis_ttl_seconds)
 
@@ -148,6 +200,11 @@ def dataset_ttl_seconds(dataset_type: str) -> int:
 def expires_at_for_page(page_type: str, now: datetime | None = None) -> datetime:
     now = now or datetime.now(UTC)
     return now + timedelta(seconds=ttl_seconds_for_page(page_type))
+
+
+def expires_at_for_strategy(timeframe: str, now: datetime | None = None) -> datetime:
+    now = now or datetime.now(UTC)
+    return now + timedelta(seconds=strategy_ttl_seconds_for_timeframe(timeframe))
 
 
 def expires_at_for_dataset(dataset_type: str, now: datetime | None = None) -> datetime:
@@ -205,10 +262,11 @@ def bundle_status_message(status: str) -> str:
     mapping = {
         "fresh": "数据已就绪",
         "ready": "数据已就绪",
-        "stale": "快照可用，但可能略滞后",
+        "stale": "快照可用，但可能略有延迟",
         "missing": "暂无快照，已加入预计算队列",
         "updating": "后台正在准备最新数据",
-        "refreshing": "后台正在准备最新数据",
+        "refreshing": "后台正在刷新数据",
         "error": "预计算失败，可手动刷新",
+        "low_confidence": "策略信号可用，但置信度较低",
     }
-    return mapping.get(status, "正在读取快照")
+    return mapping.get(status, "状态未知")

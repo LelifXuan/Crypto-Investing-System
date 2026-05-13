@@ -1,0 +1,630 @@
+/* ==========================================================================
+   AI 策略决策中心 v15 样式
+   ========================================================================== */
+
+/* 策略头部 - 持仓输入最小化 */
+.strategy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.strategy-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.strategy-header-left h2 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.strategy-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.position-mini {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.position-mini label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.position-mini select {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: white;
+  font-size: 14px;
+}
+
+.btn-collapse {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* 策略控制区 */
+.strategy-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.strategy-controls .control-card {
+  min-width: 140px;
+}
+
+.strategy-controls select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: white;
+  font-size: 14px;
+}
+
+/* 持仓面板 - 可折叠 */
+.strategy-position-panel {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+}
+
+.strategy-position-panel.is-collapsed {
+  display: none;
+}
+
+.position-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.position-panel-hint {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+
+/* 策略 Hero 区 - 状态为主 */
+.strategy-hero {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* 状态卡片 */
+.hero-state-card {
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hero-state-card.state-bullish {
+  background: linear-gradient(135deg, rgba(239, 249, 246, 0.95), rgba(214, 239, 232, 0.88));
+  border-color: rgba(15, 118, 110, 0.2);
+}
+
+.hero-state-card.state-bearish {
+  background: linear-gradient(135deg, rgba(255, 241, 240, 0.95), rgba(254, 226, 226, 0.88));
+  border-color: rgba(159, 18, 57, 0.2);
+}
+
+.hero-state-card.state-warning {
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.95), rgba(254, 243, 199, 0.88));
+  border-color: rgba(217, 119, 6, 0.2);
+}
+
+.hero-state-card.state-danger {
+  background: linear-gradient(135deg, rgba(254, 242, 242, 0.95), rgba(254, 226, 226, 0.88));
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+.hero-state-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-icon {
+  font-size: 28px;
+}
+
+.hero-state-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hero-state-label {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.hero-pattern {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.hero-permission {
+  display: flex;
+  align-items: center;
+}
+
+.permission-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.permission-badge.allow {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+}
+
+.permission-badge.conditional {
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+}
+
+.permission-badge.observe_only {
+  background: rgba(107, 114, 128, 0.12);
+  color: #6b7280;
+}
+
+.permission-badge.blocked {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+/* 评分卡片 */
+.hero-scores-card {
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 50px;
+}
+
+.score-direction {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.score-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.score-item.long .score-value {
+  color: #0f766e;
+}
+
+.score-item.short .score-value {
+  color: #be123c;
+}
+
+.score-item.neutral .score-value {
+  color: #6b7280;
+}
+
+.score-divider {
+  width: 1px;
+  height: 40px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+.score-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 评分因子详情 */
+.strategy-components {
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.strategy-components h3 {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.components-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.components-col h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* 评分条 */
+.score-bar-item {
+  display: grid;
+  grid-template-columns: 80px 1fr 36px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.score-bar-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.score-bar-track {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.score-bar-fill.bull {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.score-bar-fill.bear {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.score-bar-value {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* 信号卡片 */
+.strategy-signals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.signals-col {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.signals-col h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.signal-card {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: white;
+}
+
+.signal-card.bullish {
+  border-color: rgba(15, 118, 110, 0.2);
+}
+
+.signal-card.bearish {
+  border-color: rgba(159, 18, 57, 0.2);
+}
+
+.signal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.signal-pattern {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.signal-rr {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.signal-prices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.price-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.price-label {
+  color: var(--muted);
+}
+
+.price-value {
+  font-weight: 500;
+}
+
+.price-value.danger {
+  color: #dc2626;
+}
+
+.price-value.success {
+  color: #059669;
+}
+
+.price-pct {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.signal-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.signal-conditions {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.signal-conditions li {
+  font-size: 11px;
+  color: var(--muted);
+  padding-left: 12px;
+  position: relative;
+}
+
+.signal-conditions li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.empty-signal {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 风险门禁 */
+.strategy-gates {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.strategy-gates h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.gates-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gate-chip {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gate-chip.gate-info {
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+}
+
+.gate-chip.gate-warn {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+}
+
+.gate-chip.gate-block {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+.gates-pass {
+  font-size: 13px;
+  color: #059669;
+}
+
+/* 详情折叠 */
+.strategy-details {
+  padding: 0;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.strategy-details summary {
+  padding: 14px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.strategy-details summary:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.details-content {
+  padding: 0 18px 18px;
+}
+
+.details-section {
+  margin-bottom: 20px;
+}
+
+.details-section h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.explain-list,
+.no-trade-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.explain-list li,
+.no-trade-list li {
+  font-size: 13px;
+  color: var(--muted-strong);
+  padding-left: 14px;
+  position: relative;
+}
+
+.explain-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.no-trade-list li::before {
+  content: "⚠";
+  position: absolute;
+  left: 0;
+  color: #dc2626;
+}
+
+.details-metrics {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.details-metrics span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .strategy-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .components-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-signals {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .strategy-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .strategy-controls .control-card {
+    min-width: auto;
+  }
+}

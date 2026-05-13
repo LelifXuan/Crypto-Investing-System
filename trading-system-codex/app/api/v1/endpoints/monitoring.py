@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,11 +29,8 @@ from app.schemas.market import (
     RiskEvaluationRequest,
 )
 from app.services.alerts_bundle import AlertsBundleService
-from app.services.chip_structure import ChipStructureService
-from app.services.divergence import DivergenceService
 from app.services.final_decision import FinalDecisionService
 from app.services.indicator_monitoring import IndicatorMonitoringService
-from app.services.macro_overview import MacroOverviewService
 from app.services.monitoring_dashboard import MonitoringDashboardService
 from app.services.precompute import precompute_service
 from app.services.risk import RiskEngine, RiskInput
@@ -46,6 +43,7 @@ macro_router = APIRouter(prefix="/macro", tags=["macro"])
 onchain_router = APIRouter(prefix="/onchain", tags=["onchain"])
 
 MONITORING_FRESHNESS_MAX_AGE = timedelta(days=1)
+UTC = timezone.utc
 
 
 async def _latest_category_observation_ts(
@@ -81,7 +79,7 @@ async def _ensure_monitoring_category_fresh(
         instrument_id=instrument_id,
         timeframe=timeframe,
     )
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     is_stale = latest_ts is None or latest_ts < now - MONITORING_FRESHNESS_MAX_AGE
     if not is_stale:
         return False
@@ -106,6 +104,8 @@ async def get_macro_overview(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     async def producer() -> dict:
+        from app.services.macro_overview import MacroOverviewService
+
         payload = await MacroOverviewService(MarketRepository(session)).build_overview()
         return payload.model_dump(mode="json")
 
@@ -327,6 +327,8 @@ async def get_divergence_summary(
     candles = await MarketRepository(session).list_candles(
         instrument_id=instrument_id, timeframe=timeframe, limit=limit
     )
+    from app.services.divergence import DivergenceService
+
     payload = DivergenceService().analyze(instrument_id, timeframe, candles)
     return DivergenceSummaryRead.model_validate(payload)
 
@@ -346,6 +348,8 @@ async def get_chip_structure(
     cache_key = f"monitoring:chip_structure:v2:{instrument_id}:{timeframe}:{latest_candle_ts}"
 
     async def producer() -> dict:
+        from app.services.chip_structure import ChipStructureService
+
         payload = await ChipStructureService(repository).analyze(instrument_id, timeframe)
         return ChipStructureRead.model_validate(payload).model_dump(mode="json")
 

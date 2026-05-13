@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>告警中心 | Crypto Trading System</title>
+  <link rel="stylesheet" href="/static/styles.css?v=1778590799">
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body data-page="alert-center" data-page-title="告警中心">
+  <header class="shell-header">
+    <div class="shell-brand">
+      <p class="eyebrow">Crypto Trading System</p>
+      <h1>告警中心</h1>
+    </div>
+  </header>
+
+  <nav class="main-nav">
+    <a href="/macro-calendar-page">宏观日历</a>
+    <a href="/market-events-page">市场事件</a>
+    <a href="/monitoring-page">监控总览</a>
+    <a href="/structure-page">形态结构</a>
+    <a href="/indicators-page">技术指标</a>
+    <a href="/alerts-page">告警中心</a>
+    <a href="/knowledge-page">知识百科</a>
+    <a href="/strategy-page">AI策略</a>
+  </nav>
+
+  <main id="page-root">
+    <section id="alerts-statusbar"></section>
+    <section id="alerts-chip-structure">
+    <section class="card alert-chip-hero">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">筹码结构</p>
+          <h2>筹码结构</h2>
+        </div>
+        <div class="alert-chip-hero-tags">
+          <span class="status-chip chip-neutral alert-pill">状态置信较低</span>
+          <span class="status-chip chip-bearish alert-pill">方向偏空</span>
+          <span class="status-chip chip-bearish alert-pill">状态置信较低</span>
+          <span class="status-chip chip-neutral alert-pill">盘口执行待定</span>
+          <span class="status-chip chip-event alert-pill">风险抬升</span>
+        </div>
+      </div>
+      <div class="alert-chip-headline">
+        <article class="alert-chip-primary-card">
+          <div class="list-card-head"><strong>主结论</strong><span class="status-chip chip-neutral alert-pill">状态置信较低</span></div>
+          <h3>派发倾向</h3>
+          <p class="section-summary">btc-usdt-perp · 1d · 次级情景：未知状态</p>
+          <div class="alert-chip-primary-actions">
+            <span class="status-chip chip-event alert-pill">仅观察</span>
+            <span class="status-chip chip-bearish alert-pill">合约 0%</span>
+          </div>
+          <p>缺少 CVD、OI、盘口深度和滑点等微观结构确认，合约默认不建议开仓。</p>
+        </article>
+        <div class="alert-chip-status-grid">
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>状态说明</strong></div>
+            <p><strong>状态置信较低</strong></p>
+            <p>当前结果主要基于 K 线与基础价格结构，微观结构证据不足已计入置信度。</p>
+          </article>
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>状态置信</strong></div>
+            <p><span class="status-chip chip-bearish alert-pill">状态置信较低</span></p>
+            <p>未知状态 · 上限 55 · 证据 proxy_only</p>
+          </article>
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>盘口执行质量</strong></div>
+            <p><span class="status-chip chip-neutral alert-pill">盘口执行待定</span></p>
+            <p>盘口执行质量待定</p>
+          </article>
+          <article class="alert-chip-block">
+            <div class="list-card-head"><strong>风险等级</strong></div>
+            <p><span class="status-chip chip-event alert-pill">风险抬升</span></p>
+            <p>风控门禁：MICROSTRUCTURE_MISSING</p>
+          </article>
+        </div>
+      </div>
+      <div class="alert-chip-score-strip">
+        <span><em>方向分</em><strong>-100</strong></span><span><em>状态置信</em><strong>35</strong></span><span><em>执行分</em><strong>40</strong></span><span><em>风险分</em><strong>45</strong></span><span><em>总资本</em><strong>0% - 5%</strong></span>
+      </div>
+      <div class="alert-chip-position-grid">
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>交易触发状态</strong></div>
+          <p><span class="status-chip chip-event alert-pill">交易触发待定</span></p>
+          <p>执行准备度：pending</p>
+        </article>
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>仓位解释</strong></div>
+          <div class="alert-chip-allocation-row">
+            <span>现货 <strong>0% - 5%</strong></span>
+            <span>合约 <strong>0%</strong></span>
+            <span>试探 <strong>0%</strong></span>
+          </div>
+          <p>合约开多门槛未通过，合约仓位保持 0%。</p>
+        </article>
+      </div>
+      <div class="alert-chip-support-grid">
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>引擎解释</strong></div>
+          <ul class="structure-bullet-list"><li>筹码结构证据不足，当前置信度受限。</li><li>方向只作为市场状态参考，不直接构成合约开仓许可。</li></ul>
+        </article>
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>核心组件</strong></div>
+          
+            <div class="alert-chip-components">
+              
+                <div class="alert-chip-component-row">
+                  <span>price_change_pct</span>
+                  <strong>NaN</strong>
+                </div>
+              
+                <div class="alert-chip-component-row">
+                  <span>latest_close</span>
+                  <strong>NaN</strong>
+                </div>
+              
+            </div>
+          
+        </article>
+      </div>
+      <div class="alert-chip-timeframes">
+        
+          <article class="alert-chip-timeframe">
+            <div class="list-card-head">
+              <strong>1D</strong>
+              <span class="status-chip chip-bearish alert-pill">偏空</span>
+            </div>
+            <p>缓存 K 线可用，微观结构待补齐。</p>
+          </article>
+        
+      </div>
+      <div class="alert-chip-evidence">
+        
+          <article class="alert-chip-evidence-item">
+            <div class="list-card-head">
+              <strong>区间涨跌</strong>
+              <span class="status-chip chip-neutral alert-pill">中性</span>
+            </div>
+            <div class="divergence-score-row"><span>-34.56%</span></div>
+            <p>当前周期起止涨跌约 -34.56%</p>
+          </article>
+        
+          <article class="alert-chip-evidence-item">
+            <div class="list-card-head">
+              <strong>最新收盘</strong>
+              <span class="status-chip chip-low alert-pill">中性</span>
+            </div>
+            <div class="divergence-score-row"><span>80,775.00</span></div>
+            <p>最新收盘价 80,775.00</p>
+          </article>
+        
+      </div>
+    </section>
+  </section>
+    <section class="card divergence-alert-card alert-block">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">背离检测</p>
+          <h2>背离风险提醒</h2>
+        </div>
+      </div>
+      <div id="alerts-divergence">
+      <p class="section-summary divergence-context">
+        btc-usdt-perp · 1d，背离仅作为预警参考，不直接作为入场信号。
+      </p>
+      <article class="divergence-overall divergence-event">
+        <div class="list-card-head">
+          <strong>背离信号较弱</strong>
+          <span class="status-chip chip-event alert-pill">过滤</span>
+        </div>
+        <div class="divergence-score-row">
+          <span>综合分 <strong>-0.05</strong></span>
+          <span>置信度 <strong>0.16</strong></span>
+          <span>主导指标 <strong>OBV</strong></span>
+        </div>
+        <p>当前背离强度不足，仅作为风险提示。</p>
+        <p class="divergence-subcopy">趋势环境：上升趋势</p>
+      </article>
+      <div class="divergence-alert-list">
+        
+          <article class="divergence-alert-item divergence-bearish">
+            <div class="list-card-head">
+              <strong>OBV 隐藏顶背离</strong>
+              <span class="status-chip chip-bearish alert-pill">风险</span>
+            </div>
+            <div class="divergence-score-row"><span>权重 0.2</span><span>强度 0.24</span><span>贡献 -0.05</span></div>
+            <p>价格变化 -0.43%，OBV 变化 2.74%，形成隐藏顶背离。</p>
+            <div class="divergence-subcopy"><span>80775.00 </span><span>82434.80 </span></div>
+          </article>
+        
+      </div>
+    </div>
+    </section>
+    <section class="card alert-list-card alert-block">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">活跃及历史告警</p>
+            <h2>告警列表</h2>
+          </div>
+          <div class="toolbar compact-toolbar"><button id="alerts-refresh" type="button">刷新告警</button></div>
+        </div>
+        <section class="grid cols-3 alert-summary-grid" id="alerts-summary">
+    <article class="card metric">
+      <span>当前待处理</span>
+      <strong>2</strong>
+      <small class="metric-footnote">仍处于待处理状态的站内告警。</small>
+    </article>
+  
+    <article class="card metric">
+      <span>最高优先级</span>
+      <strong>普通</strong>
+      <small class="metric-footnote">当前最高告警等级。</small>
+    </article>
+  
+    <article class="card metric">
+      <span>最新触发</span>
+      <strong>NATR 14</strong>
+      <small class="metric-footnote">btc-usdt-perp NATR entered 90th percentile window</small>
+    </article>
+  </section>
+        <div class="table-wrap">
+          <table>
+            <colgroup>
+              <col class="alert-col-time">
+              <col class="alert-col-severity">
+              <col class="alert-col-indicator">
+              <col class="alert-col-asset">
+              <col class="alert-col-message">
+              <col class="alert-col-state">
+              <col class="alert-col-actions">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>时间 
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="KDJ 随机指标 | KDJ 用价格在近期高低区间中的位置衡量短线动量。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">KDJ 随机指标 | KDJ 用价格在近期高低区间中的位置衡量短线动量。<a class="tooltip-link" href="/knowledge-page#kdj">查看百科</a></span>
+    </span>
+  </th>
+                <th>级别 
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。<a class="tooltip-link" href="/knowledge-page#divergence">查看百科</a></span>
+    </span>
+  </th>
+                <th>指标 
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="触发告警规则的监控指标。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">触发告警规则的监控指标。</span>
+    </span>
+  </th>
+                <th>标的 </th>
+                <th>消息 
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。<a class="tooltip-link" href="/knowledge-page#divergence">查看百科</a></span>
+    </span>
+  </th>
+                <th>状态 
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。<a class="tooltip-link" href="/knowledge-page#divergence">查看百科</a></span>
+    </span>
+  </th>
+                <th>操作 
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  </th>
+              </tr>
+            </thead>
+            <tbody id="alerts-body">
+        <tr>
+          <td class="alert-col-time">2026/5/12</td>
+          <td class="alert-col-severity"><span class="status-chip chip-event alert-pill">中</span></td>
+          <td class="alert-col-indicator">
+            <div class="alert-cell-stack">
+              <strong>NATR 14</strong>
+              <span class="alert-inline-help">
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="NATR 标准化波幅 / Normalized ATR | NATR 把 ATR 转成百分比，便于比较不同标的的波动风险。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">NATR 标准化波幅 / Normalized ATR | NATR 把 ATR 转成百分比，便于比较不同标的的波动风险。<a class="tooltip-link" href="/knowledge-page#natr">查看百科</a></span>
+    </span>
+  </span>
+            </div>
+          </td>
+          <td class="alert-col-asset">
+            <div class="alert-cell-stack">
+              <span>btc-usdt-perp</span>
+              <span class="alert-inline-help">
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="当前关联标的：btc-usdt-perp">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">当前关联标的：btc-usdt-perp</span>
+    </span>
+  </span>
+            </div>
+          </td>
+          <td class="alert-col-message">
+            <div class="alert-cell-stack">
+              <span>btc-usdt-perp NATR entered 90th percentile window</span>
+              <span class="alert-inline-help">
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。<a class="tooltip-link" href="/knowledge-page#divergence">查看百科</a></span>
+    </span>
+  </span>
+            </div>
+          </td>
+          <td class="alert-col-state">
+    <span class="tooltip-anchor inline tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="status-chip chip-bearish alert-pill">待处理</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。</span>
+    </span>
+  </td>
+          <td class="alert-col-actions">
+    <div class="alert-actions" data-alert-event-id="alr_2fe389f561b747fa8f2da5490327f61a">
+      
+        <span class="alert-action-inline">
+          <button type="button" class="alert-action-button" data-next-status="acknowledged">
+            已查看
+          </button>
+          
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  
+        </span>
+      
+        <span class="alert-action-inline">
+          <button type="button" class="alert-action-button" data-next-status="resolved">
+            解除
+          </button>
+          
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  
+        </span>
+      
+        <span class="alert-action-inline">
+          <button type="button" class="alert-action-button" data-next-status="suppressed">
+            抑制
+          </button>
+          
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  
+        </span>
+      
+    </div>
+  </td>
+        </tr>
+      
+        <tr>
+          <td class="alert-col-time">2026/5/12</td>
+          <td class="alert-col-severity"><span class="status-chip chip-event alert-pill">中</span></td>
+          <td class="alert-col-indicator">
+            <div class="alert-cell-stack">
+              <strong>BTC EXCHANGE NET POSITION CHANGE</strong>
+              <span class="alert-inline-help">
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="Exchange Net Position Change / 交易所净流入变化 | 交易所净流入上升可能代表卖压准备，净流出可能代表持有倾向。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">Exchange Net Position Change / 交易所净流入变化 | 交易所净流入上升可能代表卖压准备，净流出可能代表持有倾向。<a class="tooltip-link" href="/knowledge-page#exchange_net_position_change">查看百科</a></span>
+    </span>
+  </span>
+            </div>
+          </td>
+          <td class="alert-col-asset">
+            <div class="alert-cell-stack">
+              <span>BTC</span>
+              <span class="alert-inline-help">
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="当前关联标的：BTC">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">当前关联标的：BTC</span>
+    </span>
+  </span>
+            </div>
+          </td>
+          <td class="alert-col-message">
+            <div class="alert-cell-stack">
+              <span>BTC exchange net position change &lt; 0 for 3 periods</span>
+              <span class="alert-inline-help">
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。<a class="tooltip-link" href="/knowledge-page#divergence">查看百科</a></span>
+    </span>
+  </span>
+            </div>
+          </td>
+          <td class="alert-col-state">
+    <span class="tooltip-anchor inline tone-neutral" tabindex="0" aria-label="Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。">
+      <span class="status-chip chip-bearish alert-pill">待处理</span>
+      <span class="tooltip-bubble" role="tooltip">Divergence 背离 | 价格与动能或量能不同步，提示趋势质量下降。</span>
+    </span>
+  </td>
+          <td class="alert-col-actions">
+    <div class="alert-actions" data-alert-event-id="alr_678eef04eba0468c8da37863daa36400">
+      
+        <span class="alert-action-inline">
+          <button type="button" class="alert-action-button" data-next-status="acknowledged">
+            已查看
+          </button>
+          
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  
+        </span>
+      
+        <span class="alert-action-inline">
+          <button type="button" class="alert-action-button" data-next-status="resolved">
+            解除
+          </button>
+          
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  
+        </span>
+      
+        <span class="alert-action-inline">
+          <button type="button" class="alert-action-button" data-next-status="suppressed">
+            抑制
+          </button>
+          
+    <span class="tooltip-anchor compact tone-neutral" tabindex="0" aria-label="SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。">
+      <span class="tooltip-icon">?</span>
+      <span class="tooltip-bubble" role="tooltip">SMA 简单移动平均线 | SMA 是固定窗口内价格的算术平均，常作为慢速趋势基准。<a class="tooltip-link" href="/knowledge-page#sma">查看百科</a></span>
+    </span>
+  
+        </span>
+      
+    </div>
+  </td>
+        </tr>
+      </tbody>
+          </table>
+        </div>
+    </section>
+    <section id="alerts-chip-appendix">
+    <section class="card alert-block">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">附加说明</p>
+          <h2>附加说明</h2>
+        </div>
+      </div>
+      <div class="alert-chip-bottom-grid">
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>确认条件</strong></div>
+          <ul class="structure-bullet-list"><li>等待结构突破或回踩确认。</li><li>等待成交量、CVD 或 OI 至少一项同步确认。</li></ul>
+        </article>
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>失效条件</strong></div>
+          <ul class="structure-bullet-list"><li>价格重新回到关键区间内部。</li><li>短周期方向与高周期结构重新冲突。</li></ul>
+        </article>
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>风险提示</strong></div>
+          <ul class="structure-bullet-list"><li>当前微观结构输入不足，单一结论可信度较低。</li><li>缺少 CVD、OI、盘口深度和滑点等微观结构确认，合约默认不建议开仓。</li></ul>
+        </article>
+        <article class="alert-chip-block">
+          <div class="list-card-head"><strong>缺失输入</strong></div>
+          <ul class="structure-bullet-list"><li>OI 尚未同步</li><li>CVD / Delta 尚未同步</li><li>depth 尚未同步</li><li>slippage / spread 尚未同步</li></ul>
+        </article>
+      </div>
+    </section>
+  </section>
+  </main>
+
+  <script>window.__ASSET_VERSION__ = "1778590799";</script>
+  <script type="module" src="/static/main.js?v=1778590799"></script>
+
+</body></html>

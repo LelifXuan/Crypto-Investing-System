@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 
 from app.core.ids import new_id
 from app.db.models.eventing import EventOutbox, EventStore
@@ -21,7 +22,7 @@ class EventPublisher:
         idempotency_key: str | None = None,
         schema_version: int = 1,
     ) -> str:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         event_id = new_id("evt")
         event = EventStore(
             event_id=event_id,

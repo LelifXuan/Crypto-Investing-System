@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -14,6 +14,9 @@ def _decimal(value: Any, default: str = "0") -> Decimal:
     if value in (None, ""):
         return Decimal(default)
     return Decimal(str(value))
+
+
+UTC = timezone.utc
 
 
 def _dt_from_seconds(value: Any) -> datetime:
@@ -303,7 +306,7 @@ class GateIOPublicClient:
         row: dict[str, Any], *, contract: str | None = None
     ) -> GateFuturesOrderBook:
         ts_value = row.get("current") or row.get("t") or row.get("time")
-        ts_value = ts_value or datetime.now(UTC).timestamp()
+        ts_value = ts_value or datetime.now(timezone.utc).timestamp()
         return GateFuturesOrderBook(
             contract=str(row.get("contract") or row.get("s") or contract or "").upper(),
             bids=GateIOPublicClient._parse_book_levels(row.get("bids") or row.get("b") or []),

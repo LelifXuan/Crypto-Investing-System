@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +18,6 @@ from app.schemas.structure import (
     StructureTabSnapshotRead,
 )
 from app.services.precompute import precompute_service
-from app.services.structure import StructureSnapshotService
 
 router = APIRouter(prefix="/structure/tab", tags=["structure"])
 
@@ -25,6 +26,12 @@ def _validate_timeframe(timeframe: str) -> str:
     if timeframe not in SUPPORTED_STRUCTURE_TIMEFRAMES:
         raise HTTPException(status_code=400, detail=f"unsupported timeframe: {timeframe}")
     return timeframe
+
+
+def _structure_service(session: AsyncSession):
+    from app.services.structure import StructureSnapshotService
+
+    return StructureSnapshotService(MarketRepository(session))
 
 
 @router.get("/snapshot", response_model=StructureTabSnapshotRead)
@@ -36,7 +43,7 @@ async def get_structure_snapshot(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    service = StructureSnapshotService(MarketRepository(session))
+    service = _structure_service(session)
     try:
         return await service.get_snapshot(
             instrument_id,
@@ -57,8 +64,32 @@ async def get_structure_bundle(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    service = StructureSnapshotService(MarketRepository(session))
     validated_timeframe = _validate_timeframe(timeframe)
+    try:
+        service = _structure_service(session)
+    except Exception as exc:
+        return StructureTabBundleRead.model_validate(
+            {
+                "snapshot": None,
+                "candles": [],
+                "events": [],
+                "alerts": [],
+                "diagnostics": {
+                    "detector_version": "unavailable",
+                    "compute_mode": "low_confidence",
+                    "candles_loaded": 0,
+                    "profile_precision": "none",
+                    "geometry_count": 0,
+                    "event_count": 0,
+                    "alert_count": 0,
+                    "generated_at": datetime.now(UTC),
+                    "notes": [f"结构模块暂不可用：{exc}"],
+                },
+                "cache_state": "missing",
+                "is_stale": False,
+                "status_message": "暂无结构快照，已加入后台预计算队列。",
+            }
+        )
     bundle = await service.get_bundle(
         instrument_id,
         validated_timeframe,
@@ -76,9 +107,9 @@ async def get_structure_bundle(
             )
         )
         if bundle.cache_state == "missing":
-            bundle.status_message = "暂无快照，已加入预计算队列"
+            bundle.status_message = "暂无结构快照，已加入后台预计算队列。"
         elif bundle.cache_state == "stale":
-            bundle.status_message = "快照可用，但可能略滞后"
+            bundle.status_message = "结构快照可能滞后，后台正在准备新数据。"
     return bundle
 
 
@@ -90,7 +121,7 @@ async def get_structure_events(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    service = StructureSnapshotService(MarketRepository(session))
+    service = _structure_service(session)
     return await service.list_events(instrument_id, _validate_timeframe(timeframe), limit=limit)
 
 
@@ -102,7 +133,7 @@ async def get_structure_alerts(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    service = StructureSnapshotService(MarketRepository(session))
+    service = _structure_service(session)
     return await service.list_alerts(instrument_id, _validate_timeframe(timeframe), limit=limit)
 
 
@@ -113,7 +144,7 @@ async def get_structure_diagnostics(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    service = StructureSnapshotService(MarketRepository(session))
+    service = _structure_service(session)
     return await service.get_diagnostics(instrument_id, _validate_timeframe(timeframe))
 
 
@@ -124,7 +155,7 @@ async def refresh_structure_snapshot(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
-    service = StructureSnapshotService(MarketRepository(session))
+    service = _structure_service(session)
     validated_timeframe = _validate_timeframe(timeframe)
     response = await service.refresh_response(instrument_id, validated_timeframe)
     await precompute_service.enqueue_hint(

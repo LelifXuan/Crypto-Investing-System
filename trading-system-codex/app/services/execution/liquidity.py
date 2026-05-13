@@ -28,11 +28,11 @@ class ExecutionLiquidityEngine:
     ) -> LiquidityAssessment:
         notes = []
         if depth < min_depth:
-            notes.append("盘口深度不足，建议降仓或放弃执行。")
+            notes.append("当前盘口深度不足，市场承接能力偏弱。")
         if slippage > Decimal("0.003"):
-            notes.append("预估滑点偏高，执行质量较差。")
+            notes.append("预估滑点偏高，入场成本不可控。")
         if funding_cost > Decimal("0.0015"):
-            notes.append("资金费率成本偏高，持仓性价比下降。")
+            notes.append("资金费率偏高，持仓成本可能侵蚀利润。")
         max_executable_size = min(requested_size, depth * Decimal("0.25"))
         return LiquidityAssessment(
             bid_ask_spread=bid_ask_spread,

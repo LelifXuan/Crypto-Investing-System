@@ -1,0 +1,335 @@
+{
+  "version": "market_strategy_signal_v15.0.0",
+  "model_versions": {
+    "signal_engine": "market-signal-engine-v15.0.0",
+    "pattern_recognizer": "pattern-recognizer-v1.0.0"
+  },
+  "weights": {
+    "long_score": {
+      "mtf_trend_bullish": 0.18,
+      "bullish_structure": 0.18,
+      "bullish_momentum": 0.14,
+      "bullish_flow": 0.14,
+      "derivatives_long_confirmation": 0.10,
+      "execution_quality": 0.08,
+      "long_risk_reward": 0.10,
+      "regime_fit_long": 0.08
+    },
+    "short_score": {
+      "mtf_trend_bearish": 0.18,
+      "bearish_structure": 0.18,
+      "bearish_momentum": 0.14,
+      "bearish_flow": 0.14,
+      "derivatives_short_confirmation": 0.10,
+      "execution_quality": 0.08,
+      "short_risk_reward": 0.10,
+      "regime_fit_short": 0.08
+    },
+    "neutral_score": {
+      "range_structure": 0.25,
+      "low_adx": 0.20,
+      "low_volume_confirmation": 0.20,
+      "low_directional_spread": 0.15,
+      "high_conflict_score": 0.10,
+      "event_uncertainty": 0.10
+    }
+  },
+  "penalties": {
+    "funding_crowding_long": 0.18,
+    "funding_crowding_short": 0.12,
+    "oi_price_divergence": 0.15,
+    "cvd_divergence": 0.15,
+    "late_entry_risk": 0.10,
+    "event_risk": 0.12
+  },
+  "thresholds": {
+    "direction_confidence": {
+      "no_edge": 0.15,
+      "observe": 0.25,
+      "bias_threshold": 0.35,
+      "strong_bias": 0.50,
+      "dominant_gap": 0.18
+    },
+    "state_scores": {
+      "no_edge_score": 55,
+      "bias_score": 58,
+      "setup_score": 66,
+      "trigger_score": 72,
+      "conflict_both_high": 65,
+      "conflict_gap": 15
+    },
+    "risk_reward": {
+      "unworthy": 1.0,
+      "marginal": 1.5,
+      "watchable": 2.0,
+      "qualified": 3.0,
+      "excellent": 5.0
+    },
+    "data_quality": {
+      "min_decision_quality": 40,
+      "observe_only_quality": 60,
+      "normal_quality": 75
+    }
+  },
+  "execution": {
+    "spread_hard_bps": 25,
+    "spread_warn_bps": 12,
+    "slippage_hard_bps": 40,
+    "slippage_warn_bps": 18,
+    "depth_ratio_hard": 3,
+    "depth_ratio_warn": 5,
+    "mark_deviation_hard_bps": 60,
+    "index_deviation_hard_bps": 60
+  },
+  "risk": {
+    "risk_off_score": 85,
+    "reduce_score": 75,
+    "close_score": 90,
+    "max_leverage": 10,
+    "default_max_leverage": 3,
+    "risk_per_trade_pct": 0.006,
+    "max_risk_per_trade_pct": 0.01,
+    "atr_stop_multiple": 2.0,
+    "high_vol_natr_pct": 4.0,
+    "min_stop_pct": 0.006
+  },
+  "derivatives": {
+    "funding_crowded_z": 2.2,
+    "funding_extreme_z": 3.0,
+    "cvd_confirm_threshold": 0.8,
+    "oi_change_confirm_pct": 0.01
+  },
+  "confidence": {
+    "strong": 80,
+    "normal": 72,
+    "probe": 62,
+    "wait": 48
+  },
+  "state_transitions": {
+    "NO_EDGE": ["OBSERVE"],
+    "OBSERVE": ["NO_EDGE", "LONG_BIAS", "SHORT_BIAS", "CONFLICTED_NO_TRADE"],
+    "CONFLICTED_NO_TRADE": ["OBSERVE", "LONG_BIAS", "SHORT_BIAS", "RISK_OFF"],
+    "LONG_BIAS": ["LONG_SETUP", "WAIT_LONG_CONFIRMATION", "OBSERVE", "RISK_OFF"],
+    "SHORT_BIAS": ["SHORT_SETUP", "WAIT_SHORT_CONFIRMATION", "OBSERVE", "RISK_OFF"],
+    "LONG_SETUP": ["WAIT_LONG_CONFIRMATION", "LONG_TRIGGERED", "LONG_INVALIDATED", "RISK_OFF"],
+    "SHORT_SETUP": ["WAIT_SHORT_CONFIRMATION", "SHORT_TRIGGERED", "SHORT_INVALIDATED", "RISK_OFF"],
+    "WAIT_LONG_CONFIRMATION": ["LONG_TRIGGERED", "LONG_SETUP", "LONG_INVALIDATED", "OBSERVE"],
+    "WAIT_SHORT_CONFIRMATION": ["SHORT_TRIGGERED", "SHORT_SETUP", "SHORT_INVALIDATED", "OBSERVE"],
+    "LONG_TRIGGERED": ["LONG_STRATEGY_ACTIVE", "LONG_INVALIDATED", "RISK_OFF"],
+    "SHORT_TRIGGERED": ["SHORT_STRATEGY_ACTIVE", "SHORT_INVALIDATED", "RISK_OFF"],
+    "LONG_STRATEGY_ACTIVE": ["LONG_INVALIDATED", "LONG_TRIGGERED", "RISK_OFF"],
+    "SHORT_STRATEGY_ACTIVE": ["SHORT_INVALIDATED", "SHORT_TRIGGERED", "RISK_OFF"],
+    "LONG_INVALIDATED": ["OBSERVE", "NO_EDGE", "SHORT_SETUP"],
+    "SHORT_INVALIDATED": ["OBSERVE", "NO_EDGE", "LONG_SETUP"],
+    "EVENT_WAIT": ["OBSERVE", "RISK_OFF"],
+    "RISK_OFF": ["NO_EDGE", "OBSERVE"]
+  },
+  "pattern_templates": {
+    "trend_pullback_long": {
+      "description": "趋势回踩做多",
+      "entry_conditions": [
+        "mtf_trend_bullish >= 60",
+        "bullish_structure >= 60",
+        "price_at_support_or_below_ema20",
+        "structure_low_not_broken"
+      ],
+      "trigger_conditions": [
+        "price_reclaims_poc_or_ema20",
+        "cvd_or_obv_turns_positive",
+        "spread_and_slippage_normal"
+      ],
+      "invalidation_criteria": [
+        "price_below_latest_higher_low",
+        "4h_close_below_val",
+        "cvd_stays_negative_after_trigger"
+      ]
+    },
+    "breakout_long": {
+      "description": "突破做多",
+      "entry_conditions": [
+        "price_near_key_resistance_or_vah",
+        "volatility_expanding_from_compression",
+        "bullish_momentum >= 65"
+      ],
+      "trigger_conditions": [
+        "close_breaks_vah_or_swing_high",
+        "volume_or_cvd_expands_after_breakout",
+        "oi_increases_and_price_follows"
+      ],
+      "invalidation_criteria": [
+        "price_quickly_returns_below_range",
+        "cvd_diverges_from_price",
+        "oi_increases_but_price_stops_rising"
+      ]
+    },
+    "false_breakdown_reclaim_long": {
+      "description": "假跌破收回做多",
+      "entry_conditions": [
+        "price_broke_below_support_or_val_quickly",
+        "below_liquidity_was_swept",
+        "selling_pressure_exhausted"
+      ],
+      "trigger_conditions": [
+        "reclaims_key_level_before_breakdown",
+        "cvd_turns_from_negative_to_positive",
+        "lower_timeframe_forms_higher_low"
+      ],
+      "invalidation_criteria": [
+        "breaks_below_sweep_low_again",
+        "reclaim_fails_with_heavy_volume"
+      ]
+    },
+    "range_low_long": {
+      "description": "震荡区间下沿做多",
+      "entry_conditions": [
+        "range_structure >= 65",
+        "price_at_range_lower_boundary",
+        "adx_low"
+      ],
+      "trigger_conditions": [
+        "bounce_at_range_lower",
+        "cvd_turns_positive",
+        "stop_distance_controllable"
+      ],
+      "invalidation_criteria": [
+        "effective_break_below_range_lower",
+        "cannot_reclaim_after_break"
+      ]
+    },
+    "squeeze_breakout_long": {
+      "description": "波动压缩后向上突破",
+      "entry_conditions": [
+        "bb_width_or_atr_percentile_low",
+        "volume_compressed",
+        "higher_timeframe_bullish"
+      ],
+      "trigger_conditions": [
+        "upside_break_from_compression",
+        "volume_and_cvd_expand_together"
+      ],
+      "invalidation_criteria": [
+        "breaks_back_into_compression_zone",
+        "volume_fails_on_breakout"
+      ]
+    },
+    "liquidity_sweep_reversal_long": {
+      "description": "扫下方流动性后反转做多",
+      "entry_conditions": [
+        "price_broke_below_swing_low_quickly",
+        "orderbook_shows_selling_exhaustion",
+        "cvd_divergence_improving"
+      ],
+      "trigger_conditions": [
+        "reclaims_sweep_low_before_swing",
+        "lower_timeframe_structure_hh_hl"
+      ],
+      "invalidation_criteria": [
+        "breaks_below_sweep_low",
+        "liquidity_continues_to_drain"
+      ]
+    },
+    "trend_retest_short": {
+      "description": "下跌趋势反抽做空",
+      "entry_conditions": [
+        "mtf_trend_bearish >= 60",
+        "bearish_structure >= 60",
+        "price_at_resistance_or_ema",
+        "structure_high_not_broken"
+      ],
+      "trigger_conditions": [
+        "lower_timeframe_retest_fails",
+        "cvd_or_obv_turns_negative",
+        "spread_and_slippage_normal"
+      ],
+      "invalidation_criteria": [
+        "breaks_above_latest_lower_high",
+        "4h_close_above_vah",
+        "cvd_stays_positive_after_trigger"
+      ]
+    },
+    "breakdown_short": {
+      "description": "跌破做空",
+      "entry_conditions": [
+        "price_near_key_support_or_val",
+        "bearish_momentum >= 65",
+        "buying_pressure_weak"
+      ],
+      "trigger_conditions": [
+        "close_belows_val_or_swing_low",
+        "volume_or_cvd_expands_after_breakdown",
+        "oi_increases_and_price_falls"
+      ],
+      "invalidation_criteria": [
+        "quickly_reclaims_range",
+        "cvd_diverges",
+        "oi_increases_but_price_stops_falling"
+      ]
+    },
+    "false_breakout_reversal_short": {
+      "description": "假突破回落做空",
+      "entry_conditions": [
+        "price_broke_above_resistance_quickly",
+        "above_liquidity_was_swept",
+        "buying_pressure_exhausted"
+      ],
+      "trigger_conditions": [
+        "falls_back_below_breakout_level",
+        "cvd_turns_from_positive_to_negative",
+        "lower_timeframe_forms_lower_high"
+      ],
+      "invalidation_criteria": [
+        "breaks_above_sweep_high_again",
+        "reversal_fails_with_heavy_volume"
+      ]
+    },
+    "range_high_short": {
+      "description": "震荡区间上沿做空",
+      "entry_conditions": [
+        "range_structure >= 65",
+        "price_at_range_upper_boundary",
+        "adx_low"
+      ],
+      "trigger_conditions": [
+        "rejected_at_range_upper",
+        "cvd_turns_negative",
+        "stop_distance_controllable"
+      ],
+      "invalidation_criteria": [
+        "effective_break_above_range_upper",
+        "cannot_fall_after_break"
+      ]
+    },
+    "squeeze_breakdown_short": {
+      "description": "波动压缩后向下跌破",
+      "entry_conditions": [
+        "bb_width_or_atr_percentile_low",
+        "volume_compressed",
+        "higher_timeframe_bearish"
+      ],
+      "trigger_conditions": [
+        "downside_break_from_compression",
+        "volume_and_cvd_expand_together"
+      ],
+      "invalidation_criteria": [
+        "breaks_back_into_compression_zone",
+        "volume_fails_on_breakdown"
+      ]
+    },
+    "liquidity_sweep_reversal_short": {
+      "description": "扫上方流动性后反转做空",
+      "entry_conditions": [
+        "price_broke_above_swing_high_quickly",
+        "orderbook_shows_buying_exhaustion",
+        "cvd_divergence_worsening"
+      ],
+      "trigger_conditions": [
+        "falls_back_below_sweep_high",
+        "lower_timeframe_structure_lh_ll"
+      ],
+      "invalidation_criteria": [
+        "breaks_above_sweep_high",
+        "shorts_get_squeezed"
+      ]
+    }
+  }
+}

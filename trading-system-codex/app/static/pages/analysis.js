@@ -79,20 +79,44 @@ function ema(values, period) {
 }
 
 function sma(values, period) {
-  return values.map((_, index) => {
-    const start = Math.max(0, index - period + 1);
-    const window = values.slice(start, index + 1);
-    return window.reduce((sum, value) => sum + value, 0) / window.length;
-  });
+  const output = [];
+  let sum = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    sum += values[index];
+    if (index >= period) {
+      sum -= values[index - period];
+      output.push(sum / period);
+    } else if (index === period - 1) {
+      output.push(sum / period);
+    } else {
+      output.push(sum / (index + 1));
+    }
+  }
+  return output;
 }
 
 function rollingStd(values, period) {
-  return values.map((_, index) => {
-    const start = Math.max(0, index - period + 1);
-    const window = values.slice(start, index + 1);
-    const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
-    return Math.sqrt(window.reduce((sum, value) => sum + (value - mean) ** 2, 0) / window.length);
-  });
+  if (values.length < period) return values.map(() => 0);
+  const output = new Array(values.length);
+  let sum = 0;
+  let sumSq = 0;
+  let count = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    const val = values[index];
+    if (count < period) {
+      sum += val;
+      sumSq += val * val;
+      count += 1;
+    } else {
+      const old = values[index - period];
+      sum += val - old;
+      sumSq += val * val - old * old;
+    }
+    const mean = sum / count;
+    const variance = Math.max(0, sumSq / count - mean * mean);
+    output[index] = count === 0 ? 0 : Math.sqrt(variance);
+  }
+  return output;
 }
 
 function rsi(values, period = 14) {
@@ -165,14 +189,23 @@ function kdj(highs, lows, closes, period = 9) {
 }
 
 function cci(highs, lows, closes, period = 20) {
-  const typical = closes.map((close, index) => (highs[index] + lows[index] + close) / 3);
-  return typical.map((value, index) => {
-    const start = Math.max(0, index - period + 1);
-    const window = typical.slice(start, index + 1);
-    const mean = window.reduce((sum, item) => sum + item, 0) / window.length;
-    const meanDeviation = window.reduce((sum, item) => sum + Math.abs(item - mean), 0) / window.length;
-    return meanDeviation === 0 ? 0 : (value - mean) / (0.015 * meanDeviation);
-  });
+  const typical = closes.map((c, i) => (highs[i] + lows[i] + c) / 3);
+  const output = new Array(typical.length);
+  let sum = 0;
+  for (let i = 0; i < typical.length; i++) {
+    sum += typical[i];
+    const old = i >= period ? typical[i - period] : 0;
+    sum -= old;
+    const count = Math.min(period, i + 1);
+    const mean = sum / count;
+    let devSum = 0;
+    for (let j = Math.max(0, i - period + 1); j <= i; j++) {
+      devSum += Math.abs(typical[j] - mean);
+    }
+    const meanDev = devSum / count;
+    output[i] = meanDev === 0 ? 0 : (typical[i] - mean) / (0.015 * meanDev);
+  }
+  return output;
 }
 
 function atr(highs, lows, closes, period = 14) {
@@ -402,6 +435,26 @@ function calcAnalysis(candles, bundle = null) {
   const volumes = candles.map((item) => toNumber(item.volume));
   const core = bundle?.core_indicator_series || {};
   const secondary = bundle?.secondary_indicator_series || {};
+  const hasFullBundle = core?.ema_12 && core?.rsi_14 && core?.macd_hist && secondary?.adx_14;
+  if (hasFullBundle) {
+    const vegas = ema(closes, 144);
+    return {
+      closes, volumes,
+      ema12: core.ema_12.map(Number), ema30: core.ema_30.map(Number),
+      ema60: core.ema_60.map(Number), ema120: core.ema_120.map(Number),
+      vegasFastLow: vegas, vegasFastHigh: ema(closes, 169),
+      vegasSlowLow: ema(closes, 576), vegasSlowHigh: ema(closes, 676),
+      rsiValues: core.rsi_14.map(Number),
+      macdValues: { line: core.macd_line.map(Number), signal: core.macd_signal.map(Number), hist: core.macd_hist.map(Number) },
+      atrValues: core.atr_14.map(Number),
+      adxValues: { adxValues: secondary.adx_14.map(Number), plusDi: secondary.plus_di?.map(Number) || [], minusDi: secondary.minus_di?.map(Number) || [] },
+      boll: { upper: secondary.bbands_upper?.map(Number) || [], middle: secondary.bbands_middle?.map(Number) || [], lower: secondary.bbands_lower?.map(Number) || [], width: secondary.bbands_width?.map(Number) || [], percentB: secondary.percent_b?.map(Number) || [] },
+      obvValues: secondary.obv?.map(Number) || [],
+      kdjValues: { k: secondary.kdj_k?.map(Number) || [], d: secondary.kdj_d?.map(Number) || [], j: secondary.kdj_j?.map(Number) || [] },
+      cciValues: secondary.cci_20?.map(Number) || [],
+      natrValues: core.natr_14?.map(Number) || [],
+    };
+  }
   let computedMacd = null;
   let computedAtr = null;
   let computedAdx = null;
@@ -723,7 +776,7 @@ export async function renderAnalysis() {
       }
       if (!allCandles.length) {
         if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
-          document.getElementById("analysis-summary").textContent = "后台正在准备当前标的与周期的数据";
+          document.getElementById("analysis-summary").textContent = "后台正在准备当前标的与周期的数据，请稍后刷新。";
           document.getElementById("analysis-mark-price").textContent = "-";
           document.getElementById("analysis-mark-updated").textContent = "-";
           document.getElementById("analysis-mark-next").textContent = "等待后台预计算";
@@ -944,12 +997,13 @@ export async function renderAnalysis() {
         return { status: "aborted", data: null, refreshed: liveFetched, error: null };
       }
       console.error("analysis:load:error", error);
+      const errMsg = String(error?.message || error || "未知错误");
       document.getElementById("analysis-summary").textContent = "拉取失败，可手动重试";
       document.getElementById("analysis-mark-price").textContent = "-";
       document.getElementById("analysis-mark-updated").textContent = "-";
       document.getElementById("analysis-mark-next").textContent = "请手动刷新";
-      document.getElementById("analysis-signal-cards").innerHTML = errorState(String(error.message || error));
-      renderAnalysisStatus("拉取失败，可手动重试", "danger");
+      document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
+      renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger");
       return { status: "error", data: null, refreshed: liveFetched, error };
     } finally {
       setRefreshBusy(false);

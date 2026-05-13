@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 from decimal import Decimal
 
 from app.core.decimal_utils import DECIMAL_ZERO
@@ -66,7 +67,7 @@ class DataQualityMonitor:
             issues.append("price_flat_segments")
 
         if stale_after_seconds is not None and latest_ts is not None:
-            now = now or datetime.now(UTC)
+            now = now or datetime.now(timezone.utc)
             latest = latest_ts if latest_ts.tzinfo else latest_ts.replace(tzinfo=UTC)
             age_seconds = (now - latest).total_seconds()
             if age_seconds > stale_after_seconds:

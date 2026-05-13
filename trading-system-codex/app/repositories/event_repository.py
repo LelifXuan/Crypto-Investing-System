@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
+UTC = timezone.utc
 
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,7 @@ class EventRepository:
         await self.session.flush()
 
     async def claim_pending_batch(self, limit: int) -> list[EventOutbox]:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         stmt: Select[tuple[EventOutbox]] = (
             select(EventOutbox)
             .where(EventOutbox.status == "PENDING", EventOutbox.available_at <= now)
@@ -44,7 +45,7 @@ class EventRepository:
 
     async def mark_processed(self, outbox: EventOutbox) -> None:
         outbox.status = "PROCESSED"
-        outbox.processed_at = datetime.now(UTC)
+        outbox.processed_at = datetime.now(timezone.utc)
         outbox.last_error = None
         await self.session.flush()
 
@@ -54,7 +55,7 @@ class EventRepository:
             outbox.status = "FAILED"
         else:
             outbox.status = "PENDING"
-            outbox.available_at = datetime.now(UTC) + timedelta(
+            outbox.available_at = datetime.now(timezone.utc) + timedelta(
                 seconds=settings.event_bus_retry_delay_seconds
             )
         await self.session.flush()

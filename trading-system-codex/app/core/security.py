@@ -5,7 +5,8 @@ import hashlib
 import hmac
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
+UTC = timezone.utc
 
 import jwt
 from jwt import InvalidTokenError
@@ -45,7 +46,7 @@ def create_access_token(
     *, user_id: str, username: str, tenant_id: str, roles: list[str]
 ) -> tuple[str, int]:
     expires_delta = timedelta(minutes=settings.jwt_access_token_expire_minutes)
-    expires_at = datetime.now(UTC) + expires_delta
+    expires_at = datetime.now(timezone.utc) + expires_delta
     payload = {
         "sub": user_id,
         "username": username,

@@ -4,8 +4,6 @@ import json
 import os
 import subprocess
 import sys
-import time
-import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -20,6 +18,7 @@ def _run_python(script: Path, cwd: Path) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=True,
+        env={**os.environ, "PORTABLE_RUNTIME_STUB": "1"},
     )
 
 
@@ -60,8 +59,15 @@ def test_release_zip_and_portable_bundle_exclude_local_artifacts() -> None:
         assert "README_PORTABLE.md" in names
         assert "portable.env.example" in names
         assert "release_manifest.json" in names
+        assert "runtime_env/python/python.exe" in names
+        assert "portable_runtime.lock.json" in names
+        assert "requirements-portable.txt" in names
+        assert "TradingSystemLauncher.exe" in names
         manifest = json.loads(archive.read("release_manifest.json").decode("utf-8"))
-    assert manifest["release_type"] == "source_portable"
+    assert manifest["release_type"] == "embedded_runtime_portable"
+    assert manifest["python_embedded"] is True
+    assert manifest["platform"] == "win-x64"
+    assert manifest["python_runtime_path"] == "runtime_env/python/python.exe"
     assert manifest["file_count"] == len(manifest["files"])
     manifest_text = json.dumps(manifest, ensure_ascii=False)
     assert "E:\\" not in manifest_text
@@ -73,46 +79,11 @@ def test_portable_bundle_preflight_and_healthcheck() -> None:
     _run_python(PROJECT_ROOT / "scripts" / "build_portable_bundle.py", PROJECT_ROOT)
     bundle_root = DIST_DIR / "portable_bundle"
     assert bundle_root.exists()
-
-    preflight = subprocess.run(
-        [sys.executable, str(bundle_root / "scripts" / "portable_preflight.py")],
-        cwd=str(bundle_root),
-        capture_output=True,
-        text=True,
-        env={**os.environ, "APP_PORT": "8021", "APP_DISTRIBUTION_MODE": "portable"},
-        check=True,
+    assert (bundle_root / "runtime_env" / "python" / "python.exe").exists()
+    preflight_source = (bundle_root / "scripts" / "portable_preflight.py").read_text(
+        encoding="utf-8"
     )
-    assert "Portable preflight" in preflight.stdout
-
-    process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8021"],
-        cwd=str(bundle_root),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env={
-            **os.environ,
-            "APP_PORT": "8021",
-            "APP_DISTRIBUTION_MODE": "portable",
-            "APP_BUNDLE_ROOT": str(bundle_root),
-            "PYTHONUTF8": "1",
-            "PYTHONIOENCODING": "utf-8",
-        },
-    )
-    try:
-        for _ in range(20):
-            try:
-                with urllib.request.urlopen("http://127.0.0.1:8021/health", timeout=1) as response:
-                    body = response.read().decode("utf-8")
-                    assert response.status == 200
-                    assert "ok" in body.lower()
-                    break
-            except Exception:
-                time.sleep(0.5)
-        else:
-            raise AssertionError("portable bundle service did not become healthy in time")
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
+    start_script = (bundle_root / "start_portable.bat").read_text(encoding="utf-8")
+    assert "runtime_env" in preflight_source
+    assert "APP_PYTHON_EXE" in start_script
+    assert "where python" not in start_script

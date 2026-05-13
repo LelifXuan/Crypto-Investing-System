@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
+UTC = timezone.utc
 
 from app.core.config import settings
 from app.core.db import db_manager
@@ -45,7 +46,7 @@ class IndicatorMonitorWorker:
                     if settings.worker_profile.lower() == "desktop_light":
                         await self._run_lightweight_refresh(service)
                     else:
-                        await service.run_due_policies(datetime.now(UTC))
+                        await service.run_due_policies(datetime.now(timezone.utc))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover
@@ -58,7 +59,7 @@ class IndicatorMonitorWorker:
             await asyncio.sleep(sleep_seconds)
 
     async def _run_lightweight_refresh(self, service: IndicatorMonitoringService) -> None:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         repository = service.repository
 
         macro_latest = await repository.list_indicator_observations(category="macro", limit=1)

@@ -74,10 +74,10 @@ class RiskEngine:
 
         if payload.leverage > payload.max_leverage:
             reduce_size = True
-            reasons.append("当前杠杆超过上限，建议先降低杠杆后再继续参与。")
+            reasons.append("杠杆超出限制，需降低仓位。")
         if payload.current_total_exposure + recommended > max_total_exposure:
             reduce_size = True
-            reasons.append("总敞口接近或超过限制，建议压缩单笔仓位。")
+            reasons.append("总敞口超出上限，需控制风险。")
         if (
             atr
             and payload.entry_price
@@ -85,30 +85,30 @@ class RiskEngine:
         ):
             reduce_size = True
             recommended *= Decimal("0.75")
-            reasons.append("波动率显著抬升，建议主动降低参与规模。")
+            reasons.append("市场波动率偏高，已自动缩减仓位。")
         if payload.liquidation_price:
             distance = abs(payload.entry_price - payload.liquidation_price) / payload.entry_price
             if distance <= payload.liquidation_distance_pct:
                 reduce_size = True
-                reasons.append("清算价格距离过近，建议缩小仓位或降低杠杆。")
+                reasons.append("强平价格距离过近，清盘风险较高。")
         if not payload.data_quality_ok:
             pause_trading = True
-            reasons.append("数据质量异常，建议暂停交易并等待数据恢复。")
+            reasons.append("数据质量不足，暂停交易。")
         if payload.rotation_assessment and payload.rotation_assessment.relative_strength < 0:
             reduce_size = True
-            reasons.append("相对强弱不足，建议降低该标的优先级和参与仓位。")
+            reasons.append("轮动强度偏弱，需降低仓位。")
         if payload.liquidity_assessment:
             if not payload.liquidity_assessment.min_liquidity_ok:
                 pause_trading = True
-                reasons.append("流动性不足，建议暂不执行。")
+                reasons.append("市场流动性不足，暂停交易。")
             elif payload.liquidity_assessment.max_executable_size < recommended:
                 reduce_size = True
                 recommended = payload.liquidity_assessment.max_executable_size
-                reasons.append("可执行流动性受限，建议按可成交规模缩减仓位。")
+                reasons.append("市场可执行规模不足，已按市深限制仓位。")
 
         allowed_to_trade = not pause_trading and recommended > DECIMAL_ZERO
         if not reasons:
-            reasons.append("当前风控约束处于允许区间，可按计划参与。")
+            reasons.append("风险评估通过，无阻断因素。")
 
         return RiskAssessment(
             recommended_position_notional=recommended.quantize(Decimal("0.01"))

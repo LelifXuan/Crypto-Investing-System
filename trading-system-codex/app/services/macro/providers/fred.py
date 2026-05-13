@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import csv
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 from io import StringIO
 
 import httpx

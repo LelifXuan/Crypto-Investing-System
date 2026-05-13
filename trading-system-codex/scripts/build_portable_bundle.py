@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sys
 from datetime import UTC, datetime
@@ -9,12 +10,16 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 
+from build_embedded_python_runtime import build_runtime  # noqa: E402
 from release_common import DIST_DIR as DIST_ROOT  # noqa: E402
 from release_common import PROJECT_ROOT, should_skip  # noqa: E402
 
 PORTABLE_ROOT = DIST_ROOT / "portable_bundle"
 PORTABLE_ZIP = DIST_ROOT / "portable_bundle.zip"
 PORTABLE_SHA256 = DIST_ROOT / "portable_bundle.zip.sha256"
+RUNTIME_LOCK = PROJECT_ROOT / "portable_runtime.lock.json"
+PORTABLE_REQUIREMENTS = PROJECT_ROOT / "requirements-portable.txt"
+LAUNCHER_EXE = PROJECT_ROOT / "tools" / "launcher" / "publish" / "TradingSystemLauncher.exe"
 
 
 def _archive_sha256(path: Path) -> str:
@@ -25,27 +30,40 @@ def _archive_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _write_manifest() -> None:
+def _write_manifest(runtime_metadata: dict[str, object]) -> None:
     files = [
         str(path.relative_to(PORTABLE_ROOT)).replace("\\", "/")
         for path in sorted(PORTABLE_ROOT.rglob("*"))
         if path.is_file()
     ]
+    if "release_manifest.json" not in files:
+        files.append("release_manifest.json")
+        files.sort()
     forbidden = [
         name
         for name in files
         if name == "runtime/config/portable.env"
+        or name == "storage_manifest.json"
+        or name == ".env"
         or name.startswith(("runtime/", "run/", "logs/", "data/", "cache/", "tmp/"))
         or "/.git/" in f"/{name}/"
         or "/.venv/" in f"/{name}/"
-        or name.endswith((".db", ".db-wal", ".db-shm", ".log", ".pyc"))
+        or "__pycache__" in name
+        or name.endswith((".db", ".db-wal", ".db-shm", ".log", ".pyc", ".pyo"))
     ]
     if forbidden:
         joined = ", ".join(forbidden[:10])
         raise RuntimeError(f"portable bundle contains forbidden runtime artifacts: {joined}")
+    lock = json.loads((PORTABLE_ROOT / RUNTIME_LOCK.name).read_text(encoding="utf-8"))
     manifest = {
-        "release_type": "source_portable",
-        "description": "Source portable bundle. Python 3.11 or 3.14 must already be installed.",
+        "release_type": "embedded_runtime_portable",
+        "description": "Windows win-x64 portable bundle with embedded Python runtime.",
+        "platform": "win-x64",
+        "python_embedded": True,
+        "python_version": lock["python_version"],
+        "python_runtime_path": "runtime_env/python/python.exe",
+        "portable_runtime_lock": RUNTIME_LOCK.name,
+        "runtime": runtime_metadata,
         "generated_at": datetime.now(UTC).isoformat(),
         "file_count": len(files),
         "files": files,
@@ -81,11 +99,22 @@ def main() -> int:
         else:
             shutil.copy2(path, destination)
 
+    runtime_metadata = build_runtime(
+        PORTABLE_ROOT / "runtime_env" / "python",
+        lock_path=RUNTIME_LOCK,
+        requirements=PORTABLE_REQUIREMENTS,
+        stub=os.getenv("PORTABLE_RUNTIME_STUB") == "1",
+    )
+
     shutil.copy2(PROJECT_ROOT / "start_portable.bat", PORTABLE_ROOT / "start_portable.bat")
     shutil.copy2(PROJECT_ROOT / "start_portable.sh", PORTABLE_ROOT / "start_portable.sh")
     shutil.copy2(PROJECT_ROOT / "portable.env.example", PORTABLE_ROOT / "portable.env.example")
     shutil.copy2(PROJECT_ROOT / "README_PORTABLE.md", PORTABLE_ROOT / "README_PORTABLE.md")
-    _write_manifest()
+    shutil.copy2(RUNTIME_LOCK, PORTABLE_ROOT / RUNTIME_LOCK.name)
+    shutil.copy2(PORTABLE_REQUIREMENTS, PORTABLE_ROOT / PORTABLE_REQUIREMENTS.name)
+    if LAUNCHER_EXE.exists():
+        shutil.copy2(LAUNCHER_EXE, PORTABLE_ROOT / "TradingSystemLauncher.exe")
+    _write_manifest(runtime_metadata)
     archive_base = str(PORTABLE_ZIP.with_suffix(""))
     shutil.make_archive(archive_base, "zip", root_dir=PORTABLE_ROOT)
     PORTABLE_SHA256.write_text(

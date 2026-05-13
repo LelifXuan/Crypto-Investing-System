@@ -16,30 +16,30 @@ COMPONENT_WEIGHTS = {
 }
 
 DIRECTION_LABEL_ZH = {
-    "strong_long": "强偏多",
-    "long": "偏多",
+    "strong_long": "强做多",
+    "long": "做多",
     "neutral": "中性",
-    "short": "偏空",
-    "strong_short": "强偏空",
+    "short": "做空",
+    "strong_short": "强做空",
 }
 
 ACTION_LABEL_ZH = {
-    "observe": "仅观察",
+    "observe": "观察",
     "wait_for_confirmation": "等待确认",
-    "probe": "小仓试探",
-    "normal_trade": "正常参与",
-    "add_on_confirmation": "确认后加仓",
-    "no_trade": "不参与",
+    "probe": "试仓",
+    "normal_trade": "正常交易",
+    "add_on_confirmation": "确认加仓",
+    "no_trade": "不交易",
     "reduce_or_exit": "减仓或退出",
 }
 
 RISK_GATE_LABEL_ZH = {
-    "NO_USABLE_CANDLES": "缺少可用 K 线",
-    "EXECUTION_SCORE_TOO_LOW": "盘口执行分过低",
-    "SLIPPAGE_HARD_LIMIT": "滑点超过硬限制",
-    "SPREAD_HARD_LIMIT": "买卖价差超过硬限制",
-    "PRICE_INDEX_DEVIATION_EXTREME": "成交价相对指数价偏离过大",
-    "PRICE_MARK_DEVIATION_EXTREME": "成交价相对标记价偏离过大",
+    "NO_USABLE_CANDLES": "K线数据不足",
+    "EXECUTION_SCORE_TOO_LOW": "执行质量过低",
+    "SLIPPAGE_HARD_LIMIT": "滑点超限",
+    "SPREAD_HARD_LIMIT": "价差超限",
+    "PRICE_INDEX_DEVIATION_EXTREME": "价格指数偏离过大",
+    "PRICE_MARK_DEVIATION_EXTREME": "标记价格偏离过大",
 }
 
 PAIR_WEIGHTS = {
@@ -576,30 +576,22 @@ class ConfidenceEngine:
         direction_label: str,
     ) -> list[str]:
         lines = [
-            (
-                f"方向判断为{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}；"
-                "置信度由数据质量、多周期一致性、结构确认、量价动能、"
-                "衍生品/微观结构和市场状态加权得到。"
-            ),
-            (
-                f"当前置信上限为 {confidence_cap:.0f}，主要受证据质量、冲突等级、"
-                "盘口执行质量和缺失输入共同限制。"
-            ),
+            f"方向判断：{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}，综合趋势结构、动量、资金流与执行质量。",
+            f"当前置信上限 {confidence_cap:.0f} 分，已综合数据质量、多周期一致性、结构确认、动量量能、衍生品微观结构、行情环境、执行质量和风险门禁。",
         ]
         if penalties["total"] > 0:
             lines.append(
-                "已扣分："
-                f"缺失输入 {penalties['missing_inputs']:.0f}，"
-                f"周期/结构冲突 {penalties['conflict']:.0f}，"
-                f"异常市场状态 {penalties['abnormal_market']:.0f}。"
+                f"扣分项：数据缺失扣 {penalties['missing_inputs']:.0f} 分，"
+                f"冲突扣 {penalties['conflict']:.0f} 分，"
+                f"异常行情扣 {penalties['abnormal_market']:.0f} 分"
             )
         if payload.structure.available and payload.structure.top_reasons:
-            lines.append(f"结构确认依据：{payload.structure.top_reasons[0]}")
+            lines.append(f"结构证据：{payload.structure.top_reasons[0]}")
         if risk_gates:
-            gate_text = "、".join(RISK_GATE_LABEL_ZH.get(item, item) for item in risk_gates)
-            lines.append(f"已触发风控门禁：{gate_text}。")
+            gate_text = " ".join(RISK_GATE_LABEL_ZH.get(item, item) for item in risk_gates)
+            lines.append(f"风险门禁：{gate_text}")
         action_text = ACTION_LABEL_ZH.get(recommended_action, recommended_action)
-        lines.append(f"建议动作：{action_text}。")
+        lines.append(f"建议动作：{action_text}")
         return lines
 
     def _pair_alignment(self, left: str, right: str) -> float:

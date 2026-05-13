@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urljoin
@@ -54,7 +54,8 @@ class MarketEventFeedService:
         translation_queue: list[str] = []
         queued_ids: set[str] = set()
         async with httpx.AsyncClient(
-            timeout=settings.gateio_timeout_seconds, follow_redirects=True
+            timeout=settings.gateio_timeout_seconds,
+            follow_redirects=True,
         ) as client:
             instruments = await self.repository.list_instruments()
             for source in self.sources:
@@ -64,11 +65,12 @@ class MarketEventFeedService:
                     entries = await self._fetch_feed(client, source)
                 except Exception as exc:  # pragma: no cover
                     logger.warning(
-                        "market event feed fetch failed for %s: %s", source.source_id, exc
+                        "market event feed fetch failed for %s: %s",
+                        source.source_id,
+                        exc,
                     )
                     continue
                 for entry in entries:
-                    instrument_ids = self._match_instruments(entry, instruments)
                     payload_json = self.translator.build_initial_payload(
                         {
                             "link": entry.link,
@@ -86,8 +88,8 @@ class MarketEventFeedService:
                         MarketEvent(
                             event_id=self._event_id(entry),
                             category=entry.category,
-                            title=entry.title,
-                            summary=entry.summary,
+                            title=self._clean_text(entry.title),
+                            summary=self._clean_text(entry.summary),
                             source=entry.source,
                             reliability=entry.reliability,
                             ts_event=entry.published_at,
@@ -96,12 +98,17 @@ class MarketEventFeedService:
                     )
                     await self.repository.add_market_event_links(
                         [
-                            MarketEventInstrument(event_id=saved_event.event_id, instrument_id=item)
-                            for item in instrument_ids
+                            MarketEventInstrument(
+                                event_id=saved_event.event_id,
+                                instrument_id=item,
+                            )
+                            for item in self._match_instruments(entry, instruments)
                         ]
                     )
                     if saved_event.event_id not in queued_ids and self.translator.needs_translation(
-                        saved_event.payload_json, saved_event.title, saved_event.summary
+                        saved_event.payload_json,
+                        saved_event.title,
+                        saved_event.summary,
                     ):
                         translation_queue.append(saved_event.event_id)
                         queued_ids.add(saved_event.event_id)
@@ -111,23 +118,22 @@ class MarketEventFeedService:
         return total
 
     async def _fetch_feed(
-        self, client: httpx.AsyncClient, source: MarketEventSource
+        self,
+        client: httpx.AsyncClient,
+        source: MarketEventSource,
     ) -> list[FeedEntry]:
         response = await client.get(source.entry_url)
         response.raise_for_status()
         response_text = response.text
-        if source.access_mode == "html" or self._looks_like_html(
-            response_text, response.headers.get("content-type", "")
-        ):
+        content_type = response.headers.get("content-type", "")
+        if source.access_mode == "html" or self._looks_like_html(response_text, content_type):
             return self._parse_html_feed(response_text, source)
         try:
             root = ElementTree.fromstring(response_text)
         except ElementTree.ParseError:
             if self._supports_html_fallback(source):
-                fallback_entries = self._parse_html_feed(response_text, source)
-                if fallback_entries:
-                    return fallback_entries
-            if self._looks_like_html(response_text, response.headers.get("content-type", "")):
+                return self._parse_html_feed(response_text, source)
+            if self._looks_like_html(response_text, content_type):
                 return self._parse_html_feed(response_text, source)
             raise
         if root.tag.endswith("feed"):
@@ -137,10 +143,8 @@ class MarketEventFeedService:
     @staticmethod
     def _looks_like_html(text: str, content_type: str) -> bool:
         content_type = (content_type or "").lower()
-        if "html" in content_type:
-            return True
         sample = (text or "").lstrip().lower()
-        return sample.startswith("<!doctype html") or sample.startswith("<html")
+        return "html" in content_type or sample.startswith(("<!doctype html", "<html"))
 
     def _parse_html_feed(self, text: str, source: MarketEventSource) -> list[FeedEntry]:
         if self._supports_html_fallback(source):
@@ -149,12 +153,10 @@ class MarketEventFeedService:
 
     @staticmethod
     def _supports_html_fallback(source: MarketEventSource) -> bool:
-        lowered_source_id = source.source_id.lower()
-        lowered_url = source.entry_url.lower()
-        return "panews" in lowered_source_id or "panewslab" in lowered_url
+        return "panews" in source.source_id.lower() or "panewslab" in source.entry_url.lower()
 
     def _parse_panews_html(self, text: str, source: MarketEventSource) -> list[FeedEntry]:
-        script_match = re.search(r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>', text, re.S)
+        script_match = re.search(r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*)</script>', text, re.S)
         if not script_match:
             return []
         try:
@@ -164,10 +166,10 @@ class MarketEventFeedService:
         if not isinstance(payload, list):
             return []
         entries: list[FeedEntry] = []
-        for _index, item in enumerate(payload):
-            if not isinstance(item, dict):
-                continue
-            if not {"slug", "title", "desc", "createdAt"} <= set(item.keys()):
+        for item in payload:
+            if not isinstance(item, dict) or not {"slug", "title", "desc", "createdAt"} <= set(
+                item.keys()
+            ):
                 continue
             title = self._resolve_nuxt_ref(payload, item.get("title"))
             summary = self._clean_html(self._resolve_nuxt_ref(payload, item.get("desc")))
@@ -178,8 +180,8 @@ class MarketEventFeedService:
             category = self._infer_category(source, title, summary)
             entries.append(
                 FeedEntry(
-                    title=title,
-                    summary=summary,
+                    title=self._clean_text(title),
+                    summary=self._clean_text(summary),
                     link=urljoin(source.entry_url, f"/zh/articles/{slug}"),
                     published_at=self._parse_pub_date(created_at),
                     source=source.provider_name,
@@ -198,67 +200,68 @@ class MarketEventFeedService:
     def _resolve_nuxt_ref(payload: list[Any], value: Any) -> str:
         if isinstance(value, int) and 0 <= value < len(payload):
             resolved = payload[value]
-            if isinstance(resolved, str):
-                return resolved.strip()
-        if isinstance(value, str):
-            return value.strip()
-        return ""
+            return resolved.strip() if isinstance(resolved, str) else ""
+        return value.strip() if isinstance(value, str) else ""
 
     def _parse_rss_feed(
-        self, root: ElementTree.Element, source: MarketEventSource
+        self,
+        root: ElementTree.Element,
+        source: MarketEventSource,
     ) -> list[FeedEntry]:
-        items = root.findall(".//item")
         return [
-            self._build_entry_from_rss_item(item, source) for item in items[: source.item_limit]
+            self._build_entry_from_rss_item(item, source)
+            for item in root.findall(".//item")[: source.item_limit]
         ]
 
     def _parse_atom_feed(
-        self, root: ElementTree.Element, source: MarketEventSource
+        self,
+        root: ElementTree.Element,
+        source: MarketEventSource,
     ) -> list[FeedEntry]:
-        entries = root.findall(".//{*}entry")
         return [
-            self._build_entry_from_atom_item(item, source) for item in entries[: source.item_limit]
+            self._build_entry_from_atom_item(item, source)
+            for item in root.findall(".//{*}entry")[: source.item_limit]
         ]
 
     def _build_entry_from_rss_item(
-        self, item: ElementTree.Element, source: MarketEventSource
+        self,
+        item: ElementTree.Element,
+        source: MarketEventSource,
     ) -> FeedEntry:
-        title = self._text(item, "title")
-        summary = self._clean_html(self._text(item, "description"))
-        link = self._text(item, "link")
-        published = self._parse_pub_date(self._text(item, "pubDate"))
-        category = self._infer_category(source, title, summary)
+        title = self._clean_text(self._text(item, "title"))
+        summary = self._clean_text(self._clean_html(self._text(item, "description")))
         return FeedEntry(
             title=title,
             summary=summary,
-            link=link,
-            published_at=published,
+            link=self._text(item, "link"),
+            published_at=self._parse_pub_date(self._text(item, "pubDate")),
             source=source.provider_name,
             source_id=source.source_id,
-            category=category,
+            category=self._infer_category(source, title, summary),
             reliability=source.reliability,
             importance=self._infer_importance(title, summary),
             tags=list(source.tags),
         )
 
     def _build_entry_from_atom_item(
-        self, item: ElementTree.Element, source: MarketEventSource
+        self,
+        item: ElementTree.Element,
+        source: MarketEventSource,
     ) -> FeedEntry:
-        title = self._text_ns(item, "title")
-        summary = self._clean_html(self._text_ns(item, "summary") or self._text_ns(item, "content"))
-        link = self._atom_link(item)
-        published = self._parse_pub_date(
-            self._text_ns(item, "updated") or self._text_ns(item, "published")
+        title = self._clean_text(self._text_ns(item, "title"))
+        summary = self._clean_text(
+            self._clean_html(self._text_ns(item, "summary") or self._text_ns(item, "content"))
         )
-        category = self._infer_category(source, title, summary)
         return FeedEntry(
             title=title,
             summary=summary,
-            link=link,
-            published_at=published,
+            link=self._atom_link(item),
+            published_at=self._parse_pub_date(
+                self._text_ns(item, "updated") or self._text_ns(item, "published")
+            ),
             source=source.provider_name,
             source_id=source.source_id,
-            category=category,
+            category=self._infer_category(source, title, summary),
             reliability=source.reliability,
             importance=self._infer_importance(title, summary),
             tags=list(source.tags),
@@ -286,36 +289,50 @@ class MarketEventFeedService:
     def _clean_html(value: str) -> str:
         text = html.unescape(value or "")
         text = re.sub(r"<[^>]+>", " ", text)
-        text = re.sub(r"\s+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str:
+        text = str(value or "")
+        replacements = {
+            "\ufffds": "'s",
+            "\ufffdS": "'s",
+            "\ufffd": "'",
+            "\u2018": "'",
+            "\u2019": "'",
+            "\u201c": '"',
+            "\u201d": '"',
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
         return text.strip()
 
     @staticmethod
     def _parse_pub_date(value: str) -> datetime:
         if not value:
-            return datetime.now(UTC)
+            return datetime.now(timezone.utc)
         try:
             parsed = parsedate_to_datetime(value)
-        except ValueError:
+        except (TypeError, ValueError):
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=UTC)
-        return parsed.astimezone(UTC)
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     def _infer_category(self, source: MarketEventSource, title: str, summary: str) -> str:
         haystack = f"{title} {summary}".lower()
         for category, keywords in self.rules.get("category_rules", {}).items():
             if any(keyword.lower() in haystack for keyword in keywords or []):
                 return category
-        if source.category in {"newsflash", "news"}:
-            return "news"
-        return source.category
+        return "news" if source.category in {"newsflash", "news"} else source.category
 
     def _infer_importance(self, title: str, summary: str) -> str:
         haystack = f"{title} {summary}".lower()
         importance_rules = self.rules.get("importance_rules", {})
         for level in ("high", "medium"):
             if any(
-                keyword.lower() in haystack for keyword in importance_rules.get(level, []) or []
+                keyword.lower() in haystack
+                for keyword in importance_rules.get(level, []) or []
             ):
                 return level
         return "low"

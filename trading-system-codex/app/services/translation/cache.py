@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.core.ids import new_id
 from app.db.models.market import MarketEventTranslationMap, TranslationJob, TranslationTextCache
 from app.repositories.market_repository import MarketRepository
+
+UTC = timezone.utc
 
 
 @dataclass(slots=True)
@@ -40,7 +42,11 @@ class TranslationCacheStore:
         await self.repository.upsert_translation_text_cache(entry)
         if entry.status == "translated" and entry.translated_text:
             return SegmentCacheResult(status="translated", translated_text=entry.translated_text)
-        if entry.status == "error" and entry.retry_after and entry.retry_after > datetime.now(UTC):
+        if (
+            entry.status == "error"
+            and entry.retry_after
+            and entry.retry_after > datetime.now(timezone.utc)
+        ):
             return SegmentCacheResult(status="error", translated_text=None)
         return SegmentCacheResult(status=entry.status, translated_text=entry.translated_text)
 
@@ -68,7 +74,7 @@ class TranslationCacheStore:
                 status=status,
                 error_message=error_message,
                 retry_after=(
-                    datetime.now(UTC)
+                    datetime.now(timezone.utc)
                     + timedelta(seconds=settings.market_events_translation_retry_delay_seconds)
                     if status == "error"
                     else None
@@ -127,7 +133,7 @@ class TranslationCacheStore:
                 segment_count=segment_count,
                 status=status,
                 error_message=error_message,
-                scheduled_at=datetime.now(UTC),
+                scheduled_at=datetime.now(timezone.utc),
                 started_at=started_at,
                 finished_at=finished_at,
             )

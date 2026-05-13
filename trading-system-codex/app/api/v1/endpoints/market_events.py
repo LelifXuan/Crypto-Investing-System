@@ -10,9 +10,8 @@ from app.db.models.market import MarketEvent
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import MarketEventCreate, MarketEventQueryResponse, MarketEventRead
 from app.services.market import MarketService
-from app.services.translation import MarketEventTranslationService
-from app.workers.market_event_translation import market_event_translation_worker
-from app.workers.market_events_feed import market_event_feed_worker
+
+UTC = timezone.utc
 
 router = APIRouter(prefix="/market-events", tags=["market-events"])
 marketevents_router = APIRouter(prefix="/marketevents", tags=["marketevents"])
@@ -25,6 +24,9 @@ async def _queue_event_translations(
 ) -> list[MarketEvent]:
     if not enabled or not events:
         return events
+    from app.services.translation import MarketEventTranslationService
+    from app.workers.market_event_translation import market_event_translation_worker
+
     translator = MarketEventTranslationService(enabled=True)
     pending_ids = [
         event.event_id
@@ -140,6 +142,9 @@ async def query_market_events(
 async def sync_market_event_feeds(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ) -> dict:
+    from app.workers.market_event_translation import market_event_translation_worker
+    from app.workers.market_events_feed import market_event_feed_worker
+
     count = await market_event_feed_worker.run_once()
     queued = await market_event_translation_worker.run_once()
     return {"status": "ok", "synced_items": count, "translated_items": queued}

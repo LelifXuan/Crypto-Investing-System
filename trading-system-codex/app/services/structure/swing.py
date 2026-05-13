@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from .common import (
@@ -24,13 +24,15 @@ from .common import (
 )
 from .pivots import detect_pivots
 
+UTC = timezone.utc
+
 
 class SwingScorer:
     def __init__(self, config: ScoringConfig) -> None:
         self.config = config
 
     def detect(self, instrument_id: str, timeframe: str, candles: list) -> DetectionBundle:
-        generated_at = candles[-1].ts_open if candles else datetime.now(UTC)
+        generated_at = candles[-1].ts_open if candles else datetime.now(timezone.utc)
         pivots = detect_pivots(candles)
         highs = [pivot for pivot in pivots if pivot.kind == "high"]
         lows = [pivot for pivot in pivots if pivot.kind == "low"]
@@ -43,7 +45,9 @@ class SwingScorer:
         higher_lows = sum(1 for idx in range(1, len(lows)) if lows[idx].price > lows[idx - 1].price)
         lower_lows = sum(1 for idx in range(1, len(lows)) if lows[idx].price < lows[idx - 1].price)
         trend_sequence = clamp(
-            (higher_highs + higher_lows - lower_highs - lower_lows) / max(len(pivots), 1), -1.0, 1.0
+            (higher_highs + higher_lows - lower_highs - lower_lows) / max(len(pivots), 1),
+            -1.0,
+            1.0,
         )
         close_values = [to_float(candle.close) for candle in candles[-8:]]
         range_size = max(close_values) - min(close_values) if close_values else 0.0
@@ -54,7 +58,9 @@ class SwingScorer:
         )
         direction_score = clamp(0.65 * trend_sequence + 0.35 * break_strength, -1.0, 1.0)
         confidence = clamp(
-            0.40 + min(len(pivots), 10) * 0.04 + abs(direction_score) * 0.20, 0.05, 0.95
+            0.40 + min(len(pivots), 10) * 0.04 + abs(direction_score) * 0.20,
+            0.05,
+            0.95,
         )
         quality = clamp(
             0.45 + self._symmetry_score(pivots) * 0.20 + self._invalidation_room(candles) * 0.35,
@@ -62,11 +68,18 @@ class SwingScorer:
             1.0,
         )
         freshness = self._freshness(
-            timeframe, pivots[-1].ts if pivots else generated_at, generated_at
+            timeframe,
+            pivots[-1].ts if pivots else generated_at,
+            generated_at,
         )
         bias = direction_from_score(direction_score)
         top_reasons = self._top_reasons(
-            bias, higher_highs, higher_lows, lower_highs, lower_lows, break_strength
+            bias,
+            higher_highs,
+            higher_lows,
+            lower_highs,
+            lower_lows,
+            break_strength,
         )
         score = ScoreBundle(
             system="swing",
@@ -83,27 +96,7 @@ class SwingScorer:
                 "pivot_count": len(pivots),
             },
         )
-        geometry = []
-        if len(pivots) >= 2:
-            geometry.append(
-                StructureGeometry(
-                    geometry_id=build_structure_id("swing", timeframe, "zigzag"),
-                    instrument_id=instrument_id,
-                    timeframe=timeframe,
-                    snapshot_version="pending",
-                    system="swing",
-                    kind="zigzag",
-                    status="confirmed",
-                    visible=True,
-                    points_json=[
-                        {"ts": pivot.ts.isoformat(), "price": pivot.price, "label": pivot.kind}
-                        for pivot in pivots[-12:]
-                    ],
-                    labels_json=["zigzag"],
-                    meta_json={"pivot_count": len(pivots)},
-                    created_at=generated_at,
-                )
-            )
+        geometry = self._build_geometry(instrument_id, timeframe, pivots, generated_at)
         structure_type = (
             "trend_up" if bias == "bullish" else "trend_down" if bias == "bearish" else "range"
         )
@@ -115,8 +108,9 @@ class SwingScorer:
                 snapshot_version="pending",
                 system="swing",
                 structure_type=structure_type,
-                display_name={"bullish": "上升摆动结构", "bearish": "下降摆动结构"}.get(
-                    bias, "区间摆动结构"
+                display_name={"bullish": "上升摆动", "bearish": "下降摆动"}.get(
+                    bias,
+                    "震荡摆动",
                 ),
                 lifecycle_status="confirmed",
                 directional_bias=bias,
@@ -124,7 +118,7 @@ class SwingScorer:
                 event_ts=generated_at,
                 confirmation_ts=generated_at,
                 invalidation_ts=None,
-                summary=top_reasons[0] if top_reasons else "摆动结构暂无明显方向。",
+                summary=top_reasons[0] if top_reasons else "摆动结构待确认",
                 reasoning_json=top_reasons,
                 key_levels_json={"last_close": close_values[-1] if close_values else 0.0},
                 payload_json={"pivot_count": len(pivots)},
@@ -145,7 +139,7 @@ class SwingScorer:
                 anchor_bar_ts=pivots[-1].ts if pivots else generated_at,
                 confirmation_bar_ts=generated_at,
                 event_ts=generated_at,
-                detection_ts=datetime.now(UTC),
+                detection_ts=datetime.now(timezone.utc),
                 dedupe_key=build_structure_dedupe_key(
                     "swing",
                     instrument_id,
@@ -158,14 +152,47 @@ class SwingScorer:
             )
         ]
         return DetectionBundle(
-            score=score, active_items=active_items, geometry=geometry, events=events
+            score=score,
+            active_items=active_items,
+            geometry=geometry,
+            events=events,
         )
+
+    def _build_geometry(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        pivots: list[Pivot],
+        generated_at: datetime,
+    ) -> list[StructureGeometry]:
+        if len(pivots) < 2:
+            return []
+        return [
+            StructureGeometry(
+                geometry_id=build_structure_id("swing", timeframe, "zigzag"),
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                snapshot_version="pending",
+                system="swing",
+                kind="zigzag",
+                status="confirmed",
+                visible=True,
+                points_json=[
+                    {"ts": pivot.ts.isoformat(), "price": pivot.price, "label": pivot.kind}
+                    for pivot in pivots[-12:]
+                ],
+                labels_json=["zigzag"],
+                meta_json={"role": "swing_zigzag", "pivot_count": len(pivots)},
+                created_at=generated_at,
+            )
+        ]
 
     def _symmetry_score(self, pivots: list[Pivot]) -> float:
         if len(pivots) < 4:
             return 0.55
         distances = [
-            abs(pivots[idx].price - pivots[idx - 1].price) for idx in range(1, len(pivots[-6:]))
+            abs(pivots[idx].price - pivots[idx - 1].price)
+            for idx in range(1, len(pivots[-6:]))
         ]
         if not distances:
             return 0.55
@@ -199,17 +226,17 @@ class SwingScorer:
     ) -> list[str]:
         if bias == "bullish":
             return [
-                f"更高高点 {higher_highs} 次、更高低点 {higher_lows} 次，摆动序列偏多。",
-                "最近一段收盘价格维持在前一轮摆动低点上方。",
-                f"突破力度因子为 {break_strength:.2f}，说明上行延续仍占优。",
+                f"更高高点 {higher_highs} 次，更高低点 {higher_lows} 次。",
+                "摆动序列偏向上行，结构仍需后续 K 线确认。",
+                f"突破强度为 {break_strength:.2f}。",
             ]
         if bias == "bearish":
             return [
-                f"更低高点 {lower_highs} 次、更低低点 {lower_lows} 次，摆动序列偏空。",
-                "最近收盘没有重新站回前一轮关键高点上方。",
-                f"突破力度因子为 {break_strength:.2f}，说明下行延续仍占优。",
+                f"更低高点 {lower_highs} 次，更低低点 {lower_lows} 次。",
+                "摆动序列偏向下行，结构仍需后续 K 线确认。",
+                f"突破强度为 {break_strength:.2f}。",
             ]
         return [
-            "高低点仍在交错，摆动结构更接近震荡或过渡状态。",
-            "最近几根 K 线未形成明确 BOS/CHoCH 延续。",
+            "摆动高低点暂未形成清晰趋势。",
+            "等待后续 K 线给出 BOS 或 CHoCH 确认。",
         ]

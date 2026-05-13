@@ -571,6 +571,80 @@ class SignalOutcome(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class StrategyDecision(Base):
+    __tablename__ = "strategy_decision"
+    __table_args__ = (UniqueConstraint("decision_id", name="uq_strategy_decision_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    decision_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    instrument_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    decision_ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    current_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    direction: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    execution_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    risk_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    capital_ceiling_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    position_side: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    position_notional: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    model_version: Mapped[str] = mapped_column(String, nullable=False)
+    config_version: Mapped[str] = mapped_column(String, nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    evidence_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    conflict_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    action_plan_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StrategyDecisionOutcome(Base):
+    __tablename__ = "strategy_decision_outcome"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    decision_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    bars_1_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    bars_3_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    bars_6_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    bars_12_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    bars_24_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    fee_adjusted_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    slippage_adjusted_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    mfe: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    mae: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    stop_hit_first: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    take_profit_hit_first: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    confirmation_hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    invalidation_hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    review_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    attribution_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StrategyIterationProposal(Base):
+    __tablename__ = "strategy_iteration_proposal"
+    __table_args__ = (UniqueConstraint("proposal_id", name="uq_strategy_iteration_proposal_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    proposal_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    instrument_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    timeframe: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    proposal_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    target_module: Mapped[str] = mapped_column(String, nullable=False)
+    priority: Mapped[str] = mapped_column(String, nullable=False, default="medium")
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    suggested_change_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="open", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class StructureSnapshot(Base):
     __tablename__ = "structure_snapshot"
     __table_args__ = (
@@ -758,3 +832,157 @@ class StructureAlert(Base):
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     event_payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+# =============================================================================
+# AI strategy models
+# =============================================================================
+
+class StrategyTemplate(Base):
+    """AI strategy template."""
+    __tablename__ = "strategy_template"
+    __table_args__ = (UniqueConstraint("template_key", name="uq_strategy_template_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    template_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    family: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)  # long/short/both
+    entry_conditions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    exit_conditions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    risk_params_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    applicable_instruments_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    applicable_timeframes_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    required_indicators_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    strength_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    confidence_ceiling: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=100)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-4")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StrategyRecommendation(Base):
+    """AI strategy recommendation."""
+    __tablename__ = "strategy_recommendation"
+    __table_args__ = (
+        UniqueConstraint(
+            "instrument_id", "timeframe", "recommendation_ts", name="uq_strategy_recommendation_unique"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recommendation_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    instrument_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    recommendation_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    template_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)  # long/short
+    bias_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    confidence_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, default=0)
+    strength_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, default=0)
+    entry_price_range_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    stop_loss_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    take_profit_prices_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    risk_reward_ratio: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    position_size_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    current_market_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    entry_conditions_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    exit_conditions_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    risk_warnings_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    market_conflicts_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    reasoning: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)  # active/expired/triggered/archived
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    triggered_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-4")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StrategySignal(Base):
+    """Market strategy signal."""
+    __tablename__ = "strategy_signal"
+    __table_args__ = (
+        UniqueConstraint(
+            "signal_key", "timeframe", "signal_ts", name="uq_strategy_signal_unique"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    signal_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    recommendation_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    template_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    signal_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    instrument_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    signal_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)  # long/short
+    signal_state: Mapped[str] = mapped_column(String(32), nullable=False)  # pending/active/closed/cancelled
+    confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    entry_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    stop_loss_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    take_profit_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    risk_reward_ratio: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    position_size_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    signal_source: Mapped[str] = mapped_column(String(64), nullable=False, default="ai_generated")
+    trigger_indicators_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    context_snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    market_condition_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StrategySignalOutcome(Base):
+    """Market strategy signal outcome."""
+    __tablename__ = "strategy_signal_outcome"
+    __table_args__ = (
+        UniqueConstraint(
+            "signal_key", "timeframe", "signal_ts", name="uq_strategy_signal_outcome_unique"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    signal_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    signal_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    recommendation_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    instrument_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    signal_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    entry_ref_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    exit_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    outcome_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    bars_1: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bars_3: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bars_6: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bars_12: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bars_24: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    return_1: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    return_3: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    return_6: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    return_12: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    return_24: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    mfe: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    mae: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    fee_adjusted_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    slippage_adjusted_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    stop_hit_first: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    take_profit_hit_first: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    confirmation_hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    invalidation_hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    trailing_stop_activated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    atr_at_entry: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    atr_at_exit: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    risk_reward_actual: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

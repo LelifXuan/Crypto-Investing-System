@@ -1,4 +1,4 @@
-﻿import {
+import {
   escapeHtml,
   formatDateTime,
   formatNumber,
@@ -204,7 +204,7 @@ function formatAxisPrice(value) {
   if (!Number.isFinite(value)) return "-";
   if (Math.abs(value) >= 1000) return formatNumber(value, 0);
   if (Math.abs(value) >= 10) return formatNumber(value, 2);
-  return formatNumber(value, 4);
+  return formatNumber(value, 2); // 最多2位小数
 }
 
 function formatAxisTime(value, timeframe) {
@@ -285,6 +285,23 @@ function getGeometryPoints(item) {
 
 function pointTime(point) {
   return normalizeTs(point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time);
+}
+
+function nearestCandleIndex(candles, tsValue, fallbackIndex = 0) {
+  const target = normalizeTs(tsValue);
+  if (target === null || !candles.length) return fallbackIndex;
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  candles.forEach((candle, index) => {
+    const ts = normalizeTs(candle.ts_open);
+    if (ts === null) return;
+    const distance = Math.abs(ts - target);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
 }
 
 function pointPrice(point) {
@@ -386,31 +403,61 @@ function buildLegendMarkup(availability) {
 }
 
 function buildOverlayMarkup(geometry, candles, scale) {
-  const xIndex = new Map(candles.map((item, index) => [String(item.ts_open || index), index]));
-
   return geometry
     .map((item) => {
       if (item.system === "profile") return "";
+      const meta = item.meta_json || {};
+      const role = meta.role || "";
+
+      if (item.system === "classic" && (item.kind === "pattern_path" || role === "classic_pattern_path")) {
+        return "";
+      }
+
+      let strokeColor = (CHART_SERIES[item.system] || CHART_SERIES.fused).color;
+      let strokeWidth = 2.0;
+      let strokeDash = "";
+      let opacity = 1.0;
+
+      if (role === "swing_backbone" || item.kind === "swing_zigzag") {
+        opacity = 0.30;
+        strokeWidth = 1.5;
+        strokeColor = "#94a3b8";
+      } else if (role === "neckline") {
+        strokeColor = "#e67e22";
+        strokeWidth = 2.5;
+        strokeDash = "6,3";
+      } else if (role === "upper_boundary" || role === "resistance") {
+        strokeColor = "#e74c3c";
+        strokeWidth = 2.2;
+        strokeDash = "5,3";
+      } else if (role === "lower_boundary" || role === "support") {
+        strokeColor = "#27ae60";
+        strokeWidth = 2.2;
+        strokeDash = "5,3";
+      } else if (role === "pattern_zone" || item.kind === "zone") {
+        opacity = 0.15;
+        strokeColor = "#6366f1";
+      }
+
       const points = getGeometryPoints(item);
       const mapped = points
         .map((point, index) => {
-          const pointTs = point.ts ?? point.timestamp ?? point.ts_open ?? point.time ?? index;
-          const candleIndex = xIndex.get(String(pointTs)) ?? index;
+          const tsValue = point.ts ?? point.timestamp ?? point.ts_open ?? point.time ?? index;
+          const candleIndex = nearestCandleIndex(candles, tsValue, typeof tsValue === 'number' && tsValue < candles.length ? tsValue : index);
           const price = pointPrice(point);
           return { x: scale.xForIndex(candleIndex), y: price === null ? NaN : scale.yForPrice(price) };
         })
         .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
       if (!mapped.length) return "";
 
-      const series = CHART_SERIES[item.system] || CHART_SERIES.fused;
       if (mapped.length === 1) {
-        return `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${series.color}" stroke="#fff8ed" stroke-width="2" />`;
+        return `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${strokeColor}" stroke="#fff8ed" stroke-width="${strokeWidth}" opacity="${opacity}" />`;
       }
 
       const path = mapped
         .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
         .join(" ");
-      return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="${series.width}" stroke-dasharray="${series.dash}" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />`;
+      return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round" />`;
     })
     .join("");
 }
@@ -497,7 +544,7 @@ function renderChart(snapshot, candles) {
       <span>快照版本：${escapeHtml(snapshot.snapshot_version || "-")}</span>
       <span>视图：${escapeHtml(VIEWPORT_LABELS[state.viewMode] || VIEWPORT_LABELS.focus)}</span>
       <span>可见 K 线：${visibleCandles.length}/${candles.length}</span>
-      <span>结构点：${overlayCount}</span>
+      <span>结构线：${overlayCount}</span>
       <span>图形：${classicCount}</span>
       <span>市场轮廓：${profileCount ? "POC/VAH/VAL" : "未绘制"}</span>
       <span>覆盖率：${coverageLabel}</span>
@@ -525,7 +572,7 @@ function renderSummary(snapshot) {
         <div class="metric-grid metric-grid-compact structure-summary-metrics">
           <div class="metric-box"><span>综合分数</span><strong>${escapeHtml(formatNumber(overall.overall_score ?? overall.score ?? 0, 2))}</strong></div>
           <div class="metric-box"><span>综合置信度</span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence ?? 0, 2))}</strong></div>
-          <div class="metric-box"><span>Regime</span><strong>${escapeHtml(labelFor(REGIME_LABELS, overall.regime))}</strong></div>
+          <div class="metric-box"><span>市场状态</span><strong>${escapeHtml(labelFor(REGIME_LABELS, overall.regime))}</strong></div>
           <div class="metric-box"><span>权重模板</span><strong>${escapeHtml(overall.weight_template || "-")}</strong></div>
         </div>
         ${

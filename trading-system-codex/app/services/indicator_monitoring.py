@@ -5,7 +5,7 @@ import hashlib
 import time as time_module
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from io import StringIO
 
@@ -46,6 +46,8 @@ from app.services.microstructure import (
     summarize_depth_slippage,
     summarize_open_interest,
 )
+
+UTC = timezone.utc
 
 MICROSTRUCTURE_KEYS = {
     "cvd_delta",
@@ -125,7 +127,7 @@ class IndicatorMonitoringService:
                     fallback_interval_seconds=row.get("fallback_interval_seconds"),
                     priority=int(row.get("priority", 5)),
                     is_enabled=True,
-                    next_run_at=datetime.now(UTC),
+                    next_run_at=datetime.now(timezone.utc),
                 )
             )
 
@@ -163,7 +165,7 @@ class IndicatorMonitoringService:
         await self.ensure_macro_calendar()
 
     async def run_due_policies(self, as_of: datetime | None = None) -> list[SyncResult]:
-        now = as_of or datetime.now(UTC)
+        now = as_of or datetime.now(timezone.utc)
         results: list[SyncResult] = []
         policies = await self.repository.list_monitoring_policies(
             enabled_only=True, due_only=True, as_of=now
@@ -194,7 +196,7 @@ class IndicatorMonitoringService:
                 status="running",
                 trigger_type=trigger_type,
                 trigger_ref=policy.event_key or policy.mode,
-                started_at=datetime.now(UTC),
+                started_at=datetime.now(timezone.utc),
                 rows_written=0,
                 stats_json={},
             )
@@ -206,7 +208,7 @@ class IndicatorMonitoringService:
                 run.run_id,
                 status="succeeded",
                 rows_written=len(observations),
-                finished_at=datetime.now(UTC),
+                finished_at=datetime.now(timezone.utc),
                 stats_json={"indicator_key": policy.indicator_key},
             )
             return SyncResult(
@@ -222,7 +224,7 @@ class IndicatorMonitoringService:
                 rows_written=0,
                 error_code="sync_failed",
                 error_message=str(exc),
-                finished_at=datetime.now(UTC),
+                finished_at=datetime.now(timezone.utc),
                 stats_json={},
             )
             raise
@@ -321,7 +323,7 @@ class IndicatorMonitoringService:
         return bucket[key]
 
     async def ensure_macro_calendar(self) -> None:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         year = now.year
         for month in range(1, 13):
             await self._upsert_macro_calendar_event(
@@ -360,7 +362,7 @@ class IndicatorMonitoringService:
         self, provider_key: str, event_key: str, title: str, scheduled_at: datetime
     ) -> None:
         actual, consensus, previous = self._macro_stub_values(event_key, scheduled_at)
-        status = "released" if scheduled_at <= datetime.now(UTC) else "scheduled"
+        status = "released" if scheduled_at <= datetime.now(timezone.utc) else "scheduled"
         surprise = (
             actual - consensus
             if actual is not None and consensus is not None and status == "released"
@@ -449,7 +451,7 @@ class IndicatorMonitoringService:
                 run_id=run_id,
                 instrument_id=instrument_id,
                 timeframe=policy.timeframe or "5s",
-                observation_ts=datetime.now(UTC),
+                observation_ts=datetime.now(timezone.utc),
                 value_num=value_num,
                 value_json={
                     "last_price": str(last_price),
@@ -594,7 +596,7 @@ class IndicatorMonitoringService:
         contract = contract_bucket[contract_key]
         mark = D(contract.get("mark_price") or contract.get("last_price"))
         multiplier = D(contract.get("quanto_multiplier") or "1")
-        ts = datetime.now(UTC)
+        ts = datetime.now(timezone.utc)
         key = definition.indicator_key
 
         if key == "cvd_delta":
@@ -824,7 +826,7 @@ class IndicatorMonitoringService:
         await self.ensure_macro_calendar()
         if indicator_key == "fomc_event_window":
             events = await self.repository.list_macro_events(event_key="fomc", limit=8)
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             current_state = "inactive"
             event_ts = now
             for event in events:
@@ -906,7 +908,7 @@ class IndicatorMonitoringService:
         latency_ms: int | None = None,
         payload_json: dict | None = None,
     ) -> None:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await self.repository.upsert_macro_source_health(
             MacroSourceHealth(
                 provider_key=provider_key,
@@ -942,7 +944,7 @@ class IndicatorMonitoringService:
             definition.calc_params_json.get("asset_scope") or "BTC"
         )
         timeframe = policy.timeframe or "24h"
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         value = self._demo_onchain_value(definition.indicator_key, asset_code, now)
         history = await self.repository.list_indicator_observations(
             definition.indicator_key, asset_code=asset_code, limit=60
@@ -959,7 +961,9 @@ class IndicatorMonitoringService:
             value_num=value,
             zscore_num=self._zscore(series) if len(series) > 1 else DECIMAL_ZERO,
             value_json={
-                "mode": "demo_fallback" if not settings.glassnode_api_key else "placeholder"
+                "mode": "demo_fallback" if not settings.glassnode_api_key else "placeholder",
+                "is_demo": True,
+                "recommendation_usable": False,
             },
             signal_state=self._onchain_state(definition.indicator_key, value),
             source_provider="glassnode",
@@ -1060,7 +1064,7 @@ class IndicatorMonitoringService:
                         instrument_id=observation.instrument_id,
                         asset_code=observation.asset_code,
                         timeframe=observation.timeframe,
-                        triggered_at=datetime.now(UTC),
+                        triggered_at=datetime.now(timezone.utc),
                         resolved_at=None,
                         dedupe_key="|".join(
                             [

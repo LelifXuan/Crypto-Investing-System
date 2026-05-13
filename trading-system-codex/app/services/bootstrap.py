@@ -18,16 +18,21 @@ from app.services.indicator_monitoring import IndicatorMonitoringService
 from app.services.indicators import SUPPORTED_INDICATOR_TIMEFRAMES, IndicatorService
 from app.services.market import MarketService
 from app.services.monitoring_dashboard import MonitoringDashboardService
-from app.services.structure import StructureSnapshotService
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_GATEIO_INSTRUMENTS: tuple[tuple[str, str, str], ...] = (
     ("btc-usdt-perp", "BTC_USDT", "BTC"),
     ("eth-usdt-perp", "ETH_USDT", "ETH"),
+    ("sol-usdt-perp", "SOL_USDT", "SOL"),
     ("hype-usdt-perp", "HYPE_USDT", "HYPE"),
     ("bnb-usdt-perp", "BNB_USDT", "BNB"),
     ("okb-usdt-perp", "OKB_USDT", "OKB"),
+    ("xau-usdt-perp", "XAU_USDT", "XAU"),
+    ("xaut-usdt-perp", "XAUT_USDT", "XAUT"),
+    ("spyx-usdt-perp", "SPYX_USDT", "SPYX"),
+    ("qqqx-usdt-perp", "QQQX_USDT", "QQQX"),
+    ("slvon-usdt-perp", "SLVON_USDT", "SLVON"),
 )
 
 
@@ -146,12 +151,27 @@ async def seed_local_defaults(
     ).seed_defaults()
 
 
+
+def candle_warmup_limit_for_timeframe(timeframe: str) -> int:
+    raw = getattr(settings, "local_bootstrap_candle_limits_by_timeframe", "") or ""
+    limits = {}
+    if raw:
+        try:
+            limits = __import__("json").loads(raw)
+        except (ValueError, TypeError):
+            pass
+    try:
+        return max(int(limits.get(timeframe, settings.local_bootstrap_candle_limit)), 1)
+    except (TypeError, ValueError):
+        return max(int(settings.local_bootstrap_candle_limit), 1)
+
+
 async def warm_local_market_data(market_repository: MarketRepository, instrument_id: str) -> None:
     if not settings.local_bootstrap_warmup_enabled:
         return
     market_service = MarketService(market_repository)
     monitoring_service = IndicatorMonitoringService(market_repository)
-    structure_service = StructureSnapshotService(market_repository)
+    structure_service = None
 
     try:
         await market_service.fetch_and_persist_live_mark(instrument_id)
@@ -163,7 +183,7 @@ async def warm_local_market_data(market_repository: MarketRepository, instrument
             await market_service.sync_candles_from_provider(
                 instrument_id=instrument_id,
                 timeframe=timeframe,
-                limit=settings.local_bootstrap_candle_limit,
+                limit=candle_warmup_limit_for_timeframe(timeframe),
                 persist=True,
             )
         except Exception as exc:  # pragma: no cover - depends on external provider
@@ -181,6 +201,10 @@ async def warm_local_market_data(market_repository: MarketRepository, instrument
 
     for timeframe in settings.local_bootstrap_structure_timeframes:
         try:
+            if structure_service is None:
+                from app.services.structure import StructureSnapshotService
+
+                structure_service = StructureSnapshotService(market_repository)
             await structure_service.refresh_snapshot(
                 instrument_id,
                 timeframe,
@@ -207,4 +231,8 @@ async def warm_local_market_data(market_repository: MarketRepository, instrument
     try:
         await MonitoringDashboardService(market_repository).refresh_bundle(instrument_id, "1d")
     except Exception as exc:  # pragma: no cover - depends on external provider
-        logger.warning("startup warmup: monitoring bundle failed for %s: %s", instrument_id, exc)
+        logger.warning("startup warmup: monitoring bundle (1d) failed for %s: %s", instrument_id, exc)
+    try:
+        await MonitoringDashboardService(market_repository).refresh_bundle(instrument_id, "1h")
+    except Exception as exc:  # pragma: no cover - depends on external provider
+        logger.warning("startup warmup: monitoring bundle (1h) failed for %s: %s", instrument_id, exc)

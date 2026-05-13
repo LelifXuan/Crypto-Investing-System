@@ -1,3 +1,13 @@
-from app.services.portfolio.rotation import PortfolioRotationEngine, RotationAssessment
+from __future__ import annotations
 
-__all__ = ["PortfolioRotationEngine", "RotationAssessment"]
+from dataclasses import dataclass, field
+
+
+@dataclass(slots=True)
+class RotationAssessment:
+    relative_strength: float
+    beta_hint: float
+    sector_leadership: str
+    volatility_adjusted_momentum: float
+    correlation_risk: str
+    notes: list[str] = field(default_factory=list)

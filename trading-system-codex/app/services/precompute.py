@@ -7,7 +7,7 @@ import os
 import time
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.repositories.market_repository import MarketRepository
@@ -29,10 +29,12 @@ from app.services.cache_registry import (
     macro_calendar_cache_key,
     market_events_cache_key,
     monitoring_dashboard_cache_key,
+    strategy_bundle_cache_key,
     structure_bundle_cache_key,
 )
 from app.services.monitoring_dashboard import MonitoringDashboardService
-from app.services.structure import StructureSnapshotService
+
+UTC = timezone.utc
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,11 @@ PAGE_PRIORITY_MATRIX = {
     "macro": {"current": [("macro", "P2")], "secondary": [], "related": []},
     "events": {"current": [("events", "P2")], "secondary": [], "related": []},
     "knowledge": {"current": [], "secondary": [], "related": []},
+    "strategy": {
+        "current": [("strategy", "P1")],
+        "secondary": [],
+        "related": [("analysis", "P3"), ("structure", "P3"), ("alerts", "P3")],
+    },
 }
 
 LANE_BY_TASK = {
@@ -91,6 +98,7 @@ LANE_BY_TASK = {
     "macro": "maintenance",
     "events": "maintenance",
     "adjacent_timeframe_analysis": "background_precompute",
+    "strategy": "background_precompute",
 }
 
 TASK_COST_CLASS = {
@@ -105,6 +113,7 @@ TASK_COST_CLASS = {
     "macro": "network",
     "events": "network",
     "adjacent_timeframe_analysis": "medium",
+    "strategy": "medium",
 }
 
 
@@ -257,6 +266,20 @@ class PrecomputeTaskPlanner:
                     visible=visible,
                 )
             )
+        elif task_type == "strategy":
+            items.append(
+                self._build_task(
+                    task_type=task_type,
+                    page_type="strategy",
+                    cache_key=strategy_bundle_cache_key(instrument_id, timeframe),
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    priority_level=priority_level,
+                    page=page,
+                    reason=reason,
+                    visible=visible,
+                )
+            )
         elif task_type == "macro":
             items.append(
                 self._build_task(
@@ -395,6 +418,8 @@ def normalize_page(page: str) -> str:
         "events": "events",
         "knowledge-base": "knowledge",
         "knowledge": "knowledge",
+        "ai-strategy": "strategy",
+        "strategy": "strategy",
     }
     return mapping.get(normalized, normalized)
 
@@ -535,6 +560,13 @@ class PrecomputeService:
     async def process_next(self, repository: MarketRepository) -> bool:
         if not settings.precompute_enabled or not self._cpu_is_idle():
             return False
+        now = time.monotonic()
+        retention_seconds = settings.precompute_min_seconds_between_same_key * 2
+        self._last_seen_at = {
+            key: value
+            for key, value in self._last_seen_at.items()
+            if now - value < retention_seconds
+        }
         async with self._lock:
             if not self._queue:
                 return False
@@ -553,7 +585,7 @@ class PrecomputeService:
                     "task_type": task.task_type,
                     "lane": task.lane,
                     "error": str(exc),
-                    "ts": datetime.now(UTC).isoformat(),
+                    "ts": datetime.now(timezone.utc).isoformat(),
                 }
             )
             await repository.upsert_page_snapshot_cache(
@@ -564,8 +596,8 @@ class PrecomputeService:
                 payload_json={},
                 status="error",
                 cache_state="error",
-                snapshot_at=datetime.now(UTC),
-                expires_at=expires_at_for_page(task.page_type, datetime.now(UTC)),
+                snapshot_at=datetime.now(timezone.utc),
+                expires_at=expires_at_for_page(task.page_type, datetime.now(timezone.utc)),
                 source_updated_at=None,
                 source_version=CACHE_SOURCE_VERSION,
                 last_error=str(exc),
@@ -633,7 +665,18 @@ class PrecomputeService:
                 task.timeframe,
             )
             return
+        if task.page_type == "strategy" and task.instrument_id and task.timeframe:
+            from app.services.strategy_signal.service import StrategySignalService
+
+            await StrategySignalService(repository).refresh_bundle(
+                task.instrument_id,
+                task.timeframe,
+                reason=task.reason or "precompute",
+            )
+            return
         if task.page_type == "structure" and task.instrument_id and task.timeframe:
+            from app.services.structure import StructureSnapshotService
+
             service = StructureSnapshotService(repository)
             await service.refresh_snapshot(
                 task.instrument_id,
@@ -654,7 +697,7 @@ class PrecomputeService:
                 MacroEventCalendarRead.model_validate(item).model_dump(mode="json")
                 for item in items
             ]
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             await repository.upsert_page_snapshot_cache(
                 cache_key=task.cache_key,
                 page_type="macro",
@@ -688,7 +731,7 @@ class PrecomputeService:
                 ).model_dump(mode="json")
                 for item in items
             ]
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             await repository.upsert_page_snapshot_cache(
                 cache_key=task.cache_key,
                 page_type="events",
@@ -705,6 +748,8 @@ class PrecomputeService:
 
     @staticmethod
     def _cpu_is_idle() -> bool:
+        if settings.app_distribution_mode == "portable":
+            return True
         if hasattr(os, "getloadavg"):
             try:
                 load = os.getloadavg()[0]

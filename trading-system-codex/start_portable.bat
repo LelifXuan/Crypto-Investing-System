@@ -6,15 +6,58 @@ set "APP_DISTRIBUTION_MODE=portable"
 set "APP_BUNDLE_ROOT=%~dp0"
 set "APP_RUNTIME_ROOT=%~dp0runtime"
 if not defined APP_PORT set "APP_PORT=8000"
+if exist "%~dp0runtime\config\portable.env" (
+  for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0runtime\config\portable.env") do (
+    if /I "%%A"=="APP_PORT" set "APP_PORT=%%B"
+  )
+)
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONPATH=%~dp0;%PYTHONPATH%"
+set "APP_PYTHON_EXE=%~dp0runtime_env\python\python.exe"
+set "APP_LOG_DIR=%~dp0runtime\logs"
+set "APP_CONSOLE_LOG=%APP_LOG_DIR%\portable_console.log"
 
-where python >nul 2>nul
-if %errorlevel% neq 0 (
-  echo error: python not found on PATH
-  exit /b 1
+if not exist "%APP_LOG_DIR%" mkdir "%APP_LOG_DIR%" >nul 2>nul
+
+echo Trading System Portable Launcher
+echo Bundle root: %~dp0
+echo Runtime root: %APP_RUNTIME_ROOT%
+echo Embedded Python: %APP_PYTHON_EXE%
+echo Port: %APP_PORT%
+echo Log: %APP_CONSOLE_LOG%
+echo.
+>>"%APP_CONSOLE_LOG%" echo ==== start_portable %DATE% %TIME% ====
+>>"%APP_CONSOLE_LOG%" echo Bundle root: %~dp0
+>>"%APP_CONSOLE_LOG%" echo Runtime root: %APP_RUNTIME_ROOT%
+>>"%APP_CONSOLE_LOG%" echo Embedded Python: %APP_PYTHON_EXE%
+>>"%APP_CONSOLE_LOG%" echo Port: %APP_PORT%
+
+if not exist "%APP_PYTHON_EXE%" (
+  echo error: embedded Python runtime missing: %APP_PYTHON_EXE%
+  echo Please use the win-x64 portable bundle that contains runtime_env\python.
+  >>"%APP_CONSOLE_LOG%" echo error: embedded Python runtime missing: %APP_PYTHON_EXE%
+  goto fail
 )
 
-python "%~dp0scripts\portable_preflight.py" || exit /b 1
-python -m uvicorn app.main:app --host 127.0.0.1 --port %APP_PORT%
+echo Running preflight...
+"%APP_PYTHON_EXE%" "%~dp0scripts\portable_preflight.py" >>"%APP_CONSOLE_LOG%" 2>&1
+if errorlevel 1 (
+  echo preflight failed. See log: %APP_CONSOLE_LOG%
+  type "%APP_CONSOLE_LOG%"
+  goto fail
+)
+
+echo Starting local server at http://127.0.0.1:%APP_PORT%
+echo Keep this window open while using the app.
+echo.
+"%APP_PYTHON_EXE%" -m uvicorn app.main:app --host 127.0.0.1 --port %APP_PORT% >>"%APP_CONSOLE_LOG%" 2>&1
+echo server exited. See log: %APP_CONSOLE_LOG%
+type "%APP_CONSOLE_LOG%"
+goto fail
+
+:fail
+echo.
+echo Startup failed or the server exited. Press any key to close this window.
+pause >nul
+exit /b 1

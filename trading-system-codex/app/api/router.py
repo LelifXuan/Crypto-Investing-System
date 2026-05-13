@@ -10,6 +10,8 @@ from app.api.v1.endpoints import (
     market_prices,
     monitoring,
     precompute,
+    signals,
+    strategy,
     structure,
 )
 from app.core.config import settings
@@ -33,5 +35,7 @@ v1_router.include_router(market_events.router)
 v1_router.include_router(market_events.marketevents_router)
 v1_router.include_router(precompute.router)
 v1_router.include_router(structure.router)
+v1_router.include_router(strategy.router)
+v1_router.include_router(signals.router)
 
 api_router.include_router(v1_router)

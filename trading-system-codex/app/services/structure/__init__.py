@@ -1,4 +1,4 @@
-from .classic import ClassicScorer, detect_classic_pattern
+from .classic import ClassicScorer, detect_classic_patterns
 from .common import (
     LOOKBACK_BY_TIMEFRAME,
     STRUCTURE_DETECTOR_VERSION,
@@ -32,7 +32,7 @@ __all__ = [
     "ClassicScorer",
     "ProfileScorer",
     "detect_pivots",
-    "detect_classic_pattern",
+    "detect_classic_patterns",
     "build_profile",
     "build_structure_dedupe_key",
     "StructureSnapshotService",

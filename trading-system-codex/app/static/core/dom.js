@@ -83,9 +83,10 @@ export function formatNumber(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
+  const safeDigits = Math.max(0, Math.min(Number(digits) || 0, 2));
   return num.toLocaleString("zh-CN", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
+    maximumFractionDigits: safeDigits,
   });
 }
 
@@ -100,9 +101,10 @@ export function formatPercent(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
+  const safeDigits = Math.max(0, Math.min(Number(digits) || 0, 2));
   return `${num.toLocaleString("zh-CN", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
+    maximumFractionDigits: safeDigits,
   })}%`;
 }
 

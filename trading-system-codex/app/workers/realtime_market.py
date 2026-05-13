@@ -5,7 +5,8 @@ import contextlib
 import json
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
+UTC = timezone.utc
 from decimal import Decimal
 
 from websockets.asyncio.client import connect
@@ -145,7 +146,7 @@ class MarketStreamWorker:
         await ws.send(
             json.dumps(
                 {
-                    "time": int(datetime.now(UTC).timestamp()),
+                    "time": int(datetime.now(timezone.utc).timestamp()),
                     "channel": "spot.tickers",
                     "event": "subscribe",
                     "payload": symbols,
@@ -155,7 +156,7 @@ class MarketStreamWorker:
         await ws.send(
             json.dumps(
                 {
-                    "time": int(datetime.now(UTC).timestamp()),
+                    "time": int(datetime.now(timezone.utc).timestamp()),
                     "channel": "spot.book_ticker",
                     "event": "subscribe",
                     "payload": symbols,
@@ -167,7 +168,7 @@ class MarketStreamWorker:
                 await ws.send(
                     json.dumps(
                         {
-                            "time": int(datetime.now(UTC).timestamp()),
+                            "time": int(datetime.now(timezone.utc).timestamp()),
                             "channel": "spot.candlesticks",
                             "event": "subscribe",
                             "payload": [timeframe, symbol],
@@ -179,7 +180,7 @@ class MarketStreamWorker:
         await ws.send(
             json.dumps(
                 {
-                    "time": int(datetime.now(UTC).timestamp()),
+                    "time": int(datetime.now(timezone.utc).timestamp()),
                     "channel": "futures.tickers",
                     "event": "subscribe",
                     "payload": symbols,
@@ -189,7 +190,7 @@ class MarketStreamWorker:
         await ws.send(
             json.dumps(
                 {
-                    "time": int(datetime.now(UTC).timestamp()),
+                    "time": int(datetime.now(timezone.utc).timestamp()),
                     "channel": "futures.book_ticker",
                     "event": "subscribe",
                     "payload": symbols,
@@ -199,7 +200,7 @@ class MarketStreamWorker:
         await ws.send(
             json.dumps(
                 {
-                    "time": int(datetime.now(UTC).timestamp()),
+                    "time": int(datetime.now(timezone.utc).timestamp()),
                     "channel": "futures.liquidates",
                     "event": "subscribe",
                     "payload": symbols,
@@ -211,7 +212,7 @@ class MarketStreamWorker:
                 await ws.send(
                     json.dumps(
                         {
-                            "time": int(datetime.now(UTC).timestamp()),
+                            "time": int(datetime.now(timezone.utc).timestamp()),
                             "channel": "futures.candlesticks",
                             "event": "subscribe",
                             "payload": [timeframe, symbol],
@@ -235,7 +236,7 @@ class MarketStreamWorker:
             try:
                 await ws.send(
                     json.dumps(
-                        {"time": int(datetime.now(UTC).timestamp()), "channel": ping_channel}
+                        {"time": int(datetime.now(timezone.utc).timestamp()), "channel": ping_channel}
                     )
                 )
             except ConnectionClosed:
@@ -282,7 +283,7 @@ class MarketStreamWorker:
                     await self._process_liquidation(publisher, instrument_id, item)
 
     async def _flush_microstructure_if_due(self) -> None:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         if self._last_micro_flush and (now - self._last_micro_flush).total_seconds() < 60:
             return
         self._last_micro_flush = now

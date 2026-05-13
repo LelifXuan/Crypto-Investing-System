@@ -9,6 +9,7 @@ const pageModules = {
   "macro-calendar": () => loadPageModule("./pages/macro_calendar.js"),
   "alert-center": () => loadPageModule("./pages/alerts.js"),
   "knowledge-base": () => loadPageModule("./pages/knowledge.js"),
+  "ai-strategy": () => loadPageModule("./pages/strategy.js"),
 };
 
 let activeController = null;
@@ -61,9 +62,7 @@ function normalizeController(result) {
 async function boot() {
   const pageId = document.body.dataset.page;
   const loadModule = pageModules[pageId];
-  if (!loadModule) {
-    return;
-  }
+  if (!loadModule) return;
   if (activeController) {
     await activeController.unmount();
     activeController = null;
@@ -75,7 +74,7 @@ async function boot() {
     console.error("page:module-load:error", pageId, error);
     renderFatalPageError(
       "页面模块加载失败",
-      `静态资源已更新，但当前页面模块加载失败。${error?.message ? ` 详情：${error.message}` : ""}`,
+      `页面静态资源加载失败。${error?.message ? `详情：${error.message}` : ""}`,
       "module-load",
     );
     return;
@@ -88,7 +87,8 @@ async function boot() {
     module.renderMarketEvents ||
     module.renderMacroCalendar ||
     module.renderAlerts ||
-    module.renderKnowledge;
+    module.renderKnowledge ||
+    module.renderStrategy;
   if (typeof renderPage !== "function") {
     console.error("page:render-missing", pageId);
     renderFatalPageError("页面入口缺失", "当前页面模块没有导出可执行的渲染函数。", "render-missing");
@@ -106,9 +106,7 @@ async function boot() {
 }
 
 document.addEventListener("visibilitychange", async () => {
-  if (!activeController || !activePageId) {
-    return;
-  }
+  if (!activeController || !activePageId) return;
   if (document.hidden) {
     await activeController.pause();
     return;

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} | Crypto Trading System</title>
   <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}">
+  {% if page_id == "ai-strategy" %}
+  <link rel="stylesheet" href="/static/styles-v15.css?v={{ asset_version }}">
+  {% endif %}
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body data-page="{{ page_id }}" data-page-title="{{ title }}">
@@ -23,6 +26,7 @@
     <a href="/indicators-page">技术指标</a>
     <a href="/alerts-page">告警中心</a>
     <a href="/knowledge-page">知识百科</a>
+    <a href="/strategy-page">AI策略</a>
   </nav>
 
   <main id="page-root"></main>

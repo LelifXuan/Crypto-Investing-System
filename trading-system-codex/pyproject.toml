@@ -57,3 +57,4 @@ ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/versions/*.py" = ["E501"]
+"app/services/strategy_signal/*.py" = ["E501"]

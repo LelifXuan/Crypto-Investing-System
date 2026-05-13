@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from app.core.decimal_utils import DECIMAL_ZERO
 from app.quant.indicators import (
@@ -64,7 +68,7 @@ class DivergenceService:
         indicator_matrix: dict | None = None,
     ) -> dict:
         if len(candles) < 40:
-            return self._empty_payload(instrument_id, timeframe, "样本不足，暂不生成背离判断。")
+            return self._empty_payload(instrument_id, timeframe, "insufficient_data")
         closes = [_to_decimal(_field(item, "close")) for item in candles]
         highs = [_to_decimal(_field(item, "high")) for item in candles]
         lows = [_to_decimal(_field(item, "low")) for item in candles]
@@ -72,7 +76,7 @@ class DivergenceService:
         price_highs, price_lows = self._price_pivots(candles, highs, lows)
         if len(price_highs) < 2 and len(price_lows) < 2:
             return self._empty_payload(
-                instrument_id, timeframe, "价格 pivot 仍不足，背离只作为观察项。"
+                instrument_id, timeframe, "insufficient_pivots"
             )
 
         series = indicator_matrix.get("series", {}) if indicator_matrix else {}
@@ -150,7 +154,7 @@ class DivergenceService:
             "filters": filters,
             "trend_context": trend_context,
             "generated_at": (
-                _to_datetime(_field(candles[-1], "ts_open")) if candles else datetime.now(UTC)
+                _to_datetime(_field(candles[-1], "ts_open")) if candles else datetime.now(timezone.utc)
             ),
         }
 
@@ -165,7 +169,7 @@ class DivergenceService:
             "timeframe": timeframe,
             "overall": {
                 "tone": "neutral",
-                "title": "暂无明显背离",
+                "title": "",
                 "score": 0.0,
                 "confidence": 0.0,
                 "leaders": [],
@@ -177,7 +181,7 @@ class DivergenceService:
             "signals": [],
             "filters": [],
             "trend_context": "unknown",
-            "generated_at": datetime.now(UTC),
+            "generated_at": datetime.now(timezone.utc),
         }
 
     def _price_pivots(
@@ -422,15 +426,16 @@ class DivergenceService:
         if not signals:
             return {
                 "tone": "neutral",
-                "title": "暂无明显背离",
+                "title": "未发现有效背离",
                 "score": 0.0,
                 "confidence": 0.12,
                 "leaders": [],
-                "message": (
-                    f"最近样本未形成清晰背离。当前 ADX {_to_float(adx):.1f}，"
-                    f"ATR {_to_float(atr):.1f}。"
-                ),
+                "message": f"当前未检测到高质量背离信号；ADX {_to_float(adx):.1f}，ATR {_to_float(atr):.1f}。",
                 "trend_context": trend_context,
+                "signal_kind": "warning",
+                "entry_signal": False,
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
             }
         score = round(sum(float(item["score"]) for item in signals), 4)
         leaders = [
@@ -441,35 +446,15 @@ class DivergenceService:
         if {"RSI", "MACD", "OBV"}.issubset(set(leaders)):
             confidence = _clamp(confidence + 0.10, 0.15, 0.95)
         if score >= 0.35:
-            title, tone, message = (
-                "底背离机会较强",
-                "bullish",
-                "多项指标共同提示下跌动能衰减，但仍需价格确认，不直接作为入场信号。",
-            )
+            title, tone, message = "多指标底背离偏强", "bullish", "多个指标同步指向潜在上行动能修复。"
         elif score >= 0.15:
-            title, tone, message = (
-                "轻微底背离",
-                "bullish",
-                "部分指标提示下跌衰竭，适合观察企稳与确认，不宜单独追信号。",
-            )
+            title, tone, message = "底背离观察", "bullish", "部分指标出现底背离，需要价格确认。"
         elif score <= -0.35:
-            title, tone, message = (
-                "顶背离风险较强",
-                "bearish",
-                "多项指标共同提示上涨动能衰减，需警惕冲高回落，但不直接作为做空入场。",
-            )
+            title, tone, message = "多指标顶背离偏强", "bearish", "多个指标同步指向潜在上行动能衰减。"
         elif score <= -0.15:
-            title, tone, message = (
-                "轻微顶背离",
-                "bearish",
-                "局部指标提示上行动能衰减，更适合减仓和等待确认。",
-            )
+            title, tone, message = "顶背离观察", "bearish", "部分指标出现顶背离，需要价格确认。"
         else:
-            title, tone, message = (
-                "背离信号冲突",
-                "event",
-                "多个指标方向并不一致，当前更适合作为观察和等待确认的 warning signal。",
-            )
+            title, tone, message = "背离信号较弱", "event", "当前背离强度不足，仅作为风险提示。"
         return {
             "tone": tone,
             "title": title,
@@ -494,27 +479,24 @@ class DivergenceService:
             filters.append(
                 {
                     "tone": "event",
-                    "title": "趋势强度过滤",
-                    "message": (
-                        f"当前 ADX {adx_value:.1f} 偏低，背离更可能对应震荡切换，"
-                        "而不是单边趋势反转。"
-                    ),
+                    "title": "趋势强度不足",
+                    "message": f"ADX {adx_value:.1f}，背离信号需要额外价格确认。",
                 }
             )
         if signals and atr_value <= 0:
             filters.append(
                 {
                     "tone": "event",
-                    "title": "波动率过滤",
-                    "message": "ATR 暂不可用，背离结果只能作为低置信度观察项。",
+                    "title": "波动率数据不足",
+                    "message": "ATR 不可用，止损与目标位需要人工复核。",
                 }
             )
         if trend_context == "sideways":
             filters.append(
                 {
                     "tone": "event",
-                    "title": "趋势环境提示",
-                    "message": "当前更接近震荡环境，背离更适合作为节奏提示而不是方向信号。",
+                    "title": "震荡环境",
+                    "message": "当前处于震荡结构，背离更适合作为观察信号。",
                 }
             )
         return filters
@@ -540,31 +522,33 @@ class DivergenceService:
 
     def _title(self, indicator: str, divergence_type: str) -> str:
         mapping = {
-            "regular_bearish": "常规顶背离风险",
-            "regular_bullish": "常规底背离机会",
-            "hidden_bullish": "隐藏多头背离",
-            "hidden_bearish": "隐藏空头背离",
+            "regular_bearish": "常规顶背离",
+            "regular_bullish": "常规底背离",
+            "hidden_bullish": "隐藏底背离",
+            "hidden_bearish": "隐藏顶背离",
         }
-        return f"{indicator} {mapping.get(divergence_type, '背离提示')}"
+        return f"{indicator} {mapping.get(divergence_type, '背离')}"
 
     def _message(
         self, indicator: str, divergence_type: str, price_change: float, indicator_change: float
     ) -> str:
-        return (
-            f"价格变化 {price_change * 100:.2f}% ，"
-            f"{indicator} 变化 {indicator_change * 100:.2f}% ，"
-            f"当前识别为 {divergence_type.replace('_', ' ')}。"
-        )
+        label = {
+            "regular_bearish": "常规顶背离",
+            "regular_bullish": "常规底背离",
+            "hidden_bullish": "隐藏底背离",
+            "hidden_bearish": "隐藏顶背离",
+        }.get(divergence_type, "背离信号")
+        return f"价格变化 {price_change * 100:.2f}%，{indicator} 变化 {indicator_change * 100:.2f}%，形成{label}。"
 
     def _confirmation(self, direction: str, price: float) -> str:
         if direction == "bullish":
-            return f"若价格重新站稳 {price:.2f} 上方，并伴随量能确认，可视为进一步确认。"
-        return f"若价格重新跌回 {price:.2f} 下方，并伴随动能走弱，可视为进一步确认。"
+            return f"{price:.2f} "
+        return f"{price:.2f} "
 
     def _invalidation(self, direction: str, price: float) -> str:
         if direction == "bullish":
-            return f"若价格再次跌破 {price:.2f}，该背离提示视为失效。"
-        return f"若价格再次站回 {price:.2f} 上方，该背离提示视为失效。"
+            return f"{price:.2f}"
+        return f"{price:.2f} "
 
     def _cci_series(
         self, highs: list[Decimal], lows: list[Decimal], closes: list[Decimal], period: int = 20

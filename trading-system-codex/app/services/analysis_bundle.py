@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
-from datetime import UTC, datetime
+from datetime import timezone, datetime
+UTC = timezone.utc
 
 from app.db.models.market import MarkPrice
 from app.repositories.market_repository import MarketRepository
@@ -72,7 +75,7 @@ class AnalysisBundleService:
                 "core_indicator_series": payload.get("core_indicator_series", {}),
                 "secondary_indicator_series": payload.get("secondary_indicator_series", {}),
                 "final_decision": payload.get("final_decision", {}),
-                "status": status,
+                "status": "ready" if status == "fresh" else status,
                 "cache_state": status,
                 "snapshot_at": cache.snapshot_at if cache else None,
                 "data_ts": cache.data_ts if cache else None,
@@ -94,7 +97,7 @@ class AnalysisBundleService:
         sync_inputs: bool = True,
     ) -> AnalysisBundleRead:
         started = time.perf_counter()
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         market_service = MarketService(self.repository)
         monitoring_service = IndicatorMonitoringService(self.repository)
         normalized_timeframe = "30d" if timeframe == "1M" else timeframe
@@ -115,11 +118,16 @@ class AnalysisBundleService:
             except Exception:
                 # Keep bundle generation resilient if indicator sync is temporarily unavailable.
                 pass
-        contract_snapshot = await ContractSnapshotService(self.repository).get_snapshot(
-            instrument_id,
-            include_stats=True,
+        contract_snapshot, mark, indicator_matrix, final_decision = await asyncio.gather(
+            ContractSnapshotService(self.repository).get_snapshot(
+                instrument_id, include_stats=True,
+            ),
+            market_service.get_best_mark(instrument_id=instrument_id, prefer_live=True),
+            IndicatorMatrixService(self.repository).get_matrix(
+                instrument_id=instrument_id, timeframe=normalized_timeframe, limit=limit,
+            ),
+            FinalDecisionService(self.repository).build(instrument_id, normalized_timeframe),
         )
-        mark = await market_service.get_best_mark(instrument_id=instrument_id, prefer_live=True)
         market_bundle = await MarketDataBundleService(self.repository).get_bundle(
             instrument_id=instrument_id,
             timeframe=normalized_timeframe,
@@ -132,11 +140,6 @@ class AnalysisBundleService:
             for item in market_bundle.get("candles", [])
         ]
         source_updated_at = candles[-1].ts_open if candles else (mark.ts_event if mark else now)
-        indicator_matrix = await IndicatorMatrixService(self.repository).get_matrix(
-            instrument_id=instrument_id,
-            timeframe=normalized_timeframe,
-            limit=limit,
-        )
         core_indicator_series = {
             key: value
             for key, value in indicator_matrix["series"].items()
@@ -162,9 +165,6 @@ class AnalysisBundleService:
             for key, value in indicator_matrix["series"].items()
             if key not in core_indicator_series
         }
-        final_decision = await FinalDecisionService(self.repository).build(
-            instrument_id, normalized_timeframe
-        )
         payload = {
             "candles": [item.model_dump(mode="json") for item in candles],
             "mark": self._mark_payload(mark),
@@ -201,7 +201,7 @@ class AnalysisBundleService:
                 "core_indicator_series": core_indicator_series,
                 "secondary_indicator_series": secondary_indicator_series,
                 "final_decision": final_decision,
-                "status": "fresh",
+                "status": "ready",
                 "cache_state": "fresh",
                 "snapshot_at": cache.snapshot_at,
                 "data_ts": cache.data_ts,

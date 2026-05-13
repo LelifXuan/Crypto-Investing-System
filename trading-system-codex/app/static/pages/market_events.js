@@ -65,6 +65,17 @@ function eventCategoryLabel(value) {
   return "其他";
 }
 
+function translationStatusLabel(value) {
+  const mapping = {
+    translated: "已翻译",
+    pending: "翻译排队中",
+    skipped: "无需翻译",
+    disabled: "翻译未启用",
+    error: "翻译失败，显示原文",
+  };
+  return mapping[value] || value || "";
+}
+
 function eventCategoryTone(value) {
   if (value === "macro" || value === "regulatory") return "chip-event";
   if (value === "exchange") return "chip-bullish-soft";
@@ -85,17 +96,21 @@ function renderEventFeed(items) {
           items.length
             ? items
                 .map((item) => {
-                  const summary = text(item.summary, "");
+                  const payload = item.payload_json || {};
+                  const title = appState.translateEvents && (payload.translated_title || item.translated_title) ? (payload.translated_title || item.translated_title) : item.title;
+                  const summary = text(appState.translateEvents && (payload.translated_summary || item.translated_summary) ? (payload.translated_summary || item.translated_summary) : item.summary, "");
+                  const translationValue = payload.translation_status || item.translation_status || (appState.translateEvents ? "pending" : "disabled");
                   return `
                     <article class="event-card event-feed-item">
                       <div class="event-feed-meta">
                         <div class="event-feed-tags">
                           <span class="status-chip ${eventCategoryTone(item.category)}">${escapeHtml(eventCategoryLabel(item.category))}</span>
                           ${item.source ? `<span class="event-feed-source">${escapeHtml(text(item.source, ""))}</span>` : ""}
+                          <span class="status-chip chip-neutral">${escapeHtml(translationStatusLabel(translationValue))}</span>
                         </div>
                         <small>${escapeHtml(formatDateOnly(item.ts_event))}</small>
                       </div>
-                      <strong>${escapeHtml(text(item.title, "-"))}</strong>
+                      <strong>${escapeHtml(text(title, "-"))}</strong>
                       ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
                     </article>
                   `;
@@ -185,6 +200,11 @@ export async function renderMarketEvents() {
   document.getElementById("events-translate-toggle").addEventListener("click", async () => {
     appState.translateEvents = !appState.translateEvents;
     persistState();
+    if (appState.translateEvents) {
+      renderStatus("正在同步并翻译市场信息流", "loading");
+      await api.syncMarketEvents();
+      invalidateCache("/marketevents");
+    }
     await renderMarketEvents();
   });
 

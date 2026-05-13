@@ -1,18 +1,24 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from app.schemas.structure import StructureDiagnosticsRead
 
 from .common import STRUCTURE_DETECTOR_VERSION, FusionResult
 
+UTC = timezone.utc
+
 
 def bundle_status_message(cache_state: str) -> str:
     if cache_state == "missing":
-        return "当前仅返回缓存结果：尚未生成结构快照，请手动刷新后再查看结构分析。"
+        return "暂无结构快照，已等待预计算或手动刷新。"
     if cache_state == "stale":
-        return "当前显示的是缓存快照，结构结果已落后于最新价格，请按需手动刷新。"
-    return "当前显示的是缓存快照结果。"
+        return "快照可用，但可能略滞后。"
+    if cache_state == "error":
+        return "结构快照读取失败，可手动刷新。"
+    if cache_state in {"updating", "refreshing"}:
+        return "后台正在生成结构快照。"
+    return "数据已就绪。"
 
 
 def empty_diagnostics() -> StructureDiagnosticsRead:
@@ -26,7 +32,7 @@ def empty_diagnostics() -> StructureDiagnosticsRead:
         alert_count=0,
         latest_event_name=None,
         generated_at=datetime.now(UTC),
-        notes=["当前还没有可用的结构快照。"],
+        notes=["暂无可用结构诊断。"],
     )
 
 
@@ -65,7 +71,7 @@ def build_diagnostics_payload(
         "can_analyze": quality.can_analyze,
         "can_alert": quality.can_alert,
         "notes": [
-            "综合判断使用分层加权与市场状态切换模型。",
-            f"当前权重模板为 {fusion.weight_template}。",
+            "结构诊断使用缓存 K 线与本地结构模块生成。",
+            f"当前权重模板：{fusion.weight_template}。",
         ],
     }

@@ -4,6 +4,15 @@ const inflightStore = new Map();
 
 const DEFAULT_GET_TIMEOUT_MS = 12000;
 const DEFAULT_POST_TIMEOUT_MS = 20000;
+const STRATEGY_CLIENT_TTL_SECONDS = {
+  "15m": 30,
+  "1h": 60,
+  "4h": 180,
+  "1d": 300,
+  "1w": 900,
+  "30d": 1800,
+  "1M": 1800,
+};
 
 function buildUrl(path, params = {}) {
   const url = new URL(`${window.location.origin}${API_PREFIX}${path}`);
@@ -371,6 +380,66 @@ export const api = {
     return requestJson("/structure/tab/refresh", {
       method: "POST",
       params: { instrument_id: instrumentId, timeframe },
+    });
+  },
+  getStrategyBundle(instrumentId, timeframe, options = {}) {
+    const normalizedTimeframe = timeframe === "1M" ? "30d" : timeframe;
+    return requestJson("/strategy/bundle", {
+      params: {
+        instrument_id: instrumentId,
+        timeframe: normalizedTimeframe,
+      },
+      ttl: STRATEGY_CLIENT_TTL_SECONDS[normalizedTimeframe] || 300,
+      force: options.force ?? false,
+      timeoutMs: options.timeoutMs ?? 12000,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  refreshStrategyBundle(instrumentId, timeframe, options = {}) {
+    const normalizedTimeframe = timeframe === "1M" ? "30d" : timeframe;
+    invalidateCache("/strategy/bundle");
+    return requestJson("/strategy/refresh", {
+      method: "POST",
+      params: {
+        instrument_id: instrumentId,
+        timeframe: normalizedTimeframe,
+      },
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
+  saveStrategySnapshot(instrumentId, timeframe) {
+    invalidateCache("/strategy/");
+    return requestJson("/strategy/signals", {
+      method: "POST",
+      body: {
+        instrument_id: instrumentId,
+        timeframe: timeframe === "1M" ? "30d" : timeframe,
+        position: { side: "flat" },
+      },
+    });
+  },
+  getStrategyReview(instrumentId, timeframe, options = {}) {
+    return requestJson("/strategy/review", {
+      params: {
+        instrument_id: instrumentId,
+        timeframe: timeframe === "1M" ? "30d" : timeframe,
+      },
+      ttl: 20,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  getStrategyIterationProposals(instrumentId, timeframe, options = {}) {
+    return requestJson("/strategy/iteration-proposals", {
+      params: {
+        instrument_id: instrumentId,
+        timeframe: timeframe === "1M" ? "30d" : timeframe,
+      },
+      ttl: 20,
+      signal: options.signal,
+      retry: 1,
     });
   },
   seedDemo() {

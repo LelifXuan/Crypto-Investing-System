@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
 
@@ -21,6 +22,10 @@ from app.services.cache_registry import (
     expires_at_for_dataset,
 )
 from app.services.market import MarketService
+
+logger = logging.getLogger(__name__)
+
+UTC = timezone.utc
 
 
 def market_bundle_cache_key(
@@ -89,6 +94,19 @@ class MarketDataBundleService:
                 timeframe=cache_timeframe,
                 limit=limit_bucket,
             )
+            if len(candles) < min(limit, limit_bucket):
+                try:
+                    live_candles = await self.market_service.sync_candles_from_provider(
+                        instrument_id=normalized_instrument,
+                        timeframe=provider_timeframe,
+                        limit=limit_bucket,
+                        price_kind=price_kind,
+                        persist=True,
+                    )
+                    if len(live_candles) > len(candles):
+                        candles = live_candles
+                except Exception:
+                    logger.warning("provider fallback failed", exc_info=True)
 
         payload = self._build_payload(
             normalized_instrument,
@@ -116,7 +134,7 @@ class MarketDataBundleService:
             payload_json=jsonable_encoder(payload),
             cache_state="fresh" if candles else "missing",
             source_version=CACHE_SOURCE_VERSION,
-            calculated_at=datetime.now(UTC),
+            calculated_at=datetime.now(timezone.utc),
             expires_at=expires_at_for_dataset("market_bundle"),
             meta_json={
                 "requested_limit": limit,
@@ -158,9 +176,9 @@ class MarketDataBundleService:
         }
         warnings = []
         if not candles:
-            warnings.append("本地暂无可用 K 线样本。")
+            warnings.append("缺少可用 K 线。")
         elif not coverage["requested_complete"]:
-            warnings.append("K 线覆盖不足，部分长周期指标可能处于未成熟状态。")
+            warnings.append("K 线数量不足，当前只使用可用样本进行降级分析。")
         candle_payload = [
             CandleRead.model_validate(item).model_dump(mode="json")
             for item in candles[-requested_limit:]
@@ -173,7 +191,7 @@ class MarketDataBundleService:
             "requested_limit": requested_limit,
             "limit_bucket": limit_bucket,
             "source_max_ts": source_max_ts,
-            "generated_at": datetime.now(UTC),
+            "generated_at": datetime.now(timezone.utc),
             "cache_state": "fresh" if candles else "missing",
             "candles": candle_payload,
             "coverage": coverage,

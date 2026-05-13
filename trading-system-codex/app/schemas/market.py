@@ -395,7 +395,7 @@ class ChipStructureRead(BaseModel):
     state_label: str
     state_reason: str
     primary_regime: str
-    secondary_regime: str
+    primary_regime_label: str | None = None
     evidence_quality: str = "proxy_only"
     weekly_context: str
     daily_bias: str
@@ -568,6 +568,8 @@ class MonitoringDashboardRead(BundleMetaRead):
     technical_observations: list[IndicatorObservationRead] = Field(default_factory=list)
     onchain_observations: list[IndicatorObservationRead] = Field(default_factory=list)
     alert_events: list[AlertEventRead] = Field(default_factory=list)
+    cross_asset: list[dict] = Field(default_factory=list)
+    source_status: dict[str, str] = Field(default_factory=dict)
 
 
 class PrecomputeHintRequest(BaseModel):

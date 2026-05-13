@@ -34,6 +34,14 @@ class DatabaseManager:
                     await connection.execute(text("PRAGMA journal_mode=WAL"))
                     await connection.execute(text("PRAGMA synchronous=NORMAL"))
                     await connection.execute(text("PRAGMA busy_timeout=30000"))
+                    cache_kb = int(getattr(settings, "sqlite_cache_size_kb", 65536))
+                    await connection.execute(text(f"PRAGMA cache_size=-{cache_kb}"))
+                    await connection.execute(text("PRAGMA temp_store=MEMORY"))
+                    checkpoint_pages = int(getattr(settings, "sqlite_wal_autocheckpoint_pages", 1000))
+                    await connection.execute(text(f"PRAGMA wal_autocheckpoint={checkpoint_pages}"))
+                    mmap_mb = int(getattr(settings, "sqlite_mmap_size_mb", 256))
+                    if mmap_mb > 0:
+                        await connection.execute(text(f"PRAGMA mmap_size={mmap_mb * 1024 * 1024}"))
                     await connection.execute(text("PRAGMA foreign_keys=ON"))
 
     async def disconnect(self) -> None:
