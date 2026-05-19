@@ -70,7 +70,11 @@ def test_v16_generates_market_long_signal_without_position_context():
     decision = _decision(_snapshot())
 
     assert decision["strategy_bias"] == "long"
-    assert decision["strategy_state"] in {"WAIT_LONG_CONFIRMATION", "LONG_TRIGGERED"}
+    assert decision["strategy_state"] in {
+        "WAIT_LONG_CONFIRMATION",
+        "WAIT_LOWER_TF_CONFIRMATION",
+        "LONG_TRIGGERED",
+    }
     assert decision["long_score"] > decision["short_score"]
     assert decision["primary_strategy"]["direction"] == "long"
     assert decision["primary_strategy"]["entry_price"] is not None
@@ -104,7 +108,11 @@ def test_v16_generates_short_signal_when_market_evidence_is_bearish():
     decision = _decision(snapshot)
 
     assert decision["strategy_bias"] == "short"
-    assert decision["strategy_state"] in {"WAIT_SHORT_CONFIRMATION", "SHORT_TRIGGERED"}
+    assert decision["strategy_state"] in {
+        "WAIT_SHORT_CONFIRMATION",
+        "WAIT_LOWER_TF_CONFIRMATION",
+        "SHORT_TRIGGERED",
+    }
     assert decision["short_score"] > decision["long_score"]
     assert decision["primary_strategy"]["direction"] == "short"
 

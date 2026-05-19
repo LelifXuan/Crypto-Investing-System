@@ -1,0 +1,201 @@
+{
+  "version": "macro_data_sources_v2",
+  "security": {
+    "never_store_real_api_keys_in_repo": true,
+    "secret_loading_order": ["os.environ", "app.core.config.settings"],
+    "redact_keys_in_logs": true,
+    "healthcheck_must_not_return_key_prefix_or_suffix": true
+  },
+  "env_vars": {
+    "required_for_core_macro": [
+      "FRED_API_KEY",
+      "BLS_API_KEY",
+      "BEA_API_KEY"
+    ],
+    "optional_cross_asset": [
+      "TIINGO_API_KEY",
+      "TWELVEDATA_API_KEY",
+      "ALPHA_VANTAGE_API_KEY",
+      "COINMARKETCAP_API_KEY",
+      "OPENEXCHANGERATES_APP_ID",
+      "NASDAQ_DATA_LINK_API_KEY"
+    ],
+    "optional_china_etf": [
+      "TUSHARE_TOKEN",
+      "ZHITUAPI_TOKEN",
+      "AGUSHUJU_API_KEY"
+    ],
+    "optional_crypto_private": [
+      "GATEIO_API_KEY",
+      "GATEIO_API_SECRET"
+    ]
+  },
+  "source_priority": {
+    "policy_rates": ["fred", "treasury", "websearch_cache"],
+    "inflation_prices": ["bls", "bea", "fred", "websearch_cache"],
+    "growth_jobs": ["bls", "bea", "fred", "websearch_cache"],
+    "liquidity_credit": ["fred", "treasury", "websearch_cache"],
+    "usd_real_rates": ["fred", "treasury", "twelvedata", "tiingo", "alphavantage", "websearch_cache"],
+    "cross_asset": ["tiingo", "twelvedata", "alphavantage", "fred", "gateio", "coinmarketcap", "websearch_cache"],
+    "china_etf": ["tushare", "zhituapi", "agushuju", "akshare"]
+  },
+  "freshness_days": {
+    "intraday": 0.1,
+    "daily": 3,
+    "weekly": 14,
+    "monthly": 45,
+    "quarterly": 120,
+    "fomc": 60,
+    "irregular": 30
+  },
+  "scoring_policy": {
+    "missing_is_never_zero": true,
+    "ok_statuses": ["ok", "cached"],
+    "non_scored_statuses": ["missing", "stale", "source_error", "auth_missing", "rate_limited", "disabled", "pending_release"],
+    "websearch_cache_default_is_scored": false,
+    "min_effective_ratio_for_medium_confidence": 0.5,
+    "min_effective_ratio_for_high_confidence": 0.75
+  },
+  "sources": {
+    "fred": {
+      "type": "official_macro_api",
+      "requires_key": true,
+      "env": "FRED_API_KEY",
+      "base_url": "https://api.stlouisfed.org/fred/series/observations",
+      "fallback": "fred_public_csv",
+      "status_mapping": {
+        "missing_key": "auth_missing",
+        "http_429": "rate_limited",
+        "http_4xx": "source_error",
+        "http_5xx": "source_error"
+      }
+    },
+    "bls": {
+      "type": "official_macro_api",
+      "requires_key": true,
+      "env": "BLS_API_KEY",
+      "base_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/",
+      "method": "POST",
+      "key_location": "json.registrationkey"
+    },
+    "bea": {
+      "type": "official_macro_api",
+      "requires_key": true,
+      "env": "BEA_API_KEY",
+      "base_url": "https://apps.bea.gov/api/data",
+      "key_location": "query.UserID"
+    },
+    "treasury": {
+      "type": "official_csv_json",
+      "requires_key": false,
+      "base_urls": {
+        "fiscaldata": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service",
+        "daily_rates_csv": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml"
+      }
+    },
+    "websearch_cache": {
+      "type": "fallback_cache",
+      "requires_key": false,
+      "default_is_scored": false,
+      "allowed_for": ["fedwatch_next_meeting", "btc_etf_flow", "move_index", "gdpnow", "policy_news"]
+    }
+  },
+  "modules": [
+    {
+      "id": "policy_rates",
+      "name_zh": "政策与利率",
+      "weight": 0.25,
+      "indicators": [
+        {"id": "fed_funds_target_upper", "name_zh": "联邦基金目标上限", "source": "fred", "series": "DFEDTARU", "frequency": "fomc", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "fed_funds_target_lower", "name_zh": "联邦基金目标下限", "source": "fred", "series": "DFEDTARL", "frequency": "fomc", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "effr", "alias_old": "us_dff", "name_zh": "有效联邦基金利率", "source": "fred", "series": "DFF", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "sofr", "name_zh": "SOFR", "source": "fred", "series": "SOFR", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "us03m_yield", "name_zh": "美国3个月国债收益率", "source": "fred", "series": "DGS3MO", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "us02y_yield", "alias_old": "us_2y_yield", "name_zh": "美国2年期国债收益率", "source": "fred", "series": "DGS2", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "us10y_yield", "alias_old": "us_10y_yield", "name_zh": "美国10年期国债收益率", "source": "fred", "series": "DGS10", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "us30y_yield", "name_zh": "美国30年期国债收益率", "source": "fred", "series": "DGS30", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "us10y_2y_spread", "alias_old": "us_10y_2y_spread", "name_zh": "10年-2年利差", "source": "derived", "formula": "us10y_yield - us02y_yield", "frequency": "daily", "unit": "pp", "priority": "must", "enabled": true},
+        {"id": "us10y_3m_spread", "name_zh": "10年-3个月利差", "source": "derived", "formula": "us10y_yield - us03m_yield", "frequency": "daily", "unit": "pp", "priority": "should", "enabled": true},
+        {"id": "fedwatch_next_meeting", "name_zh": "下一次 FOMC 利率预期", "source": "websearch_cache", "frequency": "daily", "unit": "%", "priority": "optional", "enabled": true, "is_scored": false}
+      ]
+    },
+    {
+      "id": "inflation_prices",
+      "name_zh": "通胀与价格",
+      "weight": 0.2,
+      "indicators": [
+        {"id": "cpi_yoy", "alias_old": "us_cpi_yoy", "name_zh": "CPI 同比", "source": "bls", "series": "CUUR0000SA0", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "must", "enabled": true},
+        {"id": "cpi_mom", "name_zh": "CPI 环比", "source": "bls", "series": "CUUR0000SA0", "frequency": "monthly", "unit": "%", "transform": "mom", "priority": "must", "enabled": true},
+        {"id": "core_cpi_yoy", "alias_old": "us_core_cpi_yoy", "name_zh": "核心 CPI 同比", "source": "bls", "series": "CUUR0000SA0L1E", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "must", "enabled": true},
+        {"id": "core_cpi_mom", "name_zh": "核心 CPI 环比", "source": "bls", "series": "CUUR0000SA0L1E", "frequency": "monthly", "unit": "%", "transform": "mom", "priority": "must", "enabled": true},
+        {"id": "pce_yoy", "name_zh": "PCE 同比", "source": "fred", "series": "PCEPI", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "must", "enabled": true, "fallback_source": "bea"},
+        {"id": "core_pce_yoy", "name_zh": "核心 PCE 同比", "source": "fred", "series": "PCEPILFE", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "must", "enabled": true, "fallback_source": "bea"},
+        {"id": "ppi_yoy", "name_zh": "PPI 同比", "source": "fred", "series": "PPIACO", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "should", "enabled": true},
+        {"id": "breakeven_5y", "name_zh": "5年通胀预期", "source": "fred", "series": "T5YIE", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "breakeven_10y", "name_zh": "10年通胀预期", "source": "fred", "series": "T10YIE", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "wti_oil", "alias_old": "wti_crude", "name_zh": "WTI 原油", "source": "fred", "series": "DCOILWTICO", "frequency": "daily", "unit": "USD/bbl", "transform": "level", "priority": "should", "enabled": true}
+      ]
+    },
+    {
+      "id": "growth_jobs",
+      "name_zh": "增长与就业",
+      "weight": 0.2,
+      "indicators": [
+        {"id": "nfp", "alias_old": "us_nfp", "name_zh": "非农新增就业", "source": "bls", "series": "CES0000000001", "frequency": "monthly", "unit": "thousand_persons", "transform": "mom_change", "priority": "must", "enabled": true},
+        {"id": "unemployment_rate", "name_zh": "失业率", "source": "bls", "series": "LNS14000000", "frequency": "monthly", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "average_hourly_earnings_yoy", "name_zh": "平均时薪同比", "source": "bls", "series": "CES0500000003", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "should", "enabled": true},
+        {"id": "initial_claims", "name_zh": "初请失业金人数", "source": "fred", "series": "ICSA", "frequency": "weekly", "unit": "persons", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "continuing_claims", "name_zh": "续请失业金人数", "source": "fred", "series": "CCSA", "frequency": "weekly", "unit": "persons", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "jolts_openings", "name_zh": "JOLTS 职位空缺", "source": "fred", "series": "JTSJOL", "frequency": "monthly", "unit": "thousand_persons", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "ism_manufacturing", "alias_old": "ism_mfg_pmi", "name_zh": "ISM 制造业 PMI", "source": "ism", "frequency": "monthly", "unit": "index", "transform": "level", "priority": "must", "enabled": true, "fallback_source": "websearch_cache"},
+        {"id": "ism_services", "alias_old": "ism_srv_pmi", "name_zh": "ISM 服务业 PMI", "source": "ism", "frequency": "monthly", "unit": "index", "transform": "level", "priority": "must", "enabled": true, "fallback_source": "websearch_cache"},
+        {"id": "retail_sales_mom", "name_zh": "零售销售环比", "source": "fred", "series": "RSAFS", "frequency": "monthly", "unit": "%", "transform": "mom", "priority": "should", "enabled": true},
+        {"id": "gdp_qoq", "name_zh": "GDP 环比折年率", "source": "fred", "series": "A191RL1Q225SBEA", "frequency": "quarterly", "unit": "%", "transform": "level", "priority": "should", "enabled": true, "fallback_source": "bea"},
+        {"id": "gdpnow", "name_zh": "Atlanta Fed GDPNow", "source": "websearch_cache", "frequency": "irregular", "unit": "%", "priority": "optional", "enabled": true, "is_scored": false}
+      ]
+    },
+    {
+      "id": "liquidity_credit",
+      "name_zh": "流动性与信用",
+      "weight": 0.2,
+      "indicators": [
+        {"id": "fed_balance_sheet", "name_zh": "美联储资产负债表", "source": "fred", "series": "WALCL", "frequency": "weekly", "unit": "million_usd", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "reverse_repo", "alias_old": "on_rrp", "name_zh": "隔夜逆回购", "source": "fred", "series": "RRPONTSYD", "frequency": "daily", "unit": "billion_usd", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "tga", "name_zh": "财政部一般账户", "source": "fred", "series": "WTREGEN", "frequency": "weekly", "unit": "million_usd", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "bank_reserves", "name_zh": "银行准备金", "source": "fred", "series": "WRESBAL", "frequency": "weekly", "unit": "billion_usd", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "m2", "name_zh": "M2 货币供应", "source": "fred", "series": "M2SL", "frequency": "monthly", "unit": "billion_usd", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "hy_spread", "alias_old": "hy_oas", "name_zh": "高收益债利差", "source": "fred", "series": "BAMLH0A0HYM2", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "ig_spread", "name_zh": "投资级债利差", "source": "fred", "series": "BAMLC0A0CM", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "financial_conditions", "name_zh": "金融条件指数", "source": "fred", "series": "NFCI", "frequency": "weekly", "unit": "index", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "stablecoin_supply", "name_zh": "稳定币总供应", "source": "websearch_cache", "frequency": "daily", "unit": "usd", "priority": "optional", "enabled": true, "is_scored": false},
+        {"id": "btc_etf_flow", "name_zh": "BTC ETF 净流入", "source": "websearch_cache", "frequency": "daily", "unit": "usd", "priority": "optional", "enabled": true, "is_scored": false}
+      ]
+    },
+    {
+      "id": "usd_real_rates",
+      "name_zh": "美元与实际利率",
+      "weight": 0.075,
+      "indicators": [
+        {"id": "dxy", "alias_old": "dollar_index", "name_zh": "美元指数代理", "source": "fred", "series": "DTWEXBGS", "frequency": "daily", "unit": "index", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "real_yield_10y", "name_zh": "10年实际利率", "source": "fred", "series": "DFII10", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "real_yield_5y", "name_zh": "5年实际利率", "source": "fred", "series": "DFII5", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
+        {"id": "gold", "name_zh": "黄金", "source": "fred", "series": "GOLDAMGBD229NLBM", "frequency": "daily", "unit": "usd_oz", "transform": "level", "priority": "should", "enabled": true, "fallback_source": "twelvedata"}
+      ]
+    },
+    {
+      "id": "cross_asset",
+      "name_zh": "跨资产确认",
+      "weight": 0.075,
+      "indicators": [
+        {"id": "qqq", "name_zh": "纳指100 ETF", "source": "tiingo", "symbol": "QQQ", "frequency": "daily", "unit": "usd", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "spy", "name_zh": "标普500 ETF", "source": "tiingo", "symbol": "SPY", "frequency": "daily", "unit": "usd", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "vix", "name_zh": "VIX 波动率指数", "source": "fred", "series": "VIXCLS", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true},
+        {"id": "move_index", "name_zh": "MOVE 债券波动率", "source": "websearch_cache", "frequency": "daily", "unit": "index", "priority": "optional", "enabled": true, "is_scored": false},
+        {"id": "hyg", "name_zh": "高收益债 ETF", "source": "tiingo", "symbol": "HYG", "frequency": "daily", "unit": "usd", "priority": "should", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "btc_qqq_corr_20d", "name_zh": "BTC-QQQ 20日相关性", "source": "derived", "formula": "corr(gateio.BTC_USDT.close, qqq.close, 20)", "frequency": "daily", "unit": "corr", "priority": "must", "enabled": true},
+        {"id": "eth_btc", "name_zh": "ETH/BTC", "source": "gateio", "symbol": "ETH_BTC", "frequency": "daily", "unit": "ratio", "priority": "should", "enabled": true},
+        {"id": "btc_dominance", "name_zh": "BTC 市占率", "source": "coinmarketcap", "frequency": "daily", "unit": "%", "priority": "should", "enabled": true, "fallback_source": "websearch_cache"}
+      ]
+    }
+  ]
+}

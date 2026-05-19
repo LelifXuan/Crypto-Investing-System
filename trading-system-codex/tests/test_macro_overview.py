@@ -55,7 +55,7 @@ async def test_macro_overview_returns_six_layers(macro_overview_db, monkeypatch)
     assert overview.growth_score <= 100
     assert overview.liquidity_score <= 100
     assert overview.regime_label_cn
-    assert overview.operation_bias in {"做多", "做空", "减仓", "平仓", "观望"}
+    assert overview.operation_bias in {"偏多", "偏空", "观望"}
     assert any(layer.layer_key == "rates_policy" for layer in overview.layers)
     assert any(
         item.indicator_key == "us_dff" for layer in overview.layers for item in layer.indicators

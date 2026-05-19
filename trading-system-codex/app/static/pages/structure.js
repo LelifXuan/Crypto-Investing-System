@@ -20,6 +20,8 @@ const SYSTEMS = [
 
 const VIEWPORT_LABELS = {
   focus: "聚焦形态",
+  swing: "摆动结构",
+  classic: "经典图形",
   context: "结构背景",
   snapshot: "完整快照",
 };
@@ -89,7 +91,7 @@ const SYSTEM_LABELS = {
 };
 
 const CHART_SERIES = {
-  price: { label: "价格", color: "rgba(22, 35, 43, 0.58)", dash: "", width: 2.45 },
+  price: { label: "价格", color: "rgba(22, 35, 43, 0.38)", dash: "", width: 2.15 },
   swing: { label: "摆动结构", color: "#2563eb", dash: "", width: 2.85 },
   classic: { label: "经典图形", color: "#ea580c", dash: "10 6", width: 2.75 },
   profile: { label: "成交量 / 市场轮廓", color: "#9333ea", dash: "4 7", width: 2.75 },
@@ -166,6 +168,8 @@ function renderShell() {
             <span>视图模式 ${knowledgeTooltip("Overlay View", "tone-neutral")}</span>
             <select id="structure-viewmode">
               <option value="focus" ${state.viewMode === "focus" ? "selected" : ""}>聚焦形态</option>
+              <option value="swing" ${state.viewMode === "swing" ? "selected" : ""}>摆动结构</option>
+              <option value="classic" ${state.viewMode === "classic" ? "selected" : ""}>经典图形</option>
               <option value="context" ${state.viewMode === "context" ? "selected" : ""}>结构背景</option>
               <option value="snapshot" ${state.viewMode === "snapshot" ? "selected" : ""}>完整快照</option>
             </select>
@@ -309,6 +313,76 @@ function pointPrice(point) {
   return Number.isFinite(value) ? value : null;
 }
 
+function hasExplicitIndex(point) {
+  return point && point.index !== undefined && point.index !== null && Number.isFinite(Number(point.index));
+}
+
+function firstVisibleTs(candles) {
+  return candles.length ? normalizeTs(candles[0]?.ts_open) : null;
+}
+
+function localIndexForPoint(point, candles, offset, fallbackIndex = 0) {
+  if (hasExplicitIndex(point)) {
+    return Math.max(0, Number(point.index) - offset);
+  }
+  const ts = point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time;
+  if (ts !== undefined && ts !== null) {
+    return nearestCandleIndex(candles, ts, fallbackIndex);
+  }
+  return fallbackIndex;
+}
+
+function visiblePointInViewport(point, candles, offset) {
+  if (!candles.length) return false;
+  if (hasExplicitIndex(point)) return Number(point.index) >= offset;
+  const ts = point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time;
+  if (ts === undefined || ts === null) return true;
+  const pointTs = normalizeTs(ts);
+  const startTs = firstVisibleTs(candles);
+  if (pointTs === null || startTs === null) return true;
+  return pointTs >= startTs;
+}
+
+function shouldExtendToLatest(item, role) {
+  const meta = item.meta_json || item.meta || {};
+  if (meta.extend_to_latest === false) return false;
+  if (meta.extend_to_latest === true) return true;
+  const levelRoles = new Set(["support", "resistance", "neckline", "profile_poc", "profile_vah", "profile_val"]);
+  return levelRoles.has(role) || levelRoles.has(item.kind);
+}
+
+function extendOverlayToLatestCandle(mapped, role, candles, scale, item) {
+  // overlay extension to latest visible candle
+  if (!mapped.length || !candles.length) return mapped;
+  if (!shouldExtendToLatest(item, role)) return mapped;
+  const latestX = scale.xForIndex(candles.length - 1);
+  const extendableRoles = new Set([
+    "support",
+    "resistance",
+    "neckline",
+    "upper_boundary",
+    "lower_boundary",
+    "range_high",
+    "range_low",
+    "support_zone",
+    "resistance_zone",
+    "invalidation_line",
+  ]);
+  if (extendableRoles.has(role)) {
+    const last = mapped[mapped.length - 1];
+    if (last.x < latestX) return [...mapped, { x: latestX, y: last.y }];
+  }
+  if (mapped.length >= 2) {
+    const prev = mapped[mapped.length - 2];
+    const last = mapped[mapped.length - 1];
+    if (last.x < latestX && Math.abs(last.x - prev.x) > 0.01) {
+      const slope = (last.y - prev.y) / (last.x - prev.x);
+      return [...mapped, { x: latestX, y: last.y + slope * (latestX - last.x) }];
+    }
+  }
+  return mapped;
+}
+
 function viewportConfig() {
   return VIEWPORT_CONFIG[appState.selectedTimeframe] || VIEWPORT_CONFIG["1d"];
 }
@@ -322,7 +396,22 @@ function calculateViewport(candles, geometry, backendViewport = null) {
   const latestIndex = fullBars - 1;
   const latestTs = normalizeTs(candles[latestIndex]?.ts_open);
   const firstTs = normalizeTs(candles[0]?.ts_open);
-  const starts = geometry
+  const visibleGeometry = (geometry || []).filter((item) => {
+    if (item.visible === false) return false;
+    const meta = item.meta_json || item.meta || {};
+    if (meta.visible_by_default === false) return false;
+    const role = meta.role || "";
+    if (role === "classic_pattern_path" || role === "pattern_path") return false;
+    return true;
+  });
+  const focusMode = VIEWPORT_LABELS[state.viewMode] ? state.viewMode : "focus";
+  const viewportGeometry =
+    focusMode === "classic"
+      ? visibleGeometry.filter((item) => item.system === "classic")
+      : focusMode === "swing"
+        ? visibleGeometry.filter((item) => item.system === "swing")
+        : visibleGeometry;
+  const starts = (viewportGeometry.length ? viewportGeometry : visibleGeometry)
     .flatMap((item) => getGeometryPoints(item).map(pointTime))
     .filter((value) => value !== null && (!latestTs || value <= latestTs) && (!firstTs || value >= firstTs));
   const activeStartTs = backendViewport?.active_start_ts ?? (starts.length ? Math.min(...starts) : null);
@@ -335,7 +424,7 @@ function calculateViewport(candles, geometry, backendViewport = null) {
         });
   const overlayBars = activeStartIndex === null || activeStartIndex < 0 ? 0 : latestIndex - activeStartIndex + 1;
   const coverage = fullBars ? overlayBars / fullBars : 0;
-  const mode = VIEWPORT_LABELS[state.viewMode] ? state.viewMode : "focus";
+  const mode = focusMode;
   let displayBars;
   if (mode === "snapshot") {
     displayBars = Math.min(fullBars, config.snapshotBars);
@@ -363,15 +452,18 @@ function calculateViewport(candles, geometry, backendViewport = null) {
 }
 
 function visibleGeometryForViewport(geometry, candles, offset) {
-  const visibleTimes = new Set(candles.map((item) => String(item.ts_open)));
   return geometry
     .map((item) => {
       const points = getGeometryPoints(item);
-      const filtered = points.filter((point, index) => {
-        const ts = point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time;
-        if (ts === undefined || ts === null) return index >= offset;
-        return visibleTimes.has(String(ts)) || normalizeTs(ts) >= normalizeTs(candles[0]?.ts_open);
-      });
+      const filtered = points
+        .filter((point, index) => {
+          return visiblePointInViewport(point, candles, offset);
+        })
+        .map((point, index) => {
+          const localIndex = localIndexForPoint(point, candles, offset, index);
+          const globalIndex = hasExplicitIndex(point) ? Number(point.index) : point?.global_index;
+          return { ...point, index: localIndex, global_index: Number.isFinite(Number(globalIndex)) ? Number(globalIndex) : undefined };
+        });
       return { ...item, points_json: filtered };
     })
     .filter((item) => getGeometryPoints(item).length > 0);
@@ -389,21 +481,225 @@ function legendAvailability(geometry) {
 }
 
 function buildLegendMarkup(availability) {
-  return Object.entries(CHART_SERIES)
-    .filter(([key]) => key !== "fused" && availability[key])
-    .map(
-      ([key, series], index) => `
-        <g transform="translate(${78 + index * 168}, 22)">
-          <line x1="0" y1="0" x2="28" y2="0" stroke="${series.color}" stroke-width="3" stroke-dasharray="${series.dash}"></line>
-          <text class="structure-svg-axis structure-axis-label" x="36" y="4">${escapeHtml(series.label)}</text>
-        </g>
-      `,
-    )
-    .join("");
+  const items = Object.entries(CHART_SERIES)
+    .filter(([key]) => key !== "fused" && availability[key]);
+  return items.map(
+    ([key, series], index) => `
+      <g transform="translate(${78 + index * 168}, 22)">
+        <line x1="0" y1="0" x2="28" y2="0" stroke="${series.color}" stroke-width="3" stroke-dasharray="${series.dash}"></line>
+        <text class="structure-svg-axis structure-axis-label" x="36" y="4">${escapeHtml(series.label)}</text>
+      </g>
+    `).join("");
+}
+
+function buildLayerToggleMarkup() {
+  return `
+    <div class="structure-legend-toggles">
+      <label class="legend-toggle" id="toggle-swing"><input type="checkbox" ${overlayLayerState.swing ? "checked" : ""} onchange="toggleOverlayLayer('swing')">摆动骨架</label>
+      <label class="legend-toggle" id="toggle-fill"><input type="checkbox" ${overlayLayerState.fill ? "checked" : ""} onchange="toggleOverlayLayer('fill')">图形填充</label>
+      <label class="legend-toggle" id="toggle-boundary"><input type="checkbox" ${overlayLayerState.boundary ? "checked" : ""} onchange="toggleOverlayLayer('boundary')">图形边界</label>
+      <label class="legend-toggle" id="toggle-candidate"><input type="checkbox" ${overlayLayerState.candidate ? "checked" : ""} onchange="toggleOverlayLayer('candidate')">候选图形</label>
+    </div>
+  `;
+}
+
+const overlayLayerState = { swing: true, fill: true, boundary: true, candidate: false };
+window.toggleOverlayLayer = function(layer) {
+  overlayLayerState[layer] = !overlayLayerState[layer];
+  if (state.bundle?.snapshot) {
+    renderChart(state.bundle.snapshot, normalizeCandles(state.bundle.candles || state.bundle.snapshot?.candles || []));
+  }
+};
+
+function classicPatternCandidates(classicPatterns) {
+  if (!classicPatterns || classicPatterns.version !== "classic-pattern-region-v1") return [];
+  return [classicPatterns.primary, ...(classicPatterns.candidates || [])].filter(Boolean);
+}
+
+function classicPatternPoint(point) {
+  return {
+    index: Number(point?.index ?? 0),
+    time: point?.time,
+    ts: point?.time,
+    price: Number(point?.price ?? 0),
+    label: point?.label || "",
+  };
+}
+
+function classicPatternTooltip(candidate) {
+  const explanation = candidate?.explanation || {};
+  if (explanation.tooltip) return explanation.tooltip;
+  const levels = (explanation.key_levels || [])
+    .slice(0, 4)
+    .map((item) => `${item.label} ${formatNumber(item.value, 2)}`)
+    .join("；");
+  return [
+    candidate?.display_name || candidate?.pattern_type || "经典形态",
+    explanation.status_text || candidate?.status,
+    explanation.direction_text || candidate?.direction_bias,
+    `置信度 ${formatNumber(candidate?.confidence ?? 0, 2)}`,
+    levels,
+  ].filter(Boolean).join("｜");
+}
+
+function latestClose(candles) {
+  if (!candles.length) return null;
+  const value = Number(candles[candles.length - 1]?.close);
+  return Number.isFinite(value) ? value : null;
+}
+
+function currentPriceGuide(snapshot, candles) {
+  const close = latestClose(candles);
+  const primary = snapshot?.classic_patterns?.primary;
+  const levels = primary?.levels || {};
+  if (close === null || !primary || primary.renderable === false) {
+    return {
+      state: "price_only",
+      label: "仅展示价格走势",
+      close,
+      message: appState.selectedTimeframe === "1M"
+        ? "月线样本不足时，当前先展示价格走势；结构判断等待更多 K 线确认。"
+        : "当前没有可用的经典形态边界，先观察价格与摆动结构。",
+    };
+  }
+
+  const breakout = Number(levels.breakout_confirm);
+  const breakdown = Number(levels.breakdown_confirm);
+  const invalidation = Number(levels.invalidation);
+  const upper = Number(levels.resistance_line ?? levels.resistance ?? levels.upper_boundary ?? levels.breakout_confirm);
+  const lower = Number(levels.support_line ?? levels.support ?? levels.lower_boundary ?? levels.breakdown_confirm);
+  const direction = primary.direction_bias || "neutral";
+
+  if (Number.isFinite(invalidation) && ((direction === "bullish" && close < invalidation) || (direction === "bearish" && close > invalidation))) {
+    return { state: "invalidated", label: "经典图形失效", close, level: invalidation, message: "最新收盘价已经触发经典图形失效位，旧形态不再作为入场依据；综合结论仍会参考摆动结构与市场轮廓。" };
+  }
+  if (Number.isFinite(breakout) && close > breakout) {
+    return { state: "breakout", label: "经典图形上破", close, level: breakout, message: "最新收盘价站上经典图形突破确认位，后续重点观察回踩是否守住突破位；这不等同于综合系统已经转强。" };
+  }
+  if (Number.isFinite(breakdown) && close < breakdown) {
+    return { state: "breakdown", label: "经典图形下破", close, level: breakdown, message: "最新收盘价跌破经典图形下沿确认位，旧区间支撑已被破坏。系统已结合综合结构方向给出具体执行权限判断。" };
+  }
+  if (Number.isFinite(upper) && Number.isFinite(lower) && close <= upper && close >= lower) {
+    return { state: "inside", label: "位于形态内部", close, level: null, message: "价格仍在形态区间内部，需等待收盘突破或跌破后再确认方向。" };
+  }
+  return { state: "retest", label: "回踩确认中", close, level: Number.isFinite(upper) ? upper : lower, message: "价格已离开主要形态区域，需观察是否回踩边界并重新获得确认。" };
+}
+
+function buildCurrentPriceGuideMarkup(guide, textDecision) {
+  if (!guide) return "";
+  const levelText = Number.isFinite(guide.level) ? `关键位 ${formatNumber(guide.level, 2)}` : "";
+  const closeText = Number.isFinite(guide.close) ? `最新收盘 ${formatNumber(guide.close, 2)}` : "";
+  const decision = textDecision || {};
+  const headline = decision.headline || guide.label || "当前价格位置";
+  const message = decision.message || guide.message || "";
+  const permissionLabel = decision.permission_label || "";
+  const nextTrigger = decision.next_trigger || "";
+  const tone = decision.tone || guide.state || "neutral";
+  return `
+    <div class="structure-price-guide guide-${escapeHtml(tone)}">
+      <strong>${escapeHtml(headline)}</strong>
+      <span>${escapeHtml([closeText, levelText].filter(Boolean).join(" ｜ "))}</span>
+      <p>${escapeHtml(message)}</p>
+      ${nextTrigger ? `<p class="muted">下一触发：${escapeHtml(nextTrigger)}</p>` : ""}
+      ${permissionLabel ? `<span class="status-chip chip-neutral">执行权限：${escapeHtml(permissionLabel)}</span>` : ""}
+      ${decision.dominant_evidence && decision.dominant_evidence.length ? `<p class="muted compact">抵消来源：${escapeHtml(decision.dominant_evidence.join(" + "))}</p>` : ""}
+      ${decision.opposing_evidence && decision.opposing_evidence.length ? `<p class="muted compact">负面来源：${escapeHtml(decision.opposing_evidence.join(" + "))}</p>` : ""}
+    </div>
+  `;
+}
+
+function suppressBrokenClassicOverlay(guide) {
+  return false;
+}
+
+function suppressInvalidatedChannelOverlay(item, guide) {
+  if (!["breakout", "breakdown", "invalidated"].includes(guide?.state)) return false;
+  const meta = item.meta_json || item.meta || {};
+  const patternType = meta.pattern_type || item.pattern_type || item.structure_type;
+  if (patternType !== "channel") return false;
+  const role = meta.role || "";
+  return role === "pattern_region" || role === "upper_boundary" || role === "lower_boundary";
+}
+
+function buildGuideMarkerMarkup(guide, scale) {
+  if (!Number.isFinite(guide?.level)) return "";
+  const y = scale.yForPrice(guide.level);
+  if (!Number.isFinite(y)) return "";
+  const color = guide.state === "breakout" ? "#0f8f7d" : "#c66622";
+  return `
+    <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${color}" stroke-width="2" stroke-dasharray="7 5" opacity="0.82"></line>
+    <text class="structure-svg-axis structure-guide-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 8).toFixed(2)}" text-anchor="end">${escapeHtml(guide.label || "关键位")}</text>
+  `;
+}
+
+function combinedBiasLabel(overallBias, guide) {
+  const base = labelFor(BIAS_LABELS, overallBias);
+  if (guide?.state === "breakdown") return `${base} · 图形下破`;
+  if (guide?.state === "breakout") return `${base} · 图形上破`;
+  if (guide?.state === "invalidated") return `${base} · 图形失效`;
+  return base;
+}
+
+function classicPatternsToGeometry(classicPatterns) {
+  return classicPatternCandidates(classicPatterns).filter((candidate) => candidate?.renderable !== false).flatMap((candidate) => {
+    const role = candidate.display_role || "candidate";
+    const region = candidate.region || {};
+    const fillToken = region.fill_token || "patternNeutral";
+    const tooltip = classicPatternTooltip(candidate);
+    const regionGeometry = {
+      system: "classic",
+      kind: "region",
+      status: candidate.status,
+      visible: true,
+      points_json: (region.polygon_points || []).map(classicPatternPoint),
+      labels_json: [candidate.display_name || candidate.pattern_type],
+      meta_json: {
+        role: "pattern_region",
+        display_role: role,
+        pattern_type: candidate.pattern_type,
+        confidence: candidate.confidence,
+        fill_token: fillToken,
+        fill_alpha: region.fill_alpha,
+        boundary_alpha: region.boundary_alpha,
+        tooltip,
+        visible_by_default: role === "primary",
+      },
+    };
+    const lineGeometry = (candidate.lines || []).map((line) => ({
+      system: "classic",
+      kind: line.role || "boundary",
+      status: candidate.status,
+      visible: true,
+      points_json: (line.points || []).map(classicPatternPoint),
+      labels_json: [line.label || line.role || "边界"],
+      meta_json: {
+        role: line.role,
+        display_role: role,
+        pattern_type: candidate.pattern_type,
+        confidence: line.confidence ?? candidate.confidence,
+        tooltip,
+        visible_by_default: role === "primary",
+        extend_to_latest: false,
+      },
+    }));
+    return [regionGeometry, ...lineGeometry];
+  });
 }
 
 function buildOverlayMarkup(geometry, candles, scale) {
   return geometry
+    .slice()
+    .sort((left, right) => {
+      const leftRole = (left.meta_json || {}).role || "";
+      const rightRole = (right.meta_json || {}).role || "";
+      const layer = (item, role) => {
+        if (item.kind === "region" || role === "pattern_region") return 0;
+        if (item.system === "classic") return 1;
+        if (item.system === "swing") return 2;
+        return 3;
+      };
+      return layer(left, leftRole) - layer(right, rightRole);
+    })
     .map((item) => {
       if (item.system === "profile") return "";
       const meta = item.meta_json || {};
@@ -413,15 +709,30 @@ function buildOverlayMarkup(geometry, candles, scale) {
         return "";
       }
 
+      const isRegion = item.kind === "region" || role === "pattern_region";
+      const isClassicBoundary = role === "upper_boundary" || role === "lower_boundary" || role === "neckline" || role === "resistance" || role === "support";
+      const isSwing = role === "swing_backbone" || role === "swing_zigzag" || item.kind === "swing_zigzag";
+      const isCandidate = (meta.display_role === "candidate" || role === "candidate");
+
+      if (isRegion && !overlayLayerState.fill) return "";
+      if (isSwing && !overlayLayerState.swing) return "";
+      if (isClassicBoundary && !overlayLayerState.boundary) return "";
+      if (isCandidate && !overlayLayerState.candidate) return "";
+
       let strokeColor = (CHART_SERIES[item.system] || CHART_SERIES.fused).color;
       let strokeWidth = 2.0;
       let strokeDash = "";
       let opacity = 1.0;
 
-      if (role === "swing_backbone" || item.kind === "swing_zigzag") {
-        opacity = 0.30;
-        strokeWidth = 1.5;
-        strokeColor = "#94a3b8";
+      if (role === "swing_backbone" || role === "swing_zigzag" || item.kind === "swing_zigzag") {
+        opacity = 0.75;
+        strokeWidth = 2.2;
+        strokeColor = "#2563eb";
+      } else if (role === "swing_live_leg" || item.kind === "swing_live_leg") {
+        opacity = 0.62;
+        strokeWidth = 2.0;
+        strokeColor = "#3b82f6";
+        strokeDash = "6 5";
       } else if (role === "neckline") {
         strokeColor = "#e67e22";
         strokeWidth = 2.5;
@@ -434,20 +745,53 @@ function buildOverlayMarkup(geometry, candles, scale) {
         strokeColor = "#27ae60";
         strokeWidth = 2.2;
         strokeDash = "5,3";
-      } else if (role === "pattern_zone" || item.kind === "zone") {
+      } else       if (role === "pattern_zone" || item.kind === "zone") {
         opacity = 0.15;
         strokeColor = "#6366f1";
       }
 
+      if (item.kind === "region" || role === "pattern_region") {
+        const fillToken = meta.fill_token || "patternNeutral";
+        const fillAlpha = Number(meta.fill_alpha ?? 0.12);
+        const boundaryAlpha = Number(meta.boundary_alpha ?? 0.85);
+        const fillColors = {
+          patternBullish: `rgba(39,174,96,${fillAlpha})`,
+          patternBearish: `rgba(231,76,60,${fillAlpha})`,
+          patternNeutral: `rgba(99,102,241,${fillAlpha})`,
+          patternMixed: `rgba(230,126,34,${fillAlpha})`,
+        };
+        const fillColor = fillColors[fillToken] || fillColors.patternNeutral;
+        const points = getGeometryPoints(item);
+        const polyPoints = points
+          .map((point) => {
+            const explicitIndex = Number(point.index);
+            const tsValue = point.ts ?? point.timestamp ?? point.ts_open ?? point.time ?? 0;
+            const candleIndex = hasExplicitIndex(point)
+              ? Math.max(0, Math.min(candles.length - 1, explicitIndex))
+              : nearestCandleIndex(candles, tsValue, 0);
+            const price = pointPrice(point);
+            return { x: scale.xForIndex(candleIndex), y: price === null ? 0 : scale.yForPrice(price) };
+          })
+          .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+        if (polyPoints.length < 3) return "";
+        const polyCoords = polyPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        const title = meta.tooltip || meta.pattern_type || "";
+        return `<polygon points="${polyCoords}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.2" opacity="${boundaryAlpha}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""}><title>${escapeHtml(title)}</title></polygon>`;
+      }
+
       const points = getGeometryPoints(item);
-      const mapped = points
+      let mapped = points
         .map((point, index) => {
+          const explicitIndex = Number(point.index);
           const tsValue = point.ts ?? point.timestamp ?? point.ts_open ?? point.time ?? index;
-          const candleIndex = nearestCandleIndex(candles, tsValue, typeof tsValue === 'number' && tsValue < candles.length ? tsValue : index);
+          const candleIndex = hasExplicitIndex(point)
+            ? Math.max(0, Math.min(candles.length - 1, explicitIndex))
+            : nearestCandleIndex(candles, tsValue, typeof tsValue === 'number' && tsValue < candles.length ? tsValue : index);
           const price = pointPrice(point);
           return { x: scale.xForIndex(candleIndex), y: price === null ? NaN : scale.yForPrice(price) };
         })
         .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      mapped = extendOverlayToLatestCandle(mapped, role, candles, scale, item);
       if (!mapped.length) return "";
 
       if (mapped.length === 1) {
@@ -457,7 +801,8 @@ function buildOverlayMarkup(geometry, candles, scale) {
       const path = mapped
         .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
         .join(" ");
-      return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round" />`;
+      const title = meta.tooltip ? `<title>${escapeHtml(meta.tooltip)}</title>` : "";
+      return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round">${title}</path>`;
     })
     .join("");
 }
@@ -496,14 +841,14 @@ function buildMarketProfileMarkup(geometry, scale) {
 function renderChart(snapshot, candles) {
   const chartPanel = document.getElementById("structure-chart-panel");
   const chartBias = document.getElementById("structure-chart-bias");
-  const geometry = (snapshot.geometry || []).filter((item) => {
+  const contractGeometry = classicPatternsToGeometry(snapshot.classic_patterns);
+  const rawGeometry = contractGeometry.length
+    ? (snapshot.geometry || []).filter((item) => item.system !== "classic").concat(contractGeometry)
+    : (snapshot.geometry || []);
+  const geometry = rawGeometry.filter((item) => {
     const confidence = Number(item.meta_json?.confidence ?? item.meta?.confidence ?? 1);
     return matchesSelectedSystem(item.system) && confidence >= state.minConfidence;
   });
-
-  chartBias.innerHTML = `<span class="impact-chip impact-${biasTone(snapshot.overall?.overall_bias)}">${escapeHtml(
-    labelFor(BIAS_LABELS, snapshot.overall?.overall_bias),
-  )}</span>`;
 
   if (!candles.length) {
     chartPanel.className = "structure-chart-panel empty";
@@ -514,10 +859,35 @@ function renderChart(snapshot, candles) {
   const backendViewport = snapshot.pattern_overlay?.viewport || snapshot.pattern_overlay?.pattern_overlay?.viewport || null;
   const viewport = calculateViewport(candles, geometry, backendViewport);
   const visibleCandles = viewport.candles.length ? viewport.candles : candles;
-  const visibleGeometry = visibleGeometryForViewport(geometry, visibleCandles, viewport.offset);
+  const priceGuide = currentPriceGuide(snapshot, visibleCandles);
+  chartBias.innerHTML = `<span class="impact-chip impact-${biasTone(snapshot.overall?.overall_bias)}">${escapeHtml(
+    combinedBiasLabel(snapshot.overall?.overall_bias, priceGuide),
+  )}</span>`;
+  const rawVisibleGeometry = visibleGeometryForViewport(geometry, visibleCandles, viewport.offset);
+  const visibleGeometry = rawVisibleGeometry.filter((item) => {
+    if (suppressInvalidatedChannelOverlay(item, priceGuide)) return false;
+    if (!suppressBrokenClassicOverlay(priceGuide) || item.system !== "classic") return true;
+    const role = item.meta_json?.role || "";
+    return role !== "pattern_region" && role !== "upper_boundary" && role !== "lower_boundary";
+  });
   const availability = legendAvailability(visibleGeometry);
-  const overlayPrices = visibleGeometry.flatMap((item) => getGeometryPoints(item).map(pointPrice)).filter((value) => value !== null);
-  const prices = [...visibleCandles.map((item) => Number(item.close)), ...overlayPrices];
+  const candlePrices = visibleCandles
+    .flatMap((item) => [Number(item.high ?? item.close), Number(item.low ?? item.close), Number(item.close)])
+    .filter((value) => Number.isFinite(value));
+  if (!candlePrices.length) {
+    chartPanel.className = "structure-chart-panel empty";
+    chartPanel.innerHTML = `<div class="empty-state">当前 K 线价格无效，暂时无法绘制结构图。</div>`;
+    return;
+  }
+  const candleMin = Math.min(...candlePrices);
+  const candleMax = Math.max(...candlePrices);
+  const candleSpan = Math.max(candleMax - candleMin, Math.abs(candleMax) * 0.01, 1);
+  const overlayMin = candleMin - candleSpan * 0.5;
+  const overlayMax = candleMax + candleSpan * 0.5;
+  const overlayPrices = visibleGeometry
+    .flatMap((item) => getGeometryPoints(item).map(pointPrice))
+    .filter((value) => value !== null && value >= overlayMin && value <= overlayMax);
+  const prices = [...candlePrices, ...overlayPrices];
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const width = 1040;
@@ -526,6 +896,7 @@ function renderChart(snapshot, candles) {
   const pricePath = buildLinePath(visibleCandles, scale);
   const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale);
   const profileMarkup = buildMarketProfileMarkup(visibleGeometry, scale);
+  const guideMarkerMarkup = buildGuideMarkerMarkup(priceGuide, scale);
   const overlayCount = visibleGeometry.filter((item) => item.system !== "profile").length;
   const profileCount = visibleGeometry.filter((item) => item.system === "profile").length;
   const classicCount = visibleGeometry.filter((item) => item.system === "classic").length;
@@ -539,7 +910,10 @@ function renderChart(snapshot, candles) {
       <path d="${pricePath}" fill="none" stroke="${CHART_SERIES.price.color}" stroke-width="${CHART_SERIES.price.width}" stroke-linecap="round" stroke-linejoin="round"></path>
       ${profileMarkup}
       ${overlayMarkup}
+      ${guideMarkerMarkup}
     </svg>
+    ${buildCurrentPriceGuideMarkup(priceGuide, snapshot.overall?.text_decision)}
+    ${buildLayerToggleMarkup()}
     <div class="structure-chart-meta">
       <span>快照版本：${escapeHtml(snapshot.snapshot_version || "-")}</span>
       <span>视图：${escapeHtml(VIEWPORT_LABELS[state.viewMode] || VIEWPORT_LABELS.focus)}</span>
@@ -715,7 +1089,7 @@ function renderDiagnostics(snapshot, diagnostics) {
   const effectiveDiagnostics = diagnostics || snapshot.diagnostics || {};
   const notes = normalizeTextList(effectiveDiagnostics.notes);
   return `
-    <article class="structure-detail-section structure-detail-block">
+    <article class="structure-detail-section structure-detail-block is-hidden">
       <div class="list-card-head">
         <strong>检测诊断</strong>
         ${statusChip("只读快照")}
@@ -773,13 +1147,10 @@ function renderDetailPanel(payload) {
       ${renderAlertHistory(alerts)}
     </article>
 
-    ${renderDiagnostics(snapshot, payload.diagnostics)}
   `;
-
-  const detailCards = detailPanel.querySelectorAll(".structure-detail-section");
-  if (detailCards.length >= 3) {
-    detailPanel.insertBefore(detailCards[2], detailCards[1]);
-  }
+  detailPanel.querySelectorAll(".structure-detail-section").forEach((section, index) => {
+    if (index > 0) section.classList.add("is-hidden");
+  });
 }
 
 function renderFromBundle(bundle) {
@@ -794,6 +1165,38 @@ function renderFromBundle(bundle) {
     const chartPanel = document.getElementById("structure-chart-panel");
     const summaryPanel = document.getElementById("structure-summary-panel");
     const detailPanel = document.getElementById("structure-detail-panel");
+    if (candles.length) {
+      const fallbackSnapshot = {
+        active_items: [],
+        systems: [],
+        geometry: [],
+        diagnostics: {},
+        overall: {
+          overall_bias: "uncertain",
+          score: 0,
+          confidence: 0,
+          meaning: appState.selectedTimeframe === "1M"
+            ? "月线样本不足，当前仅展示价格走势；结构判断等待更多 K 线。"
+            : "结构快照暂不可用，当前先展示价格走势。",
+        },
+        snapshot_version: `${appState.selectedTimeframe}-price-only`,
+      };
+      renderChart(fallbackSnapshot, candles);
+      renderSummary(fallbackSnapshot);
+      if (detailPanel) {
+        detailPanel.innerHTML = `
+          <article class="structure-detail-section structure-detail-block">
+            <div class="list-card-head">
+              <strong>检测诊断</strong>
+              ${statusChip("价格降级图")}
+            </div>
+            <p class="structure-copy">${escapeHtml(bundle.status_message || fallbackSnapshot.overall.meaning)}</p>
+          </article>
+        `;
+      }
+      renderStatus(bundle.status_message || fallbackSnapshot.overall.meaning, bundle.cache_state === "missing" ? "warning" : "neutral");
+      return;
+    }
     if (chartPanel) {
       chartPanel.className = "structure-chart-panel empty";
       chartPanel.innerHTML = `<div class="empty-state">当前还没有可用的结构快照，请先手动刷新。</div>`;

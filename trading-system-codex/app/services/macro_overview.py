@@ -1,1612 +1,456 @@
 from __future__ import annotations
 
-
-
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any
 
-from datetime import timezone, datetime, timedelta
+from app.repositories.market_repository import MarketRepository
+from app.schemas.market import (
+    MacroOverviewEventRead,
+    MacroOverviewIndicatorRead,
+    MacroOverviewLayerRead,
+    MacroOverviewResponse,
+)
 
 UTC = timezone.utc
 
-from decimal import Decimal
-
-
-
-from app.repositories.market_repository import MarketRepository
-
-from app.schemas.market import (
-
-    MacroOverviewEventRead,
-
-    MacroOverviewIndicatorRead,
-
-    MacroOverviewLayerRead,
-
-    MacroOverviewResponse,
-
-)
-
-
-
-ZERO = Decimal("0")
-
-
-
-
 
 @dataclass(frozen=True)
-
 class MacroIndicatorSpec:
-
     indicator_key: str
-
     label: str
-
     tooltip: str
-
     region: str = "global"
 
 
-
-
-
 @dataclass(frozen=True)
-
 class MacroLayerSpec:
-
     layer_key: str
-
     label_cn: str
-
     indicators: tuple[MacroIndicatorSpec, ...]
 
 
-
-
-
 class MacroOverviewService:
+    """Build a user-facing macro overview without treating missing data as zero."""
 
     LAYERS: tuple[MacroLayerSpec, ...] = (
-
         MacroLayerSpec(
-
-            layer_key="rates_policy",
-
-            label_cn="利率/政策",
-            indicators=(
-                MacroIndicatorSpec(
-                    "us_dff",
-
-                    "US DFF",
-
-                    "US Federal Funds Rate",
-
-                    region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "us_2y_yield",
-
-                    "US 2Y YIELD",
-
-                    "US 2-Year Treasury Yield",
-
-                    region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "us_10y_yield",
-
-                    "US 10Y YIELD",
-
-                    "US 10-Year Treasury Yield",
-
-                    region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "us_10y_2y_spread",
-
-                    "US 10Y 2Y SPREAD",
-                    "",
-                    region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_omo_net",
-
-                    "CN OMO NET", "", region="CN",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_fr007", "CN FR007", "", region="CN",
-
-                ),
-
+            "rates_policy",
+            "利率与政策",
+            (
+                MacroIndicatorSpec("us_dff", "美国有效联邦基金利率", "美联储政策利率的实际成交水平。", "US"),
+                MacroIndicatorSpec("us_2y_yield", "美国2年期国债收益率", "短端利率预期，反映市场对政策路径的定价。", "US"),
+                MacroIndicatorSpec("us_10y_yield", "美国10年期国债收益率", "长端无风险利率，是风险资产估值的重要折现锚。", "US"),
+                MacroIndicatorSpec("us_10y_2y_spread", "美债10Y-2Y利差", "收益率曲线斜率，用于观察衰退预期和政策压力。", "US"),
             ),
-
         ),
-
         MacroLayerSpec(
-
-            layer_key="inflation",
-
-            label_cn="",
-
-            indicators=(
-
-                MacroIndicatorSpec(
-
-                    "us_cpi_yoy",
-
-                    "US CPI YOY", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "us_core_cpi_yoy",
-
-                    "US CORE CPI YOY", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "breakeven_10y",
-
-                    "US 10Y BREAKEVEN", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "wti_crude", "WTI CRUDE", "", region="global"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_cpi_yoy", "CN CPI YOY", "", region="CN"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_ppi_yoy",
-
-                    "CN PPI YOY",
-
-                    "",
-
-                    region="CN",
-
-                ),
-
+            "inflation",
+            "通胀与价格",
+            (
+                MacroIndicatorSpec("us_cpi_yoy", "美国CPI同比", "美国居民消费价格指数同比，是通胀主指标。", "US"),
+                MacroIndicatorSpec("us_core_cpi_yoy", "美国核心CPI同比", "剔除食品和能源后的通胀，更能反映粘性通胀。", "US"),
+                MacroIndicatorSpec("breakeven_10y", "美国10年通胀预期", "TIPS 隐含通胀预期，衡量市场对未来通胀的定价。", "US"),
+                MacroIndicatorSpec("wti_crude", "WTI原油", "能源价格会影响通胀预期和风险偏好。", "global"),
             ),
-
         ),
-
         MacroLayerSpec(
-
-            layer_key="growth_labor",
-
-            label_cn="增长/就业",
-            
-            indicators=(
-                
-                MacroIndicatorSpec(
-                    
-                    "us_nfp", "US NFP", "", region="US"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "unemployment_rate",
-
-                    "US UNEMPLOYMENT RATE", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "ism_mfg_pmi",
-
-                    "US ISM MFG PMI",
-
-                    "",
-
-                    region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "ism_srv_pmi", "US ISM SRV PMI", "", region="US"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_pmi_mfg",
-
-                    "CN PMI MFG",
-
-                    "",
-
-                    region="CN",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_retail_sales_yoy",
-
-                    "CN RETAIL SALES YOY", "", region="CN",
-
-                ),
-
+            "growth_labor",
+            "增长与就业",
+            (
+                MacroIndicatorSpec("us_nfp", "美国非农就业", "美国非农新增就业人数，影响政策预期和风险偏好。", "US"),
+                MacroIndicatorSpec("us_unemployment_rate", "美国失业率", "劳动市场松紧程度。", "US"),
+                MacroIndicatorSpec("ism_mfg_pmi", "美国ISM制造业PMI", "制造业景气度，50以上通常代表扩张。", "US"),
+                MacroIndicatorSpec("ism_srv_pmi", "美国ISM服务业PMI", "服务业景气度，对美国经济韧性更敏感。", "US"),
             ),
-
         ),
-
         MacroLayerSpec(
-
-            layer_key="liquidity_credit",
-
-            label_cn="/ ",
-
-            indicators=(
-
-                MacroIndicatorSpec(
-
-                    "hy_oas", "HY OAS", "", region="US"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "tga", "US TGA", "", region="US"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "on_rrp", "US ON RRP", "", region="US"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "financial_conditions",
-
-                    "US FINANCIAL CONDITIONS", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_shibor_3m",
-
-                    "CN SHIBOR 3M",
-
-                    "",
-
-                    region="CN",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_10y_cgb",
-
-                    "CN 10Y CGB", "", region="CN",
-
-                ),
-
+            "liquidity_credit",
+            "流动性与信用",
+            (
+                MacroIndicatorSpec("hy_oas", "美国高收益债利差", "信用风险溢价，利差走阔通常代表风险偏好下降。", "US"),
+                MacroIndicatorSpec("tga", "美国财政部TGA", "财政部现金账户变化会影响美元流动性。", "US"),
+                MacroIndicatorSpec("on_rrp", "隔夜逆回购余额", "美联储隔夜逆回购余额，反映流动性停放规模。", "US"),
+                MacroIndicatorSpec("financial_conditions", "美国金融条件指数", "综合利率、信用、股市和汇率的金融环境指标。", "US"),
             ),
-
         ),
-
         MacroLayerSpec(
-
-            layer_key="cross_asset_confirmation",
-
-            label_cn="",
-
-            indicators=(
-
-                MacroIndicatorSpec(
-
-                    "dollar_index",
-
-                    "DOLLAR INDEX", "", region="global",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "gold", "GOLD", "", region="global"
-
-                ),
-
-                MacroIndicatorSpec("vix", "VIX", "", region="US"),
-
-                MacroIndicatorSpec(
-
-                    "ust_10y_yield",
-
-                    "UST 10Y YIELD",
-
-                    "",
-
-                    region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_usdcny",
-
-                    "USD CNY", "", region="CN",
-
-                ),
-
+            "cross_asset_confirmation",
+            "跨资产确认",
+            (
+                MacroIndicatorSpec("dollar_index", "美元指数DXY", "美元强弱影响全球流动性与加密资产风险偏好。", "global"),
+                MacroIndicatorSpec("gold", "黄金", "避险资产与实际利率预期的交叉验证。", "global"),
+                MacroIndicatorSpec("vix", "VIX波动率", "美股隐含波动率，衡量风险厌恶程度。", "US"),
+                MacroIndicatorSpec("ust_10y_yield", "美债10年收益率", "跨资产确认用的长端利率。", "US"),
             ),
-
         ),
-
         MacroLayerSpec(
-
-            layer_key="event_window",
-
-            label_cn="事件窗口",
-            
-            indicators=(
-                
-                MacroIndicatorSpec(
-                    
-                    "fomc_event_window",
-
-                    "FOMC EVENT WINDOW", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "us_cpi_yoy",
-
-                    "US CPI YOY", "", region="US",
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "us_nfp", "US NFP", "", region="US"
-
-                ),
-
-                MacroIndicatorSpec(
-
-                    "cn_mof_bond_issuance",
-
-                    "CN MOF BOND ISSUANCE", "", region="CN",
-
-                ),
-
+            "event_window",
+            "事件窗口",
+            (
+                MacroIndicatorSpec("fomc_event_window", "FOMC事件窗口", "美联储议息会议附近的事件风险。", "US"),
+                MacroIndicatorSpec("us_cpi_yoy", "美国CPI事件", "CPI公布窗口对风险资产波动的影响。", "US"),
+                MacroIndicatorSpec("us_nfp", "美国非农事件", "非农公布窗口对政策预期的影响。", "US"),
             ),
-
         ),
-
     )
 
+    STALE_LIMITS: dict[str, timedelta] = {
+        "event_window": timedelta(days=30),
+        "growth_labor": timedelta(days=45),
+        "inflation": timedelta(days=45),
+        "liquidity_credit": timedelta(days=21),
+        "rates_policy": timedelta(days=7),
+        "cross_asset_confirmation": timedelta(days=7),
+    }
 
     def __init__(self, repository: MarketRepository) -> None:
-
         self.repository = repository
 
-
-
     async def build_overview(self, *, now: datetime | None = None) -> MacroOverviewResponse:
-
-        now = now or datetime.now(timezone.utc)
-
+        now = now or datetime.now(UTC)
         observations = await self.repository.list_indicator_observations(limit=800)
-
         definitions = {
-
             item.indicator_key: item
-
             for item in await self.repository.list_indicator_definitions(enabled_only=True)
-
         }
-
         events = await self.repository.list_macro_events(limit=300)
-
-
-
-        latest_by_key: dict[str, object] = {}
-
-        for item in observations:
-
-            current = latest_by_key.get(item.indicator_key)
-
-            if current is None or item.observation_ts > current.observation_ts:
-
-                latest_by_key[item.indicator_key] = item
-
-
+        latest_by_key = self._latest_observations(observations)
 
         layers: list[MacroOverviewLayerRead] = []
-
         layer_scores: dict[str, int] = {}
-
         for layer in self.LAYERS:
-
-            indicators = []
-
-            for spec in layer.indicators:
-
-                if layer.layer_key == "event_window":
-
-                    indicators.append(self._build_event_indicator_read(spec, events, now))
-
-                else:
-
-                    indicators.append(
-
-                        self._build_indicator_read(
-
-                            spec,
-
-                            definitions.get(spec.indicator_key),
-
-                            latest_by_key.get(spec.indicator_key),
-
-                        )
-
-                    )
-
-            score = self._score_layer(layer.layer_key, indicators)
-
+            indicators = [
+                self._indicator_read(layer, spec, latest_by_key.get(spec.indicator_key), definitions, now)
+                for spec in layer.indicators
+            ]
+            scored = [item for item in indicators if item.is_scored]
+            score = round(sum(_score_indicator(item) for item in scored) / len(scored)) if scored else 50
             layer_scores[layer.layer_key] = score
-
             layers.append(
-
                 MacroOverviewLayerRead(
-
                     layer_key=layer.layer_key,
-
                     label_cn=layer.label_cn,
-
                     score=score,
-
-                    bias=self._score_to_bias(score),
-
-                    summary=self._layer_summary(layer.layer_key, score, indicators, now, events),
-
+                    bias=_score_to_bias(score),
+                    summary=_layer_summary(layer.layer_key, score, scored, len(indicators)),
+                    effective_count=len(scored),
+                    total_count=len(indicators),
+                    missing_count=sum(1 for item in indicators if item.status == "missing"),
+                    stale_count=sum(1 for item in indicators if item.status == "stale"),
+                    cached_count=sum(1 for item in indicators if item.status == "cached"),
+                    is_scored=bool(scored),
+                    not_scored_reason=None if scored else "当前层级缺少可评分数据",
                     indicators=indicators,
-
                 )
-
             )
 
-
-
-        event_status, event_summary, next_event_title, next_event_at = self._event_window(
-
-            now, events
-
-        )
-
-        event_items = self._build_event_items(now, events)
-
-        policy_score = layer_scores.get("rates_policy", 0)
-
-        inflation_score = layer_scores.get("inflation", 0)
-
-        growth_score = layer_scores.get("growth_labor", 0)
-
-        liquidity_score = layer_scores.get("liquidity_credit", 0)
-
-
-
-        regime_key, regime_label_cn, regime_summary = self._regime(
-
-            policy_score=policy_score,
-
-            inflation_score=inflation_score,
-
-            growth_score=growth_score,
-
-            liquidity_score=liquidity_score,
-
-            event_window_status=event_status,
-
-        )
-
-
+        layer_contributions = _layer_contributions(layer_scores)
+        total_score = _total_score(layer_contributions)
+        event_items = _event_items(events, now)
+        event_status, event_summary, next_event = _event_window(events, now)
+        operation_bias = _operation_bias(total_score, event_status)
 
         return MacroOverviewResponse(
-
-            regime_key=regime_key,
-
-            regime_label_cn=regime_label_cn,
-
-            regime_summary=regime_summary,
-
-            policy_score=policy_score,
-
-            inflation_score=inflation_score,
-
-            growth_score=growth_score,
-
-            liquidity_score=liquidity_score,
-
-            operation_bias=self._operation_bias(regime_key, event_status),
-
+            regime_key=_regime_key(total_score),
+            regime_label_cn=_score_band(total_score),
+            regime_summary=_regime_summary(total_score),
+            policy_score=layer_scores.get("rates_policy", 50),
+            inflation_score=layer_scores.get("inflation", 50),
+            growth_score=layer_scores.get("growth_labor", 50),
+            liquidity_score=layer_scores.get("liquidity_credit", 50),
+            total_score=total_score,
+            score_scale="0 ~ 100",
+            score_band=_score_band(total_score),
+            score_explanation=_score_explanation(layer_contributions),
+            confidence=_confidence(layers),
+            data_completeness=_completeness(layers),
+            warnings=_warnings(layers, total_score),
+            layer_contributions=layer_contributions,
+            operation_bias=operation_bias,
             event_window_status=event_status,
-
             event_window_summary=event_summary,
-
-            next_event_title=next_event_title,
-
-            next_event_at=next_event_at,
-
+            next_event_title=next_event.title if next_event else None,
+            next_event_at=next_event.scheduled_at if next_event else None,
             event_items=event_items,
-
             layers=layers,
-
         )
 
-
-
-    def _build_indicator_read(
-
-        self, spec: MacroIndicatorSpec, definition, observation
-
-    ) -> MacroOverviewIndicatorRead:
-
-        label = spec.label
-
-        if definition and getattr(definition, "display_name", None):
-
-            label = str(definition.display_name).upper().replace("_", " ")
-
-        if observation is None:
-
-            return MacroOverviewIndicatorRead(
-
-                indicator_key=spec.indicator_key,
-
-                label=label,
-
-                tooltip=spec.tooltip,
-
-                region=spec.region,
-
-                status="pending",
-
-                insight="暂无最新观测，等待数据源更新。"
-
-            )
-
-        return MacroOverviewIndicatorRead(
-
-            indicator_key=spec.indicator_key,
-
-            label=label,
-
-            tooltip=spec.tooltip,
-
-            region=spec.region,
-
-            source_provider=observation.source_provider,
-
-            value_num=observation.value_num,
-
-            value_text=observation.value_text,
-
-            observation_ts=observation.observation_ts,
-
-            signal_state=observation.signal_state,
-
-            status="live",
-
-            insight=self._indicator_insight(
-
-                spec.indicator_key, observation.value_num, observation.signal_state
-
-            ),
-
-        )
-
-
-
-    def _build_event_indicator_read(
-
-        self, spec: MacroIndicatorSpec, events, now: datetime
-
-    ) -> MacroOverviewIndicatorRead:
-
-        event_key = self._event_key_for_indicator(spec.indicator_key)
-
-        event = self._nearest_event(events, event_key)
-
-        if event is None:
-
-            return MacroOverviewIndicatorRead(
-
-                indicator_key=spec.indicator_key,
-
-                label=spec.label,
-
-                tooltip=spec.tooltip,
-
-                region=spec.region,
-
-                status="pending",
-
-                insight="暂无最新观测，等待数据源更新。"
-
-            )
-
-
-
-        scheduled_at = (
-
-            event.scheduled_at
-
-            if event.scheduled_at.tzinfo
-
-            else event.scheduled_at.replace(tzinfo=UTC)
-
-        )
-
-        delta = scheduled_at - now
-
-        if delta > timedelta(days=3):
-
-            insight = f"{event.title} 检"
-
-        elif delta > timedelta(0):
-
-            insight = (
-
-                f"{event.title}  {self._humanize_delta(delta)} "
-
-            )
-
-        elif delta >= -timedelta(hours=6):
-
-            insight = f"{event.title} "
-
-        else:
-
-            insight = f"{event.title} "
-
-
-
-        return MacroOverviewIndicatorRead(
-
-            indicator_key=spec.indicator_key,
-
-            label=spec.label,
-
-            tooltip=spec.tooltip,
-
-            region=spec.region,
-
-            source_provider=event.provider_key,
-
-            value_num=event.actual_value_num
-
-            if event.actual_value_num is not None
-
-            else event.consensus_value_num,
-
-            value_text=None,
-
-            observation_ts=scheduled_at,
-
-            signal_state=event.status,
-
-            status="live",
-
-            insight=insight,
-
-            event_title=event.title,
-
-            event_status=event.status,
-
-            scheduled_at=scheduled_at,
-
-            actual_value_num=event.actual_value_num,
-
-            consensus_value_num=event.consensus_value_num,
-
-            previous_value_num=event.previous_value_num,
-
-            surprise_num=event.surprise_num,
-
-        )
-
-
-
-    def _event_key_for_indicator(self, indicator_key: str) -> str:
-
-        mapping = {
-
-            "fomc_event_window": "fomc",
-
-            "us_cpi_yoy": "us_cpi",
-
-            "us_nfp": "us_nfp",
-
-            "ism_mfg_pmi": "ism_mfg",
-
-            "ism_srv_pmi": "ism_srv",
-
-            "cn_mof_bond_issuance": "cn_mof_bond_issuance",
-
-        }
-
-        return mapping.get(indicator_key, indicator_key)
-
-
-
-    def _nearest_event(self, events, event_key: str):
-
-        matched = [item for item in events if item.event_key == event_key]
-
-        if not matched:
-
-            return None
-
-        matched.sort(
-
-            key=lambda item: abs(
-
-                (
-
-                    item.scheduled_at
-
-                    if item.scheduled_at.tzinfo
-
-                    else item.scheduled_at.replace(tzinfo=UTC)
-
-                )
-
-                - datetime.now(timezone.utc)
-
-            )
-
-        )
-
-        return matched[0]
-
-
-
-    def _build_event_items(self, now: datetime, events) -> list[MacroOverviewEventRead]:
-
-        core_keys = {"fomc", "us_cpi", "us_nfp", "ism_mfg", "ism_srv", "cn_mof_bond_issuance"}
-
-        selected = []
-
-        for event in events:
-
-            if event.event_key not in core_keys:
-
-                continue
-
-            scheduled_at = (
-
-                event.scheduled_at
-
-                if event.scheduled_at.tzinfo
-
-                else event.scheduled_at.replace(tzinfo=UTC)
-
-            )
-
-            if scheduled_at < now - timedelta(hours=24):
-
-                continue
-
-            selected.append((scheduled_at, event))
-
-        selected.sort(key=lambda item: item[0])
-
-
-
-        result = []
-
-        for scheduled_at, event in selected[:6]:
-
-            delta = scheduled_at - now
-
-            if delta > timedelta(days=3):
-
-                window_label = ""
-                summary = "事件窗口已进入监控范围"
-            elif delta > timedelta(0):
-
-                window_label = ""
-
-                summary = f" {self._humanize_delta(delta)}"
-
-            elif delta >= -timedelta(hours=6):
-
-                window_label = ""
-
-                summary = ""
-
-            else:
-
-                window_label = ""
-
-                summary = "意外变化"
-
-
-
-            result.append(
-
-                MacroOverviewEventRead(
-
-                    event_id=event.event_id,
-
-                    event_key=event.event_key,
-
-                    title=event.title,
-
-                    country_code=event.country_code,
-
-                    importance=event.importance,
-
-                    status=event.status,
-
-                    scheduled_at=scheduled_at,
-
-                    actual_value_num=event.actual_value_num,
-
-                    consensus_value_num=event.consensus_value_num,
-
-                    previous_value_num=event.previous_value_num,
-
-                    surprise_num=event.surprise_num,
-
-                    window_label=window_label,
-
-                    summary=summary,
-
-                )
-
-            )
-
-        return result
-
-
-
-    def _humanize_delta(self, delta: timedelta) -> str:
-        
-        total_seconds = int(delta.total_seconds())
-        
-        prefix = "还有" if total_seconds >= 0 else "已过去"
-        
-        abs_seconds = abs(total_seconds)
-        hours = abs_seconds // 3600
-        
-        if hours >= 24:
-            
-            days = hours // 24
-            
-            remain = hours % 24
-            
-            if remain > 0:
-                return f"{prefix} {days} 天 {remain} 小时"
-            return f"{prefix} {days} 天"
-        
-        return f"{prefix} {hours} 小时"
-
-
-
-    def _score_layer(self, layer_key: str, indicators: list[MacroOverviewIndicatorRead]) -> int:
-
-        scorers = {
-
-            "rates_policy": self._score_rates_policy,
-
-            "inflation": self._score_inflation,
-
-            "growth_labor": self._score_growth_labor,
-
-            "liquidity_credit": self._score_liquidity_credit,
-
-            "cross_asset_confirmation": self._score_cross_asset,
-
-            "event_window": lambda _: 0,
-
-        }
-
-        raw_score = scorers[layer_key](indicators)
-
-        if layer_key == "event_window":
-
-            return max(-100, min(100, raw_score))
-
-        live_items = [item for item in indicators if item.status == "live"]
-
-        coverage = len(live_items) / max(len(indicators), 1)
-
-        adjusted = raw_score * (0.45 + 0.55 * coverage)
-
-        return max(-100, min(100, round(adjusted)))
-
-
-
-    def _score_rates_policy(self, indicators: list[MacroOverviewIndicatorRead]) -> int:
-
-        score = 0
-
-        score += self._bucket_score(
-
-            self._value(indicators, "us_dff"),
-
-            [(3, 20), (4.5, 8), (5.5, -10), (99, -22)],
-
-            lower_is_better=True,
-
-        )
-
-        score += self._bucket_score(
-
-            self._value(indicators, "us_2y_yield"),
-
-            [(3.5, 18), (4.5, 6), (5.2, -8), (99, -18)],
-
-            lower_is_better=True,
-
-        )
-
-        score += self._bucket_score(
-
-            self._value(indicators, "us_10y_yield"),
-
-            [(3.8, 10), (4.4, 4), (5.0, -6), (99, -12)],
-
-            lower_is_better=True,
-
-        )
-
-        spread = self._value(indicators, "us_10y_2y_spread")
-
-        if spread is not None:
-
-            if spread > Decimal("0.20"):
-
-                score += 12
-
-            elif spread > Decimal("-0.20"):
-
-                score += 3
-
-            elif spread > Decimal("-0.75"):
-
-                score -= 10
-
-            else:
-
-                score -= 18
-
-        return score
-
-
-
-    def _score_inflation(self, indicators: list[MacroOverviewIndicatorRead]) -> int:
-
-        score = 0
-
-        score += self._bucket_score(
-
-            self._value(indicators, "us_cpi_yoy"),
-
-            [(2.5, 22), (3.2, 10), (4.0, -8), (99, -20)],
-
-            lower_is_better=True,
-
-        )
-
-        score += self._bucket_score(
-
-            self._value(indicators, "us_core_cpi_yoy"),
-
-            [(2.8, 18), (3.4, 8), (4.0, -8), (99, -18)],
-
-            lower_is_better=True,
-
-        )
-
-        oil = self._value(indicators, "wti_crude")
-
-        if oil is not None:
-
-            if oil >= Decimal("95"):
-
-                score -= 12
-
-            elif oil >= Decimal("85"):
-
-                score -= 6
-
-            elif oil >= Decimal("60"):
-
-                score += 2
-
-            else:
-
-                score -= 2
-
-        return score
-
-
-
-    def _score_growth_labor(self, indicators: list[MacroOverviewIndicatorRead]) -> int:
-
-        score = 0
-
-        score += self._bucket_score(
-
-            self._value(indicators, "us_nfp"), [(120, -10), (180, 4), (260, 10), (500, -8)]
-
-        )
-
-        unemployment = self._value(indicators, "unemployment_rate")
-
-        if unemployment is not None:
-
-            if unemployment <= Decimal("3.8"):
-
-                score += 8
-
-            elif unemployment <= Decimal("4.4"):
-
-                score += 2
-
-            else:
-
-                score -= 12
-
-        ism = self._value(indicators, "ism_mfg_pmi")
-
-        if ism is not None:
-
-            score += 8 if ism >= Decimal("50") else -8
-
-        return score
-
-
-
-    def _score_liquidity_credit(self, indicators: list[MacroOverviewIndicatorRead]) -> int:
-
-        score = 0
-
-        hy = self._value(indicators, "hy_oas")
-
-        if hy is not None:
-
-            if hy <= Decimal("3.5"):
-
-                score += 18
-
-            elif hy <= Decimal("4.8"):
-
-                score += 4
-
-            else:
-
-                score -= 16
-
-        fin = self._value(indicators, "financial_conditions")
-
-        if fin is not None:
-
-            if fin <= Decimal("0"):
-
-                score += 8
-
-            elif fin <= Decimal("1"):
-
-                score += 2
-
-            else:
-
-                score -= 8
-
-        return score
-
-
-
-    def _score_cross_asset(self, indicators: list[MacroOverviewIndicatorRead]) -> int:
-
-        score = 0
-
-        dxy = self._value(indicators, "dollar_index")
-
-        if dxy is not None:
-
-            if dxy <= Decimal("101"):
-
-                score += 12
-
-            elif dxy <= Decimal("105"):
-
-                score += 2
-
-            else:
-
-                score -= 10
-
-        vix = self._value(indicators, "vix")
-
-        if vix is not None:
-
-            if vix <= Decimal("16"):
-
-                score += 10
-
-            elif vix <= Decimal("22"):
-
-                score += 2
-
-            else:
-
-                score -= 12
-
-        return score
-
-
-
-    def _layer_summary(
-
+    @staticmethod
+    def _latest_observations(observations: list[Any]) -> dict[str, Any]:
+        latest: dict[str, Any] = {}
+        for item in observations:
+            current = latest.get(item.indicator_key)
+            if current is None or item.observation_ts > current.observation_ts:
+                latest[item.indicator_key] = item
+        return latest
+
+    def _indicator_read(
         self,
-
-        layer_key: str,
-
-        score: int,
-
-        indicators: list[MacroOverviewIndicatorRead],
-
+        layer: MacroLayerSpec,
+        spec: MacroIndicatorSpec,
+        observation: Any | None,
+        definitions: dict[str, Any],
         now: datetime,
-
-        events,
-
-    ) -> str:
-
-        if layer_key == "event_window":
-
-            status, summary, _, _ = self._event_window(now, events)
-
-            return "" if status == "" else summary
-
-        if all(item.status != "live" for item in indicators):
-
-            return ""
-
-        if layer_key == "rates_policy":
-
-            if score >= 20:
-
-                return ""
-
-            if score <= -20:
-
-                return ""
-
-            return ""
-
-        if layer_key == "inflation":
-
-            if score >= 20:
-
-                return ""
-
-            if score <= -20:
-
-                return ""
-
-            return ""
-
-        if layer_key == "growth_labor":
-
-            if score >= 20:
-
-                return "风"
-
-            if score <= -20:
-
-                return ""
-
-            return "PMI"
-
-        if layer_key == "liquidity_credit":
-
-            if score >= 20:
-
-                return ""
-
-            if score <= -20:
-
-                return ""
-
-            return ""
-
-        if score >= 20:
-
-            return ""
-
-        if score <= -20:
-
-            return ""
-
-        return ""
-
-
-
-    def _regime(
-
-        self,
-
-        *,
-
-        policy_score: int,
-
-        inflation_score: int,
-
-        growth_score: int,
-
-        liquidity_score: int,
-
-        event_window_status: str,
-
-    ) -> tuple[str, str, str]:
-
-        if event_window_status in {"blocked", "risk_off"}:
-
-            return "event_risk_hold", "risk_off", "risk_off"
-
-        if growth_score >= 10 and inflation_score >= 10 and liquidity_score >= 5:
-
-            return "goldilocks", "", ""
-
-        if growth_score >= 8 and inflation_score <= -8:
-
-            return "reflation", "", ""
-
-        if growth_score <= -10 and inflation_score <= -8:
-
-            return "stagflation_risk", "", ""
-
-        if growth_score <= -10:
-
-            return "growth_scare", "", "检"
-
-        if policy_score <= -12 or liquidity_score <= -12:
-
-            return "hawkish_tightening", "", ""
-
-        return "range_bound", "", ""
-
-
-
-    def _event_window(self, now: datetime, events) -> tuple[str, str, str | None, datetime | None]:
-
-        core_keys = {"fomc", "us_cpi", "us_nfp", "ism_mfg", "ism_srv", "cn_mof_bond_issuance"}
-
-        candidates = []
-
-        for event in events:
-
-            scheduled_at = (
-
-                event.scheduled_at
-
-                if event.scheduled_at.tzinfo
-
-                else event.scheduled_at.replace(tzinfo=UTC)
-
+    ) -> MacroOverviewIndicatorRead:
+        definition = definitions.get(spec.indicator_key)
+        source_provider = getattr(definition, "source_provider", None) if definition else None
+        if observation is None:
+            return MacroOverviewIndicatorRead(
+                indicator_key=spec.indicator_key,
+                label=spec.label,
+                tooltip=spec.tooltip,
+                region=spec.region,
+                source_provider=source_provider,
+                status="missing",
+                is_scored=False,
+                status_reason="暂无可用观测值",
+                signal_state=None,
+                insight=f"{spec.label} 暂无可评分数据。",
             )
 
-            if event.event_key in core_keys and scheduled_at >= now - timedelta(hours=1):
+        age = now - observation.observation_ts
+        stale_limit = self.STALE_LIMITS.get(layer.layer_key, timedelta(days=14))
+        is_stale = age > stale_limit
+        status = "stale" if is_stale else "live"
+        status_reason = "数据已过期，暂不参与评分" if is_stale else "数据有效，参与评分"
+        return MacroOverviewIndicatorRead(
+            indicator_key=spec.indicator_key,
+            label=spec.label,
+            tooltip=spec.tooltip,
+            region=spec.region,
+            source_provider=getattr(observation, "source_provider", source_provider),
+            value_num=observation.value_num,
+            value_text=observation.value_text,
+            observation_ts=observation.observation_ts,
+            signal_state=observation.signal_state,
+            status=status,
+            is_scored=not is_stale,
+            status_reason=status_reason,
+            insight=_indicator_insight(spec.label, observation.value_num, observation.signal_state, status),
+        )
 
-                candidates.append((scheduled_at, event))
 
-        candidates.sort(key=lambda item: item[0])
+def _score_indicator(item: MacroOverviewIndicatorRead) -> int:
+    state_scores = {
+        "bullish": 70,
+        "bearish": 30,
+        "strong": 70,
+        "weak": 35,
+        "positive": 65,
+        "negative": 35,
+        "risk_on": 72,
+        "risk_off": 25,
+        "neutral": 50,
+        "normal": 50,
+    }
+    if item.signal_state in state_scores:
+        return state_scores[item.signal_state]
+    if item.value_num is None:
+        return 50
+    value = Decimal(str(item.value_num))
+    key = item.indicator_key
+    if key in {"us_dff", "us_2y_yield", "us_10y_yield", "ust_10y_yield"}:
+        if value >= Decimal("5"):
+            return 30
+        if value >= Decimal("4"):
+            return 42
+        if value <= Decimal("2"):
+            return 65
+        return 50
+    if key in {"us_cpi_yoy", "us_core_cpi_yoy", "breakeven_10y"}:
+        if value >= Decimal("4"):
+            return 25
+        if value >= Decimal("3"):
+            return 38
+        if value <= Decimal("2.2"):
+            return 62
+        return 50
+    if key in {"hy_oas", "vix", "financial_conditions"}:
+        if value >= Decimal("25") and key == "vix":
+            return 25
+        if value >= Decimal("5") and key == "hy_oas":
+            return 28
+        return 50
+    if key in {"us_nfp", "ism_mfg_pmi", "ism_srv_pmi"}:
+        if value >= Decimal("50"):
+            return 60
+        return 40
+    return 50
 
-        if not candidates:
 
-            return "", "", None, None
+def _score_to_bias(score: int) -> str:
+    if score >= 58:
+        return "偏多"
+    if score <= 42:
+        return "偏空"
+    return "中性"
 
-        next_at, next_event = candidates[0]
 
-        delta = next_at - now
+def _layer_summary(layer_key: str, score: int, scored: list[Any], total: int) -> str:
+    if not scored:
+        return "当前层级缺少有效数据，暂不单独给出方向判断。"
+    names = {
+        "rates_policy": "利率与政策",
+        "inflation": "通胀与价格",
+        "growth_labor": "增长与就业",
+        "liquidity_credit": "流动性与信用",
+        "cross_asset_confirmation": "跨资产确认",
+        "event_window": "事件窗口",
+    }
+    return f"{names.get(layer_key, '宏观层级')}当前为{_score_to_bias(score)}，有效指标 {len(scored)}/{total}。"
 
-        if timedelta(0) <= delta <= timedelta(hours=24):
 
-            return (
+def _indicator_insight(label: str, value: Decimal | None, state: str | None, status: str) -> str:
+    if status == "stale":
+        return f"{label} 数据已过期，当前只作为背景信息。"
+    if value is None:
+        return f"{label} 暂无数值。"
+    state_text = {"bullish": "偏多", "bearish": "偏空", "neutral": "中性"}.get(state or "", "中性")
+    return f"{label} 最新值为 {value}，系统解读为{state_text}。"
 
-                "",
 
-                f"{next_event.title}",
+def _layer_contributions(layer_scores: dict[str, int]) -> dict[str, float]:
+    weights = {
+        "rates_policy": 0.24,
+        "inflation": 0.22,
+        "growth_labor": 0.18,
+        "liquidity_credit": 0.18,
+        "cross_asset_confirmation": 0.12,
+        "event_window": 0.06,
+    }
+    return {
+        key: round((layer_scores.get(key, 50) - 50) * weight, 2)
+        for key, weight in weights.items()
+    }
 
-                next_event.title,
 
-                next_at,
+def _total_score(contributions: dict[str, float]) -> int:
+    return max(0, min(100, round(50 + sum(contributions.values()))))
 
+
+def _score_band(score: int) -> str:
+    if score >= 70:
+        return "风险偏好较强"
+    if score >= 58:
+        return "风险偏好温和"
+    if score <= 30:
+        return "风险收缩较强"
+    if score <= 42:
+        return "风险偏好偏弱"
+    return "中性震荡"
+
+
+def _regime_key(score: int) -> str:
+    if score >= 58:
+        return "risk_on"
+    if score <= 42:
+        return "risk_off"
+    return "neutral"
+
+
+def _regime_summary(score: int) -> str:
+    if score >= 58:
+        return "宏观环境偏向支持风险资产，但仍需要价格结构确认。"
+    if score <= 42:
+        return "宏观环境偏谨慎，风险资产更容易受到流动性或政策压力影响。"
+    return "宏观环境方向不强，建议结合价格结构和事件窗口观察。"
+
+
+def _score_explanation(contributions: dict[str, float]) -> str:
+    labels = {
+        "rates_policy": "利率与政策",
+        "inflation": "通胀与价格",
+        "growth_labor": "增长与就业",
+        "liquidity_credit": "流动性与信用",
+        "cross_asset_confirmation": "跨资产确认",
+        "event_window": "事件窗口",
+    }
+    parts = ["宏观总分以 50 的中性基准为起点"]
+    for key, value in contributions.items():
+        parts.append(f"{labels.get(key, key)}贡献 {value:+.2f}")
+    return "；".join(parts)
+
+
+def _confidence(layers: list[MacroOverviewLayerRead]) -> str:
+    completeness = _completeness(layers).get("ratio", 0)
+    if completeness >= 0.75:
+        return "high"
+    if completeness >= 0.5:
+        return "medium"
+    if completeness >= 0.25:
+        return "low"
+    return "insufficient"
+
+
+def _completeness(layers: list[MacroOverviewLayerRead]) -> dict[str, float]:
+    total = sum(layer.total_count for layer in layers)
+    effective = sum(layer.effective_count for layer in layers)
+    return {
+        "effective_count": float(effective),
+        "total_count": float(total),
+        "ratio": round(effective / total, 3) if total else 0.0,
+    }
+
+
+def _warnings(layers: list[MacroOverviewLayerRead], total_score: int) -> list[str]:
+    warnings: list[str] = []
+    if _completeness(layers).get("ratio", 0) < 0.5:
+        warnings.append("当前有效宏观指标不足，宏观总分只作为低置信度参考。")
+    if total_score <= 30:
+        warnings.append("宏观总分处于低位，系统判断当前风险偏好偏弱。")
+    elif total_score >= 70:
+        warnings.append("宏观总分处于高位，但仍需要价格结构确认。")
+    return warnings
+
+
+def _operation_bias(total_score: int, event_status: str) -> str:
+    if event_status == "临近发布":
+        return "观望"
+    if total_score >= 58:
+        return "偏多"
+    if total_score <= 42:
+        return "偏空"
+    return "观望"
+
+
+def _event_items(events: list[Any], now: datetime) -> list[MacroOverviewEventRead]:
+    items: list[MacroOverviewEventRead] = []
+    for event in sorted(events, key=lambda item: item.scheduled_at)[:12]:
+        delta = event.scheduled_at - now
+        if delta.total_seconds() >= 0:
+            window = "即将发布" if delta <= timedelta(days=3) else "未来事件"
+        else:
+            window = "已发布" if abs(delta) <= timedelta(days=3) else "历史事件"
+        items.append(
+            MacroOverviewEventRead(
+                event_id=event.event_id,
+                event_key=event.event_key,
+                title=event.title,
+                country_code=event.country_code,
+                importance=event.importance,
+                status=event.status,
+                scheduled_at=event.scheduled_at,
+                actual_value_num=event.actual_value_num,
+                consensus_value_num=event.consensus_value_num,
+                previous_value_num=event.previous_value_num,
+                surprise_num=event.surprise_num,
+                window_label=window,
+                summary="事件已纳入宏观风险窗口监控。",
             )
-
-        if timedelta(0) <= delta <= timedelta(days=3):
-
-            return (
-
-                "",
-
-                f"{next_event.title}",
-
-                next_event.title,
-
-                next_at,
-
-            )
-
-        if -timedelta(hours=1) <= delta < timedelta(0):
-
-            return (
-
-                "",
-
-                f"{next_event.title}",
-
-                next_event.title,
-
-                next_at,
-
-            )
-
-        return "distant", f"下一个宏观事件：{next_event.title}，约 {self._humanize_delta(delta)}后", next_event.title, next_at
-
-
-
-    def _indicator_insight(
-
-        self, indicator_key: str, value: Decimal | None, signal_state: str | None
-
-    ) -> str:
-
-        if value is None:
-
-            return signal_state or ""
-
-        if indicator_key == "us_dff":
-
-            return (
-
-                ""
-
-                if value >= Decimal("4.5")
-
-                else ""
-
-            )
-
-        if indicator_key == "us_2y_yield":
-
-            return (
-
-                ""
-
-                if value >= Decimal("4.5")
-
-                else ""
-
-            )
-
-        if indicator_key in {"us_10y_yield", "ust_10y_yield"}:
-
-            return (
-
-                ""
-
-                if value >= Decimal("4.4")
-
-                else ""
-
-            )
-
-        if indicator_key in {"us_cpi_yoy", "us_core_cpi_yoy"}:
-
-            return (
-
-                ""
-
-                if value >= Decimal("3.2")
-
-                else ""
-
-            )
-
-        if indicator_key in {"cn_cpi_yoy", "cn_ppi_yoy"}:
-
-            return (
-
-                ""
-
-                if value <= Decimal("0.5")
-
-                else ""
-
-            )
-
-        if indicator_key in {"us_nfp", "ism_mfg_pmi", "ism_srv_pmi", "cn_pmi_mfg"}:
-
-            return (
-
-                ""
-
-                if value >= Decimal("50")
-
-                else ""
-
-            )
-
-        if indicator_key == "hy_oas":
-
-            return (
-
-                ""
-
-                if value >= Decimal("4.8")
-
-                else ""
-
-            )
-
-        if indicator_key == "financial_conditions":
-
-            return (
-
-                "风"
-
-                if value >= Decimal("1")
-
-                else ""
-
-            )
-
-        if indicator_key == "dollar_index":
-
-            return (
-
-                ""
-
-                if value >= Decimal("105")
-
-                else ""
-
-            )
-
-        if indicator_key == "vix":
-
-            return (
-
-                ""
-
-                if value >= Decimal("22")
-
-                else ""
-
-            )
-
-        if indicator_key in {"cn_usdcny", "cn_shibor_3m"}:
-
-            return (
-
-                ""
-
-                if value >= Decimal("4")
-
-                else ""
-
-            )
-
-        return signal_state or ""
-
-
-
-    def _operation_bias(self, regime_key: str, event_window_status: str) -> str:
-
-        if event_window_status in {", "", "}:
-
-            return ""
-
-        if regime_key in {"goldilocks", "reflation"}:
-
-            return ""
-
-        if regime_key in {"stagflation_risk", "growth_scare", "hawkish_tightening"}:
-
-            return ""
-
-        return ""
-
-
-
-    @staticmethod
-
-    def _score_to_bias(score: int) -> str:
-
-        if score >= 20:
-
-            return ""
-
-        if score <= -20:
-
-            return ""
-
-        return ""
-
-
-
-    @staticmethod
-
-    def _value(indicators: list[MacroOverviewIndicatorRead], key: str) -> Decimal | None:
-
-        for item in indicators:
-
-            if item.indicator_key == key:
-
-                return item.value_num
-
-        return None
-
-
-
-    @staticmethod
-
-    def _bucket_score(
-
-        value: Decimal | None, thresholds: list[tuple[float, int]], *, lower_is_better: bool = False
-
-    ) -> int:
-
-        if value is None:
-
-            return 0
-
-        if lower_is_better:
-
-            for limit, score in thresholds:
-
-                if value <= Decimal(str(limit)):
-
-                    return score
-
-            return thresholds[-1][1]
-
-        for limit, score in thresholds:
-
-            if value <= Decimal(str(limit)):
-
-                return score
-
-        return thresholds[-1][1]
+        )
+    return items
+
+
+def _event_window(events: list[Any], now: datetime) -> tuple[str, str, Any | None]:
+    future = sorted((event for event in events if event.scheduled_at >= now), key=lambda item: item.scheduled_at)
+    if not future:
+        return "无临近事件", "当前没有临近的高优先级宏观事件。", None
+    next_event = future[0]
+    delta = next_event.scheduled_at - now
+    if delta <= timedelta(days=1):
+        return "临近发布", f"{next_event.title} 将在 24 小时内发布，建议降低事件前追单权重。", next_event
+    if delta <= timedelta(days=3):
+        return "事件临近", f"{next_event.title} 将在 3 天内发布，注意波动率抬升。", next_event
+    return "常规窗口", "当前没有迫近的重大宏观事件。", next_event

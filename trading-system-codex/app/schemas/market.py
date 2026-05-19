@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -475,6 +476,8 @@ class MacroOverviewIndicatorRead(BaseModel):
     observation_ts: datetime | None = None
     signal_state: str | None = None
     status: str = "missing"
+    is_scored: bool = False
+    status_reason: str | None = None
     insight: str
     event_title: str | None = None
     event_status: str | None = None
@@ -507,7 +510,14 @@ class MacroOverviewLayerRead(BaseModel):
     score: int
     bias: str
     summary: str
-    indicators: list[MacroOverviewIndicatorRead]
+    effective_count: int = 0
+    total_count: int = 0
+    missing_count: int = 0
+    stale_count: int = 0
+    cached_count: int = 0
+    is_scored: bool = True
+    not_scored_reason: str | None = None
+    indicators: list[MacroOverviewIndicatorRead] = []
 
 
 class MacroOverviewResponse(BaseModel):
@@ -518,13 +528,21 @@ class MacroOverviewResponse(BaseModel):
     inflation_score: int
     growth_score: int
     liquidity_score: int
-    operation_bias: str
-    event_window_status: str
-    event_window_summary: str
+    total_score: int = 0
+    score_scale: str = "-100 ~ +100"
+    score_band: str = "中性"
+    score_explanation: str = ""
+    confidence: str = "low"
+    data_completeness: dict[str, float] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    layer_contributions: dict[str, float] = Field(default_factory=dict)
+    operation_bias: str = "观望"
+    event_window_status: str = ""
+    event_window_summary: str = ""
     next_event_title: str | None = None
     next_event_at: datetime | None = None
     event_items: list[MacroOverviewEventRead] = []
-    layers: list[MacroOverviewLayerRead]
+    layers: list[MacroOverviewLayerRead] = []
 
 
 class BundleMetaRead(BaseModel):
@@ -566,10 +584,12 @@ class MonitoringDashboardRead(BundleMetaRead):
     timeframe: str
     macro_overview: MacroOverviewResponse | None = None
     technical_observations: list[IndicatorObservationRead] = Field(default_factory=list)
+    technical_source: str | None = None
+    technical_indicator_count: int = 0
     onchain_observations: list[IndicatorObservationRead] = Field(default_factory=list)
     alert_events: list[AlertEventRead] = Field(default_factory=list)
     cross_asset: list[dict] = Field(default_factory=list)
-    source_status: dict[str, str] = Field(default_factory=dict)
+    source_status: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class PrecomputeHintRequest(BaseModel):

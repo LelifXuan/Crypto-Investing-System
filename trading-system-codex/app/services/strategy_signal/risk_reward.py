@@ -48,7 +48,7 @@ def risk_reward_label(rr: float | None) -> str:
         return "盈亏比可观察，仍需等待确认"
     if rr < 3:
         return "盈亏比合格"
-    return "盈亏比优秀，但需要确认目标是否现实"
+    return "盈亏比优秀，但仍需确认目标是否现实"
 
 
 def compute_risk_reward(direction: str, entry: float | None, stop: float | None, tp1: float | None) -> float | None:
@@ -59,4 +59,3 @@ def compute_risk_reward(direction: str, entry: float | None, stop: float | None,
     if direction == "short" and stop > entry:
         return (entry - tp1) / max(stop - entry, 1e-9)
     return None
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -47,6 +48,8 @@ class TranslationBundle:
 class MarketEventTranslationService:
     """Small, resilient translation facade for market event text."""
 
+    _provider_backoff_until: dict[str, float] = {}
+
     def __init__(self, *, enabled: bool | None = None, provider: str | None = None) -> None:
         portable_forces_local = (
             settings.app_distribution_mode == "portable"
@@ -57,6 +60,14 @@ class MarketEventTranslationService:
         self.provider = (provider or settings.market_events_translation_provider or "none").lower()
         self.target_language = settings.market_events_translation_target_lang
         self.source_language = "en"
+
+    def _mark_provider_backoff(self, reason: str, *, seconds: int = 300) -> None:
+        if "429" in str(reason) or "too many" in str(reason).lower():
+            self._provider_backoff_until[self.provider] = time.monotonic() + seconds
+
+    def _provider_in_backoff(self) -> bool:
+        until = self._provider_backoff_until.get(self.provider, 0)
+        return until > time.monotonic()
 
     @staticmethod
     def looks_like_english(text: str | None) -> bool:
@@ -122,6 +133,17 @@ class MarketEventTranslationService:
                 translation_status="disabled",
                 provider="none",
             )
+        if self._provider_in_backoff():
+            return TranslationBundle(
+                original_title=original_title,
+                original_summary=original_summary,
+                translated_title=original_title,
+                translated_summary=original_summary,
+                translated=False,
+                translation_status="pending",
+                provider=self.provider,
+                target_language=self.target_language,
+            )
         own_client = client is None
         if own_client:
             client = httpx.AsyncClient(timeout=15)
@@ -146,6 +168,7 @@ class MarketEventTranslationService:
                 target_language=self.target_language,
             )
         except Exception as exc:
+            self._mark_provider_backoff(str(exc))
             return TranslationBundle(
                 original_title=original_title,
                 original_summary=original_summary,
@@ -183,7 +206,12 @@ class MarketEventTranslationService:
     def local_glossary_translate(self, text: str) -> str:
         translated = self._clean_text(text)
         for source, target in sorted(LOCAL_GLOSSARY.items(), key=lambda item: -len(item[0])):
-            translated = re.sub(rf"\b{re.escape(source)}\b", target, translated, flags=re.IGNORECASE)
+            translated = re.sub(
+                rf"\b{re.escape(source)}\b",
+                target,
+                translated,
+                flags=re.IGNORECASE,
+            )
         return translated
 
     def build_payload(self, existing_payload: dict | None, bundle: TranslationBundle) -> dict:

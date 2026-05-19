@@ -96,7 +96,7 @@ async def get_structure_bundle(
         include_geometry=include_geometry,
         candles_limit=candles_limit,
     )
-    if bundle.cache_state in {"missing", "stale"}:
+    if bundle.cache_state == "missing" or bundle.is_stale:
         await precompute_service.enqueue_hint(
             PrecomputeHintRequest(
                 current_page="market-structure",
@@ -108,7 +108,7 @@ async def get_structure_bundle(
         )
         if bundle.cache_state == "missing":
             bundle.status_message = "暂无结构快照，已加入后台预计算队列。"
-        elif bundle.cache_state == "stale":
+        elif bundle.is_stale:
             bundle.status_message = "结构快照可能滞后，后台正在准备新数据。"
     return bundle
 

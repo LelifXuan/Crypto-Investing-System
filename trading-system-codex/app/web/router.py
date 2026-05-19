@@ -28,9 +28,14 @@ def render_page(request: Request, title: str, page_id: str):
     )
 
 
-@web_router.get("/indicators-page")
-async def indicators_page(request: Request):
-    return render_page(request, "技术指标", "market-analysis")
+@web_router.get("/macro-calendar-page")
+async def macro_calendar_page(request: Request):
+    return render_page(request, "宏观日历", "macro-calendar")
+
+
+@web_router.get("/market-events-page")
+async def market_events_page(request: Request):
+    return render_page(request, "市场事件", "market-events")
 
 
 @web_router.get("/monitoring-page")
@@ -48,14 +53,9 @@ async def structure_page(request: Request):
     return render_page(request, "形态结构", "market-structure")
 
 
-@web_router.get("/market-events-page")
-async def market_events_page(request: Request):
-    return render_page(request, "市场事件", "market-events")
-
-
-@web_router.get("/macro-calendar-page")
-async def macro_calendar_page(request: Request):
-    return render_page(request, "宏观日历", "macro-calendar")
+@web_router.get("/indicators-page")
+async def indicators_page(request: Request):
+    return render_page(request, "技术指标", "market-analysis")
 
 
 @web_router.get("/alerts-page")
@@ -66,6 +66,16 @@ async def alerts_page(request: Request):
 @web_router.get("/knowledge-page")
 async def knowledge_page(request: Request):
     return render_page(request, "知识百科", "knowledge-base")
+
+
+@web_router.get("/ashare-etf-page")
+async def ashare_etf_page(request: Request):
+    return render_page(request, "A股ETF", "ashare-etf")
+
+
+@web_router.get("/etf-page")
+async def etf_page(request: Request):
+    return render_page(request, "A股ETF", "ashare-etf")
 
 
 @web_router.get("/strategy-page")

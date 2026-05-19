@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, get_db_session, require_roles
@@ -180,7 +181,7 @@ async def get_monitoring_dashboard(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(
-        instrument_id, timeframe
+        instrument_id, timeframe, allow_refresh=True
     )
 
 
@@ -191,9 +192,12 @@ async def refresh_monitoring_dashboard(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
-    return await MonitoringDashboardService(MarketRepository(session)).refresh_bundle(
-        instrument_id, timeframe
-    )
+    service = MonitoringDashboardService(MarketRepository(session))
+    try:
+        return await service.refresh_bundle(instrument_id, timeframe)
+    except SQLAlchemyError:
+        await session.rollback()
+        return await service.get_bundle(instrument_id, timeframe, allow_refresh=False)
 
 
 @indicators_catalog_router.post("/refresh", response_model=MonitoringSyncResponse)

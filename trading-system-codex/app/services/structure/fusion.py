@@ -167,6 +167,8 @@ class StructureFusionEngine:
 
             invalidation=self._invalidation_hint(bundles, regime, conflict_state),
 
+            invalidation_details=self._invalidation_details(bundles, regime, conflict_state),
+
             suggested_mode=self._suggested_mode(bundles, regime, conflict_state),
 
             suggested_action=self._suggested_action(bundles, regime, conflict_state),
@@ -512,34 +514,81 @@ class StructureFusionEngine:
 
 
     def _invalidation_hint(
-
         self, bundles: dict[str, ScoreBundle], regime: str, conflict_state: bool
-
     ) -> str | None:
-
         if (
-
             not conflict_state
-
             and regime != "transition"
-
             and not any(bundle.metadata.get("risk_veto") for bundle in bundles.values())
-
         ):
-
             return None
-
         dominant = self._dominant_side(bundles)
-
         if dominant == "bullish":
-
             return "若价格跌破最近结构低点，多头结构失效。"
-
         if dominant == "bearish":
-
             return "若价格突破最近结构高点，空头结构失效。"
-
         return "若无后续确认或价格反向突破关键位，结构可能失效。"
+
+    def _invalidation_details(
+        self, bundles: dict[str, ScoreBundle], regime: str, conflict_state: bool
+    ) -> dict | None:
+        if (
+            not conflict_state
+            and regime != "transition"
+            and not any(bundle.metadata.get("risk_veto") for bundle in bundles.values())
+        ):
+            return None
+        dominant = self._dominant_side(bundles)
+        swing_bundle = bundles.get("swing")
+        swing_key = None
+        if swing_bundle and swing_bundle.metadata:
+            swing_key = (
+                swing_bundle.metadata.get("nearest_swing_low")
+                if dominant == "bullish"
+                else swing_bundle.metadata.get("nearest_swing_high")
+            )
+        latest_close = None
+        for bundle in bundles.values():
+            close_val = bundle.metadata.get("latest_close")
+            if close_val is not None:
+                latest_close = float(close_val)
+                break
+        if swing_key is not None and latest_close is not None:
+            diff_pct = round((latest_close - swing_key) / swing_key * 100, 2) if swing_key else None
+            if dominant == "bullish":
+                triggered = latest_close < swing_key
+                state = "triggered" if triggered else "not_triggered"
+                msg = (
+                    f"最新收盘已跌破多头结构失效位 {swing_key:,.0f}，原多头结构降级为失效观察。"
+                    if triggered
+                    else f"多头结构失效位 {swing_key:,.0f}，当前尚未触发。"
+                )
+                return {
+                    "invalidation_state": state,
+                    "invalidation_level": swing_key,
+                    "invalidation_distance_pct": diff_pct,
+                    "invalidation_message": msg,
+                }
+            else:
+                triggered = latest_close > swing_key
+                state = "triggered" if triggered else "not_triggered"
+                msg = (
+                    f"最新收盘已突破空头结构失效位 {swing_key:,.0f}，原空头结构降级为失效观察。"
+                    if triggered
+                    else f"空头结构失效位 {swing_key:,.0f}，当前尚未触发。"
+                )
+                return {
+                    "invalidation_state": state,
+                    "invalidation_level": swing_key,
+                    "invalidation_distance_pct": diff_pct,
+                    "invalidation_message": msg,
+                }
+        return {
+            "invalidation_state": "unknown",
+            "invalidation_level": None,
+            "invalidation_distance_pct": None,
+            "invalidation_message": "结构存在风险，但无法确定具体失效价位，等待价格信号确认。",
+        }
 
 
 

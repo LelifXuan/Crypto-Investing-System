@@ -74,7 +74,6 @@ def _write_manifest(runtime_metadata: dict[str, object]) -> None:
         for name in files
         if name == "runtime/config/portable.env"
         or name == "storage_manifest.json"
-        or name == ".env"
         or name.startswith(("runtime/", "run/", "logs/", "data/", "cache/", "tmp/"))
         or "/.git/" in f"/{name}/"
         or "/.venv/" in f"/{name}/"

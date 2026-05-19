@@ -204,10 +204,27 @@ class Settings(BaseSettings):
         default=95, alias="MONITORING_DEFAULT_QUALITY_SCORE"
     )
     monitoring_demo_quality_score: int = Field(default=60, alias="MONITORING_DEMO_QUALITY_SCORE")
+    ashare_etf_provider_order: list[str] = Field(
+        default_factory=lambda: ["eastmoney_direct"],
+        alias="ASHARE_ETF_PROVIDER_ORDER",
+    )
+    ashare_etf_quote_ttl_seconds: int = Field(default=15, alias="ASHARE_ETF_QUOTE_TTL_SECONDS")
+    ashare_etf_stale_cache_seconds: int = Field(
+        default=1800,
+        alias="ASHARE_ETF_STALE_CACHE_SECONDS",
+    )
+    ashare_etf_timeout_seconds: int = Field(default=6, alias="ASHARE_ETF_TIMEOUT_SECONDS")
+    ashare_etf_eastmoney_base_url: str = Field(
+        default="https://push2.eastmoney.com",
+        alias="ASHARE_ETF_EASTMONEY_BASE_URL",
+    )
     fred_public_csv_url: str = Field(
         default="https://fred.stlouisfed.org/graph/fredgraph.csv",
         alias="FRED_PUBLIC_CSV_URL",
     )
+    fred_api_key: str = Field(default="", alias="FRED_API_KEY")
+    bls_api_key: str = Field(default="", alias="BLS_API_KEY")
+    bea_api_key: str = Field(default="", alias="BEA_API_KEY")
     glassnode_api_key: str = Field(default="", alias="GLASSNODE_API_KEY")
     history_mark_prices_keep_per_series: int = Field(
         default=720,

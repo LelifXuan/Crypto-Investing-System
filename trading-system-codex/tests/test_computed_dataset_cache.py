@@ -25,7 +25,20 @@ def test_secondary_indicator_series_uses_canonical_adx_keys() -> None:
 
     payload = service._build_indicator_series(candles, "secondary")
 
-    expected = {"adx_14", "plus_di", "minus_di", "obv", "kdj_k", "kdj_d", "kdj_j", "cci_20"}
+    expected = {
+        "adx_14",
+        "plus_di",
+        "minus_di",
+        "obv",
+        "obv_change_5",
+        "obv_slope",
+        "kdj_k",
+        "kdj_d",
+        "kdj_j",
+        "cci_20",
+    }
     assert expected <= set(payload)
     assert len(payload["plus_di"]) == len(candles)
     assert len(payload["minus_di"]) == len(candles)
+    assert len(payload["obv_slope"]) == len(candles)
+    assert any(item is not None for item in payload["obv_slope"][6:])

@@ -27,13 +27,26 @@ from .pivots import detect_pivots
 UTC = timezone.utc
 
 
+def pivot_lag_bars(candles, pivots):
+    if not pivots or not candles or len(candles) <= 1:
+        return 0
+    return len(candles) - 1 - pivots[-1].index
+
+
 class SwingScorer:
     def __init__(self, config: ScoringConfig) -> None:
         self.config = config
 
-    def detect(self, instrument_id: str, timeframe: str, candles: list) -> DetectionBundle:
+    def detect(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        candles: list,
+        pivots: list[Pivot] | None = None,
+    ) -> DetectionBundle:
         generated_at = candles[-1].ts_open if candles else datetime.now(timezone.utc)
-        pivots = detect_pivots(candles)
+        if pivots is None:
+            pivots = detect_pivots(candles)
         highs = [pivot for pivot in pivots if pivot.kind == "high"]
         lows = [pivot for pivot in pivots if pivot.kind == "low"]
         higher_highs = sum(
@@ -72,6 +85,14 @@ class SwingScorer:
             pivots[-1].ts if pivots else generated_at,
             generated_at,
         )
+        lag_bars = pivot_lag_bars(candles, pivots) if pivots and candles else 0
+        cap_config = {"1h": 4, "4h": 4, "1d": 5, "1w": 2, "30d": 2}
+        max_lag = cap_config.get(timeframe, 4)
+        lag = pivot_lag_bars(candles, pivots) if pivots else 0
+        if lag > max_lag * 2:
+            freshness = clamp(min(freshness, 0.55), 0.20, 1.0)
+        elif lag > max_lag:
+            freshness = clamp(min(freshness, 0.72), 0.20, 1.0)
         bias = direction_from_score(direction_score)
         top_reasons = self._top_reasons(
             bias,
@@ -94,9 +115,12 @@ class SwingScorer:
             metadata={
                 "regime_hint": "trend" if abs(direction_score) >= 0.35 else "balance",
                 "pivot_count": len(pivots),
+                "lag_bars": lag_bars,
+                "has_live_leg": lag_bars > 0,
+                "score_uses_provisional_tail": False,
             },
         )
-        geometry = self._build_geometry(instrument_id, timeframe, pivots, generated_at)
+        geometry = self._build_geometry(instrument_id, timeframe, candles, pivots, generated_at)
         structure_type = (
             "trend_up" if bias == "bullish" else "trend_down" if bias == "bearish" else "range"
         )
@@ -162,12 +186,13 @@ class SwingScorer:
         self,
         instrument_id: str,
         timeframe: str,
+        candles: list,
         pivots: list[Pivot],
         generated_at: datetime,
     ) -> list[StructureGeometry]:
         if len(pivots) < 2:
             return []
-        return [
+        geometry = [
             StructureGeometry(
                 geometry_id=build_structure_id("swing", timeframe, "zigzag"),
                 instrument_id=instrument_id,
@@ -182,10 +207,57 @@ class SwingScorer:
                     for pivot in pivots[-12:]
                 ],
                 labels_json=["zigzag"],
-                meta_json={"role": "swing_zigzag", "pivot_count": len(pivots)},
+                meta_json={"role": "swing_zigzag", "pivot_count": len(pivots), "extend_to_latest": False},
                 created_at=generated_at,
             )
         ]
+        if pivots and candles:
+            last_pivot = pivots[-1]
+            latest_idx = len(candles) - 1
+            lag_bars = latest_idx - last_pivot.index
+            if lag_bars > 0:
+                latest = candles[-1]
+                geometry.append(StructureGeometry(
+                    geometry_id=build_structure_id("swing", timeframe, "live-leg"),
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    snapshot_version="pending",
+                    system="swing",
+                    kind="swing_live_leg",
+                    status="provisional",
+                    visible=True,
+                    points_json=[
+                        {
+                            "ts": last_pivot.ts.isoformat(),
+                            "price": last_pivot.price,
+                            "label": last_pivot.kind,
+                            "index": last_pivot.index,
+                            "confirmed": True,
+                        },
+                        {
+                            "ts": latest.ts_open.isoformat(),
+                            "price": float(latest.close),
+                            "label": "latest_close",
+                            "index": latest_idx,
+                            "confirmed": False,
+                        },
+                    ],
+                    labels_json=["provisional live swing leg"],
+                    meta_json={
+                        "role": "swing_live_leg",
+                        "pivot_count": len(pivots),
+                        "last_confirmed_index": last_pivot.index,
+                        "latest_index": latest_idx,
+                        "lag_bars": lag_bars,
+                        "lag_ratio": round(lag_bars / max(len(candles) - 1, 1), 4),
+                        "extend_to_latest": False,
+                        "provisional": True,
+                        "score_uses_provisional_tail": False,
+                        "display_hint": "虚线尾段为最新收盘观察线，不参与确认评分。",
+                    },
+                    created_at=generated_at,
+                ))
+        return geometry
 
     def _symmetry_score(self, pivots: list[Pivot]) -> float:
         if len(pivots) < 4:

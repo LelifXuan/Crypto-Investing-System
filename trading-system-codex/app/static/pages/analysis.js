@@ -743,6 +743,17 @@ export async function renderAnalysis() {
       }
       let candlesPayload = { candles: bundle.candles || [] };
       let markPayload = bundle.mark || null;
+      try {
+        const latestMark = await api.getLatestMark(appState.selectedInstrumentId, {
+          preferLive: true,
+          signal: activeController.signal,
+        });
+        if (latestMark?.mark_price != null) {
+          markPayload = latestMark;
+        }
+      } catch (error) {
+        console.warn("analysis:latest-mark:cache-fallback", error);
+      }
       let allCandles = normalizeOhlcCandles(candlesPayload.candles || []);
       const shouldAutoFetch = false;
       if (false && (force || shouldAutoFetch)) {

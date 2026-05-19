@@ -258,13 +258,17 @@ def _profile_state(
     poc: float,
     poc_shift: float,
 ) -> tuple[float, str, str, str, list[str]]:
+    poc_threshold = 0.02
     if latest_close > vah:
         return (
             0.55 + max(poc_shift, 0.0) * 0.20,
             "acceptance_above_vah",
             "acceptance_above_vah",
             "价值区上方接受",
-            ["价格收在 VAH 上方，市场正在尝试接受更高价值区。", "若 POC 上移，上行解释力会增强。"],
+            [
+                "价格收在 VAH 上方，市场正在尝试接受更高价值区。",
+                _poc_reason("上行解释力", poc_shift, poc_threshold),
+            ],
         )
     if latest_close < val:
         return (
@@ -272,7 +276,10 @@ def _profile_state(
             "acceptance_below_val",
             "acceptance_below_val",
             "价值区下方接受",
-            ["价格收在 VAL 下方，市场正在尝试接受更低价值区。", "若 POC 下移，下行解释力会增强。"],
+            [
+                "价格收在 VAL 下方，市场正在尝试接受更低价值区。",
+                _poc_reason("下行解释力", poc_shift, poc_threshold),
+            ],
         )
     if latest_close >= poc:
         return (
@@ -292,3 +299,11 @@ def _profile_state(
         "价值区下半部平衡",
         ["价格位于价值区内部且靠近 POC 下方，偏向平衡偏空。", "仍需跌破 VAL 才能确认下行扩展。"],
     )
+
+
+def _poc_reason(label: str, shift: float, threshold: float) -> str:
+    if shift > threshold:
+        return f"POC 已上移，{label}得到成交密集区迁移支持。"
+    if shift < -threshold:
+        return f"POC 下移，与{label}形成矛盾，上行解释力降级。"
+    return "POC 暂未明显迁移，价值区突破仍需更多成交确认。"

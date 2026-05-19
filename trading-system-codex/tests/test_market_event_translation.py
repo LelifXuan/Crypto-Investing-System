@@ -185,3 +185,16 @@ def test_worker_logs_are_throttled(monkeypatch, caplog) -> None:
         if "market event translation worker failed" in record.message
     ]
     assert len(messages) == 2
+
+
+def test_worker_status_exposes_queue_and_error(monkeypatch) -> None:
+    worker = MarketEventTranslationWorker()
+    worker._failure_streak = 2
+    worker._log_failure(RuntimeError("provider limited"))
+
+    status = worker.worker_status
+
+    assert status["running"] is False
+    assert status["queue_size"] == 0
+    assert status["failure_streak"] == 2
+    assert "provider limited" in status["last_error"]

@@ -155,6 +155,42 @@ export const api = {
       force: options.force ?? false,
     });
   },
+  getEtfCatalog(options = {}) {
+    return requestJson("/etf/catalog", {
+      ttl: 60,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  getAshareEtfQuotes(group = "all", options = {}) {
+    return requestJson("/ashare-etf/quotes", {
+      params: { group, force: options.force ? "true" : "false" },
+      ttl: options.force ? 0 : 10,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  getEtfQuotes(group = "all", options = {}) {
+    return requestJson("/etf/quotes", {
+      params: { group, force: options.force ? "true" : "false" },
+      ttl: options.force ? 0 : 10,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  refreshEtfQuotes(group = "all", options = {}) {
+    invalidateCache("/etf/quotes");
+    invalidateCache("/ashare-etf/quotes");
+    return requestJson("/etf/quotes/refresh", {
+      method: "POST",
+      params: { group },
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
   getAnalysisBundle(instrumentId, timeframe, viewWindow = "default", options = {}) {
     return requestJson("/analysis/bundle", {
       params: {
@@ -165,6 +201,7 @@ export const api = {
       ttl: 20,
       force: options.force ?? false,
       signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 30000,
       retry: 1,
     });
   },
@@ -211,6 +248,20 @@ export const api = {
   },
   syncMarketEvents() {
     return requestJson("/market-events/sync", { method: "POST" });
+  },
+  getMarketEventTranslationStatus() {
+    return requestJson("/market-events/translations/status", { ttl: 3, force: true });
+  },
+  refreshMarketEventTranslations(options = {}) {
+    return requestJson("/market-events/translations/refresh", {
+      method: "POST",
+      params: {
+        limit: options.limit ?? 50,
+        max_batches: options.maxBatches ?? 5,
+        force: options.force ? "true" : "false",
+      },
+      force: true,
+    });
   },
   getMacroOverview() {
     return requestJson("/monitoring/macro-overview", { ttl: 60, retry: 1 });

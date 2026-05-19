@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-import logging
 import time
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 
 from app.db.models.market import MarkPrice
 from app.repositories.market_repository import MarketRepository
@@ -22,6 +19,8 @@ from app.services.page_snapshot_cache import (
     cache_status,
     expires_at_for_page,
 )
+
+UTC = timezone.utc
 
 WINDOW_PROFILES = {
     "1h": {
@@ -118,15 +117,17 @@ class AnalysisBundleService:
             except Exception:
                 # Keep bundle generation resilient if indicator sync is temporarily unavailable.
                 pass
-        contract_snapshot, mark, indicator_matrix, final_decision = await asyncio.gather(
-            ContractSnapshotService(self.repository).get_snapshot(
-                instrument_id, include_stats=True,
-            ),
-            market_service.get_best_mark(instrument_id=instrument_id, prefer_live=True),
-            IndicatorMatrixService(self.repository).get_matrix(
-                instrument_id=instrument_id, timeframe=normalized_timeframe, limit=limit,
-            ),
-            FinalDecisionService(self.repository).build(instrument_id, normalized_timeframe),
+        # These helpers share the same SQLAlchemy session and may write computed
+        # caches. Keep them sequential to avoid concurrent flushes on one session.
+        contract_snapshot = await ContractSnapshotService(self.repository).get_snapshot(
+            instrument_id, include_stats=True
+        )
+        mark = await market_service.get_best_mark(instrument_id=instrument_id, prefer_live=True)
+        indicator_matrix = await IndicatorMatrixService(self.repository).get_matrix(
+            instrument_id=instrument_id, timeframe=normalized_timeframe, limit=limit
+        )
+        final_decision = await FinalDecisionService(self.repository).build(
+            instrument_id, normalized_timeframe
         )
         market_bundle = await MarketDataBundleService(self.repository).get_bundle(
             instrument_id=instrument_id,

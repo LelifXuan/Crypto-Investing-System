@@ -3,6 +3,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 *.pyc
+*.py[cod]
 *.pyo
 *.pyd
 *.sqlite3
@@ -31,6 +32,7 @@ data/trading_system.db*
 data/cache/
 cache/
 logs/*.log
+logs/
 tmp/
 *.egg-info/
 reports/*.json
@@ -39,3 +41,5 @@ reports/*.json
 *.db-shm
 *.db-wal
 data/trading_system.db*
+data/*.db
+storage_manifest.json

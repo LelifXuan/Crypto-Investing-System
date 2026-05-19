@@ -9,6 +9,8 @@ from app.repositories.market_repository import MarketRepository
 from app.services.alerts_bundle import AlertsBundleService
 from app.services.analysis_bundle import AnalysisBundleService
 from app.services.monitoring_dashboard import MonitoringDashboardService
+from app.services.strategy_signal.config_loader import load_strategy_signal_config
+from app.services.strategy_signal.setup_lifecycle import normalize_direction_metrics
 
 
 def _field(item: Any, key: str, default: Any = None) -> Any:
@@ -140,8 +142,10 @@ class StrategySnapshotBuilder:
         indicators = self._indicators(core, secondary)
         levels = self._levels(structure_payload)
         derivatives = self._derivatives(contract_snapshot, chip)
+        config = load_strategy_signal_config()
 
         direction_score = _num(final_decision.get("direction_score") or chip.get("direction_score"), 50)
+        direction_metrics = normalize_direction_metrics(direction_score)
         execution_score = _num(final_decision.get("execution_score") or chip.get("execution_score"), 50)
         risk_score = _num(final_decision.get("risk_score") or chip.get("risk_score"), 50)
         confidence_score = _num(final_decision.get("confidence_score") or chip.get("confidence_score"), 50)
@@ -162,6 +166,14 @@ class StrategySnapshotBuilder:
         macd_prev = _num(indicators.get("macd_hist_prev"))
         adx = _num(indicators.get("adx_14"), 20)
         funding_z = abs(_num(derivatives.get("funding_zscore")))
+        trigger_tf = (config.get("timeframe_mapping") or {}).get(tf)
+        lower_tf_missing = trigger_tf is not None
+        ema20 = _num(indicators.get("ema_20"))
+        ema20_prev = _num(indicators.get("ema_20_prev"), ema20)
+        ema20_slope = ema20 - ema20_prev
+        atr_pct = _num(indicators.get("natr_14")) or (atr / price * 100 if price else 0)
+        atr_expansion_score = max(0, min(100, atr_pct * 12))
+        volume_confirmation = max(0, min(100, 50 + _num(indicators.get("obv_slope")) * 80))
         missing_inputs = list(dict.fromkeys(derivatives.get("missing_inputs") or []))
         for key, state in dependency_state.items():
             if state in {"missing", "error", "stale", "updating", "degraded"}:
@@ -202,6 +214,11 @@ class StrategySnapshotBuilder:
             "dependency_state": dependency_state,
             "missing_inputs": missing_inputs,
             "missing_input_penalties": missing_input_penalties,
+            "trigger_timeframe": trigger_tf,
+            "lower_tf_required": bool(trigger_tf),
+            "lower_tf_missing": lower_tf_missing,
+            "direction_score_raw": direction_score,
+            "direction_score_normalized": direction_metrics,
         }
         snapshot.update(
             {
@@ -216,13 +233,13 @@ class StrategySnapshotBuilder:
                 if derivatives.get("spread_bps") is not None
                 else 50,
                 "macro_event_availability": 100 if macro_status else 60,
-                "mtf_trend_bullish": direction_score,
-                "mtf_trend_bearish": 100 - direction_score,
-                "bullish_structure": direction_score,
-                "bearish_structure": 100 - direction_score,
-                "range_structure": max(0, 100 - abs(direction_score - 50) * 1.8),
-                "regime_fit_long": direction_score,
-                "regime_fit_short": 100 - direction_score,
+                "mtf_trend_bullish": direction_metrics["bullish"],
+                "mtf_trend_bearish": direction_metrics["bearish"],
+                "bullish_structure": direction_metrics["bullish"],
+                "bearish_structure": direction_metrics["bearish"],
+                "range_structure": direction_metrics["range"],
+                "regime_fit_long": direction_metrics["bullish"],
+                "regime_fit_short": direction_metrics["bearish"],
                 "bullish_momentum": 50 + max(0, rsi - 50) * 1.3 + max(0, macd - macd_prev) * 3,
                 "bearish_momentum": 50 + max(0, 50 - rsi) * 1.3 + max(0, macd_prev - macd) * 3,
                 "bullish_flow": 50 + max(0, cvd) * 20 + max(0, oi_change) * 250,
@@ -241,10 +258,10 @@ class StrategySnapshotBuilder:
                 "conflict_score": min(100, conflict_level * 20),
                 "spread_bps": derivatives.get("spread_bps") or 0,
                 "slippage_bps": derivatives.get("slippage_bps") or 0,
-                "long_setup_ready": direction_score >= 58,
-                "short_setup_ready": direction_score <= 42,
+                "long_setup_ready": direction_metrics["bullish"] >= 58,
+                "short_setup_ready": direction_metrics["bearish"] >= 58,
                 "long_trigger_ready": bool(levels.get("breakout_up")) or confidence_score >= 72,
-                "short_trigger_ready": bool(levels.get("breakout_down")) or (direction_score <= 35 and confidence_score >= 72),
+                "short_trigger_ready": bool(levels.get("breakout_down")) or (direction_metrics["bearish"] >= 65 and confidence_score >= 72),
                 "long_entry": long_entry,
                 "long_stop": _num(levels.get("structure_invalid_long"), long_entry - atr * 1.6),
                 "long_tp1": float(resistance) if resistance is not None else price + atr * 2.2,
@@ -255,6 +272,15 @@ class StrategySnapshotBuilder:
                 "short_tp2": price - atr * 3.6,
                 "market_regime": str(structure_overall.get("regime") or chip.get("regime") or "unknown"),
                 "atr_14": indicators.get("atr_14"),
+                "adx_14": indicators.get("adx_14"),
+                "ema_20": indicators.get("ema_20"),
+                "ema_50": indicators.get("ema_50"),
+                "ema_200": indicators.get("ema_200"),
+                "ema20_slope": ema20_slope,
+                "atr_expansion_score": atr_expansion_score,
+                "volume_confirmation": volume_confirmation,
+                "breakout_up": bool(levels.get("breakout_up")),
+                "breakout_down": bool(levels.get("breakout_down")),
                 "event_window_status": macro_status,
             }
         )
@@ -264,6 +290,7 @@ class StrategySnapshotBuilder:
     def _indicators(core: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
         return {
             "ema_20": _last_value(core, "ema_20"),
+            "ema_20_prev": _previous_value(core, "ema_20"),
             "ema_50": _last_value(core, "ema_50"),
             "ema_200": _last_value(core, "ema_200"),
             "rsi_14": _last_value(core, "rsi_14"),

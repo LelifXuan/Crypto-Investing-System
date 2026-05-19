@@ -39,6 +39,7 @@ class StructureOverallJudgementRead(BaseModel):
     contribution_breakdown: dict[str, float] = Field(default_factory=dict)
     primary_drivers: list[str] = Field(default_factory=list)
     opposing_factors: list[str] = Field(default_factory=list)
+    text_decision: dict | None = None
     last_updated_at: datetime
     detection_latency_ms: int = 0
     timeframe: str
@@ -149,6 +150,7 @@ class StructureTabSnapshotRead(BaseModel):
     active_items: list[StructureActiveItemRead] = Field(default_factory=list)
     geometry: list[StructureGeometryRead] = Field(default_factory=list)
     diagnostics: StructureDiagnosticsRead | None = None
+    classic_patterns: dict | None = None
 
 
 class StructureRefreshResponse(BaseModel):

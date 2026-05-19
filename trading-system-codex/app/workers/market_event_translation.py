@@ -24,6 +24,8 @@ class MarketEventTranslationWorker:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._failure_streak = 0
         self._last_error_log_at = 0.0
+        self._last_error: str | None = None
+        self._last_error_at: float | None = None
 
     async def start(self) -> None:
         if (
@@ -37,6 +39,8 @@ class MarketEventTranslationWorker:
         self._queue = asyncio.Queue()
         self._failure_streak = 0
         self._last_error_log_at = 0.0
+        self._last_error = None
+        self._last_error_at = None
         self._task = asyncio.create_task(self._run_loop(), name="market-event-translation-worker")
 
     async def stop(self) -> None:
@@ -57,9 +61,9 @@ class MarketEventTranslationWorker:
         self._queue = None
         self._stopping = None
 
-    async def enqueue_event_ids(self, event_ids: list[str]) -> int:
+    async def enqueue_event_ids(self, event_ids: list[str]) -> int | dict:
         if self._queue is None:
-            return 0
+            return {"enqueued": 0, "worker_running": False, "reason": "worker_not_started"}
         queued = 0
         for event_id in event_ids:
             if not event_id or event_id in self._queued_ids or event_id in self._inflight_ids:
@@ -68,6 +72,19 @@ class MarketEventTranslationWorker:
             await self._queue.put(event_id)
             queued += 1
         return queued
+
+    @property
+    def worker_status(self) -> dict:
+        queue_size = self._queue.qsize() if self._queue is not None else 0
+        return {
+            "running": bool(self._task and not self._task.done()),
+            "queue_size": queue_size,
+            "queued": len(self._queued_ids),
+            "inflight": len(self._inflight_ids),
+            "failure_streak": self._failure_streak,
+            "last_error": self._last_error,
+            "last_error_at": self._last_error_at,
+        }
 
     async def run_once(self) -> int:
         batch = await self._collect_queued_batch(wait_for_first=False)
@@ -200,6 +217,8 @@ class MarketEventTranslationWorker:
         logger.warning(
             "market event translation worker failed (%s): %s", self._failure_streak, error
         )
+        self._last_error = str(error)
+        self._last_error_at = time.time()
 
 
 market_event_translation_worker = MarketEventTranslationWorker()

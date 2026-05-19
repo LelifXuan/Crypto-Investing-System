@@ -1,183 +1,140 @@
 import { api } from "../core/api.js";
-import { scheduleIdlePrecompute } from "../core/precompute.js";
-import { appState } from "../core/state.js";
 import {
-  compactWindowLabel,
   escapeHtml,
   formatDateTime,
   formatIndicatorName,
   formatNumber,
   impactChip,
-  knowledgeTooltip,
   metricCard,
   observationValue,
   setRoot,
   statusBanner,
 } from "../core/dom.js";
+import { scheduleIdlePrecompute } from "../core/precompute.js";
+import { appState } from "../core/state.js";
 
-const ACTIVE_ADDRESS_THRESHOLDS = {
-  btc_active_addresses: { strongBull: 900000, mildBull: 780000, mildBear: 520000, strongBear: 400000 },
-  eth_active_addresses: { strongBull: 650000, mildBull: 560000, mildBear: 420000, strongBear: 320000 },
-};
-
-const MVRV_THRESHOLDS = {
-  btc_mvrv: { strongBull: 0.95, mildBull: 1.1, mildBear: 2.8, strongBear: 3.5 },
-  eth_mvrv: { strongBull: 0.9, mildBull: 1.05, mildBear: 2.5, strongBear: 3.2 },
-  btc_sth_mvrv: { strongBull: 1.0, mildBull: 1.15, mildBear: 2.4, strongBear: 3.0 },
-  btc_lth_mvrv: { strongBull: 1.2, mildBull: 1.4, mildBear: 3.2, strongBear: 4.0 },
-};
-
-function decodePossiblyBrokenText(value) {
-  if (typeof value !== "string" || !value) return value;
-  if (!/[ÃÂâåéèêçø¤�]/.test(value)) return value;
-  try {
-    const bytes = Uint8Array.from([...value].map((char) => char.charCodeAt(0) & 0xff));
-    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    return decoded && decoded.includes("\uFFFD") ? value : decoded;
-  } catch {
-    return value;
-  }
-}
+let activeController = null;
+let macroRefreshPending = false;
+const queuedKeys = new Set();
 
 function text(value, fallback = "-") {
   if (value === null || value === undefined || value === "") return fallback;
-  return decodePossiblyBrokenText(String(value));
-}
-
-function makeNeutral(bias, reason) {
-  return { kind: "neutral", bias, reason };
-}
-
-function observationImpact(item) {
-  const key = String(item.indicator_key || "");
-  const value = Number(item.value_num ?? 0);
-
-  if (["funding_rate_zscore", "basis_rate_zscore"].includes(key)) {
-    if (value >= 2) return { kind: "bearish", bias: "偏空", reason: "溢价或情绪显著过热，继续追多的性价比下降。" };
-    if (value >= 1) return makeNeutral("中性偏空", "溢价开始抬升，短线继续追多需要更谨慎。");
-    if (value <= -2) return { kind: "bullish", bias: "偏多", reason: "情绪显著降温，空头拥挤后的修复空间更大。" };
-    if (value <= -1) return makeNeutral("中性偏多", "情绪偏冷，若结构企稳更容易出现反弹修复。");
-    return makeNeutral("中性", "情绪仍在常态区间，对方向判断影响有限。");
-  }
-
-  if (key === "funding_rate") {
-    if (value >= 0.015) return { kind: "bearish", bias: "偏空", reason: "资金费率明显偏高，多头拥挤度上升。" };
-    if (value >= 0.006) return makeNeutral("中性偏空", "资金费率略偏高，继续追多的风险回报下降。");
-    if (value <= -0.015) return { kind: "bullish", bias: "偏多", reason: "极端负费率往往对应过度悲观，利于反向修复。" };
-    if (value <= -0.006) return makeNeutral("中性偏多", "负费率说明情绪偏冷，若价格止跌更有利于反弹。");
-    return makeNeutral("中性", "资金费率平稳，尚未形成明确方向偏置。");
-  }
-
-  if (key === "basis_rate") {
-    if (value >= 0.02) return { kind: "bearish", bias: "偏空", reason: "基差显著扩张，杠杆拥挤与回落风险同步上升。" };
-    if (value >= 0.008) return makeNeutral("中性偏空", "基差偏高，继续加杠杆追涨并不划算。");
-    if (value <= -0.02) return { kind: "bullish", bias: "偏多", reason: "深度贴水常见于情绪过冷，容易触发修复。" };
-    if (value <= -0.008) return makeNeutral("中性偏多", "基差走弱说明预期偏冷，若现货稳住则有利于反弹。");
-    return makeNeutral("中性", "基差仍在温和区间，未形成强方向驱动。");
-  }
-
-  if (["price_to_mark_deviation", "price_to_index_deviation"].includes(key)) {
-    if (value >= 0.003) return { kind: "bearish", bias: "偏空", reason: "价格明显高于基准，短线回归压力抬升。" };
-    if (value >= 0.0015) return makeNeutral("中性偏空", "价格略高于基准，继续上冲的阻力增加。");
-    if (value <= -0.003) return { kind: "bullish", bias: "偏多", reason: "价格明显低于基准，偏离回补更有利于反弹。" };
-    if (value <= -0.0015) return makeNeutral("中性偏多", "价格略低于基准，修复性回升空间更大。");
-    return makeNeutral("中性", "价格与基准贴合，当前偏离不足以单独给出方向。");
-  }
-
-  if (["natr_14", "atr_14", "atr_expansion_warning"].includes(key)) {
-    if (item.signal_state === "expanded" || value >= 3) {
-      return { kind: "event", bias: "事件驱动", reason: "波动率扩张更适合作为风控与仓位管理信号，而非单边方向结论。" };
-    }
-    return makeNeutral("中性", "波动率仍在常态区间，更多是背景条件而不是方向信号。");
-  }
-
-  if (key.includes("mvrv")) {
-    const thresholds = MVRV_THRESHOLDS[key] || { strongBull: 1, mildBull: 1.15, mildBear: 2.8, strongBear: 3.5 };
-    if (value <= thresholds.strongBull) {
-      return { kind: "bullish", bias: "偏多", reason: "估值处于相对低位，风险补偿更有利于多头。" };
-    }
-    if (value <= thresholds.mildBull) {
-      return makeNeutral("中性偏多", "估值仍偏低，但还没到极端低估区。");
-    }
-    if (value >= thresholds.strongBear) {
-      return { kind: "bearish", bias: "偏空", reason: "估值明显偏热，继续上行需要更强的新驱动。" };
-    }
-    if (value >= thresholds.mildBear) {
-      return makeNeutral("中性偏空", "估值开始偏贵，做多的安全边际下降。");
-    }
-    return makeNeutral("中性", "估值仍在中性区间，对方向的约束不强。");
-  }
-
-  if (key.includes("exchange_net_position_change")) {
-    if (value <= -2500) return { kind: "bullish", bias: "偏多", reason: "交易所净流出明显，潜在卖压边际减弱。" };
-    if (value < -800) return makeNeutral("中性偏多", "净流出占优，对价格形成一定支撑。");
-    if (value >= 2500) return { kind: "bearish", bias: "偏空", reason: "交易所净流入明显，潜在抛压有所抬升。" };
-    if (value > 800) return makeNeutral("中性偏空", "净流入占优，短线供给压力略有上升。");
-    return makeNeutral("中性", "链上净流向变化有限，暂时不改变方向判断。");
-  }
-
-  if (key.includes("active_addresses")) {
-    const thresholds = ACTIVE_ADDRESS_THRESHOLDS[key] || { strongBull: 700000, mildBull: 560000, mildBear: 420000, strongBear: 320000 };
-    if (value >= thresholds.strongBull) {
-      return { kind: "bullish", bias: "偏多", reason: "活跃地址显著扩张，链上参与度对风险偏好有支撑。" };
-    }
-    if (value >= thresholds.mildBull) {
-      return makeNeutral("中性偏多", "活跃度温和抬升，风险偏好有所改善。");
-    }
-    if (value <= thresholds.strongBear) {
-      return { kind: "bearish", bias: "偏空", reason: "链上活跃度明显走弱，需求端承接减弱。" };
-    }
-    if (value <= thresholds.mildBear) {
-      return makeNeutral("中性偏空", "活跃度偏弱，风险偏好尚未恢复。");
-    }
-    return makeNeutral("中性", "活跃度位于常态区间，对方向影响不强。");
-  }
-
-  return makeNeutral("中性", "当前信号更像背景信息，尚不足以单独定义方向。");
-}
-
-function observationImpactChip(impact) {
-  if (impact.kind === "bullish") return impactChip("bullish", impact.reason, impact.bias);
-  if (impact.kind === "bearish") return impactChip("bearish", impact.reason, impact.bias);
-  if (impact.kind === "event") return impactChip("event", impact.reason, impact.bias);
-  return impactChip("neutral", impact.reason, impact.bias || "中性");
+  return String(value);
 }
 
 function signalStateLabel(value) {
-  const normalized = text(value, "normal");
   const mapping = {
-    normal: "常态",
+    bullish: "偏多",
+    bearish: "偏空",
     neutral: "中性",
-    elevated: "抬升",
-    expanded: "扩张",
+    normal: "正常",
+    strong: "偏强",
+    weak: "偏弱",
     overbought: "超买",
     oversold: "超卖",
-    strong_trend: "强趋势",
-    overheated: "过热",
-    outflow_dominant: "净流出主导",
-    inflow_dominant: "净流入主导",
-    expanding: "扩张",
-    live: "已更新",
-    stale: "待更新",
-    pending: "待接入",
-    heating: "升温",
-    loose: "偏松",
-    tight: "偏紧",
+    positive_hist: "柱线转强",
+    negative_hist: "柱线转弱",
+    expanded: "波动扩张",
+    compressed: "波动压缩",
+    breakout_up: "向上突破",
+    breakout_down: "向下跌破",
+    strong_trend: "趋势较强",
+    weak_trend: "趋势偏弱",
+    developing_trend: "趋势形成中",
+    cooling: "降温",
     falling: "回落",
-    steepening: "陡峭化",
-    expansion: "扩张",
     released: "已发布",
-    scheduled: "已排期",
+    scheduled: "待发布",
+    inflow_dominant: "流入占优",
+    outflow_dominant: "流出占优",
+    undervalued: "低估",
+    source_error: "来源异常",
   };
-  return mapping[normalized] || normalized;
+  return mapping[value] || text(value, "中性");
 }
 
-function formatWindowLabel(items) {
-  const values = items.map((item) => item.observation_ts).filter(Boolean);
-  return values.length ? compactWindowLabel(values) : "暂无样本";
+function observationTone(item) {
+  const state = item.signal_state;
+  if (["bullish", "strong", "positive_hist", "breakout_up", "outflow_dominant"].includes(state)) return "bullish";
+  if (["bearish", "weak", "negative_hist", "breakout_down", "inflow_dominant"].includes(state)) return "bearish";
+  if (["overbought", "oversold", "expanded", "scheduled", "released"].includes(state)) return "event";
+  return "neutral";
 }
 
-function renderObservationCard(title, eyebrow, items) {
+function sourceStatusMeta(status) {
+  const mapping = {
+    online: { label: "在线", className: "chip-bullish" },
+    ok: { label: "在线", className: "chip-bullish" },
+    fresh: { label: "在线", className: "chip-bullish" },
+    stale_cache: { label: "使用缓存", className: "chip-event" },
+    stale: { label: "使用缓存", className: "chip-event" },
+    cached: { label: "使用缓存", className: "chip-event" },
+    no_data: { label: "无数据", className: "chip-event" },
+    missing: { label: "无数据", className: "chip-event" },
+    not_configured: { label: "未配置", className: "chip-neutral" },
+    auth_missing: { label: "未配置", className: "chip-neutral" },
+    updating: { label: "后台准备中", className: "chip-neutral" },
+    pending: { label: "后台准备中", className: "chip-neutral" },
+    offline: { label: "离线", className: "chip-bearish" },
+    error: { label: "离线", className: "chip-bearish" },
+    source_error: { label: "离线", className: "chip-bearish" },
+    rate_limited: { label: "限流", className: "chip-event" },
+  };
+  return mapping[status] || { label: "未知", className: "chip-neutral" };
+}
+
+function normalizeSourceStatus(raw) {
+  const labels = {
+    gateio: "Gate.io",
+    fred: "FRED",
+    market_events: "市场事件",
+    ashare_etf: "A股ETF",
+  };
+  const defaults = {
+    online: "信源在线，缓存可用。",
+    ok: "信源在线，缓存可用。",
+    fresh: "信源在线，缓存可用。",
+    stale_cache: "正在使用旧缓存。",
+    stale: "正在使用旧缓存。",
+    cached: "正在使用旧缓存。",
+    no_data: "暂未读取到可用数据，等待后台补齐。",
+    missing: "暂未读取到可用数据，等待后台补齐。",
+    not_configured: "信源未配置，不视为系统故障。",
+    auth_missing: "API Key 未配置，不视为系统故障。",
+    updating: "后台正在准备数据。",
+    pending: "后台正在准备数据。",
+    offline: "信源读取失败。",
+    error: "信源读取失败。",
+    source_error: "信源读取失败。",
+    rate_limited: "信源限流，稍后自动重试。",
+  };
+  const source = raw && typeof raw === "object" ? raw : {};
+  return Object.entries(labels).map(([key, label]) => {
+    const value = source[key];
+    const item = value && typeof value === "object" ? value : { status: value || "updating" };
+    const status = String(item.status || "updating");
+    return {
+      key,
+      status,
+      label: item.label || label,
+      message: item.message || defaults[status] || "状态暂不可用。",
+      lastError: item.last_error || item.lastError || "",
+      updatedAt: item.updated_at || item.updatedAt || "",
+      meta: sourceStatusMeta(status),
+    };
+  });
+}
+
+function monitoringStatusMessage(bundle, isStale) {
+  if (!bundle) return "正在读取监控快照";
+  if (bundle.cache_state === "missing") return "暂无监控快照，已加入后台预计算队列。";
+  if (bundle.cache_state === "updating") return "监控快照正在后台准备中，当前先展示可用缓存。";
+  if (bundle.cache_state === "error") return "监控快照读取异常，页面已保留可用缓存和降级信息。";
+  if (isStale) return "监控快照可用但可能滞后，后台会继续补齐。";
+  return "监控快照已就绪。";
+}
+
+function renderObservationCard(title, eyebrow, items, emptyText) {
   return `
     <article class="card monitoring-pane">
       <div class="section-head">
@@ -185,278 +142,260 @@ function renderObservationCard(title, eyebrow, items) {
           <p class="eyebrow">${escapeHtml(eyebrow)}</p>
           <h2>${escapeHtml(title)}</h2>
         </div>
-        ${items.length ? impactChip("neutral", formatWindowLabel(items), "观测窗口") : ""}
+        <span class="status-chip chip-neutral">${items.length} 项</span>
       </div>
       <div class="compact-observation-list">
         ${
           items.length
             ? items
-                .map((item) => {
-                  const impact = observationImpact(item);
-                  return `
+                .map(
+                  (item) => `
                     <div class="compact-observation-row">
                       <div>
                         <strong>${escapeHtml(formatIndicatorName(item.indicator_key))}</strong>
-                        <small>${escapeHtml(signalStateLabel(item.signal_state))}</small>
+                        <small>${escapeHtml(formatDateTime(item.observation_ts))}</small>
                       </div>
                       <div class="compact-observation-meta">
                         <span>${escapeHtml(observationValue(item.value_num ?? item.value_text))}</span>
-                        ${observationImpactChip(impact)}
+                        ${impactChip(observationTone(item), signalStateLabel(item.signal_state), signalStateLabel(item.signal_state))}
                       </div>
                     </div>
-                  `;
-                })
+                  `,
+                )
                 .join("")
-            : '<div class="compact-empty">暂无最新观测数据。</div>'
+            : `<div class="compact-empty">${escapeHtml(emptyText)}</div>`
         }
       </div>
     </article>
   `;
 }
 
-function macroBiasChip(value, reason) {
-  const normalized = text(value, "中性");
-  if (["偏多", "中性偏多", "做多"].includes(normalized)) {
-    return impactChip("bullish", reason, normalized);
-  }
-  if (["偏空", "中性偏空", "减仓", "做空"].includes(normalized)) {
-    return impactChip("bearish", reason, normalized);
-  }
-  if (normalized === "事件窗口") {
-    return impactChip("event", reason, normalized);
-  }
-  return impactChip("neutral", reason, normalized || "中性");
-}
-
-function eventStatusChip(status, summary) {
-  const normalized = text(status, "中性");
-  if (["临近发布", "预警中", "待确认"].includes(normalized)) {
-    return impactChip("event", summary, normalized);
-  }
-  return impactChip("neutral", summary, normalized || "中性");
-}
-
-function formatEventField(label, value) {
-  return `<span class="status-chip chip-neutral">${escapeHtml(label)} · ${escapeHtml(text(value, "-"))}</span>`;
-}
-
-function renderMacroIndicator(item) {
-  const isLive = item.status === "live";
-  const statusText = isLive ? signalStateLabel(item.signal_state) : "待更新";
-  const insight = text(item.insight, isLive ? "宏观观测已更新。" : "当前尚无最新宏观观测值。");
-
+function renderSourceStatus(sourceStatus) {
+  const rows = normalizeSourceStatus(sourceStatus);
   return `
-    <div class="macro-indicator-row">
-      <div class="macro-indicator-main">
-        <strong>${escapeHtml(text(item.region, "GLOBAL"))} · ${escapeHtml(formatIndicatorName(item.indicator_key))} ${item.tooltip ? knowledgeTooltip(formatIndicatorName(item.indicator_key), "tone-neutral", text(item.tooltip), { extra: text(item.tooltip) }) : ""}</strong>
-        <small>${escapeHtml(statusText)} · ${escapeHtml(formatDateTime(item.observation_ts))}</small>
-      </div>
-      <div class="macro-indicator-meta">
-        <span class="macro-indicator-value">${escapeHtml(observationValue(item.value_num ?? item.value_text))}</span>
-        ${impactChip(isLive ? "neutral" : "event", insight, isLive ? "已更新" : "待更新")}
-      </div>
-    </div>
-  `;
-}
-
-function renderMacroEventList(overview) {
-  const items = overview.event_items || [];
-  return `
-    <section class="macro-event-window">
+    <article class="card monitoring-source-card">
       <div class="section-head">
         <div>
-          <p class="eyebrow">EVENT WINDOW</p>
-          <h3>宏观事件窗口</h3>
-        </div>
-        ${eventStatusChip(text(overview.event_window_status, "中性"), text(overview.event_window_summary, "宏观事件窗口状态"))}
-      </div>
-      <p class="section-summary">${escapeHtml(text(overview.event_window_summary, "暂无事件窗口摘要。"))}</p>
-      <div class="macro-event-list">
-        ${
-          items.length
-            ? items
-                .map(
-                  (item) => `
-                    <article class="macro-layer-item">
-                      <div class="card-head-inline">
-                        <strong>${escapeHtml(text(item.title, "-"))}</strong>
-                        <span class="status-chip chip-neutral">${escapeHtml(text(item.window_label, "-"))}</span>
-                      </div>
-                      <p>${escapeHtml(text(item.summary, "暂无事件摘要。"))}</p>
-                      <div class="macro-layer-indicators">
-                        ${formatEventField("地区", item.country_code)}
-                        ${formatEventField("时间", formatDateTime(item.scheduled_at))}
-                        ${formatEventField("状态", signalStateLabel(item.status))}
-                        ${formatEventField("预期", item.consensus_value_num)}
-                        ${formatEventField("实际", item.actual_value_num)}
-                        ${formatEventField("前值", item.previous_value_num)}
-                        ${formatEventField("Surprise", item.surprise_num)}
-                      </div>
-                    </article>
-                  `,
-                )
-                .join("")
-            : '<div class="compact-empty">当前还没有可展示的宏观事件。</div>'
-        }
-      </div>
-    </section>
-  `;
-}
-
-function operationTone(value, eventWindowStatus) {
-  const bias = text(value, "观望");
-  if (bias === "做多") return "bullish";
-  if (bias === "减仓" || bias === "做空") return "bearish";
-  if (["临近发布", "预警中", "待确认"].includes(text(eventWindowStatus, ""))) return "event";
-  return "neutral";
-}
-
-function renderMacroOverviewCard(overview) {
-  return `
-    <article class="card macro-overview-card">
-      <div class="macro-overview-top">
-        <div>
-          <p class="eyebrow">MACRO</p>
-          <h2>宏观观察</h2>
-          <p class="macro-regime-copy">${escapeHtml(text(overview.regime_label_cn, "观望整理"))} · ${escapeHtml(text(overview.operation_bias, "观望"))}</p>
-          <p class="section-summary">${escapeHtml(text(overview.regime_summary || overview.event_window_summary, "等待更多宏观驱动确认。"))}</p>
-        </div>
-        <div class="macro-top-chips">
-          ${impactChip(
-            operationTone(overview.operation_bias, overview.event_window_status),
-            text(overview.event_window_summary, "宏观窗口状态"),
-            text(overview.operation_bias, "观望"),
-          )}
+          <p class="eyebrow">SOURCE HEALTH</p>
+          <h2>信源状态</h2>
+          <p class="section-summary">信源异常只影响对应数据块，页面会优先展示已缓存快照。</p>
         </div>
       </div>
-      <div class="score-grid"></div>
-      <div class="macro-layer-grid">
-        ${(overview.layers || [])
+      <div class="source-status-grid">
+        ${rows
           .map(
-            (layer) => `
-              <article class="macro-layer-item macro-layer-panel">
+            (item) => `
+              <div class="source-status-item">
                 <div class="card-head-inline">
-                  <strong>${escapeHtml(text(layer.label_cn, "-"))}</strong>
-                  ${macroBiasChip(text(layer.bias, "中性"), text(layer.summary, ""))}
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <span class="status-chip ${escapeHtml(item.meta.className)}">${escapeHtml(item.meta.label)}</span>
                 </div>
-                <p>${escapeHtml(text(layer.summary, "暂无层级摘要。"))}</p>
-                <div class="macro-indicator-list">
-                  ${(layer.indicators || [])
-                    .slice(0, 4)
-                    .map((item) => renderMacroIndicator(item))
-                    .join("")}
-                </div>
-              </article>
+                <p>${escapeHtml(item.message)}</p>
+                ${item.updatedAt ? `<small>最近更新：${escapeHtml(formatDateTime(item.updatedAt))}</small>` : ""}
+                ${item.lastError ? `<small class="source-error">错误：${escapeHtml(item.lastError)}</small>` : ""}
+              </div>
             `,
           )
           .join("")}
       </div>
-      ${renderMacroEventList(overview)}
     </article>
   `;
 }
 
-const autoSyncKeys = new Set();
+function confidenceLabel(value) {
+  const mapping = {
+    high: "高",
+    medium: "中",
+    low: "低",
+    insufficient: "不足",
+  };
+  return mapping[value] || text(value, "不足");
+}
 
-async function loadDashboardData(label, loader, fallback) {
+function renderMacroOverview(overview) {
+  if (!overview) {
+    return `
+      <article class="card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">MACRO</p>
+            <h2>宏观观察</h2>
+          </div>
+          <button class="ghost-button macro-refresh-button" id="macro-refresh-btn" onclick="event.preventDefault();refreshMacroData()">刷新宏观</button>
+        </div>
+        <div class="empty-state">宏观快照暂不可用，点击刷新获取数据。</div>
+      </article>
+    `;
+  }
+  const contributions = overview.layer_contributions || {};
+  const contributionRows = [
+    ["rates_policy", "利率与政策", overview.policy_score],
+    ["inflation", "通胀与价格", overview.inflation_score],
+    ["growth_labor", "增长与就业", overview.growth_score],
+    ["liquidity_credit", "流动性与信用", overview.liquidity_score],
+    ["cross_asset_confirmation", "跨资产确认", null],
+    ["event_window", "事件窗口", null],
+  ];
+  const layers = overview.layers || [];
+  return `
+    <article class="card macro-overview-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">MACRO</p>
+          <h2>宏观观察</h2>
+          <p class="section-summary">${escapeHtml(overview.regime_summary || "宏观状态暂不可用。")}</p>
+        </div>
+        <button class="ghost-button macro-refresh-button" id="macro-refresh-btn" onclick="event.preventDefault();refreshMacroData()">刷新宏观</button>
+      </div>
+      <div class="macro-overview-top">
+        <div class="macro-score-block">
+          <span>宏观总分</span>
+          <strong>${escapeHtml(formatNumber(overview.total_score ?? 0, 0))}</strong>
+          <small>${escapeHtml(overview.score_band || overview.regime_label_cn || "-")} · 置信度 ${escapeHtml(confidenceLabel(overview.confidence))}</small>
+        </div>
+        <div class="macro-score-bar" aria-hidden="true">
+          <span style="width:${Math.max(0, Math.min(100, Number(overview.total_score || 0)))}%"></span>
+        </div>
+      </div>
+      <p class="section-summary">${escapeHtml(overview.score_explanation || "")}</p>
+      <div class="macro-contribution-grid">
+        ${contributionRows
+          .map(([key, label, score]) => {
+            const contribution = Number(contributions[key] || 0);
+            return `
+              <div class="macro-contribution-row">
+                <span>${escapeHtml(label)}</span>
+                <strong>${score === null ? escapeHtml(formatNumber(contribution, 2)) : escapeHtml(formatNumber(score, 0))}</strong>
+                <small>贡献 ${contribution >= 0 ? "+" : ""}${escapeHtml(formatNumber(contribution, 2))}</small>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+      ${overview.warnings?.length ? `<div class="status-banner status-warning">${overview.warnings.map(escapeHtml).join("；")}</div>` : ""}
+      <div class="macro-layer-list">
+        ${layers
+          .map(
+            (layer) => `
+              <section class="macro-layer-item">
+                <div class="card-head-inline">
+                  <strong>${escapeHtml(layer.label_cn)}</strong>
+                  <span class="status-chip chip-neutral">${escapeHtml(layer.bias)} · ${escapeHtml(formatNumber(layer.score, 0))}</span>
+                </div>
+                <p>${escapeHtml(layer.summary || "")}</p>
+                <small>有效指标 ${escapeHtml(formatNumber(layer.effective_count || 0, 0))}/${escapeHtml(formatNumber(layer.total_count || 0, 0))}</small>
+              </section>
+            `,
+          )
+          .join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderShellFallback() {
+  document.getElementById("monitoring-summary-cards").innerHTML = [
+    metricCard("技术观测数", "-", "技术快照暂不可用"),
+    metricCard("宏观状态", "暂不可用", "中性"),
+    metricCard("信源状态", "-", "后台准备中"),
+    metricCard("Open 告警", "-", "暂不可用"),
+  ].join("");
+  document.getElementById("source-status-root").innerHTML = renderSourceStatus({});
+  document.getElementById("macro-overview-root").innerHTML = renderMacroOverview(null);
+  document.getElementById("monitoring-observations-grid").innerHTML = renderObservationCard(
+    "技术观测",
+    "TECHNICAL",
+    [],
+    "技术快照暂不可用，后台准备中。",
+  );
+}
+
+function renderDashboard(bundle) {
+  const technicalItems = bundle.technical_observations || [];
+  const sourceItems = normalizeSourceStatus(bundle.source_status || {});
+  document.getElementById("monitoring-summary-cards").innerHTML = [
+    metricCard("技术观测数", formatNumber(bundle.technical_indicator_count ?? technicalItems.length, 0), bundle.technical_source || "等待快照"),
+    metricCard("宏观状态", bundle.macro_overview?.score_band || "暂不可用", `总分 ${formatNumber(bundle.macro_overview?.total_score, 0)}`),
+    metricCard("信源状态", `${sourceItems.filter((item) => ["online", "ok", "fresh", "stale_cache", "cached"].includes(item.status)).length}/${sourceItems.length}`, "在线或可用缓存"),
+    metricCard("Open 告警", formatNumber((bundle.alert_events || []).length, 0), "当前监控摘要"),
+  ].join("");
+  document.getElementById("source-status-root").innerHTML = renderSourceStatus(bundle.source_status || {});
+  document.getElementById("macro-overview-root").innerHTML = renderMacroOverview(bundle.macro_overview);
+  document.getElementById("monitoring-observations-grid").innerHTML = renderObservationCard(
+    "技术观测",
+    "TECHNICAL",
+    technicalItems,
+    "技术快照暂不可用，后台准备中。",
+  );
+}
+
+async function loadDashboard() {
+  activeController?.abort();
+  activeController = new AbortController();
+  const statusRoot = document.getElementById("monitoring-statusbar");
+  statusRoot.innerHTML = statusBanner("正在读取监控快照", "loading");
   try {
-    return await loader();
-  } catch (error) {
-    if (error?.name === "AbortError" || error?.name === "TimeoutError") {
-      return fallback;
+    const bundle = await api.getMonitoringDashboard(appState.selectedInstrumentId, appState.selectedTimeframe, {
+      signal: activeController.signal,
+      force: true,
+      timeoutMs: 30000,
+    });
+    const stale = ["stale", "missing", "updating"].includes(bundle.cache_state);
+    statusRoot.innerHTML = statusBanner(monitoringStatusMessage(bundle, stale), stale ? "info" : "success");
+    renderDashboard(bundle);
+    const key = `monitoring:${appState.selectedInstrumentId}:${appState.selectedTimeframe}`;
+    if (stale && !queuedKeys.has(key)) {
+      queuedKeys.add(key);
+      scheduleIdlePrecompute({
+        currentPage: "monitoring-overview",
+        instrumentId: appState.selectedInstrumentId,
+        timeframe: appState.selectedTimeframe,
+        reason: "monitoring-dashboard-stale",
+        priority: 2,
+      });
     }
-    console.warn("monitoring:data-load:error", label, error);
-    return fallback;
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    console.warn("monitoring:data-load:error", error);
+    statusRoot.innerHTML = statusBanner("监控快照读取失败，已保留页面骨架，可稍后重试。", "warning");
+    renderShellFallback();
   }
 }
 
 export async function renderMonitoring() {
-  let activeController = null;
   setRoot(`
     <section id="monitoring-statusbar"></section>
     <section class="grid cols-4" id="monitoring-summary-cards"></section>
+    <section id="source-status-root"></section>
     <section id="macro-overview-root"></section>
     <section class="monitoring-observation-grid" id="monitoring-observations-grid"></section>
   `);
-
-  const renderStatus = (message, tone = "neutral") => {
-    const el = document.getElementById("monitoring-statusbar");
-    if (el) el.innerHTML = statusBanner(message, tone);
+  renderShellFallback();
+  await loadDashboard();
+  return {
+    unmount: async () => activeController?.abort(),
+    pause: async () => activeController?.abort(),
+    resume: async () => loadDashboard(),
   };
-
-  activeController?.abort();
-  activeController = new AbortController();
-  const dashboardBundle = await loadDashboardData(
-    "monitoring-dashboard",
-    () => api.getMonitoringDashboard(appState.selectedInstrumentId, appState.selectedTimeframe, {
-      signal: activeController.signal,
-    }),
-    {
-      status: "missing",
-      status_message: "暂无快照，已加入预计算队列",
-      macro_overview: { layers: [], event_items: [] },
-      technical_observations: [],
-      onchain_observations: [],
-      alert_events: [],
-    },
-  );
-  let macroOverview = dashboardBundle.macro_overview || { layers: [], event_items: [] };
-  let technicalItems = dashboardBundle.technical_observations || [];
-  let onchainItems = dashboardBundle.onchain_observations || [];
-  const alerts = dashboardBundle.alert_events || [];
-
-  const technicalKey = `technical:${appState.selectedInstrumentId}:${appState.selectedTimeframe}`;
-  if ((dashboardBundle.status === "missing" || dashboardBundle.status === "stale" || !technicalItems.length) && !autoSyncKeys.has(technicalKey)) {
-    autoSyncKeys.add(technicalKey);
-    renderStatus("本地暂无数据，正在从 Gate.io 拉取 K 线并计算指标", "loading");
-    await scheduleIdlePrecompute({
-      page: "monitoring-overview",
-      instrumentId: appState.selectedInstrumentId,
-      timeframe: appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe,
-      reason: "monitoring_dashboard_read",
-      priority: 3,
-    });
-    renderStatus(technicalItems.length ? "数据已就绪" : "同步完成，但暂无技术观测", technicalItems.length ? "success" : "warning");
-  }
-
-  const macroHasData = (macroOverview.layers || []).length || (macroOverview.event_items || []).length;
-  if (!macroHasData && dashboardBundle.status === "missing" && !autoSyncKeys.has("macro")) {
-    autoSyncKeys.add("macro");
-    renderStatus("正在同步宏观日历与宏观观测", "loading");
-    await scheduleIdlePrecompute({
-      page: "monitoring-overview",
-      instrumentId: appState.selectedInstrumentId,
-      timeframe: appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe,
-      reason: "monitoring_macro_missing",
-      priority: 4,
-    });
-    macroOverview = await loadDashboardData("macro-overview-reload", () => api.getMacroOverview(), {
-      layers: [],
-      event_items: [],
-    });
-    const refreshedMacroHasData = (macroOverview.layers || []).length || (macroOverview.event_items || []).length;
-    renderStatus(refreshedMacroHasData ? "数据已就绪" : "同步完成，但暂无宏观观测", refreshedMacroHasData ? "success" : "warning");
-  }
-
-  const macroLayers = Object.fromEntries((macroOverview.layers || []).map((layer) => [layer.layer_key, layer]));
-
-  document.getElementById("monitoring-summary-cards").innerHTML = [
-    metricCard("技术观测数", technicalItems.length, "最近样本"),
-    metricCard("宏观状态", text(macroOverview.regime_label_cn, "观望整理"), text(macroOverview.operation_bias, "观望")),
-    metricCard("链上观测数", onchainItems.length, "最近样本"),
-    metricCard("当前 Open 告警", alerts.filter((item) => item.status === "open").length, "站内告警"),
-  ].join("");
-
-  document.getElementById("macro-overview-root").innerHTML = renderMacroOverviewCard(macroOverview);
-  document.querySelector("#macro-overview-root .score-grid").innerHTML = [
-    metricCard("POLICY SCORE", formatNumber(macroOverview.policy_score, 0), text(macroLayers.rates_policy?.bias, "中性")),
-    metricCard("INFLATION SCORE", formatNumber(macroOverview.inflation_score, 0), text(macroLayers.inflation?.bias, "中性")),
-    metricCard("GROWTH SCORE", formatNumber(macroOverview.growth_score, 0), text(macroLayers.growth_labor?.bias, "中性")),
-    metricCard("LIQUIDITY SCORE", formatNumber(macroOverview.liquidity_score, 0), text(macroLayers.liquidity_credit?.bias, "中性")),
-  ].join("");
-
-  document.getElementById("monitoring-observations-grid").innerHTML = [
-    renderObservationCard("技术观测", "TECHNICAL", technicalItems),
-    renderObservationCard("链上观测", "ON-CHAIN", onchainItems),
-  ].join("");
 }
+
+async function refreshMacroData() {
+  if (macroRefreshPending) return;
+  macroRefreshPending = true;
+  const statusRoot = document.getElementById("monitoring-statusbar");
+  const btn = document.getElementById("macro-refresh-btn");
+  if (btn) btn.textContent = "同步中...";
+  try {
+    statusRoot.innerHTML = statusBanner("正在同步宏观数据", "loading");
+    await api.refreshMacro();
+    await loadDashboard();
+  } catch (error) {
+    console.warn("macro-refresh:error", error);
+    statusRoot.innerHTML = statusBanner("宏观数据同步失败，已保留当前缓存。", "warning");
+  } finally {
+    macroRefreshPending = false;
+    if (btn) btn.textContent = "刷新宏观";
+  }
+}
+
+window.refreshMacroData = refreshMacroData;

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import logging
 import time as time_module
 from calendar import monthrange
 from dataclasses import dataclass
@@ -47,6 +48,8 @@ from app.services.microstructure import (
     summarize_open_interest,
 )
 
+logger = logging.getLogger(__name__)
+
 UTC = timezone.utc
 
 MICROSTRUCTURE_KEYS = {
@@ -55,6 +58,30 @@ MICROSTRUCTURE_KEYS = {
     "depth_liquidity",
     "slippage_bps",
 }
+
+
+FRESHNESS_DAYS_BY_FREQUENCY = {
+    "intraday": 0.1,
+    "daily": 3,
+    "weekly": 14,
+    "monthly": 45,
+    "quarterly": 120,
+    "fomc": 60,
+    "irregular": 30,
+    "event": 60,
+}
+
+
+def fresh_in_window(observation, max_age_days: float) -> bool:
+    if observation is None or observation.observation_ts is None:
+        return False
+    now = datetime.now(timezone.utc)
+    if observation.observation_ts.tzinfo is None:
+        obs_ts = observation.observation_ts.replace(tzinfo=UTC)
+    else:
+        obs_ts = observation.observation_ts
+    age_seconds = (now - obs_ts).total_seconds()
+    return age_seconds <= max_age_days * 86400
 
 
 @dataclass(slots=True)
@@ -75,6 +102,14 @@ class IndicatorMonitoringService:
         )
         self.macro_provider_registry = MacroProviderRegistry()
         self._technical_batch_cache: dict | None = None
+
+    def _freshness_days_for_frequency(self, definition) -> float:
+        freq = (
+            str(definition.calc_params_json.get("frequency", "daily")).lower().strip()
+            if definition.calc_params_json
+            else "daily"
+        )
+        return FRESHNESS_DAYS_BY_FREQUENCY.get(freq, 30.0)
 
     async def seed_defaults(self, default_instrument_id: str = "btc-usdt-perp") -> None:
         for row in load_indicator_catalog():
@@ -587,11 +622,11 @@ class IndicatorMonitoringService:
         contract_bucket = self._batch_bucket("contract")
         contract_key = f"{settle}:{ref.symbol}"
         if contract_key not in contract_bucket:
-            contract_bucket[contract_key] = (
-                await self.market_service.gate_client.get_futures_contract(
-                    settle,
-                    ref.symbol,
-                )
+            contract_bucket[
+                contract_key
+            ] = await self.market_service.gate_client.get_futures_contract(
+                settle,
+                ref.symbol,
             )
         contract = contract_bucket[contract_key]
         mark = D(contract.get("mark_price") or contract.get("last_price"))
@@ -603,12 +638,12 @@ class IndicatorMonitoringService:
             trades_bucket = self._batch_bucket("trades")
             trades_key = f"{settle}:{ref.symbol}:100"
             if trades_key not in trades_bucket:
-                trades_bucket[trades_key] = (
-                    await self.market_service.gate_client.list_futures_trades(
-                        settle=settle,
-                        contract=ref.symbol,
-                        limit=100,
-                    )
+                trades_bucket[
+                    trades_key
+                ] = await self.market_service.gate_client.list_futures_trades(
+                    settle=settle,
+                    contract=ref.symbol,
+                    limit=100,
                 )
             trades = trades_bucket[trades_key]
             previous = await self.repository.latest_observation(
@@ -617,15 +652,10 @@ class IndicatorMonitoringService:
                 timeframe=timeframe,
             )
             previous_cvd = (
-                D((previous.value_json or {}).get("cvd") or "0")
-                if previous
-                else DECIMAL_ZERO
+                D((previous.value_json or {}).get("cvd") or "0") if previous else DECIMAL_ZERO
             )
             summary = aggregate_cvd_delta(
-                [
-                    TradeSample(price=item.price, size=item.size, side=item.side)
-                    for item in trades
-                ],
+                [TradeSample(price=item.price, size=item.size, side=item.side) for item in trades],
                 previous_cvd=previous_cvd,
             )
             value_json = {
@@ -648,13 +678,13 @@ class IndicatorMonitoringService:
             stats_bucket = self._batch_bucket("contract_stats")
             stats_key = f"{settle}:{ref.symbol}:5m:2"
             if stats_key not in stats_bucket:
-                stats_bucket[stats_key] = (
-                    await self.market_service.gate_client.get_futures_contract_stats(
-                        settle=settle,
-                        contract=ref.symbol,
-                        interval="5m",
-                        limit=2,
-                    )
+                stats_bucket[
+                    stats_key
+                ] = await self.market_service.gate_client.get_futures_contract_stats(
+                    settle=settle,
+                    contract=ref.symbol,
+                    interval="5m",
+                    limit=2,
                 )
             stats = stats_bucket[stats_key]
             latest_oi = stats[-1].open_interest if stats else DECIMAL_ZERO
@@ -690,13 +720,13 @@ class IndicatorMonitoringService:
             book_bucket = self._batch_bucket("order_book")
             book_key = f"{settle}:{ref.symbol}:50"
             if book_key not in book_bucket:
-                book_bucket[book_key] = (
-                    await self.market_service.gate_client.get_futures_order_book(
-                        settle=settle,
-                        contract=ref.symbol,
-                        limit=50,
-                        with_id=True,
-                    )
+                book_bucket[
+                    book_key
+                ] = await self.market_service.gate_client.get_futures_order_book(
+                    settle=settle,
+                    contract=ref.symbol,
+                    limit=50,
+                    with_id=True,
                 )
             book = book_bucket[book_key]
             summary = summarize_depth_slippage(
@@ -717,11 +747,7 @@ class IndicatorMonitoringService:
                 else None,
                 "contract": ref.symbol,
             }
-            value_num = (
-                summary.depth_50bps
-                if key == "depth_liquidity"
-                else summary.spread_bps
-            )
+            value_num = summary.depth_50bps if key == "depth_liquidity" else summary.spread_bps
             signal_state = "thin" if summary.depth_50bps <= Decimal("50000") else "normal"
             if key == "slippage_bps" and (
                 (summary.buy_slippage_bps or DECIMAL_ZERO) >= Decimal("20")
@@ -765,8 +791,14 @@ class IndicatorMonitoringService:
             source_provider=definition.source_provider,
             source_kind=definition.source_kind,
         )
-        if provider is not None and definition.source_kind == "raw_series":
+        if provider is not None and provider.supports(
+            definition.source_provider, definition.source_kind
+        ):
             symbol = str(definition.calc_params_json.get("external_symbol"))
+            latest_obs = await self.repository.latest_observation(indicator_key)
+            freshness_days = self._freshness_days_for_frequency(definition)
+            if latest_obs is not None and fresh_in_window(latest_obs, freshness_days):
+                return [latest_obs]
             fetch_started_at = time_module.perf_counter()
             try:
                 result = await provider.fetch_latest(symbol)
@@ -787,7 +819,22 @@ class IndicatorMonitoringService:
                     latency_ms=int((time_module.perf_counter() - fetch_started_at) * 1000),
                     payload_json={"indicator_key": indicator_key},
                 )
-                raise
+                if latest_obs is not None:
+                    return [latest_obs]
+                obs = await self._persist_observation(
+                    definition=definition,
+                    run_id=run_id,
+                    country_code="US",
+                    timeframe="1d",
+                    observation_ts=datetime.now(timezone.utc),
+                    value_text="unavailable",
+                    value_json={"error": str(exc)[:200], "source": provider.provider_key},
+                    signal_state="source_error",
+                    source_provider=provider.provider_key,
+                    source_ref=symbol,
+                    source_granularity="1d",
+                )
+                return [obs]
             country_code = "global" if indicator_key in {"dollar_index", "gold"} else "US"
             obs = await self._persist_observation(
                 definition=definition,
@@ -862,7 +909,20 @@ class IndicatorMonitoringService:
         release_key = policy.release_key or indicator_key
         latest = await self.repository.latest_macro_event(release_key, released_only=True)
         if latest is None:
-            return []
+            obs = await self._persist_observation(
+                definition=definition,
+                run_id=run_id,
+                country_code="US",
+                timeframe="event",
+                observation_ts=datetime.now(timezone.utc),
+                value_text="pending_release",
+                value_json={"state": "pending_release", "release_key": release_key},
+                signal_state="pending_release",
+                source_provider=definition.source_provider,
+                source_ref=release_key,
+                source_granularity="event",
+            )
+            return [obs]
         if provider is not None:
             await self._record_macro_source_health(
                 provider_key=provider.provider_key,
@@ -940,43 +1000,11 @@ class IndicatorMonitoringService:
         policy: IndicatorMonitoringPolicy,
         run_id: str,
     ) -> list[IndicatorObservation]:
-        asset_code = policy.asset_code or str(
-            definition.calc_params_json.get("asset_scope") or "BTC"
+        logger.info(
+            "skip onchain indicator %s: provider is not part of active monitoring workflow",
+            definition.indicator_key,
         )
-        timeframe = policy.timeframe or "24h"
-        now = datetime.now(timezone.utc)
-        value = self._demo_onchain_value(definition.indicator_key, asset_code, now)
-        history = await self.repository.list_indicator_observations(
-            definition.indicator_key, asset_code=asset_code, limit=60
-        )
-        series = [D(item.value_num) for item in reversed(history) if item.value_num is not None] + [
-            value
-        ]
-        obs = await self._persist_observation(
-            definition=definition,
-            run_id=run_id,
-            asset_code=asset_code,
-            timeframe=timeframe,
-            observation_ts=now,
-            value_num=value,
-            zscore_num=self._zscore(series) if len(series) > 1 else DECIMAL_ZERO,
-            value_json={
-                "mode": "demo_fallback" if not settings.glassnode_api_key else "placeholder",
-                "is_demo": True,
-                "recommendation_usable": False,
-            },
-            signal_state=self._onchain_state(definition.indicator_key, value),
-            source_provider="glassnode",
-            source_ref="demo-fallback",
-            source_granularity=timeframe,
-            is_preliminary=not bool(settings.glassnode_api_key),
-            quality_score=Decimal(
-                settings.monitoring_demo_quality_score
-                if not settings.glassnode_api_key
-                else settings.monitoring_default_quality_score
-            ),
-        )
-        return [obs]
+        return []
 
     async def _persist_observation(
         self,

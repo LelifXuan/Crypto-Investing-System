@@ -245,6 +245,7 @@ class FusionResult:
     invalidation: str | None
     suggested_mode: str | None
     suggested_action: str | None
+    invalidation_details: dict | None = None
     primary_drivers: list[str] = field(default_factory=list)
     opposing_factors: list[str] = field(default_factory=list)
     top_reasons: list[str] = field(default_factory=list)

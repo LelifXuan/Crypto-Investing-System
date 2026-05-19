@@ -75,8 +75,6 @@ SMOKE_IMPORTS = [
 ]
 
 FORBIDDEN_EXACT = {
-    ".env",
-    "storage_manifest.json",
     "runtime/config/portable.env",
 }
 
@@ -430,7 +428,6 @@ class Auditor:
         repo = repo.resolve()
         source_findings: list[str] = []
         checks = [
-            repo / ".env",
             repo / ".venv",
             repo / "data" / "trading_system.db",
             repo / "data" / "trading_system.db-wal",

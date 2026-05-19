@@ -9,6 +9,8 @@ const pageModules = {
   "macro-calendar": () => loadPageModule("./pages/macro_calendar.js"),
   "alert-center": () => loadPageModule("./pages/alerts.js"),
   "knowledge-base": () => loadPageModule("./pages/knowledge.js"),
+  "cn-etf": () => loadPageModule("./pages/ashare_etf.js"),
+  "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "ai-strategy": () => loadPageModule("./pages/strategy.js"),
 };
 
@@ -88,6 +90,7 @@ async function boot() {
     module.renderMacroCalendar ||
     module.renderAlerts ||
     module.renderKnowledge ||
+    module.renderAshareEtf ||
     module.renderStrategy;
   if (typeof renderPage !== "function") {
     console.error("page:render-missing", pageId);

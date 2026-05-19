@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi.encoders import jsonable_encoder
@@ -23,6 +22,8 @@ from app.services.cache_registry import (
     expires_at_for_dataset,
     indicator_series_cache_key,
 )
+
+UTC = timezone.utc
 
 
 def _to_decimal_list(values: list) -> list[Decimal]:
@@ -50,6 +51,35 @@ def _series_to_json(values: list) -> list[float | None]:
             output.append(None)
         else:
             output.append(float(item))
+    return output
+
+
+def _rolling_change(values: list[Decimal | None], period: int) -> list[Decimal | None]:
+    output: list[Decimal | None] = []
+    for index, value in enumerate(values):
+        if index < period or value is None or values[index - period] is None:
+            output.append(None)
+            continue
+        output.append(value - values[index - period])
+    return output
+
+
+def _obv_slope(
+    values: list[Decimal | None],
+    volumes: list[Decimal],
+    period: int = 5,
+) -> list[Decimal | None]:
+    output: list[Decimal | None] = []
+    for index, value in enumerate(values):
+        if index < period or value is None or values[index - period] is None:
+            output.append(None)
+            continue
+        volume_window = volumes[max(0, index - period + 1) : index + 1]
+        denominator = sum((abs(item) for item in volume_window), Decimal("0"))
+        if denominator == 0:
+            output.append(None)
+            continue
+        output.append((value - values[index - period]) / denominator)
     return output
 
 
@@ -156,6 +186,7 @@ class ComputedDatasetCacheService:
         adx = adx_wilder_series(highs, lows, closes, 14)
         boll = bbands_series(closes, 20, Decimal("2"))
         kdj = kdj_series(highs, lows, closes, 9)
+        obv_values = obv_series(closes, volumes).series
         return {
             "bbands_upper": _series_to_json(boll.upper.series),
             "bbands_middle": _series_to_json(boll.middle.series),
@@ -165,7 +196,9 @@ class ComputedDatasetCacheService:
             "adx_14": _series_to_json(adx["adx"].series),
             "plus_di": _series_to_json(_adx_part(adx, "plus_di", "+di").series),
             "minus_di": _series_to_json(_adx_part(adx, "minus_di", "-di").series),
-            "obv": _series_to_json(obv_series(closes, volumes).series),
+            "obv": _series_to_json(obv_values),
+            "obv_change_5": _series_to_json(_rolling_change(obv_values, 5)),
+            "obv_slope": _series_to_json(_obv_slope(obv_values, volumes, 5)),
             "kdj_k": _series_to_json(kdj.k.series),
             "kdj_d": _series_to_json(kdj.d.series),
             "kdj_j": _series_to_json(kdj.j.series),

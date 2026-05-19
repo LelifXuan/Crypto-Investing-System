@@ -1,4 +1,4 @@
-version: 1
+﻿version: 1
 indicators:
   - indicator_key: ema_20
     display_name: EMA 20
@@ -470,9 +470,9 @@ indicators:
     category: macro
     family: inflation
     source_provider: bls
-    source_kind: release_series
+    source_kind: raw_series
     calc_engine: raw
-    calc_params: {external_symbol: CPI_YOY}
+    calc_params: {external_symbol: CUUR0000SA0}
     supported_assets: [global]
     supported_timeframes: [event, 1m]
     output_fields: [value, surprise]
@@ -485,9 +485,9 @@ indicators:
     category: macro
     family: inflation
     source_provider: bls
-    source_kind: release_series
+    source_kind: raw_series
     calc_engine: raw
-    calc_params: {external_symbol: CORE_CPI_YOY}
+    calc_params: {external_symbol: CUUR0000SA0L1E}
     supported_assets: [global]
     supported_timeframes: [event, 1m]
     output_fields: [value, surprise]
@@ -500,9 +500,24 @@ indicators:
     category: macro
     family: labor
     source_provider: bls
-    source_kind: release_series
+    source_kind: raw_series
     calc_engine: raw
-    calc_params: {external_symbol: NFP_HEADLINE}
+    calc_params: {external_symbol: CES0000000001}
+    supported_assets: [global]
+    supported_timeframes: [event, 1m]
+    output_fields: [value, surprise]
+    signal_states: [weak, neutral, strong]
+    default_thresholds: {}
+    use_cases: [event_risk, macro_regime]
+    is_enabled: true
+  - indicator_key: us_unemployment_rate
+    display_name: US Unemployment Rate
+    category: macro
+    family: labor
+    source_provider: bls
+    source_kind: raw_series
+    calc_engine: raw
+    calc_params: {external_symbol: LNS14000000}
     supported_assets: [global]
     supported_timeframes: [event, 1m]
     output_fields: [value, surprise]
@@ -659,7 +674,7 @@ indicators:
     signal_states: [undervalued, neutral, stretched, overheated]
     default_thresholds: {undervalued_lt: 1.0, overheated_gte: 3.5}
     use_cases: [cycle_filter, review_snapshot]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: eth_mvrv
     display_name: ETH MVRV
     category: onchain
@@ -674,7 +689,7 @@ indicators:
     signal_states: [undervalued, neutral, stretched, overheated]
     default_thresholds: {}
     use_cases: [cycle_filter, review_snapshot]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: btc_sth_mvrv
     display_name: BTC STH-MVRV
     category: onchain
@@ -689,7 +704,7 @@ indicators:
     signal_states: [capitulation, neutral, euphoric]
     default_thresholds: {}
     use_cases: [short_term_holder_behavior]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: btc_lth_mvrv
     display_name: BTC LTH-MVRV
     category: onchain
@@ -704,7 +719,7 @@ indicators:
     signal_states: [stressed, neutral, rich]
     default_thresholds: {}
     use_cases: [long_term_holder_behavior]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: btc_exchange_net_position_change
     display_name: BTC Exchange Net Position Change
     category: onchain
@@ -719,7 +734,7 @@ indicators:
     signal_states: [outflow_dominant, neutral, inflow_dominant]
     default_thresholds: {}
     use_cases: [exchange_flow_filter, review_snapshot]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: eth_exchange_net_position_change
     display_name: ETH Exchange Net Position Change
     category: onchain
@@ -734,7 +749,7 @@ indicators:
     signal_states: [outflow_dominant, neutral, inflow_dominant]
     default_thresholds: {}
     use_cases: [exchange_flow_filter]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: btc_active_addresses
     display_name: BTC Active Addresses
     category: onchain
@@ -749,7 +764,7 @@ indicators:
     signal_states: [shrinking, normal, expanding]
     default_thresholds: {}
     use_cases: [network_activity_filter]
-    is_enabled: true
+    is_enabled: false
   - indicator_key: eth_active_addresses
     display_name: ETH Active Addresses
     category: onchain
@@ -764,4 +779,4 @@ indicators:
     signal_states: [shrinking, normal, expanding]
     default_thresholds: {}
     use_cases: [network_activity_filter]
-    is_enabled: true
+    is_enabled: false

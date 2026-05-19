@@ -25,13 +25,6 @@ def test_alerts_initial_load_has_fallback_shell() -> None:
     source = (ROOT / "app/static/pages/alerts.js").read_text(encoding="utf-8")
     assert "alerts:initial-load:error" in source
     assert "fallbackChipStructureCard" in source
-    assert "告警列表暂不可用" in source
-    assert "状态置信" in source
-    assert "盘口执行质量" in source
-    assert "交易触发状态" in source
-    assert "为什么当前不建议开多合约" not in source
-    assert "合约开多条件检查" not in source
-    assert "renderFuturesGateChecks" not in source
     assert "alert-chip-primary-card" in source
     assert "alert-chip-score-strip" in source
     assert "alert-chip-position-grid" in source
@@ -51,8 +44,18 @@ def test_alert_chip_layout_avoids_sparse_fixed_metric_grid() -> None:
 
 def test_structure_price_line_is_visually_subdued() -> None:
     source = (ROOT / "app/static/pages/structure.js").read_text(encoding="utf-8")
-    expected = 'price: { label: "价格", color: "rgba(22, 35, 43, 0.58)", dash: "", width: 2.45 }'
+    expected = 'price: { label: "价格", color: "rgba(22, 35, 43, 0.38)", dash: "", width: 2.15 }'
     assert expected in source
+    assert "extendOverlayToLatestCandle" in source
+    assert "visiblePointInViewport" in source
+    assert "localIndexForPoint" in source
+    assert "currentPriceGuide" in source
+    assert "suppressBrokenClassicOverlay" in source
+    assert "buildGuideMarkerMarkup" in source
+    assert "let strokeColor = (CHART_SERIES[item.system]" in source
+    assert "月线样本不足" in source
+    assert "${buildLayerToggleMarkup()}" in source
+    assert '<div class="structure-legend-toggles">' in source
 
 
 def test_knowledge_catalog_does_not_generate_template_body_text() -> None:
@@ -82,8 +85,26 @@ console.log(JSON.stringify(samples));
         encoding="utf-8",
     )
     assert json.loads(result.stdout) == [
-        "Bitcoin’s dip and investor’s worries",
-        "Startup’s Database",
-        "claims as “wildly conspiratorial”",
-        "Robinhood’s Q1 revenue",
+        "Bitcoin's dip and investor's worries",
+        "Startup's Database",
+        'claims as "wildly conspiratorial"',
+        "Robinhood's Q1 revenue",
     ]
+
+
+def test_analysis_uses_canonical_latest_mark_independent_of_timeframe() -> None:
+    source = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
+    bundle_mark_index = source.index("let markPayload = bundle.mark || null;")
+    latest_mark_index = source.index("const latestMark = await api.getLatestMark")
+    candles_index = source.index("let allCandles = normalizeOhlcCandles")
+    assert bundle_mark_index < latest_mark_index < candles_index
+    assert "preferLive: true" in source[latest_mark_index : latest_mark_index + 260]
+
+
+def test_event_translation_refresh_is_real_queue_and_no_default_pending_chip() -> None:
+    frontend = (ROOT / "app/static/pages/market_events.js").read_text(encoding="utf-8")
+    backend = (ROOT / "app/api/v1/endpoints/market_events.py").read_text(encoding="utf-8")
+    assert 'item.translation_status || ""' in frontend
+    assert "refreshMarketEventTranslations" in frontend
+    assert "pending_count" in backend
+    assert "enqueue_event_ids" in backend

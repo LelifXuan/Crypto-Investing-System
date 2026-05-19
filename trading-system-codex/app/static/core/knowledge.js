@@ -1,4 +1,4 @@
-export const knowledgeCatalogVersion = "v7-v1-1";
+﻿export const knowledgeCatalogVersion = "v1.8-clean-labels";
 
 export const knowledgePageFilters = [
   { key: "market-analysis", label: "技术指标" },
@@ -9,6 +9,7 @@ export const knowledgePageFilters = [
   { key: "market-events", label: "市场事件" },
   { key: "knowledge-base", label: "知识百科" },
   { key: "risk", label: "风险管理" },
+  { key: "ashare-etf", label: "A股ETF" },
 ];
 
 export const knowledgeLevelFilters = [
@@ -769,6 +770,85 @@ const dataQualityItems = [
   }),
 ];
 
+const etfItems = [
+  term("cash_flow_etf", "现金流ETF / Cash Flow ETF", {
+    aliases: ["159201", "现金流ETF"],
+    category: "ashare-etf",
+    family: "cash-flow",
+    level: "intermediate",
+    importance: "core",
+    page_refs: ["ashare-etf"],
+    tags: ["cash-flow", "income"],
+    description: [
+      "现金流传导 ETF 是一种市场观测型 ETF，筛选标准侧重于企业自由现金流质量与可持续性。",
+      "核心指标：经营现金流/营业收入比例、自由现金流收益率、分红可持续性、应收/应付周期。",
+      "不同于高股息策略：现金流 ETF 更关注现金生成能力而非当期分红率；高分红可能来自借贷或资产出售。",
+      "交易注意事项：关注 A 股 ETF 的交易流动性、折溢价率、跟踪误差及规模变化，不构成确定性高收益保证。",
+    ].join("\n"),
+  }),
+  term("halo_etf", "HALO ETF / HALO 组合", {
+    category: "ashare-etf",
+    family: "sector",
+    level: "intermediate",
+    importance: "core",
+    page_refs: ["ashare-etf"],
+    tags: ["sector", "halo"],
+    description: [
+      "HALO = Heavy Assets, Low Obsolescence（重资产、低淘汰）。",
+      "观察标的主要涵盖：电信运营商、军工/防务、基础设施建设、有色金属、能源与电力、部分关键制造业。",
+      "这些资产天然具备高壁垒、长周期、政策敏感的特征。",
+      "HALO 作为观测组合而非买入信号：用于判断资金在重资产板块与轻资产/科技板块之间的轮动节奏。",
+      "风险因素包括：政策转向、融资成本上升、大宗商品价格剧烈波动、长周期资本开支周期拐点。",
+    ].join("\n"),
+  }),
+  term("ashare_etf_quote_source", "A股ETF行情源", {
+    aliases: ["ETF quote source", "Eastmoney", "A股ETF数据源"],
+    category: "ashare-etf",
+    family: "data-source",
+    level: "basic",
+    page_refs: ["ashare-etf", "monitoring-overview"],
+    tags: ["data-source"],
+    summary: "A股ETF页使用独立行情源读取近实时价格，不走 Gate.io，也不进入 Crypto 技术指标链路。",
+    definition: "该行情源只负责返回固定 ETF universe 的最新价、涨跌幅、成交量、成交额和报价时间。provider 失败时保留行项目，并显示暂不可用。",
+    how_to_use: "优先检查来源状态和报价时间。若状态为使用缓存或暂不可用，页面仍可作为列表参考，但不要把价格当作最新行情。",
+  }),
+  term("etf_vs_perp_spot", "ETF vs 永续合约/现货", {
+    aliases: ["ETF vs Perp", "ETF vs Spot", "ETF和永续合约区别"],
+    category: "ashare-etf",
+    family: "instrument",
+    level: "intermediate",
+    page_refs: ["ashare-etf", "knowledge-base"],
+    tags: ["perp", "spot"],
+    summary: "ETF 是证券市场基金份额，永续合约是衍生品，现货是直接持有资产，三者的价格机制和风险来源不同。",
+    definition: "A股ETF受交易所交易时间、申赎机制、成分股表现和流动性影响；永续合约受资金费率、保证金、强平和盘口深度影响；现货则不含合约强平机制。",
+    how_to_use: "ETF 页只做跨市场观察，不把 ETF 涨跌直接输入 Crypto 告警、结构或策略信号。",
+    risk_note: "把 ETF 的低波动误读为低风险、把永续合约的高流动性误读为低风险，都会导致仓位判断失真。",
+  }),
+  term("dividend_cashflow", "股息现金流", {
+    aliases: ["Dividend Cash Flow", "分红现金流", "红利现金流"],
+    category: "ashare-etf",
+    family: "income",
+    level: "intermediate",
+    page_refs: ["ashare-etf"],
+    tags: ["dividend", "cash-flow"],
+    summary: "股息现金流关注企业把经营结果转化为可分配现金的能力，是红利和防御型资产的重要观察口径。",
+    definition: "相比只看利润，现金流更强调钱是否真的回到企业账上并具备分配空间。对 ETF 来说，它通常通过成分股筛选、分红率和现金回报质量间接体现。",
+    how_to_use: "当现金流 ETF 强于高弹性成长资产时，市场可能更偏好确定性和分红；当它明显走弱，说明防御资金也可能在撤退。",
+  }),
+  term("heavy_assets_low_obsolescence", "重资产低迭代淘汰", {
+    aliases: ["重资产", "低迭代淘汰", "Low Obsolescence"],
+    category: "ashare-etf",
+    family: "sector-logic",
+    level: "intermediate",
+    page_refs: ["ashare-etf"],
+    tags: ["sector", "cycle"],
+    summary: "指资产、牌照、资源、网络或基础设施壁垒较强，业务不容易被快速技术迭代完全替代的行业线索。",
+    definition: "电力、能源、基建、电信网络和部分资源品行业往往有重资产和长期投入特征。它们的风险更常来自价格周期、政策和负债成本，而不是产品快速过时。",
+    how_to_use: "观察这些 ETF 是否同步走强，可以帮助判断市场是否偏向稳定现金流、资源约束或政策托底逻辑。",
+    risk_note: "重资产不等于永远安全。利率上行、需求下行、政策调整和产能周期都可能压低估值。",
+  }),
+];
+
 export const knowledgeSections = [
   {
     id: "technical",
@@ -799,6 +879,12 @@ export const knowledgeSections = [
     title: "数据质量与链上可选项",
     description: "数据新鲜度、样本成熟度、源可用性和链上数据可用性。",
     items: dataQualityItems,
+  },
+  {
+    id: "ashare-etf",
+    title: "A股ETF",
+    description: "现金流、HALO 行业篮子和 A 股 ETF 行情源的独立观察口径。",
+    items: etfItems,
   },
 ];
 
@@ -868,3 +954,4 @@ export function searchKnowledge(query, filters = {}) {
     }),
   );
 }
+

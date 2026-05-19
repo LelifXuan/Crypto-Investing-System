@@ -7,6 +7,24 @@ import {
 } from "../core/knowledge.js";
 import { escapeHtml, knowledgeTooltip, metricCard, setRoot } from "../core/dom.js";
 
+const HIDDEN_KNOWLEDGE_TAGS = new Set([
+  "technical",
+  "ashare-etf",
+  "intermediate",
+  "basic",
+  "advanced",
+  "knowledge-base",
+  "market-analysis",
+  "market-structure",
+]);
+
+function visibleKnowledgeTags(item) {
+  const tags = [item.family, ...(item.tags || [])].filter(Boolean);
+  return tags
+    .filter((tag) => !HIDDEN_KNOWLEDGE_TAGS.has(String(tag).toLowerCase()))
+    .slice(0, 5);
+}
+
 const state = {
   query: "",
   page: "all",
@@ -91,6 +109,7 @@ function renderTermCard(item) {
     })
     .filter(Boolean)
     .join("");
+  const tags = visibleKnowledgeTags(item);
   const isCompact = item.display_mode === "compact";
   return `
     <article class="knowledge-item-card ${isCompact ? "is-compact" : ""}" id="${escapeHtml(item.id)}">
@@ -99,15 +118,11 @@ function renderTermCard(item) {
           <strong>${escapeHtml(item.term)}</strong>
           ${item.summary ? `<p class="knowledge-card-summary">${escapeHtml(item.summary)}</p>` : ""}
           <div class="knowledge-meta-row">
-            <span class="status-chip chip-favorable">${escapeHtml(item.category)}</span>
-            <span class="status-chip chip-neutral">${escapeHtml(item.family)}</span>
-            <span class="status-chip chip-warning">${escapeHtml(item.level)}</span>
+            ${renderTags(tags)}
           </div>
-          ${renderTags(item.aliases)}
         </div>
         <div class="knowledge-card-actions">
           ${isCompact ? "" : `<button class="ghost-button knowledge-toggle-button" data-toggle-knowledge="#${escapeHtml(item.id)}">展开详情</button>`}
-          <button class="ghost-button knowledge-copy-button" data-copy-anchor="#${escapeHtml(item.id)}">复制链接</button>
         </div>
       </div>
       ${isCompact ? "" : `<div class="knowledge-body">
@@ -125,22 +140,6 @@ function renderTermCard(item) {
   `;
 }
 
-function bindCopyButtons() {
-  document.querySelectorAll("[data-copy-anchor]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const anchor = `${window.location.origin}${window.location.pathname}${button.dataset.copyAnchor}`;
-      try {
-        await navigator.clipboard.writeText(anchor);
-        button.textContent = "已复制";
-        window.setTimeout(() => {
-          button.textContent = "复制链接";
-        }, 1200);
-      } catch {
-        button.textContent = "复制失败";
-      }
-    });
-  });
-}
 
 function bindToggleButtons() {
   document.querySelectorAll("[data-toggle-knowledge]").forEach((button) => {
@@ -181,6 +180,7 @@ function renderKnowledgeLayout() {
   const visibleTerms = sections.reduce((sum, section) => sum + section.items.length, 0);
   const familyFilterOptions = familyOptions();
   setRoot(`
+    <div id="knowledge-top" class="knowledge-top-anchor"></div>
     <section class="card knowledge-hero">
       <div class="section-head">
         <div>
@@ -228,20 +228,11 @@ function renderKnowledgeLayout() {
           </select>
         </label>
       </div>
+      <div class="knowledge-section-chips">
+        ${knowledgeSections.map((section) => `<a class="status-chip chip-neutral" href="#section-${escapeHtml(section.id)}">${escapeHtml(section.title)}</a>`).join("")}
+      </div>
     </section>
-    <section class="knowledge-layout">
-      <aside class="card knowledge-sidebar">
-        <div class="section-head compact">
-          <div>
-            <p class="eyebrow">SECTIONS</p>
-            <h3>分区导航</h3>
-          </div>
-        </div>
-        <nav class="knowledge-anchor-nav knowledge-anchor-nav-column">
-          ${knowledgeSections.map((section) => `<a href="#section-${escapeHtml(section.id)}">${escapeHtml(section.title)}</a>`).join("")}
-        </nav>
-      </aside>
-      <div class="knowledge-sections">
+    <div class="knowledge-sections">
         ${sections.length ? sections.map((section) => `
           <article class="card knowledge-section-card" id="section-${escapeHtml(section.id)}">
             <div class="section-head">
@@ -258,7 +249,7 @@ function renderKnowledgeLayout() {
           </article>
         `).join("") : `<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽页面、分区、家族、等级过滤。</p></section>`}
       </div>
-    </section>
+    <button type="button" class="knowledge-back-top" aria-label="返回知识百科顶部">返回顶部</button>
   `);
 
   document.getElementById("knowledge-search")?.addEventListener("input", (event) => {
@@ -282,8 +273,10 @@ function renderKnowledgeLayout() {
     renderKnowledgeLayout();
   });
 
-  bindCopyButtons();
   bindToggleButtons();
+  document.querySelector(".knowledge-back-top")?.addEventListener("click", () => {
+    document.getElementById("knowledge-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   focusHashTarget();
 }
 

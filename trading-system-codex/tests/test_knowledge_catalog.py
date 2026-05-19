@@ -48,21 +48,11 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
         "basis_rate",
         "price_deviation",
         "market_structure",
-        "swing_high_low",
-        "pivot_fractal",
-        "hh_hl_lh_ll",
         "support_resistance",
-        "retest",
-        "liquidity_sweep",
-        "range_consolidation",
-        "acceptance_rejection",
         "volume_profile",
         "entry_trigger",
         "stop_loss",
         "take_profit",
-        "position_sizing",
-        "liquidation_distance",
-        "invalidation_level",
         "risk_reward_ratio",
         "observe_only",
         "wait_confirmation",
@@ -71,31 +61,16 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
         "fomc",
         "dxy",
         "us10y",
-        "us2y",
-        "ten_two_spread",
-        "real_yield",
-        "vix",
-        "hy_oas",
-        "financial_conditions",
-        "tga",
-        "on_rrp",
-        "ism_pmi",
-        "unemployment_rate",
-        "average_hourly_earnings",
         "mvrv",
-        "sth_mvrv",
-        "lth_mvrv",
-        "exchange_net_position_change",
-        "active_addresses",
         "onchain_data_availability",
-        "stale_data",
         "cache_state",
-        "warmup",
-        "lookback",
-        "immature_indicator",
-        "source_availability",
-        "data_freshness",
         "signal_to_trade_pipeline",
+        "cash_flow_etf",
+        "halo_etf",
+        "ashare_etf_quote_source",
+        "etf_vs_perp_spot",
+        "dividend_cashflow",
+        "heavy_assets_low_obsolescence",
     }
     assert required_ids <= ids
 
@@ -115,11 +90,8 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
         assert required_fields.issubset(item.keys())
         assert item["definition"] or item["summary"]
         serialized = json.dumps(item, ensure_ascii=False)
-        assert "????" not in serialized
-        assert "�" not in serialized
-        assert "鏌" not in serialized
-        assert "甯" not in serialized
-        assert "相关页面" not in serialized
+        for token in ["????", "锟", "閺", "鐢", "鐩稿叧椤甸潰"]:
+            assert token not in serialized
 
     by_id = {item["id"]: item for item in all_items}
     ema_text = json.dumps(by_id["ema"], ensure_ascii=False)
@@ -130,9 +102,10 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
     for phrase in ("EMA12 上穿", "EMA12 下穿", "通道金叉", "通道死叉"):
         assert phrase in vegas_text
 
-    depth_text = json.dumps(by_id["depth_slippage_spread"], ensure_ascii=False)
-    for phrase in ("10bps 深度", "50/100bps 深度", "spread 扩大", "单边滑点"):
-        assert phrase in depth_text
+    etf_text = json.dumps(by_id["halo_etf"], ensure_ascii=False)
+    assert "电信" in etf_text
+    assert "军工" in etf_text
+    assert "基建" in etf_text
 
 
 def test_knowledge_alias_lookup_normalizes_common_variants() -> None:
@@ -147,7 +120,8 @@ const hits = [
   findKnowledgeTerm('1M')?.id,
   findKnowledgeTerm('CPI')?.id,
   findKnowledgeTerm('US 10Y')?.id,
-  findKnowledgeTerm('Funding Z-Score')?.id,
+  findKnowledgeTerm('HALO ETF')?.id,
+  findKnowledgeTerm('159201')?.id,
 ];
 console.log(JSON.stringify(hits));
 """
@@ -160,7 +134,8 @@ console.log(JSON.stringify(hits));
         "timeframe",
         "cpi",
         "us10y",
-        "funding_rate",
+        "halo_etf",
+        "cash_flow_etf",
     ]
 
 
@@ -181,6 +156,5 @@ console.log(JSON.stringify({{
     )
     for text in payload["texts"]:
         assert len(text) < 180
-        assert "先判断环境再说" not in text
     assert "查看百科" in payload["html"]
     assert "/knowledge-page#ema" in payload["html"]

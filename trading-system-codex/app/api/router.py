@@ -2,8 +2,10 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     analysis,
+    ashare_etf,
     auth,
     bootstrap,
+    etf,
     health,
     indicators,
     market_events,
@@ -25,6 +27,8 @@ v1_router.include_router(bootstrap.router)
 v1_router.include_router(market_prices.router)
 v1_router.include_router(market_prices.marketdata_router)
 v1_router.include_router(analysis.router)
+v1_router.include_router(ashare_etf.router)
+v1_router.include_router(etf.router)
 v1_router.include_router(indicators.router)
 v1_router.include_router(monitoring.indicators_catalog_router)
 v1_router.include_router(monitoring.alerts_router)
