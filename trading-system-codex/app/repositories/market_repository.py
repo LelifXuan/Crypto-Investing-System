@@ -395,9 +395,7 @@ class MarketRepository:
         if not cache_ids:
             return 0
         await self.session.execute(
-            delete(ComputedDatasetCache).where(
-                ComputedDatasetCache.dataset_cache_id.in_(cache_ids)
-            )
+            delete(ComputedDatasetCache).where(ComputedDatasetCache.dataset_cache_id.in_(cache_ids))
         )
         await self.session.flush()
         return len(cache_ids)

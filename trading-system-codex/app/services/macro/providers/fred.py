@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.decimal_utils import D
 from app.services.macro.providers.base import MacroFetchResult
 from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -42,7 +43,7 @@ class FredMacroProvider:
             "sort_order": "desc",
             "limit": 20,
         }
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with client_for_source("fred", timeout=10) as client:
             response = await client.get(self.official_url, params=params)
             response.raise_for_status()
         observations = response.json().get("observations") or []
@@ -62,7 +63,7 @@ class FredMacroProvider:
         raise ValueError(f"no fred observation for {source_key}")
 
     async def _fetch_public_csv(self, source_key: str) -> MacroFetchResult:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with client_for_source("fred", timeout=10) as client:
             response = await client.get(settings.fred_public_csv_url, params={"id": source_key})
             response.raise_for_status()
         rows = list(csv.DictReader(StringIO(response.text)))

@@ -5,8 +5,7 @@ import contextlib
 import json
 import logging
 from collections import defaultdict
-from datetime import timezone, datetime, timedelta
-UTC = timezone.utc
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from websockets.asyncio.client import connect
@@ -37,6 +36,7 @@ from app.services.microstructure import (
     summarize_depth_slippage,
 )
 
+UTC = timezone.utc
 logger = logging.getLogger(__name__)
 
 
@@ -236,7 +236,10 @@ class MarketStreamWorker:
             try:
                 await ws.send(
                     json.dumps(
-                        {"time": int(datetime.now(timezone.utc).timestamp()), "channel": ping_channel}
+                        {
+                            "time": int(datetime.now(timezone.utc).timestamp()),
+                            "channel": ping_channel,
+                        }
                     )
                 )
             except ConnectionClosed:
@@ -372,9 +375,7 @@ class MarketStreamWorker:
                 await repo.add_or_update_observation(
                     IndicatorObservation(
                         observation_id=new_id("obs"),
-                        dedupe_key=(
-                            f"open_interest_notional|{instrument_id}|1m|{now.isoformat()}"
-                        ),
+                        dedupe_key=(f"open_interest_notional|{instrument_id}|1m|{now.isoformat()}"),
                         indicator_key="open_interest_notional",
                         category="technical",
                         instrument_id=instrument_id,

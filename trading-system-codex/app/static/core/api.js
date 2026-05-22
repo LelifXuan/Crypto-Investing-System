@@ -240,6 +240,7 @@ export const api = {
       ttl: 20,
       force: options.force ?? false,
       signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
       retry: 1,
     });
   },
@@ -263,8 +264,14 @@ export const api = {
       force: true,
     });
   },
-  getMacroOverview() {
-    return requestJson("/monitoring/macro-overview", { ttl: 60, retry: 1 });
+    getMacroOverview(options = {}) {
+      return requestJson("/monitoring/macro-overview", {
+        ttl: options.force ? 0 : 60,
+        retry: 1,
+        force: options.force ?? false,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+      });
   },
   getMonitoringDashboard(instrumentId, timeframe, options = {}) {
     return requestJson("/monitoring/dashboard", {
@@ -272,11 +279,12 @@ export const api = {
         instrument_id: instrumentId,
         timeframe: timeframe === "1M" ? "30d" : timeframe,
       },
-      ttl: 20,
-      force: options.force ?? false,
-      signal: options.signal,
-      retry: 1,
-    });
+        ttl: 20,
+        force: options.force ?? false,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+        retry: 1,
+      });
   },
   refreshMonitoringDashboard(instrumentId, timeframe, options = {}) {
     invalidateCache("/monitoring/dashboard");
@@ -318,12 +326,14 @@ export const api = {
       params: { instrument_id: instrumentId, timeframe },
     });
   },
-  refreshMacro() {
-    invalidateCache("/macro");
-    invalidateCache("/monitoring/macro-overview");
-    invalidateCache("/monitoring/dashboard");
-    return requestJson("/macro/sync", { method: "POST" });
-  },
+    refreshMacro() {
+      invalidateCache("/macro");
+      invalidateCache("/monitoring/macro-overview");
+      invalidateCache("/monitoring/dashboard");
+      invalidateCache("monitoring:macro_overview");
+      invalidateCache("monitoring_dashboard");
+      return requestJson("/macro/sync", { method: "POST" });
+    },
   refreshOnchain() {
     invalidateCache("monitoring:observations");
     return requestJson("/onchain/sync", { method: "POST" });

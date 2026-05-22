@@ -40,4 +40,3 @@ def test_strategy_page_does_not_show_position_management_actions():
 
     forbidden = ["ADD_LONG", "REDUCE_LONG", "CLOSE_LONG", "HOLD_LONG", "TAKE_PROFIT"]
     assert not any(item in strategy for item in forbidden)
-

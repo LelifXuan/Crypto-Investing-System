@@ -102,7 +102,9 @@ class StrategySnapshotBuilder:
         instrument = normalize_instrument_id(instrument_id)
         tf = normalize_timeframe_for_cache(timeframe)
         cache_only = dependency_policy == "cache_only"
-        analysis = await AnalysisBundleService(self.repository).get_bundle(instrument, tf, "default")
+        analysis = await AnalysisBundleService(self.repository).get_bundle(
+            instrument, tf, "default"
+        )
         alerts = await AlertsBundleService(self.repository).get_bundle(
             instrument,
             tf,
@@ -126,11 +128,21 @@ class StrategySnapshotBuilder:
 
         core = analysis_payload.get("core_indicator_series") or {}
         secondary = analysis_payload.get("secondary_indicator_series") or {}
-        final_decision = analysis_payload.get("final_decision") or alerts_payload.get("final_decision") or {}
+        final_decision = (
+            analysis_payload.get("final_decision") or alerts_payload.get("final_decision") or {}
+        )
         chip = alerts_payload.get("chip_structure") or {}
-        contract_snapshot = analysis_payload.get("contract_snapshot") or alerts_payload.get("contract_snapshot") or {}
+        contract_snapshot = (
+            analysis_payload.get("contract_snapshot")
+            or alerts_payload.get("contract_snapshot")
+            or {}
+        )
         macro_overview = monitoring_payload.get("macro_overview") or {}
-        structure_overall = structure_payload.get("snapshot", {}).get("overall") or structure_payload.get("overall") or {}
+        structure_overall = (
+            structure_payload.get("snapshot", {}).get("overall")
+            or structure_payload.get("overall")
+            or {}
+        )
 
         dependency_state = {
             "analysis": analysis_payload.get("cache_state"),
@@ -144,11 +156,17 @@ class StrategySnapshotBuilder:
         derivatives = self._derivatives(contract_snapshot, chip)
         config = load_strategy_signal_config()
 
-        direction_score = _num(final_decision.get("direction_score") or chip.get("direction_score"), 50)
+        direction_score = _num(
+            final_decision.get("direction_score") or chip.get("direction_score"), 50
+        )
         direction_metrics = normalize_direction_metrics(direction_score)
-        execution_score = _num(final_decision.get("execution_score") or chip.get("execution_score"), 50)
+        execution_score = _num(
+            final_decision.get("execution_score") or chip.get("execution_score"), 50
+        )
         risk_score = _num(final_decision.get("risk_score") or chip.get("risk_score"), 50)
-        confidence_score = _num(final_decision.get("confidence_score") or chip.get("confidence_score"), 50)
+        confidence_score = _num(
+            final_decision.get("confidence_score") or chip.get("confidence_score"), 50
+        )
         conflict_level = _num(final_decision.get("conflict_level") or chip.get("conflict_level"), 0)
         price = float(current_price) if current_price is not None else 0.0
         atr = max(_num(indicators.get("atr_14"), price * 0.025), price * 0.006) if price else 0
@@ -158,7 +176,9 @@ class StrategySnapshotBuilder:
         short_entry = float(resistance) if resistance is not None else price * 1.005
 
         macro_status = macro_overview.get("event_window_status") or "normal"
-        macro_bias = macro_overview.get("risk_bias") or macro_overview.get("macro_bias") or "neutral"
+        macro_bias = (
+            macro_overview.get("risk_bias") or macro_overview.get("macro_bias") or "neutral"
+        )
         cvd = _num(derivatives.get("cvd_norm"))
         oi_change = _num(derivatives.get("oi_change_pct"))
         rsi = _num(indicators.get("rsi_14"), 50)
@@ -250,7 +270,9 @@ class StrategySnapshotBuilder:
                 "derivatives_short_confirmation": 50 + max(0, -oi_change) * 250,
                 "execution_quality": execution_score,
                 "depth_score": execution_score,
-                "event_risk_score": 85 if macro_status in {"block", "event_wait", "risk_off"} else 20,
+                "event_risk_score": 85
+                if macro_status in {"block", "event_wait", "risk_off"}
+                else 20,
                 "funding_crowding_score": min(100, funding_z * 35),
                 "oi_price_divergence_score": 20,
                 "cvd_divergence_score": 20,
@@ -261,7 +283,8 @@ class StrategySnapshotBuilder:
                 "long_setup_ready": direction_metrics["bullish"] >= 58,
                 "short_setup_ready": direction_metrics["bearish"] >= 58,
                 "long_trigger_ready": bool(levels.get("breakout_up")) or confidence_score >= 72,
-                "short_trigger_ready": bool(levels.get("breakout_down")) or (direction_metrics["bearish"] >= 65 and confidence_score >= 72),
+                "short_trigger_ready": bool(levels.get("breakout_down"))
+                or (direction_metrics["bearish"] >= 65 and confidence_score >= 72),
                 "long_entry": long_entry,
                 "long_stop": _num(levels.get("structure_invalid_long"), long_entry - atr * 1.6),
                 "long_tp1": float(resistance) if resistance is not None else price + atr * 2.2,
@@ -270,7 +293,9 @@ class StrategySnapshotBuilder:
                 "short_stop": _num(levels.get("structure_invalid_short"), short_entry + atr * 1.6),
                 "short_tp1": float(support) if support is not None else price - atr * 2.2,
                 "short_tp2": price - atr * 3.6,
-                "market_regime": str(structure_overall.get("regime") or chip.get("regime") or "unknown"),
+                "market_regime": str(
+                    structure_overall.get("regime") or chip.get("regime") or "unknown"
+                ),
                 "atr_14": indicators.get("atr_14"),
                 "adx_14": indicators.get("adx_14"),
                 "ema_20": indicators.get("ema_20"),
@@ -313,8 +338,12 @@ class StrategySnapshotBuilder:
             "poc_price": _find_value(structure_payload, "poc", "poc_price"),
             "vah_price": _find_value(structure_payload, "vah", "vah_price"),
             "val_price": _find_value(structure_payload, "val", "val_price"),
-            "structure_invalid_long": _find_value(structure_payload, "structure_invalid_long", "invalid_long", "invalidation_long"),
-            "structure_invalid_short": _find_value(structure_payload, "structure_invalid_short", "invalid_short", "invalidation_short"),
+            "structure_invalid_long": _find_value(
+                structure_payload, "structure_invalid_long", "invalid_long", "invalidation_long"
+            ),
+            "structure_invalid_short": _find_value(
+                structure_payload, "structure_invalid_short", "invalid_short", "invalidation_short"
+            ),
             "breakout_up": bool(_find_value(structure_payload, "breakout_up", "bos_up")),
             "breakout_down": bool(_find_value(structure_payload, "breakout_down", "bos_down")),
             "false_breakout": bool(_find_value(structure_payload, "false_breakout")),
@@ -324,10 +353,14 @@ class StrategySnapshotBuilder:
     @staticmethod
     def _derivatives(contract_snapshot: dict[str, Any], chip: dict[str, Any]) -> dict[str, Any]:
         return {
-            "funding_zscore": _find_value(contract_snapshot, "funding_rate_zscore", "funding_zscore"),
+            "funding_zscore": _find_value(
+                contract_snapshot, "funding_rate_zscore", "funding_zscore"
+            ),
             "basis_zscore": _find_value(contract_snapshot, "basis_rate_zscore", "basis_zscore"),
             "cvd_norm": _find_value(contract_snapshot, "cvd_norm", "cvd_zscore"),
-            "oi_change_pct": _find_value(contract_snapshot, "oi_change_pct", "open_interest_change_pct"),
+            "oi_change_pct": _find_value(
+                contract_snapshot, "oi_change_pct", "open_interest_change_pct"
+            ),
             "price_change_pct": _find_value(contract_snapshot, "price_change_pct"),
             "depth_notional": _find_value(contract_snapshot, "depth_notional", "depth_50bps"),
             "spread_bps": _find_value(contract_snapshot, "spread_bps"),

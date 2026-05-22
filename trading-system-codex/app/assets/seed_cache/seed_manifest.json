@@ -1,0 +1,10 @@
+{
+  "version": "seed_manifest_v1",
+  "generated_at": null,
+  "contains_real_observations": false,
+  "files": [
+    "macro_observations_seed.json",
+    "macro_websearch_seed.json"
+  ],
+  "notes": "Real portable builds may replace these empty containers with exported non-secret local cache snapshots."
+}

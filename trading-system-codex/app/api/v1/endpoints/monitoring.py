@@ -36,6 +36,7 @@ from app.services.monitoring_dashboard import MonitoringDashboardService
 from app.services.precompute import precompute_service
 from app.services.risk import RiskEngine, RiskInput
 
+UTC = timezone.utc
 router = APIRouter(tags=["monitoring"])
 
 indicators_catalog_router = APIRouter(prefix="/indicators", tags=["indicators-monitoring"])
@@ -44,7 +45,6 @@ macro_router = APIRouter(prefix="/macro", tags=["macro"])
 onchain_router = APIRouter(prefix="/onchain", tags=["onchain"])
 
 MONITORING_FRESHNESS_MAX_AGE = timedelta(days=1)
-UTC = timezone.utc
 
 
 async def _latest_category_observation_ts(
@@ -181,7 +181,7 @@ async def get_monitoring_dashboard(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(
-        instrument_id, timeframe, allow_refresh=True
+        instrument_id, timeframe, allow_refresh=False
     )
 
 

@@ -3,12 +3,11 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone
 
-import httpx
-
 from app.core.decimal_utils import D
 from app.services.macro.cache_store import CacheStore
 from app.services.macro.providers.base import MacroFetchResult
 from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -40,7 +39,7 @@ class BeaMacroProvider:
                 return cached, 0, True
 
         start = time.time()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with client_for_source("bea", timeout=30) as client:
             resp = await client.get(self.base_url, params=params)
         latency = int((time.time() - start) * 1000)
 

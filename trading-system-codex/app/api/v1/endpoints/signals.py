@@ -16,7 +16,6 @@ from app.db.models.market import (
 )
 
 UTC = timezone.utc
-
 STRUCTURE_DETECTOR_VERSION = "v2-scored-structure"
 LOOKBACK_BY_TIMEFRAME = {"1h": 220, "4h": 240, "1d": 260, "1w": 260, "1M": 260}
 SYSTEMS = ("swing", "classic", "profile")
@@ -175,5 +174,6 @@ def _normalize_token(value: str | None) -> str:
 
 def build_structure_dedupe_key(*parts: str | None) -> str:
     return ":".join(_normalize_token(part) for part in parts if part is not None)
+
 
 router = APIRouter(tags=["Signals"])

@@ -232,8 +232,7 @@ async def test_range_position_does_not_directly_change_direction_score() -> None
 @pytest.mark.asyncio
 async def test_chip_structure_missing_payload_explain_is_chinese(monkeypatch) -> None:
     snapshots = {
-        tf: _snapshot(tf, quality_status="missing", bb_width=0.0)
-        for tf in PRIMARY_TIMEFRAMES
+        tf: _snapshot(tf, quality_status="missing", bb_width=0.0) for tf in PRIMARY_TIMEFRAMES
     }
     for snapshot in snapshots.values():
         snapshot.candles = []

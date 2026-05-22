@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import timezone, datetime, timedelta
-UTC = timezone.utc
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models.eventing import EventOutbox, EventStore
+
+UTC = timezone.utc
 
 
 class EventRepository:

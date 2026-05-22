@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-
-import httpx
+from datetime import timezone
 
 from app.services.macro.cache_store import CacheStore
-from app.services.macro.secret_loader import SecretLoader
 from app.services.macro.providers.base import MacroFetchResult
-from app.core.decimal_utils import D
+from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -22,7 +20,10 @@ class TushareMacroProvider:
         self.base_url = "https://api.tushare.pro"
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
-        return source_provider == self.provider_key and source_kind in ("raw_series", "release_series")
+        return source_provider == self.provider_key and source_kind in (
+            "raw_series",
+            "release_series",
+        )
 
     def _token(self) -> str:
         return self.secrets.get("TUSHARE_TOKEN", required=False) or ""
@@ -35,7 +36,7 @@ class TushareMacroProvider:
             "fields": fields or [],
         }
         start = time.time()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with client_for_source("tushare", timeout=30) as client:
             resp = await client.post(self.base_url, json=payload)
         latency = int((time.time() - start) * 1000)
         if resp.status_code != 200:
@@ -54,7 +55,9 @@ class TushareMacroProvider:
         if not token:
             return "auth_missing", "TUSHARE_TOKEN not set"
         try:
-            await self._api_call("stock_basic", {"exchange": "", "list_status": "L", "limit": 1}, ["ts_code", "name"])
+            await self._api_call(
+                "stock_basic", {"exchange": "", "list_status": "L", "limit": 1}, ["ts_code", "name"]
+            )
             return "healthy", None
         except Exception as exc:
             return "unhealthy", str(exc)
@@ -62,10 +65,30 @@ class TushareMacroProvider:
     async def connectivity_check(self) -> dict:
         token = self._token()
         if not token:
-            return {"source": "tushare", "status": "auth_missing", "latency_ms": 0, "auth": "missing", "error": "TUSHARE_TOKEN not set"}
+            return {
+                "source": "tushare",
+                "status": "auth_missing",
+                "latency_ms": 0,
+                "auth": "missing",
+                "error": "TUSHARE_TOKEN not set",
+            }
         start = time.time()
         try:
-            await self._api_call("stock_basic", {"exchange": "", "list_status": "L", "limit": 1}, ["ts_code", "name"])
-            return {"source": "tushare", "status": "ok", "latency_ms": int((time.time() - start) * 1000), "auth": "present", "error": None}
+            await self._api_call(
+                "stock_basic", {"exchange": "", "list_status": "L", "limit": 1}, ["ts_code", "name"]
+            )
+            return {
+                "source": "tushare",
+                "status": "ok",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": "present",
+                "error": None,
+            }
         except Exception as exc:
-            return {"source": "tushare", "status": "error", "latency_ms": int((time.time() - start) * 1000), "auth": "present" if token else "missing", "error": str(exc)[:200]}
+            return {
+                "source": "tushare",
+                "status": "error",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": "present" if token else "missing",
+                "error": str(exc)[:200],
+            }

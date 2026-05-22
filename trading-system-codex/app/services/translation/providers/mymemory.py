@@ -27,8 +27,6 @@ class MyMemoryTranslationProvider:
             )
             response.raise_for_status()
             payload = json.loads(response.content.decode("utf-8", errors="replace"))
-            translated_text = str(
-                payload.get("responseData", {}).get("translatedText", "")
-            ).strip()
+            translated_text = str(payload.get("responseData", {}).get("translatedText", "")).strip()
             translated.append(html.unescape(translated_text) or text)
         return translated

@@ -64,7 +64,7 @@ class FinalDecisionService:
                 },
             },
             "generated_at": datetime.now(timezone.utc),
-            }
+        }
 
     async def _chip_payload(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
         try:
@@ -142,7 +142,10 @@ class FinalDecisionService:
         }
         if macro_bias == "risk_off" and action not in allowed_when_macro_risk_off:
             conflicts.append("macro_risk_off_vs_trade_action")
-        if chip.get("state") in {"missing", "unavailable"} and chip.get("capital_ceiling_pct", 0) > 10:
+        if (
+            chip.get("state") in {"missing", "unavailable"}
+            and chip.get("capital_ceiling_pct", 0) > 10
+        ):
             conflicts.append("weak_data_quality_vs_position_size")
         if float(chip.get("risk_score") or 0.0) >= 80:
             conflicts.append("risk_score_extreme")

@@ -93,8 +93,7 @@ def build_fused_alerts(
             ),
             title=title,
             message=(
-                f"综合结构分 {fusion.overall_score:.2f}，"
-                f"置信度 {fusion.overall_confidence:.2f}。"
+                f"综合结构分 {fusion.overall_score:.2f}，置信度 {fusion.overall_confidence:.2f}。"
             ),
             triggered_at=generated_at,
             resolved_at=None,

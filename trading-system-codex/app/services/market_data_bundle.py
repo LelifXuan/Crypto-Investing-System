@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
@@ -23,9 +23,8 @@ from app.services.cache_registry import (
 )
 from app.services.market import MarketService
 
-logger = logging.getLogger(__name__)
-
 UTC = timezone.utc
+logger = logging.getLogger(__name__)
 
 
 def market_bundle_cache_key(
@@ -71,8 +70,10 @@ class MarketDataBundleService:
         )
         cached = await self.repository.get_computed_dataset_cache(cache_key)
         cached_status = dataset_cache_status(cached)
-        if cached is not None and cached.payload_json and (
-            cached_status == "fresh" or (allow_stale and cached_status == "stale")
+        if (
+            cached is not None
+            and cached.payload_json
+            and (cached_status == "fresh" or (allow_stale and cached_status == "stale"))
         ):
             payload = dict(cached.payload_json)
             payload["cache_state"] = cached_status
@@ -159,11 +160,15 @@ class MarketDataBundleService:
     ) -> dict:
         source_max_ts = candles[-1].ts_open if candles else None
         actual_count = len(candles)
-        requested_gap = 0.0 if actual_count >= requested_limit else max(
-            0.0, 1 - (actual_count / max(requested_limit, 1))
+        requested_gap = (
+            0.0
+            if actual_count >= requested_limit
+            else max(0.0, 1 - (actual_count / max(requested_limit, 1)))
         )
-        bucket_gap = 0.0 if actual_count >= limit_bucket else max(
-            0.0, 1 - (actual_count / max(limit_bucket, 1))
+        bucket_gap = (
+            0.0
+            if actual_count >= limit_bucket
+            else max(0.0, 1 - (actual_count / max(limit_bucket, 1)))
         )
         coverage = {
             "requested_limit": requested_limit,

@@ -3,12 +3,11 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 
-import httpx
-
-from app.services.macro.cache_store import CacheStore
-from app.services.macro.secret_loader import SecretLoader
-from app.services.macro.providers.base import MacroFetchResult
 from app.core.decimal_utils import D
+from app.services.macro.cache_store import CacheStore
+from app.services.macro.providers.base import MacroFetchResult
+from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -22,7 +21,10 @@ class TwelveDataMacroProvider:
         self.base_url = "https://api.twelvedata.com"
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
-        return source_provider == self.provider_key and source_kind in ("raw_series", "release_series")
+        return source_provider == self.provider_key and source_kind in (
+            "raw_series",
+            "release_series",
+        )
 
     def _apikey(self) -> str:
         return self.secrets.get("TWELVEDATA_API_KEY", required=True) or ""
@@ -37,7 +39,7 @@ class TwelveDataMacroProvider:
 
         url = f"{self.base_url}{endpoint}"
         start = time.time()
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with client_for_source("twelvedata", timeout=20) as client:
             resp = await client.get(url, params=params)
         latency = int((time.time() - start) * 1000)
 
@@ -70,7 +72,9 @@ class TwelveDataMacroProvider:
         rows = sorted(values, key=lambda x: x.get("datetime", ""))
         latest = rows[-1]
         return MacroFetchResult(
-            observation_ts=datetime.fromisoformat(f"{latest['datetime']}T00:00:00+00:00").astimezone(UTC),
+            observation_ts=datetime.fromisoformat(
+                f"{latest['datetime']}T00:00:00+00:00"
+            ).astimezone(UTC),
             value=D(str(latest.get("close", 0))),
             source_ref=source_key,
             source_granularity="1d",
@@ -78,7 +82,10 @@ class TwelveDataMacroProvider:
 
     async def healthcheck(self) -> tuple[str, str | None]:
         try:
-            await self._request("/time_series", {"symbol": "SPY", "interval": "1day", "outputsize": 1, "apikey": self._apikey()})
+            await self._request(
+                "/time_series",
+                {"symbol": "SPY", "interval": "1day", "outputsize": 1, "apikey": self._apikey()},
+            )
             return "healthy", None
         except Exception as exc:
             return "unhealthy", str(exc)
@@ -86,7 +93,22 @@ class TwelveDataMacroProvider:
     async def connectivity_check(self) -> dict:
         start = time.time()
         try:
-            await self._request("/time_series", {"symbol": "SPY", "interval": "1day", "outputsize": 1, "apikey": self._apikey()})
-            return {"source": "twelvedata", "status": "ok", "latency_ms": int((time.time() - start) * 1000), "auth": "present", "error": None}
+            await self._request(
+                "/time_series",
+                {"symbol": "SPY", "interval": "1day", "outputsize": 1, "apikey": self._apikey()},
+            )
+            return {
+                "source": "twelvedata",
+                "status": "ok",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": "present",
+                "error": None,
+            }
         except Exception as exc:
-            return {"source": "twelvedata", "status": "error", "latency_ms": int((time.time() - start) * 1000), "auth": self.secrets.auth_state({"TWELVEDATA_API_KEY"}), "error": str(exc)[:200]}
+            return {
+                "source": "twelvedata",
+                "status": "error",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": self.secrets.auth_state({"TWELVEDATA_API_KEY"}),
+                "error": str(exc)[:200],
+            }

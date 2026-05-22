@@ -15,9 +15,9 @@ from app.repositories.market_repository import MarketRepository
 from app.schemas.market import MarketEventCreate, MarketEventQueryResponse, MarketEventRead
 from app.services.market import MarketService
 
+UTC = timezone.utc
 logger = logging.getLogger(__name__)
 
-UTC = timezone.utc
 
 router = APIRouter(prefix="/market-events", tags=["market-events"])
 marketevents_router = APIRouter(prefix="/marketevents", tags=["marketevents"])
@@ -188,15 +188,23 @@ async def get_translation_status(
         total_events = (
             await session.execute(select(func.count()).select_from(MarketEventTranslationMap))
         ).scalar() or 0
-        translated = (await session.execute(
-            select(func.count()).where(MarketEventTranslationMap.status == "translated")
-        )).scalar() or 0
-        pending = (await session.execute(
-            select(func.count()).where(MarketEventTranslationMap.status.in_(["pending", "queued"]))
-        )).scalar() or 0
-        failed = (await session.execute(
-            select(func.count()).where(MarketEventTranslationMap.status == "failed")
-        )).scalar() or 0
+        translated = (
+            await session.execute(
+                select(func.count()).where(MarketEventTranslationMap.status == "translated")
+            )
+        ).scalar() or 0
+        pending = (
+            await session.execute(
+                select(func.count()).where(
+                    MarketEventTranslationMap.status.in_(["pending", "queued"])
+                )
+            )
+        ).scalar() or 0
+        failed = (
+            await session.execute(
+                select(func.count()).where(MarketEventTranslationMap.status == "failed")
+            )
+        ).scalar() or 0
     except Exception:
         pass
 

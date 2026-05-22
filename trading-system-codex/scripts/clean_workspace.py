@@ -75,10 +75,14 @@ def clear_dir(path: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="清理项目工作区")
-    parser.add_argument("--clear-data", action="store_true", help="清除 SQLite WAL/日志残留（保留主数据库）")
+    parser.add_argument(
+        "--clear-data", action="store_true", help="清除 SQLite WAL/日志残留（保留主数据库）"
+    )
     parser.add_argument("--clear-logs", action="store_true", help="清除日志目录内容")
     parser.add_argument("--clear-cache", action="store_true", help="清除缓存目录内容")
-    parser.add_argument("--clear-all", action="store_true", help="清除全部可清理内容（保留 DB + .env）")
+    parser.add_argument(
+        "--clear-all", action="store_true", help="清除全部可清理内容（保留 DB + .env）"
+    )
     args = parser.parse_args()
 
     removed: list[str] = []

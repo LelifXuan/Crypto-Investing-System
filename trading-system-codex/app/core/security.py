@@ -5,13 +5,14 @@ import hashlib
 import hmac
 import os
 from dataclasses import dataclass
-from datetime import timezone, datetime, timedelta
-UTC = timezone.utc
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from jwt import InvalidTokenError
 
 from app.core.config import settings
+
+UTC = timezone.utc
 
 
 @dataclass(slots=True)

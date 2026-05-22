@@ -75,7 +75,15 @@ def _reliability_label(score: float) -> str:
 
 def _bucket(key, label, score, weight, reason, missing=False):
     score = _clamp(score)
-    return ConfidenceBucket(key=key, label=label, score=score, weight=weight, impact=_impact(score), reason=reason, missing=missing)
+    return ConfidenceBucket(
+        key=key,
+        label=label,
+        score=score,
+        weight=weight,
+        impact=_impact(score),
+        reason=reason,
+        missing=missing,
+    )
 
 
 def build_confidence_report(snapshot: dict[str, Any], scores: Any) -> dict[str, Any]:
@@ -99,18 +107,92 @@ def build_confidence_report(snapshot: dict[str, Any], scores: Any) -> dict[str, 
     directional = _directional_strength(scores)
 
     buckets = [
-        _bucket("data_integrity", "数据完整性", data_quality, 0.14, "K 线、指标、结构、监控快照的覆盖程度。", data_quality < 45),
-        _bucket("freshness", "数据新鲜度", sm("freshness", data_quality), 0.08, "缓存与最新行情的时间差。"),
-        _bucket("multi_timeframe", "多周期一致性", sm("mtf_trend_bullish", 50.0), 0.10, "不同周期是否支持同一方向。"),
-        _bucket("structure", "结构形态", max(sm("bullish_structure"), sm("bearish_structure")), 0.10, "支撑阻力、摆动结构和经典形态证据。"),
-        _bucket("momentum", "动量与量能", max(sm("bullish_momentum"), sm("bearish_momentum"), sm("volume_confirmation")), 0.10, "趋势加速度、RSI/MACD、成交量确认。"),
-        _bucket("flow", "资金流与订单流", max(sm("spot_flow"), sm("cvd_flow"), sm("volume_flow")), 0.08, "CVD、OBV、成交量和主动买卖压力。"),
-        _bucket("derivatives", "衍生品结构", max(sm("funding_score"), sm("oi_confirmation"), 25.0 if derivatives_missing else 50.0), 0.08, "资金费率、未平仓量、杠杆拥挤度。", derivatives_missing),
-        _bucket("execution", "执行与流动性", sm("execution_quality", 55.0), 0.08, "价差、深度、滑点和订单簿可执行性。"),
-        _bucket("risk_reward", "风险收益比", max(rr_long, rr_short), 0.10, "止损距离、目标空间和风险收益比。"),
-        _bucket("event_risk", "事件风险", event_confidence, 0.07, "宏观、监管、交易所、项目公告事件窗口。"),
-        _bucket("conflict", "信号冲突", conflict_confidence, 0.09, "多系统、多周期和指标之间的相互矛盾程度。"),
-        _bucket("regime_fit", "行情状态适配", max(sm("regime_fit_long"), sm("regime_fit_short"), directional), 0.08, "当前趋势/震荡/高波动 regime 与策略模板的匹配度。"),
+        _bucket(
+            "data_integrity",
+            "数据完整性",
+            data_quality,
+            0.14,
+            "K 线、指标、结构、监控快照的覆盖程度。",
+            data_quality < 45,
+        ),
+        _bucket(
+            "freshness",
+            "数据新鲜度",
+            sm("freshness", data_quality),
+            0.08,
+            "缓存与最新行情的时间差。",
+        ),
+        _bucket(
+            "multi_timeframe",
+            "多周期一致性",
+            sm("mtf_trend_bullish", 50.0),
+            0.10,
+            "不同周期是否支持同一方向。",
+        ),
+        _bucket(
+            "structure",
+            "结构形态",
+            max(sm("bullish_structure"), sm("bearish_structure")),
+            0.10,
+            "支撑阻力、摆动结构和经典形态证据。",
+        ),
+        _bucket(
+            "momentum",
+            "动量与量能",
+            max(sm("bullish_momentum"), sm("bearish_momentum"), sm("volume_confirmation")),
+            0.10,
+            "趋势加速度、RSI/MACD、成交量确认。",
+        ),
+        _bucket(
+            "flow",
+            "资金流与订单流",
+            max(sm("spot_flow"), sm("cvd_flow"), sm("volume_flow")),
+            0.08,
+            "CVD、OBV、成交量和主动买卖压力。",
+        ),
+        _bucket(
+            "derivatives",
+            "衍生品结构",
+            max(sm("funding_score"), sm("oi_confirmation"), 25.0 if derivatives_missing else 50.0),
+            0.08,
+            "资金费率、未平仓量、杠杆拥挤度。",
+            derivatives_missing,
+        ),
+        _bucket(
+            "execution",
+            "执行与流动性",
+            sm("execution_quality", 55.0),
+            0.08,
+            "价差、深度、滑点和订单簿可执行性。",
+        ),
+        _bucket(
+            "risk_reward",
+            "风险收益比",
+            max(rr_long, rr_short),
+            0.10,
+            "止损距离、目标空间和风险收益比。",
+        ),
+        _bucket(
+            "event_risk",
+            "事件风险",
+            event_confidence,
+            0.07,
+            "宏观、监管、交易所、项目公告事件窗口。",
+        ),
+        _bucket(
+            "conflict",
+            "信号冲突",
+            conflict_confidence,
+            0.09,
+            "多系统、多周期和指标之间的相互矛盾程度。",
+        ),
+        _bucket(
+            "regime_fit",
+            "行情状态适配",
+            max(sm("regime_fit_long"), sm("regime_fit_short"), directional),
+            0.08,
+            "当前趋势/震荡/高波动 regime 与策略模板的匹配度。",
+        ),
     ]
     total_weight = sum(b.weight for b in buckets) or 1.0
     weighted = sum(b.score * b.weight for b in buckets) / total_weight

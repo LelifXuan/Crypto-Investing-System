@@ -47,10 +47,10 @@ class CacheStore:
         key, _ = self.make_key(source, endpoint, params)
         now = int(time.time())
         with sqlite3.connect(self.path) as conn:
-            row = conn.execute(
-                "SELECT created_at, ttl_seconds, payload FROM macro_cache_entries WHERE cache_key=?",
-                (key,),
-            ).fetchone()
+            query = (
+                "SELECT created_at, ttl_seconds, payload FROM macro_cache_entries WHERE cache_key=?"
+            )
+            row = conn.execute(query, (key,)).fetchone()
         if not row:
             return None
         created_at, ttl_seconds, payload = row
@@ -58,7 +58,34 @@ class CacheStore:
             return None
         return json.loads(payload)
 
-    def set(self, source: str, endpoint: str, params: Dict[str, Any], payload: Dict[str, Any], ttl_seconds: int) -> None:
+    def get_stale_ok(
+        self, source: str, endpoint: str, params: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        key, _ = self.make_key(source, endpoint, params)
+        now = int(time.time())
+        with sqlite3.connect(self.path) as conn:
+            query = (
+                "SELECT created_at, ttl_seconds, payload FROM macro_cache_entries WHERE cache_key=?"
+            )
+            row = conn.execute(query, (key,)).fetchone()
+        if not row:
+            return None
+        created_at, ttl_seconds, payload = row
+        age = now - int(created_at)
+        result = json.loads(payload)
+        result["cache_age_seconds"] = age
+        result["cache_ttl_seconds"] = int(ttl_seconds)
+        result["cache_stale"] = age > int(ttl_seconds)
+        return result
+
+    def set(
+        self,
+        source: str,
+        endpoint: str,
+        params: Dict[str, Any],
+        payload: Dict[str, Any],
+        ttl_seconds: int,
+    ) -> None:
         key, p_hash = self.make_key(source, endpoint, params)
         now = int(time.time())
         safe_payload = redact(payload)
@@ -66,8 +93,17 @@ class CacheStore:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO macro_cache_entries
-                (cache_key, source, endpoint, sanitized_params_hash, created_at, ttl_seconds, payload)
+                (cache_key, source, endpoint, sanitized_params_hash,
+                 created_at, ttl_seconds, payload)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (key, source, endpoint, p_hash, now, ttl_seconds, json.dumps(safe_payload, ensure_ascii=False)),
+                (
+                    key,
+                    source,
+                    endpoint,
+                    p_hash,
+                    now,
+                    ttl_seconds,
+                    json.dumps(safe_payload, ensure_ascii=False),
+                ),
             )

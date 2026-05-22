@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi.encoders import jsonable_encoder
@@ -14,6 +13,8 @@ from app.integrations.gateio import GateMarketRef
 from app.repositories.market_repository import MarketRepository
 from app.services.cache_registry import CACHE_SOURCE_VERSION, expires_at_for_dataset
 from app.services.market import MarketService
+
+UTC = timezone.utc
 
 
 class ContractSnapshotService:
@@ -102,19 +103,15 @@ class ContractSnapshotService:
             previous_oi = stats[-2].open_interest if len(stats) > 1 else None
             payload["open_interest"] = self._to_string(latest_oi)
             payload["open_interest_delta"] = (
-                self._to_string(latest_oi - previous_oi)
-                if previous_oi is not None
-                else None
+                self._to_string(latest_oi - previous_oi) if previous_oi is not None else None
             )
         if include_book:
             payload["book"] = {
                 "bids": [
-                    [self._to_float(price), self._to_float(size)]
-                    for price, size in book.bids[:10]
+                    [self._to_float(price), self._to_float(size)] for price, size in book.bids[:10]
                 ],
                 "asks": [
-                    [self._to_float(price), self._to_float(size)]
-                    for price, size in book.asks[:10]
+                    [self._to_float(price), self._to_float(size)] for price, size in book.asks[:10]
                 ],
             }
         if include_trades:

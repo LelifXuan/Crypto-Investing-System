@@ -11,7 +11,6 @@ from app.core.timeframes import (
 from app.db.models.market import ComputedDatasetCache, PageSnapshotCache
 
 UTC = timezone.utc
-
 CACHE_SOURCE_VERSION = "v3"
 KNOWLEDGE_CATALOG_VERSION = "v4"
 

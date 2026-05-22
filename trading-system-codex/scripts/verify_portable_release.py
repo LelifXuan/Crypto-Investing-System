@@ -75,6 +75,7 @@ SMOKE_IMPORTS = [
 ]
 
 FORBIDDEN_EXACT = {
+    ".env",
     "runtime/config/portable.env",
 }
 
@@ -282,12 +283,27 @@ class Auditor:
 
         if runtime:
             if runtime.get("schema_version") != "embedded-python-runtime-v1":
-                self.add("high", "runtime_schema_invalid", "unexpected portable runtime schema", "runtime_env/python/portable_runtime.json")
+                self.add(
+                    "high",
+                    "runtime_schema_invalid",
+                    "unexpected portable runtime schema",
+                    "runtime_env/python/portable_runtime.json",
+                )
             if runtime.get("platform") != "win-x64":
-                self.add("critical", "runtime_platform_invalid", "portable runtime platform must be win-x64", "runtime_env/python/portable_runtime.json")
+                self.add(
+                    "critical",
+                    "runtime_platform_invalid",
+                    "portable runtime platform must be win-x64",
+                    "runtime_env/python/portable_runtime.json",
+                )
             version = str(runtime.get("python_version", ""))
             if not version.startswith("3.11."):
-                self.add("critical", "runtime_python_version_invalid", f"expected Python 3.11.x, got {version}", "runtime_env/python/portable_runtime.json")
+                self.add(
+                    "critical",
+                    "runtime_python_version_invalid",
+                    f"expected Python 3.11.x, got {version}",
+                    "runtime_env/python/portable_runtime.json",
+                )
             if runtime.get("stub_runtime") is not False:
                 self.add(
                     "critical",
@@ -299,36 +315,94 @@ class Auditor:
         if manifest:
             self.summary["release_type"] = manifest.get("release_type")
             if manifest.get("release_type") != "embedded_runtime_portable":
-                self.add("critical", "manifest_release_type_invalid", "release_type must be embedded_runtime_portable", "release_manifest.json")
+                self.add(
+                    "critical",
+                    "manifest_release_type_invalid",
+                    "release_type must be embedded_runtime_portable",
+                    "release_manifest.json",
+                )
             if manifest.get("python_embedded") is not True:
-                self.add("critical", "manifest_python_embedded_invalid", "python_embedded must be true", "release_manifest.json")
+                self.add(
+                    "critical",
+                    "manifest_python_embedded_invalid",
+                    "python_embedded must be true",
+                    "release_manifest.json",
+                )
             if manifest.get("platform") != "win-x64":
-                self.add("critical", "manifest_platform_invalid", "platform must be win-x64", "release_manifest.json")
+                self.add(
+                    "critical",
+                    "manifest_platform_invalid",
+                    "platform must be win-x64",
+                    "release_manifest.json",
+                )
             if manifest.get("python_runtime_path") != "runtime_env/python/python.exe":
-                self.add("high", "manifest_runtime_path_invalid", "python_runtime_path must be runtime_env/python/python.exe", "release_manifest.json")
+                self.add(
+                    "high",
+                    "manifest_runtime_path_invalid",
+                    "python_runtime_path must be runtime_env/python/python.exe",
+                    "release_manifest.json",
+                )
             embedded_runtime = manifest.get("runtime")
-            if isinstance(embedded_runtime, dict) and embedded_runtime.get("stub_runtime") is not False:
-                self.add("critical", "manifest_stub_runtime", "release_manifest.json still records runtime.stub_runtime=true", "release_manifest.json")
+            if (
+                isinstance(embedded_runtime, dict)
+                and embedded_runtime.get("stub_runtime") is not False
+            ):
+                self.add(
+                    "critical",
+                    "manifest_stub_runtime",
+                    "release_manifest.json still records runtime.stub_runtime=true",
+                    "release_manifest.json",
+                )
             manifest_text = json.dumps(manifest, ensure_ascii=False)
             for pattern in ABSOLUTE_PATH_PATTERNS:
                 if re.search(pattern, manifest_text):
-                    self.add("high", "manifest_absolute_path", f"manifest appears to contain local absolute path pattern: {pattern}", "release_manifest.json")
+                    self.add(
+                        "high",
+                        "manifest_absolute_path",
+                        f"manifest appears to contain local absolute path pattern: {pattern}",
+                        "release_manifest.json",
+                    )
             files = manifest.get("files")
             if isinstance(files, list):
                 if manifest.get("file_count") != len(files):
-                    self.add("medium", "manifest_file_count_mismatch", "manifest file_count does not match files length", "release_manifest.json")
+                    self.add(
+                        "medium",
+                        "manifest_file_count_mismatch",
+                        "manifest file_count does not match files length",
+                        "release_manifest.json",
+                    )
                 for required in REQUIRED_ROOT_FILES + REQUIRED_PYTHON_FILES:
                     if required not in files:
-                        self.add("high", "manifest_missing_required_file", f"manifest files list does not include {required}", "release_manifest.json")
+                        self.add(
+                            "high",
+                            "manifest_missing_required_file",
+                            f"manifest files list does not include {required}",
+                            "release_manifest.json",
+                        )
 
         if lock:
             if lock.get("python_embedded") is not True:
-                self.add("high", "lock_python_embedded_invalid", "portable_runtime.lock.json should set python_embedded=true", "portable_runtime.lock.json")
+                self.add(
+                    "high",
+                    "lock_python_embedded_invalid",
+                    "portable_runtime.lock.json should set python_embedded=true",
+                    "portable_runtime.lock.json",
+                )
             if lock.get("platform") != "win-x64":
-                self.add("high", "lock_platform_invalid", "portable_runtime.lock.json should target win-x64", "portable_runtime.lock.json")
+                self.add(
+                    "high",
+                    "lock_platform_invalid",
+                    "portable_runtime.lock.json should target win-x64",
+                    "portable_runtime.lock.json",
+                )
             version = str(lock.get("python_version", ""))
             if not version.startswith("3.11."):
-                self.add("high", "lock_python_version_invalid", f"portable lock should use Python 3.11.x, got {version}", "portable_runtime.lock.json")
+                self.add(
+                    "high",
+                    "lock_python_version_invalid",
+                    f"portable lock should use Python 3.11.x, got {version}",
+                    "portable_runtime.lock.json",
+                )
 
     def check_python_binaries(self) -> None:
         exe = "runtime_env/python/python.exe"
@@ -337,9 +411,19 @@ class Auditor:
             size = self.reader.size(exe) or 0
             self.summary["python_exe_size"] = size
             if head != b"MZ":
-                self.add("critical", "python_exe_not_pe", "python.exe is not a Windows PE executable; likely a text stub", exe)
+                self.add(
+                    "critical",
+                    "python_exe_not_pe",
+                    "python.exe is not a Windows PE executable; likely a text stub",
+                    exe,
+                )
             if size < 64 * 1024:
-                self.add("critical", "python_exe_too_small", f"python.exe size is suspiciously small: {size} bytes", exe)
+                self.add(
+                    "critical",
+                    "python_exe_too_small",
+                    f"python.exe size is suspiciously small: {size} bytes",
+                    exe,
+                )
 
         dll = "runtime_env/python/python311.dll"
         if self.reader.exists(dll):
@@ -347,16 +431,28 @@ class Auditor:
             size = self.reader.size(dll) or 0
             self.summary["python_dll_size"] = size
             if head != b"MZ":
-                self.add("critical", "python_dll_not_pe", "python311.dll is not a Windows PE binary", dll)
+                self.add(
+                    "critical", "python_dll_not_pe", "python311.dll is not a Windows PE binary", dll
+                )
             if size < 1024 * 1024:
-                self.add("high", "python_dll_too_small", f"python311.dll size is suspiciously small: {size} bytes", dll)
+                self.add(
+                    "high",
+                    "python_dll_too_small",
+                    f"python311.dll size is suspiciously small: {size} bytes",
+                    dll,
+                )
 
         pyzip = "runtime_env/python/python311.zip"
         if self.reader.exists(pyzip):
             size = self.reader.size(pyzip) or 0
             self.summary["python_stdlib_zip_size"] = size
             if size < 2 * 1024 * 1024:
-                self.add("high", "python_zip_too_small", f"python311.zip size is suspiciously small: {size} bytes", pyzip)
+                self.add(
+                    "high",
+                    "python_zip_too_small",
+                    f"python311.zip size is suspiciously small: {size} bytes",
+                    pyzip,
+                )
 
     def check_pth_and_site_packages(self) -> None:
         pth = "runtime_env/python/python311._pth"
@@ -364,11 +460,26 @@ class Auditor:
         if text is not None:
             normalized = text.replace("/", "\\")
             if "Lib\\site-packages" not in normalized:
-                self.add("critical", "pth_missing_site_packages", "python311._pth must include Lib\\site-packages", pth)
+                self.add(
+                    "critical",
+                    "pth_missing_site_packages",
+                    "python311._pth must include Lib\\site-packages",
+                    pth,
+                )
             if "import site" not in text:
-                self.add("critical", "pth_missing_import_site", "python311._pth must include import site", pth)
+                self.add(
+                    "critical",
+                    "pth_missing_import_site",
+                    "python311._pth must include import site",
+                    pth,
+                )
             if ".." in text:
-                self.add("medium", "pth_parent_path", "python311._pth should not reference parent directories", pth)
+                self.add(
+                    "medium",
+                    "pth_parent_path",
+                    "python311._pth should not reference parent directories",
+                    pth,
+                )
 
         names = set(self.reader.list_files())
         package_presence: dict[str, bool] = {}
@@ -378,7 +489,12 @@ class Auditor:
             present = package_path in names or any(name.startswith(alt_prefix) for name in names)
             package_presence[package] = present
             if not present:
-                self.add("critical", "site_package_missing", f"required dependency package is missing: {package}", alt_prefix)
+                self.add(
+                    "critical",
+                    "site_package_missing",
+                    f"required dependency package is missing: {package}",
+                    alt_prefix,
+                )
         self.summary["required_site_packages"] = package_presence
 
     def check_start_scripts(self) -> None:
@@ -387,18 +503,38 @@ class Auditor:
             lower = bat.lower()
             required = r"runtime_env\python\python.exe"
             if required not in lower:
-                self.add("critical", "bat_not_using_embedded_python", "start_portable.bat must call runtime_env\\python\\python.exe", "start_portable.bat")
+                self.add(
+                    "critical",
+                    "bat_not_using_embedded_python",
+                    "start_portable.bat must call runtime_env\\python\\python.exe",
+                    "start_portable.bat",
+                )
             forbidden_tokens = ["where python", " py ", " py.exe", "python -m uvicorn"]
             for token in forbidden_tokens:
                 if token in lower and "%app_python_exe%" not in lower:
-                    self.add("high", "bat_may_use_system_python", f"start script may fall back to system Python: {token}", "start_portable.bat")
+                    self.add(
+                        "high",
+                        "bat_may_use_system_python",
+                        f"start script may fall back to system Python: {token}",
+                        "start_portable.bat",
+                    )
             if "%APP_PYTHON_EXE%" not in bat and "%app_python_exe%" not in lower:
-                self.add("medium", "bat_missing_app_python_exe", "start script should expose APP_PYTHON_EXE for logging and preflight", "start_portable.bat")
+                self.add(
+                    "medium",
+                    "bat_missing_app_python_exe",
+                    "start script should expose APP_PYTHON_EXE for logging and preflight",
+                    "start_portable.bat",
+                )
 
         sh = self.read_text("start_portable.sh")
         if sh is not None:
             if "runtime_env/python/python" not in sh:
-                self.add("medium", "sh_not_using_embedded_python", "start_portable.sh should reference runtime_env/python/python or clearly state Windows-only", "start_portable.sh")
+                self.add(
+                    "medium",
+                    "sh_not_using_embedded_python",
+                    "start_portable.sh should reference runtime_env/python/python or clearly state Windows-only",
+                    "start_portable.sh",
+                )
 
     def check_forbidden_artifacts(self) -> None:
         forbidden: list[str] = []
@@ -420,7 +556,11 @@ class Auditor:
         self.summary["forbidden_artifact_count"] = len(forbidden)
         if forbidden:
             sample = ", ".join(forbidden[:20])
-            self.add("critical", "forbidden_artifacts_present", f"portable bundle contains forbidden artifacts: {sample}")
+            self.add(
+                "critical",
+                "forbidden_artifacts_present",
+                f"portable bundle contains forbidden artifacts: {sample}",
+            )
 
     def check_repo_hygiene(self, repo: Path | None) -> None:
         if repo is None:
@@ -428,6 +568,7 @@ class Auditor:
         repo = repo.resolve()
         source_findings: list[str] = []
         checks = [
+            repo / ".env",
             repo / ".venv",
             repo / "data" / "trading_system.db",
             repo / "data" / "trading_system.db-wal",
@@ -440,7 +581,12 @@ class Auditor:
                 source_findings.append(str(path.relative_to(repo)))
         self.summary["source_hygiene_findings"] = source_findings
         for item in source_findings:
-            self.add("medium", "source_local_artifact_present", f"source tree contains local artifact; keep it out of release: {item}", item)
+            self.add(
+                "medium",
+                "source_local_artifact_present",
+                f"source tree contains local artifact; keep it out of release: {item}",
+                item,
+            )
 
         csproj = repo / "tools" / "launcher" / "TradingSystemLauncher.csproj"
         if csproj.exists():
@@ -451,21 +597,41 @@ class Auditor:
                 "RuntimeIdentifier": "win-x64",
             }
             for key, expected in required_pairs.items():
-                pattern = fr"<{key}>\s*{re.escape(expected)}\s*</{key}>"
+                pattern = rf"<{key}>\s*{re.escape(expected)}\s*</{key}>"
                 if not re.search(pattern, text, flags=re.IGNORECASE):
-                    self.add("high", "launcher_csproj_not_self_contained", f"launcher csproj should contain <{key}>{expected}</{key}>", str(csproj.relative_to(repo)))
+                    self.add(
+                        "high",
+                        "launcher_csproj_not_self_contained",
+                        f"launcher csproj should contain <{key}>{expected}</{key}>",
+                        str(csproj.relative_to(repo)),
+                    )
         else:
-            self.add("medium", "launcher_csproj_missing", "launcher csproj missing; keep full launcher source or document start_portable.bat fallback", "tools/launcher/TradingSystemLauncher.csproj")
+            self.add(
+                "medium",
+                "launcher_csproj_missing",
+                "launcher csproj missing; keep full launcher source or document start_portable.bat fallback",
+                "tools/launcher/TradingSystemLauncher.csproj",
+            )
 
     def run_smoke_if_possible(self, portable_root: Path | None) -> None:
         if not self.smoke or portable_root is None:
             return
         python_exe = portable_root / "runtime_env" / "python" / "python.exe"
         if os.name != "nt":
-            self.add("info", "smoke_skipped_non_windows", "smoke import test skipped because host is not Windows", str(python_exe))
+            self.add(
+                "info",
+                "smoke_skipped_non_windows",
+                "smoke import test skipped because host is not Windows",
+                str(python_exe),
+            )
             return
         if not python_exe.exists():
-            self.add("high", "smoke_python_missing", "cannot run smoke test because bundled python.exe is missing", str(python_exe))
+            self.add(
+                "high",
+                "smoke_python_missing",
+                "cannot run smoke test because bundled python.exe is missing",
+                str(python_exe),
+            )
             return
         code = "import " + ", ".join(SMOKE_IMPORTS) + "; print('portable import smoke ok')"
         env = os.environ.copy()
@@ -483,11 +649,21 @@ class Auditor:
                 check=False,
             )
         except Exception as exc:  # noqa: BLE001
-            self.add("high", "smoke_exception", f"smoke import test failed to start: {exc}", str(python_exe))
+            self.add(
+                "high",
+                "smoke_exception",
+                f"smoke import test failed to start: {exc}",
+                str(python_exe),
+            )
             return
         self.summary["smoke_returncode"] = proc.returncode
         if proc.returncode != 0:
-            self.add("critical", "smoke_import_failed", f"import smoke failed: {proc.stderr[-1000:]}", str(python_exe))
+            self.add(
+                "critical",
+                "smoke_import_failed",
+                f"import smoke failed: {proc.stderr[-1000:]}",
+                str(python_exe),
+            )
 
     def audit(self, *, repo: Path | None = None, portable_root: Path | None = None) -> Report:
         self.summary["file_count"] = len(self.reader.list_files())
@@ -528,12 +704,35 @@ def choose_reader(portable_root: Path | None, zip_path: Path | None) -> BundleRe
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify true-portable Windows release artifacts.")
-    parser.add_argument("--repo", type=Path, default=Path("."), help="Repository root for source hygiene checks.")
-    parser.add_argument("--portable-root", type=Path, default=Path("dist/portable_bundle"), help="Unpacked portable bundle root.")
-    parser.add_argument("--zip", dest="zip_path", type=Path, default=None, help="Portable zip to verify. If present, zip verification is preferred.")
-    parser.add_argument("--json-out", type=Path, default=None, help="Write JSON report to this path.")
-    parser.add_argument("--strict", action="store_true", help="Return non-zero on critical or high findings. Without strict, only critical fails.")
-    parser.add_argument("--smoke", action="store_true", help="Run import smoke test using bundled Python when possible.")
+    parser.add_argument(
+        "--repo", type=Path, default=Path("."), help="Repository root for source hygiene checks."
+    )
+    parser.add_argument(
+        "--portable-root",
+        type=Path,
+        default=Path("dist/portable_bundle"),
+        help="Unpacked portable bundle root.",
+    )
+    parser.add_argument(
+        "--zip",
+        dest="zip_path",
+        type=Path,
+        default=None,
+        help="Portable zip to verify. If present, zip verification is preferred.",
+    )
+    parser.add_argument(
+        "--json-out", type=Path, default=None, help="Write JSON report to this path."
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Return non-zero on critical or high findings. Without strict, only critical fails.",
+    )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Run import smoke test using bundled Python when possible.",
+    )
     return parser.parse_args(argv)
 
 
@@ -555,10 +754,14 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         if args.json_out:
             args.json_out.parent.mkdir(parents=True, exist_ok=True)
-            args.json_out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            args.json_out.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         return 1
 
-    portable_root = args.portable_root.resolve() if args.portable_root and args.portable_root.exists() else None
+    portable_root = (
+        args.portable_root.resolve() if args.portable_root and args.portable_root.exists() else None
+    )
     repo = args.repo.resolve() if args.repo else None
     auditor = Auditor(reader, strict=args.strict, smoke=args.smoke)
     report = auditor.audit(repo=repo, portable_root=portable_root)
@@ -566,7 +769,9 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if args.json_out:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
-        args.json_out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        args.json_out.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     return 0 if report.status == "pass" else 1
 
 

@@ -331,8 +331,7 @@ class MarketEventFeedService:
         importance_rules = self.rules.get("importance_rules", {})
         for level in ("high", "medium"):
             if any(
-                keyword.lower() in haystack
-                for keyword in importance_rules.get(level, []) or []
+                keyword.lower() in haystack for keyword in importance_rules.get(level, []) or []
             ):
                 return level
         return "low"

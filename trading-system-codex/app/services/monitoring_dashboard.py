@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import time
@@ -23,9 +23,9 @@ from app.services.page_snapshot_cache import (
     monitoring_dashboard_cache_key,
 )
 
+UTC = timezone.utc
 logger = logging.getLogger(__name__)
 
-UTC = timezone.utc
 
 MONITORING_STALE_MAX_AGE = timedelta(days=1)
 
@@ -52,20 +52,11 @@ class MonitoringDashboardService:
             or self._is_effectively_empty(payload)
         ):
             logger.info(
-                "monitoring dashboard refresh is needed for %s/%s; triggering macro sync",
+                "monitoring dashboard refresh is needed for %s/%s; returning cached shell with is_stale=true",
                 instrument_id,
                 timeframe,
             )
-            try:
-                monitoring_service = IndicatorMonitoringService(self.repository)
-                await monitoring_service.sync_macro()
-                overview = await self._macro_overview_payload(instrument_id, timeframe)
-                if overview and overview.get("regime_key") != "unknown":
-                    macro_overview = overview
-                else:
-                    macro_overview = None
-            except Exception:
-                macro_overview = payload.get("macro_overview")
+            macro_overview = payload.get("macro_overview")
         else:
             macro_overview = payload.get("macro_overview")
         if isinstance(macro_overview, dict) and macro_overview.get("status") == "unavailable":
@@ -81,8 +72,10 @@ class MonitoringDashboardService:
                     "technical_indicator_count",
                     len(payload.get("technical_observations", [])),
                 ),
-                "onchain_observations": payload.get("onchain_observations", []),
-                "alert_events": payload.get("alert_events", []),
+                "onchain_observations": [],
+                "alert_events": self._filter_monitoring_alert_events(
+                    payload.get("alert_events", [])
+                ),
                 "cross_asset": payload.get("cross_asset", []),
                 "source_status": self._normalize_source_status(payload.get("source_status", {})),
                 "status": "ready" if status == "fresh" else status,
@@ -107,11 +100,6 @@ class MonitoringDashboardService:
                 await monitoring_service.sync_macro()
             except Exception:
                 logger.warning("sync failed for %s", exc_info=True)
-        if await self._category_is_stale("onchain"):
-            try:
-                await monitoring_service.sync_onchain()
-            except Exception:
-                logger.warning("sync failed for %s", exc_info=True)
 
         macro_overview = await self._macro_overview_payload()
         if isinstance(macro_overview, dict) and macro_overview.get("regime_key") == "unknown":
@@ -129,11 +117,13 @@ class MonitoringDashboardService:
             timeframe=timeframe,
             limit=50,
         )
-        onchain_raw = await self.repository.list_indicator_observations(
-            category="onchain",
-            limit=50,
+        alert_events_raw = await self.repository.list_alert_events(limit=20)
+        alert_events = self._filter_monitoring_alert_events(
+            [
+                AlertEventRead.model_validate(item).model_dump(mode="json")
+                for item in alert_events_raw
+            ]
         )
-        alert_events = await self.repository.list_alert_events(limit=20)
         legacy_technical = [
             self._annotate_observation(
                 IndicatorObservationRead.model_validate(item).model_dump(mode="json"),
@@ -148,7 +138,6 @@ class MonitoringDashboardService:
         )
         all_ts = [
             *(self._parse_ts(item.get("observation_ts")) for item in technical_observations),
-            *(self._parse_ts(item.observation_ts) for item in onchain_raw),
         ]
         all_ts = [item for item in all_ts if item is not None]
         source_updated_at = max(all_ts, default=now)
@@ -159,17 +148,8 @@ class MonitoringDashboardService:
                 "analysis_bundle" if technical_from_analysis else "indicator_observations"
             ),
             "technical_indicator_count": len(technical_observations),
-            "onchain_observations": [
-                self._annotate_observation(
-                    IndicatorObservationRead.model_validate(item).model_dump(mode="json"),
-                    item,
-                    now,
-                )
-                for item in onchain_raw
-            ],
-            "alert_events": [
-                AlertEventRead.model_validate(item).model_dump(mode="json") for item in alert_events
-            ],
+            "onchain_observations": [],
+            "alert_events": alert_events,
             "cross_asset": cross_asset,
             "source_status": source_status,
         }
@@ -187,7 +167,7 @@ class MonitoringDashboardService:
             source_updated_at=source_updated_at,
             source_version=CACHE_SOURCE_VERSION,
             cost_ms=int((time.perf_counter() - started) * 1000),
-            meta_json={"alert_limit": 20, "technical_limit": 50, "onchain_limit": 50},
+            meta_json={"alert_limit": 20, "technical_limit": 50},
         )
         return MonitoringDashboardRead.model_validate(
             {
@@ -207,20 +187,18 @@ class MonitoringDashboardService:
             }
         )
 
-    @staticmethod
-    def _is_effectively_empty(payload: dict[str, Any] | None) -> bool:
+    @classmethod
+    def _is_effectively_empty(cls, payload: dict[str, Any] | None) -> bool:
         if not payload:
             return True
         macro_overview = payload.get("macro_overview")
         has_macro = bool(macro_overview) and not (
-            isinstance(macro_overview, dict)
-            and macro_overview.get("status") == "unavailable"
+            isinstance(macro_overview, dict) and macro_overview.get("status") == "unavailable"
         )
         return not any(
             [
                 payload.get("technical_observations"),
-                payload.get("onchain_observations"),
-                payload.get("alert_events"),
+                cls._filter_monitoring_alert_events(payload.get("alert_events", [])),
                 payload.get("cross_asset"),
                 has_macro,
             ]
@@ -312,6 +290,30 @@ class MonitoringDashboardService:
         for item in preferred:
             merged[(str(item.get("indicator_key")), item.get("timeframe"))] = item
         return list(merged.values())
+
+    @classmethod
+    def _filter_monitoring_alert_events(cls, items: Any) -> list[dict[str, Any]]:
+        if not isinstance(items, list):
+            return []
+        return [item for item in items if isinstance(item, dict) and not cls._is_hidden_alert(item)]
+
+    @staticmethod
+    def _is_hidden_alert(item: dict[str, Any]) -> bool:
+        parts = [
+            item.get("rule_key"),
+            item.get("indicator_key"),
+            item.get("asset_code"),
+            item.get("source_provider"),
+            item.get("source_ref"),
+        ]
+        payload = item.get("event_payload_json") or item.get("payload_json") or {}
+        if isinstance(payload, dict):
+            parts.extend(str(value) for value in payload.values())
+        haystack = " ".join(str(part or "").lower() for part in parts)
+        return any(
+            token in haystack
+            for token in ("glassnode", "demo_fallback", "onchain", "链上")
+        )
 
     @staticmethod
     def _latest_series_value(values: Any) -> float | None:
@@ -429,20 +431,19 @@ class MonitoringDashboardService:
         except Exception as exc:
             logger.warning("macro overview build failed: %s", exc)
             return {
-                # NOTE: This is a fallback placeholder state; consumers should treat
-                # operation_bias and scores as unavailable, not as a real recommendation.
+                # This fallback must not be scored as a real macro signal.
                 "regime_key": "unknown",
                 "regime_label_cn": "宏观暂不可用",
-                "regime_summary": f"数据构建异常：{exc}",
+                "regime_summary": f"宏观数据构建异常：{exc}",
                 "policy_score": 0,
                 "inflation_score": 0,
                 "growth_score": 0,
                 "liquidity_score": 0,
                 "total_score": 0,
-                "score_scale": "0-100，50 为中性；高分偏风险偏好，低分偏风险收缩",
+                "score_scale": "0-100；高分偏风险偏好，低分偏风险收缩",
                 "score_band": "不可用",
                 "layer_contributions": {},
-                "operation_bias": "观望",
+                "operation_bias": "观察",
                 "event_window_status": "inactive",
                 "event_window_summary": "无法获取事件窗口信息",
                 "next_event_title": None,
@@ -454,9 +455,9 @@ class MonitoringDashboardService:
     async def _cross_asset_snapshot(self) -> list[dict]:
         tokens = {
             "xau-usdt-perp": "黄金",
-            "xaut-usdt-perp": "泰达金",
+            "xaut-usdt-perp": "Tether Gold",
             "spyx-usdt-perp": "标普500",
-            "qqqx-usdt-perp": "纳斯达克",
+            "qqqx-usdt-perp": "纳斯达克100",
             "slvon-usdt-perp": "白银",
         }
         results = []
@@ -471,19 +472,19 @@ class MonitoringDashboardService:
                     latest = candles[-1]
                     prev = candles[-2] if len(candles) > 1 else None
                     change_pct = (
-                        (float(latest.close) - float(prev.close))
-                        / float(prev.close)
-                        * 100
+                        (float(latest.close) - float(prev.close)) / float(prev.close) * 100
                         if prev and prev.close
                         else None
                     )
-                    results.append({
-                        "instrument_id": instrument_id,
-                        "label": label,
-                        "price": float(latest.close),
-                        "change_pct": round(change_pct, 2) if change_pct is not None else None,
-                        "ts": latest.ts_open.isoformat(),
-                    })
+                    results.append(
+                        {
+                            "instrument_id": instrument_id,
+                            "label": label,
+                            "price": float(latest.close),
+                            "change_pct": round(change_pct, 2) if change_pct is not None else None,
+                            "ts": latest.ts_open.isoformat(),
+                        }
+                    )
             except Exception:
                 pass
         return results
@@ -498,17 +499,18 @@ class MonitoringDashboardService:
             )
             if candles:
                 latest_ts = getattr(candles[-1], "ts_open", None)
+                updated_at = latest_ts.isoformat() if isinstance(latest_ts, datetime) else None
                 status["gateio"] = self._source_status_entry(
                     "online",
                     "Gate.io",
-                    "K 线缓存可用，页面会继续复用本地快照。",
-                    updated_at=latest_ts.isoformat() if isinstance(latest_ts, datetime) else None,
+                    "K 线缓存可用；技术、结构和告警会复用本地快照。",
+                    updated_at=updated_at,
                 )
             else:
                 status["gateio"] = self._source_status_entry(
                     "no_data",
                     "Gate.io",
-                    "本地暂无 K 线缓存，等待显式刷新或后台预计算补齐。",
+                    "本地暂无 K 线缓存；等待手动刷新或后台预计算补齐。",
                 )
         except Exception as exc:
             status["gateio"] = self._source_status_entry(
@@ -517,20 +519,28 @@ class MonitoringDashboardService:
                 "读取 Gate.io 缓存或连接状态失败。",
                 last_error=str(exc),
             )
+
         try:
             dff = await self.repository.latest_observation("us_dff")
-            if dff and dff.value_num is not None:
+            effr = await self.repository.latest_observation("effr")
+            rate_obs = dff or effr
+            if rate_obs and rate_obs.value_num is not None:
+                updated_at = (
+                    rate_obs.observation_ts.isoformat()
+                    if rate_obs.observation_ts
+                    else None
+                )
                 status["fred"] = self._source_status_entry(
                     "online",
                     "FRED",
                     "宏观利率观测可用。",
-                    updated_at=dff.observation_ts.isoformat() if dff.observation_ts else None,
+                    updated_at=updated_at,
                 )
             else:
                 status["fred"] = self._source_status_entry(
                     "no_data",
                     "FRED",
-                    "暂未读到 FRED 最新观测，宏观页会使用已有事件和缓存降级展示。",
+                    "暂未读取到 FRED 最新观测；宏观页会使用缓存或降级展示。",
                 )
         except Exception as exc:
             status["fred"] = self._source_status_entry(
@@ -539,21 +549,23 @@ class MonitoringDashboardService:
                 "读取 FRED 观测失败。",
                 last_error=str(exc),
             )
+
         try:
             events = await self.repository.list_recent_market_events(limit=1)
             if events:
                 event_ts = getattr(events[0], "ts_event", None)
+                updated_at = event_ts.isoformat() if isinstance(event_ts, datetime) else None
                 status["market_events"] = self._source_status_entry(
                     "online",
                     "市场事件",
                     "事件信息流缓存可用。",
-                    updated_at=event_ts.isoformat() if isinstance(event_ts, datetime) else None,
+                    updated_at=updated_at,
                 )
             else:
                 status["market_events"] = self._source_status_entry(
                     "no_data",
                     "市场事件",
-                    "暂未读到事件缓存，等待同步任务补齐。",
+                    "暂未读取到事件缓存；等待同步任务补齐。",
                 )
         except Exception as exc:
             status["market_events"] = self._source_status_entry(
@@ -562,12 +574,34 @@ class MonitoringDashboardService:
                 "读取事件缓存失败。",
                 last_error=str(exc),
             )
-        status["ashare_etf"] = self._source_status_entry(
-            "stale_cache",
-            "A股ETF",
-            "ETF 行情独立于加密货币工作流；监控页只展示其可用状态。",
-        )
+
+        status["ashare_etf"] = await self._ashare_etf_source_status()
         return status
+
+    async def _ashare_etf_source_status(self) -> dict[str, Any]:
+        try:
+            from app.services.ashare_etf_quotes import AShareETFQuoteService
+
+            summary = AShareETFQuoteService.persistent_cache_summary()
+        except Exception as exc:
+            return self._source_status_entry(
+                "offline",
+                "A股ETF",
+                "读取 A股ETF 本地快照失败。",
+                last_error=str(exc),
+            )
+        if summary.get("has_cache"):
+            return self._source_status_entry(
+                "stale_cache",
+                "A股ETF",
+                "A股ETF 行情独立于加密货币工作流；当前可读取最近行情快照。",
+                updated_at=summary.get("generated_at"),
+            )
+        return self._source_status_entry(
+            "no_data",
+            "A股ETF",
+            "A股ETF 行情源暂未形成可用快照；ETF 页面会保留标的列表并等待下次刷新。",
+        )
 
     @staticmethod
     def _source_status_entry(
@@ -594,26 +628,38 @@ class MonitoringDashboardService:
             "market_events": "市场事件",
             "ashare_etf": "A股ETF",
         }
-        allowed_sources = set(labels)
         messages = {
             "online": "信源在线，缓存可用。",
+            "ok": "信源在线，缓存可用。",
+            "fresh": "信源在线，缓存可用。",
             "no_data": "信源未返回可用数据，等待后台补齐。",
-            "not_configured": "信源未配置，系统会使用缓存或降级展示。",
+            "missing": "信源未返回可用数据，等待后台补齐。",
+            "not_configured": "信源未配置；系统会使用缓存或降级展示。",
+            "auth_missing": "API Key 未配置；这不是系统故障。",
             "offline": "信源读取失败。",
-            "stale_cache": "正在使用旧缓存。",
+            "error": "信源读取失败。",
+            "source_error": "信源读取失败。",
+            "stale_cache": "正在使用最近缓存。",
+            "stale": "正在使用最近缓存。",
+            "cached": "正在使用最近缓存。",
+            "updating": "等待监控快照返回信源状态。",
+            "pending": "等待监控快照返回信源状态。",
         }
+        fallback_message = "状态暂不可用。"
         normalized: dict[str, dict[str, Any]] = {}
         source = raw if isinstance(raw, dict) else {}
         for key, value in source.items():
-            if key not in allowed_sources:
+            if key not in labels:
                 continue
             if isinstance(value, dict):
                 source_status = str(value.get("status") or "unknown")
+                raw_message = value.get("message")
+                raw_label = value.get("label")
                 normalized[key] = {
                     "status": source_status,
-                    "label": value.get("label") or labels.get(key, key),
-                    "message": value.get("message")
-                    or messages.get(source_status, "状态暂不可用。"),
+                    "label": cls._clean_cached_text(raw_label) or labels[key],
+                    "message": cls._clean_cached_text(raw_message)
+                    or messages.get(source_status, fallback_message),
                     "last_error": value.get("last_error"),
                     "updated_at": value.get("updated_at"),
                 }
@@ -621,17 +667,27 @@ class MonitoringDashboardService:
                 source_status = str(value or "unknown")
                 normalized[key] = cls._source_status_entry(
                     source_status,
-                    labels.get(key, key),
-                    messages.get(source_status, "状态暂不可用。"),
+                    labels[key],
+                    messages.get(source_status, fallback_message),
                 )
         for key, label in labels.items():
             if key not in normalized:
                 normalized[key] = cls._source_status_entry(
                     "updating",
                     label,
-                    "等待监控快照返回信源状态。",
+                    messages["updating"],
                 )
         return normalized
+
+    @staticmethod
+    def _clean_cached_text(value: Any) -> str | None:
+        if not value:
+            return None
+        text = str(value)
+        mojibake_tokens = tuple(chr(codepoint) for codepoint in (0xFFFD, 0x934B, 0x7039, 0x93C6))
+        if any(token in text for token in mojibake_tokens):
+            return None
+        return text
 
     @staticmethod
     def _annotate_observation(d: dict, item, now: datetime) -> dict:
@@ -639,10 +695,9 @@ class MonitoringDashboardService:
         if obs_ts.tzinfo is None:
             obs_ts = obs_ts.replace(tzinfo=UTC)
         age_seconds = (now - obs_ts).total_seconds()
-        freshness_seconds = 86400 if item.category == "onchain" else 7200
+        freshness_seconds = 7200
         d["status"] = "fresh" if age_seconds < freshness_seconds else "stale"
         is_demo = (item.value_json or {}).get("is_demo", False)
         is_preliminary = getattr(item, "is_preliminary", False) or False
         d["recommendation_usable"] = not is_demo and not is_preliminary and d["status"] == "fresh"
         return d
-

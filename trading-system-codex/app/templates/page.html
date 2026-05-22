@@ -8,7 +8,6 @@
   {% if page_id == "ai-strategy" %}
   <link rel="stylesheet" href="/static/styles-v15.css?v={{ asset_version }}">
   {% endif %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body data-page="{{ page_id }}" data-page-title="{{ title }}">
   <header class="shell-header">
@@ -41,6 +40,7 @@
 
   <main id="page-root"></main>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>window.__ASSET_VERSION__ = "{{ asset_version }}";</script>
   <script type="module" src="/static/main.js?v={{ asset_version }}"></script>
 </body>

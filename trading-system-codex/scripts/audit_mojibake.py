@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 TEXT_EXTENSIONS = {".py", ".js", ".html", ".css", ".md", ".json", ".yaml", ".yml", ".toml"}
@@ -69,7 +69,7 @@ class MojibakeFinding:
     line: int
     content: str
     severity: str  # block, display, sanitizer, archive, warn
-    category: str   # startup, display_business, sanitizer, archive, other
+    category: str  # startup, display_business, sanitizer, archive, other
 
 
 def _classify_file(rel_path: str) -> tuple[str, str]:
@@ -130,7 +130,9 @@ def audit_mojibake(
             if _is_comment_only(line, path.suffix):
                 continue
             if _is_severe_pattern(line):
-                severity = "block" if category in {"startup", "display_business"} else default_severity
+                severity = (
+                    "block" if category in {"startup", "display_business"} else default_severity
+                )
             else:
                 severity = default_severity
             findings.append(
@@ -164,11 +166,16 @@ def format_json(findings: list[MojibakeFinding]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Audit text files for mojibake (encoding corruption).")
+    parser = argparse.ArgumentParser(
+        description="Audit text files for mojibake (encoding corruption)."
+    )
     parser.add_argument("--root", default=".", help="Repository root directory.")
     parser.add_argument("--json", action="store_true", help="Output findings as JSON.")
-    parser.add_argument("--block-on-display", action="store_true",
-                        help="Exit with code 1 if any display_business or startup file has mojibake.")
+    parser.add_argument(
+        "--block-on-display",
+        action="store_true",
+        help="Exit with code 1 if any display_business or startup file has mojibake.",
+    )
     parser.add_argument("paths", nargs="*")
     args = parser.parse_args()
     root = Path(args.root).resolve()

@@ -49,29 +49,44 @@ class SourceRegistry:
 
     def _init_adapters(self) -> None:
         sources = self.config.get("sources", {})
+        if "fred" in sources:
+            self.adapters["fred"] = FredMacroProvider(self.secrets)
         if "bls" in sources:
             self.adapters["bls"] = BlsMacroProvider(self.secrets, self.cache)
         if "bea" in sources:
             self.adapters["bea"] = BeaMacroProvider(self.secrets, self.cache)
+        if "treasury" in sources:
+            self.adapters["treasury"] = TreasuryMacroProvider(self.secrets, self.cache)
         if "treasury_fiscaldata" in sources:
             self.adapters["treasury_fiscaldata"] = TreasuryMacroProvider(self.secrets, self.cache)
         if "coinmarketcap" in sources:
             from app.services.macro.providers.coinmarketcap import CoinMarketCapMacroProvider
+
             self.adapters["coinmarketcap"] = CoinMarketCapMacroProvider(self.secrets, self.cache)
         if "tiingo" in sources:
             from app.services.macro.providers.tiingo import TiingoMacroProvider
+
             self.adapters["tiingo"] = TiingoMacroProvider(self.secrets, self.cache)
         if "twelvedata" in sources:
             from app.services.macro.providers.twelvedata import TwelveDataMacroProvider
+
             self.adapters["twelvedata"] = TwelveDataMacroProvider(self.secrets, self.cache)
-        if "alpha_vantage" in sources:
+        if "alpha_vantage" in sources or "alphavantage" in sources:
             from app.services.macro.providers.alpha_vantage import AlphaVantageMacroProvider
+
             self.adapters["alpha_vantage"] = AlphaVantageMacroProvider(self.secrets, self.cache)
+            self.adapters["alphavantage"] = self.adapters["alpha_vantage"]
         if "openexchangerates" in sources:
-            from app.services.macro.providers.openexchangerates import OpenExchangeRatesMacroProvider
-            self.adapters["openexchangerates"] = OpenExchangeRatesMacroProvider(self.secrets, self.cache)
+            from app.services.macro.providers.openexchangerates import (
+                OpenExchangeRatesMacroProvider,
+            )
+
+            self.adapters["openexchangerates"] = OpenExchangeRatesMacroProvider(
+                self.secrets, self.cache
+            )
         if "tushare" in sources:
             from app.services.macro.providers.tushare import TushareMacroProvider
+
             self.adapters["tushare"] = TushareMacroProvider(self.secrets, self.cache)
 
     def get_modules(self) -> list[dict]:

@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 from decimal import Decimal
-
-logger = logging.getLogger(__name__)
 
 from app.core.decimal_utils import DECIMAL_ZERO
 from app.quant.indicators import (
@@ -18,6 +15,9 @@ from app.quant.indicators import (
     rsi_wilder_series,
     sma_series,
 )
+
+UTC = timezone.utc
+logger = logging.getLogger(__name__)
 
 
 def _to_decimal(value) -> Decimal:
@@ -75,9 +75,7 @@ class DivergenceService:
         volumes = [_to_decimal(_field(item, "volume")) for item in candles]
         price_highs, price_lows = self._price_pivots(candles, highs, lows)
         if len(price_highs) < 2 and len(price_lows) < 2:
-            return self._empty_payload(
-                instrument_id, timeframe, "insufficient_pivots"
-            )
+            return self._empty_payload(instrument_id, timeframe, "insufficient_pivots")
 
         series = indicator_matrix.get("series", {}) if indicator_matrix else {}
         rsi = self._series_or_build(
@@ -154,7 +152,9 @@ class DivergenceService:
             "filters": filters,
             "trend_context": trend_context,
             "generated_at": (
-                _to_datetime(_field(candles[-1], "ts_open")) if candles else datetime.now(timezone.utc)
+                _to_datetime(_field(candles[-1], "ts_open"))
+                if candles
+                else datetime.now(timezone.utc)
             ),
         }
 
@@ -430,7 +430,7 @@ class DivergenceService:
                 "score": 0.0,
                 "confidence": 0.12,
                 "leaders": [],
-                "message": f"当前未检测到高质量背离信号；ADX {_to_float(adx):.1f}，ATR {_to_float(atr):.1f}。",
+                "message": (f"??????????????ADX {_to_float(adx):.1f}?ATR {_to_float(atr):.1f}?"),
                 "trend_context": trend_context,
                 "signal_kind": "warning",
                 "entry_signal": False,
@@ -446,11 +446,19 @@ class DivergenceService:
         if {"RSI", "MACD", "OBV"}.issubset(set(leaders)):
             confidence = _clamp(confidence + 0.10, 0.15, 0.95)
         if score >= 0.35:
-            title, tone, message = "多指标底背离偏强", "bullish", "多个指标同步指向潜在上行动能修复。"
+            title, tone, message = (
+                "多指标底背离偏强",
+                "bullish",
+                "多个指标同步指向潜在上行动能修复。",
+            )
         elif score >= 0.15:
             title, tone, message = "底背离观察", "bullish", "部分指标出现底背离，需要价格确认。"
         elif score <= -0.35:
-            title, tone, message = "多指标顶背离偏强", "bearish", "多个指标同步指向潜在上行动能衰减。"
+            title, tone, message = (
+                "多指标顶背离偏强",
+                "bearish",
+                "多个指标同步指向潜在上行动能衰减。",
+            )
         elif score <= -0.15:
             title, tone, message = "顶背离观察", "bearish", "部分指标出现顶背离，需要价格确认。"
         else:
@@ -538,7 +546,10 @@ class DivergenceService:
             "hidden_bullish": "隐藏底背离",
             "hidden_bearish": "隐藏顶背离",
         }.get(divergence_type, "背离信号")
-        return f"价格变化 {price_change * 100:.2f}%，{indicator} 变化 {indicator_change * 100:.2f}%，形成{label}。"
+        return (
+            f"???? {price_change * 100:.2f}%?"
+            f"{indicator} ?? {indicator_change * 100:.2f}%???{label}?"
+        )
 
     def _confirmation(self, direction: str, price: float) -> str:
         if direction == "bullish":

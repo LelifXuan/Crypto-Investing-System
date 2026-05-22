@@ -67,6 +67,7 @@ Get-ChildItem -LiteralPath $Destination -Recurse -Force -Directory -Filter "__py
   ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
 
 $forbiddenFiles = @(
+    ".env",
     "storage_manifest.json",
     "trading_system.db",
     "trading_system.db-wal",

@@ -19,7 +19,6 @@ from .common import (
 )
 
 UTC = timezone.utc
-
 CLASSIC_PATTERN_CONTRACT_VERSION = "classic-pattern-region-v1"
 MAX_CLASSIC_PROJECTION_BARS = 6
 MAX_SECONDARY_CLASSIC_PATTERNS = 3

@@ -124,7 +124,9 @@ def normalize_plan_levels(
     atr_f = max(to_float(atr, abs(price_f) * 0.02), abs(price_f) * 0.002, 1e-9)
 
     if not entry_f or not stop_f or not tp1_f or not tp2_f:
-        return PlanLevels(side, entry_f, stop_f, tp1_f, tp2_f, 0, 0, 0, False, "missing entry/stop/tp").to_dict()
+        return PlanLevels(
+            side, entry_f, stop_f, tp1_f, tp2_f, 0, 0, 0, False, "missing entry/stop/tp"
+        ).to_dict()
 
     if allow_repair:
         if side == "long":
@@ -175,9 +177,17 @@ def normalize_plan_levels(
     ).to_dict()
 
 
-def build_setup_id(instrument_id: str, timeframe: str, side: Side, levels: dict[str, Any], created_at: str | None = None) -> str:
+def build_setup_id(
+    instrument_id: str,
+    timeframe: str,
+    side: Side,
+    levels: dict[str, Any],
+    created_at: str | None = None,
+) -> str:
     day = (created_at or utc_now_iso())[:10].replace("-", "")
-    digest = stable_hash({"instrument_id": instrument_id, "timeframe": timeframe, "side": side, "levels": levels})
+    digest = stable_hash(
+        {"instrument_id": instrument_id, "timeframe": timeframe, "side": side, "levels": levels}
+    )
     return f"setup:{instrument_id}:{timeframe}:{side}:{day}:{digest}"
 
 
@@ -228,12 +238,18 @@ def _parse_dt(value: Any) -> datetime | None:
         return None
 
 
-def evaluate_setup_lifecycle(setup: dict[str, Any], snapshot: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+def evaluate_setup_lifecycle(
+    setup: dict[str, Any], snapshot: dict[str, Any], config: dict[str, Any] | None = None
+) -> dict[str, Any]:
     cfg = config or {}
     thresholds = cfg.get("thresholds", {})
     side = str(setup.get("direction") or setup.get("side") or "").lower()
     if side not in {"long", "short"}:
-        return {"state": "SETUP_INVALIDATED", "reason": "setup direction is missing or invalid", "is_terminal": True}
+        return {
+            "state": "SETUP_INVALIDATED",
+            "reason": "setup direction is missing or invalid",
+            "is_terminal": True,
+        }
 
     price = to_float(snapshot.get("current_price") or snapshot.get("price", {}).get("current"))
     atr = max(to_float(snapshot.get("atr_14"), price * 0.02), price * 0.002, 1e-9)
@@ -243,13 +259,25 @@ def evaluate_setup_lifecycle(setup: dict[str, Any], snapshot: dict[str, Any], co
     tp2 = to_float(setup.get("take_profit_2") or setup.get("take_profit_2_frozen"))
     risk = to_float(setup.get("risk"), abs(entry - stop)) or abs(entry - stop)
 
-    levels = normalize_plan_levels(side, entry, stop, tp1, tp2, price, atr, min_rr=0.1, allow_repair=False)
+    levels = normalize_plan_levels(
+        side, entry, stop, tp1, tp2, price, atr, min_rr=0.1, allow_repair=False
+    )
     if not levels["is_valid"]:
-        return {"state": "INVALID_PLAN_LEVELS", "reason": levels["invalid_reason"], "is_terminal": True, "levels": levels}
+        return {
+            "state": "INVALID_PLAN_LEVELS",
+            "reason": levels["invalid_reason"],
+            "is_terminal": True,
+            "levels": levels,
+        }
 
     valid_until = _parse_dt(setup.get("valid_until"))
     if valid_until and datetime.now(UTC) > valid_until:
-        return {"state": "SETUP_EXPIRED", "reason": "setup valid_until has passed", "is_terminal": True, "levels": levels}
+        return {
+            "state": "SETUP_EXPIRED",
+            "reason": "setup valid_until has passed",
+            "is_terminal": True,
+            "levels": levels,
+        }
 
     missed_r = to_float(thresholds.get("missed_move_r_multiple"), 1.0)
     missed_atr = to_float(thresholds.get("missed_move_atr_multiple"), 1.5)
@@ -269,11 +297,26 @@ def evaluate_setup_lifecycle(setup: dict[str, Any], snapshot: dict[str, Any], co
         moved_beyond_tp1 = price <= tp1
 
     if adverse_stop:
-        return {"state": "STOP_HIT", "reason": "current price has touched setup stop/invalidation", "is_terminal": True, "levels": levels}
+        return {
+            "state": "STOP_HIT",
+            "reason": "current price has touched setup stop/invalidation",
+            "is_terminal": True,
+            "levels": levels,
+        }
     if tp2_hit:
-        return {"state": "TP2_HIT", "reason": "current price has touched second target", "is_terminal": True, "levels": levels}
+        return {
+            "state": "TP2_HIT",
+            "reason": "current price has touched second target",
+            "is_terminal": True,
+            "levels": levels,
+        }
     if tp1_hit:
-        return {"state": "TP1_HIT", "reason": "current price has touched first target", "is_terminal": False, "levels": levels}
+        return {
+            "state": "TP1_HIT",
+            "reason": "current price has touched first target",
+            "is_terminal": False,
+            "levels": levels,
+        }
 
     moved_r = favorable / max(risk, 1e-9)
     moved_atr = favorable / max(atr, 1e-9)
@@ -323,7 +366,9 @@ def evaluate_lower_tf_trigger(
     return {"ready": False, "required_timeframe": required_tf, "missing": False, "diagnostics": []}
 
 
-def evaluate_strong_trend_follow(side: Side, snapshot: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+def evaluate_strong_trend_follow(
+    side: Side, snapshot: dict[str, Any], config: dict[str, Any] | None = None
+) -> dict[str, Any]:
     cfg = config or {}
     thresholds = cfg.get("thresholds", {})
     adx_min = to_float(thresholds.get("strong_trend_adx_min"), 25)
@@ -337,33 +382,98 @@ def evaluate_strong_trend_follow(side: Side, snapshot: dict[str, Any], config: d
     adx = clamp(snapshot.get("adx_14"))
     atr_expansion = clamp(snapshot.get("atr_expansion_score"))
     if side == "long":
-        trend_ok = to_float(snapshot.get("ema_20")) >= to_float(snapshot.get("ema_50")) or to_float(snapshot.get("ema20_slope")) > 0
-        breakout = bool(snapshot.get("breakout_up") or snapshot.get("levels", {}).get("breakout_up"))
+        trend_ok = (
+            to_float(snapshot.get("ema_20")) >= to_float(snapshot.get("ema_50"))
+            or to_float(snapshot.get("ema20_slope")) > 0
+        )
+        breakout = bool(
+            snapshot.get("breakout_up") or snapshot.get("levels", {}).get("breakout_up")
+        )
         momentum = clamp(snapshot.get("bullish_momentum"))
-        flow = clamp(max(to_float(snapshot.get("bullish_flow")), to_float(snapshot.get("volume_confirmation"))))
+        flow = clamp(
+            max(
+                to_float(snapshot.get("bullish_flow")),
+                to_float(snapshot.get("volume_confirmation")),
+            )
+        )
         trigger_level = to_float(snapshot.get("long_entry"), price)
         distance_atr = max(0.0, price - trigger_level) / atr
         triggered_state = "BREAKOUT_TRIGGERED" if breakout else "TREND_FOLLOW_TRIGGERED"
     else:
-        trend_ok = to_float(snapshot.get("ema_20")) <= to_float(snapshot.get("ema_50")) or to_float(snapshot.get("ema20_slope")) < 0
-        breakout = bool(snapshot.get("breakout_down") or snapshot.get("levels", {}).get("breakout_down"))
+        trend_ok = (
+            to_float(snapshot.get("ema_20")) <= to_float(snapshot.get("ema_50"))
+            or to_float(snapshot.get("ema20_slope")) < 0
+        )
+        breakout = bool(
+            snapshot.get("breakout_down") or snapshot.get("levels", {}).get("breakout_down")
+        )
         momentum = clamp(snapshot.get("bearish_momentum"))
-        flow = clamp(max(to_float(snapshot.get("bearish_flow")), to_float(snapshot.get("volume_confirmation"))))
+        flow = clamp(
+            max(
+                to_float(snapshot.get("bearish_flow")),
+                to_float(snapshot.get("volume_confirmation")),
+            )
+        )
         trigger_level = to_float(snapshot.get("short_entry"), price)
         distance_atr = max(0.0, trigger_level - price) / atr
         triggered_state = "BREAKDOWN_TRIGGERED" if breakout else "TREND_FOLLOW_TRIGGERED"
 
     diagnostics = [
-        GateDiagnostic("strong_trend_adx", "pass" if adx >= adx_min else "fail", "ADX 趋势强度", round(adx, 2), adx_min).to_dict(),
-        GateDiagnostic("strong_trend_ema", "pass" if trend_ok else "fail", "EMA 方向一致", trend_ok, True).to_dict(),
-        GateDiagnostic("strong_trend_momentum", "pass" if momentum >= momentum_min else "fail", "动量强度", round(momentum, 2), momentum_min).to_dict(),
-        GateDiagnostic("strong_trend_atr", "pass" if atr_expansion >= atr_expansion_min else "fail", "ATR 扩张", round(atr_expansion, 2), atr_expansion_min).to_dict(),
-        GateDiagnostic("strong_trend_flow", "pass" if flow >= flow_min else "warn", "成交/资金流确认", round(flow, 2), flow_min, "warning" if flow < flow_min else "info").to_dict(),
-        GateDiagnostic("chase_distance", "pass" if distance_atr <= max_distance_atr else "warn", "追单距离", round(distance_atr, 4), max_distance_atr, "warning" if distance_atr > max_distance_atr else "info").to_dict(),
+        GateDiagnostic(
+            "strong_trend_adx",
+            "pass" if adx >= adx_min else "fail",
+            "ADX 趋势强度",
+            round(adx, 2),
+            adx_min,
+        ).to_dict(),
+        GateDiagnostic(
+            "strong_trend_ema", "pass" if trend_ok else "fail", "EMA 方向一致", trend_ok, True
+        ).to_dict(),
+        GateDiagnostic(
+            "strong_trend_momentum",
+            "pass" if momentum >= momentum_min else "fail",
+            "动量强度",
+            round(momentum, 2),
+            momentum_min,
+        ).to_dict(),
+        GateDiagnostic(
+            "strong_trend_atr",
+            "pass" if atr_expansion >= atr_expansion_min else "fail",
+            "ATR 扩张",
+            round(atr_expansion, 2),
+            atr_expansion_min,
+        ).to_dict(),
+        GateDiagnostic(
+            "strong_trend_flow",
+            "pass" if flow >= flow_min else "warn",
+            "成交/资金流确认",
+            round(flow, 2),
+            flow_min,
+            "warning" if flow < flow_min else "info",
+        ).to_dict(),
+        GateDiagnostic(
+            "chase_distance",
+            "pass" if distance_atr <= max_distance_atr else "warn",
+            "追单距离",
+            round(distance_atr, 4),
+            max_distance_atr,
+            "warning" if distance_atr > max_distance_atr else "info",
+        ).to_dict(),
     ]
-    strong = adx >= adx_min and trend_ok and momentum >= momentum_min and atr_expansion >= atr_expansion_min
+    strong = (
+        adx >= adx_min
+        and trend_ok
+        and momentum >= momentum_min
+        and atr_expansion >= atr_expansion_min
+    )
     if not strong:
-        return {"ready": False, "state": None, "entry_mode": None, "distance_atr": round(distance_atr, 4), "diagnostics": diagnostics}
+        return {
+            "ready": False,
+            "state": None,
+            "entry_mode": None,
+            "distance_atr": round(distance_atr, 4),
+            "diagnostics": diagnostics,
+        }
     if distance_atr > max_distance_atr:
         return {
             "ready": False,
@@ -376,13 +486,17 @@ def evaluate_strong_trend_follow(side: Side, snapshot: dict[str, Any], config: d
     return {
         "ready": True,
         "state": triggered_state,
-        "entry_mode": "strong_trend_chase" if not breakout else ("breakout_follow" if side == "long" else "breakdown_follow"),
+        "entry_mode": "strong_trend_chase"
+        if not breakout
+        else ("breakout_follow" if side == "long" else "breakdown_follow"),
         "distance_atr": round(distance_atr, 4),
         "diagnostics": diagnostics,
     }
 
 
-def apply_lifecycle_to_decision(decision: dict[str, Any], setup: dict[str, Any], lifecycle: dict[str, Any]) -> dict[str, Any]:
+def apply_lifecycle_to_decision(
+    decision: dict[str, Any], setup: dict[str, Any], lifecycle: dict[str, Any]
+) -> dict[str, Any]:
     output = dict(decision)
     state = lifecycle.get("state") or output.get("strategy_state")
     side = setup.get("direction") or output.get("strategy_bias") or "neutral"
@@ -400,8 +514,14 @@ def apply_lifecycle_to_decision(decision: dict[str, Any], setup: dict[str, Any],
             "setup_id": setup.get("setup_id"),
             "entry_mode": setup.get("entry_mode"),
             "entry_price": setup.get("entry_price"),
-            "entry_zone": [round(to_float(setup.get("entry_price")) * 0.998, 2), round(to_float(setup.get("entry_price")) * 1.002, 2)],
-            "entry_price_range": [round(to_float(setup.get("entry_price")) * 0.998, 2), round(to_float(setup.get("entry_price")) * 1.002, 2)],
+            "entry_zone": [
+                round(to_float(setup.get("entry_price")) * 0.998, 2),
+                round(to_float(setup.get("entry_price")) * 1.002, 2),
+            ],
+            "entry_price_range": [
+                round(to_float(setup.get("entry_price")) * 0.998, 2),
+                round(to_float(setup.get("entry_price")) * 1.002, 2),
+            ],
             "stop_price": setup.get("stop_price"),
             "take_profit_1": setup.get("take_profit_1"),
             "take_profit_2": setup.get("take_profit_2"),

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 
 from app.core.ids import new_id
 from app.db.models.eventing import EventOutbox, EventStore
 from app.repositories.event_repository import EventRepository
+
+UTC = timezone.utc
 
 
 class EventPublisher:

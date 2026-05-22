@@ -1,4 +1,4 @@
-﻿export const knowledgeCatalogVersion = "v1.8-clean-labels";
+﻿export const knowledgeCatalogVersion = "v1.9-portable-macro-cache";
 
 export const knowledgePageFilters = [
   { key: "market-analysis", label: "技术指标" },
@@ -768,6 +768,92 @@ const dataQualityItems = [
     page_refs: ["monitoring-overview", "alert-center"],
     tags: ["onchain", "quality"],
   }),
+  term("portable_proxy_detection", "Portable Proxy Detection / 便携版代理自动发现", {
+    family: "network",
+    level: "basic",
+    summary: "便携版启动时自动识别本机代理，使境外数据源在不同电脑上无需手动配置。",
+    definition: "系统按环境变量、Windows 系统代理、WinHTTP 设置和常见本地端口依次探测代理并自动配置 httpx。",
+    how_to_use: "数据源联通检查会显示 proxy_detected，无需用户手动设置 HTTPS_PROXY。",
+    risk_note: "不得在日志或前端显示带用户名、密码的代理地址。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["proxy", "portable", "network"],
+  }),
+  term("macro_seed_cache", "Macro Seed Cache / 宏观种子缓存", {
+    family: "cache",
+    level: "basic",
+    summary: "开发机预先抓取的低频宏观数据，随 Portable 包发行，保证离线也有历史快照。",
+    definition: "种子缓存位于 app/assets/seed_cache/，首次启动时自动导入 runtime/cache/macro/。",
+    how_to_use: "读取顺序为 live → runtime cache → seed cache → placeholder。seed cache 可作背景观察，但需显示生成时间和置信度。",
+    risk_note: "种子缓存不等于最新数据，过期 seed 不应高权重参与评分。",
+    page_refs: ["monitoring-overview", "macro-calendar", "knowledge-base"],
+    tags: ["macro", "cache", "portable"],
+  }),
+  term("stale_while_revalidate", "Stale-While-Revalidate / 先读旧再后台刷新", {
+    family: "cache",
+    level: "intermediate",
+    summary: "缓存过期时先返回旧快照，后台再异步刷新 live 数据，避免页面空白。",
+    how_to_use: "页面显示 stale_cache 状态，同时提示后台刷新。刷新成功后自动替换。",
+    risk_note: "旧缓存只能用于背景观察，不能伪装成 live 数据。",
+    page_refs: ["monitoring-overview", "market-analysis", "knowledge-base"],
+    tags: ["cache", "stale", "refresh"],
+  }),
+  term("scoring_eligibility", "Scoring Eligibility / 评分准入", {
+    family: "quality",
+    level: "intermediate",
+    summary: "决定某个指标是否允许进入宏观总分。",
+    definition: "评分准入由数据状态、来源类型、新鲜度共同决定。ok/cached 可评分；stale_cache/seed_cache 需在扩展窗口内；placeholder/web_cached 默认不评分。",
+    how_to_use: "缺失值或错误值不得按 0 分参与评分。页面必须显示未参与原因。",
+    risk_note: "空值参与评分会导致总分失真。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["score", "quality"],
+  }),
+  term("api_healthcheck", "API Healthcheck / 数据源健康检查", {
+    family: "quality",
+    level: "basic",
+    summary: "检查各数据源连通性、鉴权、限流和代理状态。",
+    how_to_use: "当宏观页低置信度时，先看 healthcheck 区分 auth_missing/rate_limited/source_error/proxy_required。",
+    risk_note: "healthcheck 不得泄露 API key 前后缀或代理密码。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["healthcheck", "source"],
+  }),
+  term("source_priority_chain", "Source Priority Chain / 数据源优先链", {
+    family: "data-source",
+    level: "intermediate",
+    summary: "定义每个指标从主源、备源、缓存到占位的读取顺序。",
+    definition: "例如 CPI：BLS live → FRED fallback → runtime cache → seed cache → placeholder。",
+    how_to_use: "每个指标明细行应显示当前命中的 source 和 fallback_level。",
+    risk_note: "备源口径可能不同，必须记录 source_symbol。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["source", "fallback"],
+  }),
+  term("macro_never_empty_contract", "Macro Never Empty Contract / 宏观永不空契约", {
+    family: "quality",
+    level: "advanced",
+    summary: "宏观页无论 live API 是否可用，都必须返回完整模块和指标行。",
+    definition: "该契约要求后端至少返回 seed_cache 或 placeholder，避免空白页和孤立总分。",
+    how_to_use: "验收时断网运行宏观页，layers 和 indicators 仍必须非空。",
+    risk_note: "永不空不代表永远高置信度；低质量来源必须降低置信度并阻断评分。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["macro", "contract", "quality"],
+  }),
+  term("secret_hygiene", "Secret Hygiene / 密钥安全卫生", {
+    family: "security",
+    level: "basic",
+    summary: "API key、代理密码和交易所密钥不得进入 Git 仓库。",
+    definition: "真实密钥只能来自环境变量或 runtime/config/portable.env。发行包不含 .env，仅含 .env.example。",
+    page_refs: ["knowledge-base"],
+    tags: ["security", "secret"],
+  }),
+  term("cache_freshness_window", "Cache Freshness Window / 缓存新鲜度窗口", {
+    family: "cache",
+    level: "intermediate",
+    summary: "不同频率的数据应使用不同的新鲜度与扩展可用窗口。",
+    definition: "宏观月度数据可接受比行情更长的缓存窗口；日内行情则必须更短。",
+    how_to_use: "CPI/PCE/GDP 等低频指标即使未能 live 更新，也可在明确标记 stale 的前提下继续展示。",
+    risk_note: "超过评分窗口的数据只能展示，不应参与打分。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["cache", "freshness"],
+  }),
 ];
 
 const etfItems = [
@@ -777,6 +863,8 @@ const etfItems = [
     family: "cash-flow",
     level: "intermediate",
     importance: "core",
+    summary: "现金流ETF侧重企业现金生成能力和分红可持续性，而不是单纯追逐高股息率。",
+    definition: "现金流ETF是一类以自由现金流质量、现金回报和分红持续性为核心筛选逻辑的ETF观察对象。",
     page_refs: ["ashare-etf"],
     tags: ["cash-flow", "income"],
     description: [
@@ -791,6 +879,8 @@ const etfItems = [
     family: "sector",
     level: "intermediate",
     importance: "core",
+    summary: "HALO组合用于观察重资产、低淘汰行业的资金轮动，不等同于直接买入信号。",
+    definition: "HALO指 Heavy Assets, Low Obsolescence，关注电信、能源、电力、基建、军工、有色等资产壁垒较强的板块。",
     page_refs: ["ashare-etf"],
     tags: ["sector", "halo"],
     description: [
@@ -954,4 +1044,3 @@ export function searchKnowledge(query, filters = {}) {
     }),
   );
 }
-

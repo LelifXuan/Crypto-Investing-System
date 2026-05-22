@@ -89,7 +89,9 @@ class DirectionScoringEngine:
         neutral_values["event_uncertainty"] = clamp(snapshot.get("event_risk_score", 0))
         neutral_score = weighted_score(neutral_values, self.config["neutral_weights"])
         conflict_score = clamp(max(neutral_values["high_conflict_score"], 100 - gap * 1.4))
-        confidence = clamp(max(long_score, short_score) - neutral_score * 0.18 - conflict_score * 0.08)
+        confidence = clamp(
+            max(long_score, short_score) - neutral_score * 0.18 - conflict_score * 0.08
+        )
 
         return DirectionScores(
             data_quality_score=data_quality,
@@ -127,4 +129,3 @@ class DirectionScoringEngine:
             0,
             40,
         )
-

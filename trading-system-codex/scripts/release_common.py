@@ -39,6 +39,7 @@ EXCLUDED_TOP_LEVEL_DIRS = {
 EXCLUDED_DIRS = EXCLUDED_ANY_DIRS | EXCLUDED_TOP_LEVEL_DIRS
 
 EXCLUDED_FILES = {
+    ".env",
     "coverage.xml",
     "AGENTS.md",
     "Dockerfile",
@@ -83,6 +84,7 @@ RESIDUE_DIRS = {
 }
 
 RESIDUE_FILES = {
+    ".env",
     "trading_system.db",
     "trading_system.db-shm",
     "trading_system.db-wal",

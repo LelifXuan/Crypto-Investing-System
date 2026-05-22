@@ -97,8 +97,7 @@ def _cci_series(
     period: int = 20,
 ) -> list[Decimal | None]:
     typical = [
-        (highs[index] + lows[index] + close) / Decimal("3")
-        for index, close in enumerate(closes)
+        (highs[index] + lows[index] + close) / Decimal("3") for index, close in enumerate(closes)
     ]
     series: list[Decimal | None] = []
     for index in range(len(typical)):

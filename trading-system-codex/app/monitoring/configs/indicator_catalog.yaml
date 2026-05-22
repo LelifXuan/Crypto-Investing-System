@@ -1,782 +1,1960 @@
-﻿version: 1
+version: 1
 indicators:
-  - indicator_key: ema_20
-    display_name: EMA 20
-    category: technical
-    family: trend
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 20, input: close}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [1m, 5m, 15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [bullish, bearish, neutral]
-    default_thresholds: {}
-    use_cases: [trend_filter, execution_filter, review_snapshot]
-    is_enabled: true
-  - indicator_key: ema_50
-    display_name: EMA 50
-    category: technical
-    family: trend
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 50, input: close}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [5m, 15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [bullish, bearish, neutral]
-    default_thresholds: {}
-    use_cases: [trend_filter, review_snapshot]
-    is_enabled: true
-  - indicator_key: ema_200
-    display_name: EMA 200
-    category: technical
-    family: trend
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 200, input: close}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [bullish, bearish, neutral]
-    default_thresholds: {}
-    use_cases: [regime_filter, review_snapshot]
-    is_enabled: true
-  - indicator_key: adx_14
-    display_name: ADX 14
-    category: technical
-    family: trend_strength
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 14, input: ohlc}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [weak_trend, developing_trend, strong_trend]
-    default_thresholds: {weak_trend_lt: 20, strong_trend_gte: 25}
-    use_cases: [trend_strength_filter, leverage_scaling]
-    is_enabled: true
-  - indicator_key: macd_12_26_9
-    display_name: MACD 12/26/9
-    category: technical
-    family: momentum
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {fastperiod: 12, slowperiod: 26, signalperiod: 9, input: close}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [5m, 15m, 1h, 4h, 1d]
-    output_fields: [macd, signal, hist]
-    signal_states: [bullish_cross, bearish_cross, positive_hist, negative_hist, neutral]
-    default_thresholds: {}
-    use_cases: [momentum_filter, entry_confirmation, review_snapshot]
-    is_enabled: true
-  - indicator_key: rsi_14
-    display_name: RSI 14
-    category: technical
-    family: momentum
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 14, input: close}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [1m, 5m, 15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [oversold, weak, neutral, strong, overbought]
-    default_thresholds: {oversold: 30, overbought: 70}
-    use_cases: [mean_reversion_filter, review_snapshot]
-    is_enabled: true
-  - indicator_key: atr_14
-    display_name: ATR 14
-    category: technical
-    family: volatility
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 14, input: ohlc}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [5m, 15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [compressed, normal, expanded]
-    default_thresholds: {}
-    use_cases: [stop_distance, position_sizing, volatility_alert]
-    is_enabled: true
-  - indicator_key: natr_14
-    display_name: NATR 14
-    category: technical
-    family: volatility
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 14, input: ohlc}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [5m, 15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [compressed, normal, expanded]
-    default_thresholds: {}
-    use_cases: [cross_asset_volatility_compare, leverage_scaling]
-    is_enabled: true
-  - indicator_key: bbands_20_2
-    display_name: BBANDS 20,2
-    category: technical
-    family: volatility
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {period: 20, nbdevup: 2, nbdevdn: 2, input: close}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [5m, 15m, 1h, 4h, 1d]
-    output_fields: [upper, middle, lower, bandwidth, percent_b]
-    signal_states: [squeeze, normal, breakout_up, breakout_down]
-    default_thresholds: {}
-    use_cases: [breakout_filter, squeeze_detection]
-    is_enabled: true
-  - indicator_key: obv
-    display_name: OBV
-    category: technical
-    family: volume
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {input: close_volume}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [5m, 15m, 1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [confirming, diverging, neutral]
-    default_thresholds: {}
-    use_cases: [volume_confirmation, review_snapshot]
-    is_enabled: true
-  - indicator_key: volume_surge_ratio
-    display_name: Volume Surge Ratio
-    category: technical
-    family: volume
-    source_provider: gateio
-    source_kind: derived_from_candles
-    calc_engine: custom
-    calc_params: {baseline_period: 20}
-    supported_assets: [spot, perpetual]
-    supported_timeframes: [1m, 5m, 15m, 1h]
-    output_fields: [value]
-    signal_states: [low, normal, elevated, extreme]
-    default_thresholds: {}
-    use_cases: [breakout_confirmation, abnormal_activity_alert]
-    is_enabled: true
-  - indicator_key: mark_price
-    display_name: Mark Price
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: raw_contract_field
-    calc_engine: raw
-    calc_params: {}
-    supported_assets: [perpetual]
-    supported_timeframes: [5s, 15s, 1m]
-    output_fields: [value]
-    signal_states: [normal]
-    default_thresholds: {}
-    use_cases: [pnl_marking, liquidation_risk]
-    is_enabled: true
-  - indicator_key: index_price
-    display_name: Index Price
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: raw_contract_field
-    calc_engine: raw
-    calc_params: {}
-    supported_assets: [perpetual]
-    supported_timeframes: [5s, 15s, 1m]
-    output_fields: [value]
-    signal_states: [normal]
-    default_thresholds: {}
-    use_cases: [pricing_reference, deviation_alert]
-    is_enabled: true
-  - indicator_key: funding_rate
-    display_name: Funding Rate
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: raw_contract_field
-    calc_engine: raw
-    calc_params: {}
-    supported_assets: [perpetual]
-    supported_timeframes: [1m, 5m, 1h]
-    output_fields: [value]
-    signal_states: [short_biased, neutral, long_biased, extreme]
-    default_thresholds: {}
-    use_cases: [carry_filter, crowding_filter, pnl_adjustment]
-    is_enabled: true
-  - indicator_key: funding_rate_zscore
-    display_name: Funding Rate Z-Score
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: derived_from_observations
-    calc_engine: custom
-    calc_params: {lookback_points: 60}
-    supported_assets: [perpetual]
-    supported_timeframes: [1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [normal, stretched, extreme]
-    default_thresholds: {}
-    use_cases: [crowding_alert, risk_filter]
-    is_enabled: true
-  - indicator_key: basis_rate
-    display_name: Basis Rate
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: raw_contract_field
-    calc_engine: raw
-    calc_params: {}
-    supported_assets: [perpetual]
-    supported_timeframes: [1m, 5m, 1h]
-    output_fields: [value]
-    signal_states: [backwardation, neutral, contango, extreme]
-    default_thresholds: {}
-    use_cases: [carry_filter, crowding_filter]
-    is_enabled: true
-  - indicator_key: basis_rate_zscore
-    display_name: Basis Rate Z-Score
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: derived_from_observations
-    calc_engine: custom
-    calc_params: {lookback_points: 60}
-    supported_assets: [perpetual]
-    supported_timeframes: [1h, 4h, 1d]
-    output_fields: [value]
-    signal_states: [normal, stretched, extreme]
-    default_thresholds: {}
-    use_cases: [crowding_alert, risk_filter]
-    is_enabled: true
-  - indicator_key: price_to_mark_deviation
-    display_name: Price to Mark Deviation
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: custom_from_last_and_mark
-    calc_engine: custom
-    calc_params: {}
-    supported_assets: [perpetual]
-    supported_timeframes: [5s, 15s, 1m]
-    output_fields: [value]
-    signal_states: [normal, elevated, extreme]
-    default_thresholds: {}
-    use_cases: [liquidation_risk, execution_risk]
-    is_enabled: true
-  - indicator_key: price_to_index_deviation
-    display_name: Price to Index Deviation
-    category: technical
-    family: derivatives_structure
-    source_provider: gateio
-    source_kind: custom_from_last_and_index
-    calc_engine: custom
-    calc_params: {}
-    supported_assets: [perpetual]
-    supported_timeframes: [5s, 15s, 1m]
-    output_fields: [value]
-    signal_states: [normal, elevated, extreme]
-    default_thresholds: {}
-    use_cases: [basis_monitoring, manipulation_watch]
-    is_enabled: true
-  - indicator_key: cvd_delta
-    display_name: CVD / Delta
-    category: technical
-    family: microstructure
-    source_provider: gateio
-    source_kind: derived_from_trades
-    calc_engine: custom
-    calc_params: {lookback_trades: 100}
-    supported_assets: [perpetual]
-    supported_timeframes: [1m, 5m, 1h]
-    output_fields: [delta, cvd, buy_volume, sell_volume]
-    signal_states: [sell_delta, neutral, buy_delta]
-    default_thresholds: {}
-    use_cases: [flow_confirmation, breakout_confirmation]
-    is_enabled: true
-  - indicator_key: open_interest_notional
-    display_name: Open Interest Notional
-    category: technical
-    family: microstructure
-    source_provider: gateio
-    source_kind: derived_from_contract_stats
-    calc_engine: custom
-    calc_params: {interval: 5m, lookback_points: 2}
-    supported_assets: [perpetual]
-    supported_timeframes: [1m, 5m, 1h]
-    output_fields: [open_interest, open_interest_notional, open_interest_change]
-    signal_states: [falling, neutral, rising]
-    default_thresholds: {}
-    use_cases: [leverage_confirmation, participation_filter]
-    is_enabled: true
-  - indicator_key: depth_liquidity
-    display_name: Depth Liquidity
-    category: technical
-    family: microstructure
-    source_provider: gateio
-    source_kind: derived_from_order_book
-    calc_engine: custom
-    calc_params: {notional: 10000}
-    supported_assets: [perpetual]
-    supported_timeframes: [1m, 5m]
-    output_fields: [depth_10bps, depth_50bps, depth_100bps, spread_bps]
-    signal_states: [thin, normal]
-    default_thresholds: {}
-    use_cases: [execution_quality, liquidity_filter]
-    is_enabled: true
-  - indicator_key: slippage_bps
-    display_name: Slippage BPS
-    category: technical
-    family: microstructure
-    source_provider: gateio
-    source_kind: derived_from_order_book
-    calc_engine: custom
-    calc_params: {notional: 10000}
-    supported_assets: [perpetual]
-    supported_timeframes: [1m, 5m]
-    output_fields: [buy_slippage_bps, sell_slippage_bps, spread_bps]
-    signal_states: [normal, wide]
-    default_thresholds: {}
-    use_cases: [execution_quality, risk_filter]
-    is_enabled: true
-  - indicator_key: us_dff
-    display_name: Effective Federal Funds Rate
-    category: macro
-    family: liquidity
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: DFF}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [easing, neutral, tightening]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: us_2y_yield
-    display_name: US 2Y Treasury Yield
-    category: macro
-    family: rates
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: DGS2}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [falling, stable, rising]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: us_10y_yield
-    display_name: US 10Y Treasury Yield
-    category: macro
-    family: rates
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: DGS10}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [falling, stable, rising]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: us_10y_2y_spread
-    display_name: US 10Y-2Y Spread
-    category: macro
-    family: curve
-    source_provider: fred
-    source_kind: derived_from_series
-    calc_engine: custom
-    calc_params: {formula: us_10y_yield - us_2y_yield}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [deep_inversion, inversion, flat, steepening]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: hy_oas
-    display_name: HY OAS
-    category: macro
-    family: credit
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: BAMLH0A0HYM2}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [tight, neutral, wide]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: tga
-    display_name: TGA
-    category: macro
-    family: liquidity
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: WTREGEN}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [draining, neutral, absorbing]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: on_rrp
-    display_name: ON RRP
-    category: macro
-    family: liquidity
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: RRPONTSYD}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [falling, neutral, rising]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: financial_conditions
-    display_name: Financial Conditions
-    category: macro
-    family: liquidity
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: NFCI}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [loose, neutral, tight]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: us_cpi_yoy
-    display_name: US CPI YoY
-    category: macro
-    family: inflation
-    source_provider: bls
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: CUUR0000SA0}
-    supported_assets: [global]
-    supported_timeframes: [event, 1m]
-    output_fields: [value, surprise]
-    signal_states: [cooling, neutral, heating]
-    default_thresholds: {}
-    use_cases: [event_risk, macro_regime]
-    is_enabled: true
-  - indicator_key: us_core_cpi_yoy
-    display_name: US Core CPI YoY
-    category: macro
-    family: inflation
-    source_provider: bls
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: CUUR0000SA0L1E}
-    supported_assets: [global]
-    supported_timeframes: [event, 1m]
-    output_fields: [value, surprise]
-    signal_states: [cooling, neutral, heating]
-    default_thresholds: {}
-    use_cases: [event_risk, macro_regime]
-    is_enabled: true
-  - indicator_key: us_nfp
-    display_name: US NFP
-    category: macro
-    family: labor
-    source_provider: bls
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: CES0000000001}
-    supported_assets: [global]
-    supported_timeframes: [event, 1m]
-    output_fields: [value, surprise]
-    signal_states: [weak, neutral, strong]
-    default_thresholds: {}
-    use_cases: [event_risk, macro_regime]
-    is_enabled: true
-  - indicator_key: us_unemployment_rate
-    display_name: US Unemployment Rate
-    category: macro
-    family: labor
-    source_provider: bls
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: LNS14000000}
-    supported_assets: [global]
-    supported_timeframes: [event, 1m]
-    output_fields: [value, surprise]
-    signal_states: [weak, neutral, strong]
-    default_thresholds: {}
-    use_cases: [event_risk, macro_regime]
-    is_enabled: true
-  - indicator_key: ism_mfg_pmi
-    display_name: ISM Manufacturing PMI
-    category: macro
-    family: growth
-    source_provider: ism
-    source_kind: release_series
-    calc_engine: raw
-    calc_params: {external_symbol: ISM_MFG_PMI}
-    supported_assets: [global]
-    supported_timeframes: [event, 1m]
-    output_fields: [value]
-    signal_states: [contraction, neutral, expansion]
-    default_thresholds: {expansion_gte: 50}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: ism_srv_pmi
-    display_name: ISM Services PMI
-    category: macro
-    family: growth
-    source_provider: ism
-    source_kind: release_series
-    calc_engine: raw
-    calc_params: {external_symbol: ISM_SRV_PMI}
-    supported_assets: [global]
-    supported_timeframes: [event, 1m]
-    output_fields: [value]
-    signal_states: [contraction, neutral, expansion]
-    default_thresholds: {expansion_gte: 50}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: fomc_event_window
-    display_name: FOMC Event Window
-    category: macro
-    family: calendar
-    source_provider: federal_reserve
-    source_kind: calendar_event
-    calc_engine: stateful
-    calc_params: {pre_window_hours: 24, post_window_hours: 6}
-    supported_assets: [global]
-    supported_timeframes: [event]
-    output_fields: [state]
-    signal_states: [inactive, pre_event, live_event, post_event]
-    default_thresholds: {}
-    use_cases: [risk_pause, strategy_filter]
-    is_enabled: true
-  - indicator_key: dollar_index
-    display_name: Dollar Index
-    category: macro
-    family: cross_asset
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: DTWEXBGS}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [weakening, neutral, strengthening]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: gold
-    display_name: Gold
-    category: macro
-    family: cross_asset
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: GOLDAMGBD229NLBR}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [soft, neutral, strong]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: vix
-    display_name: VIX
-    category: macro
-    family: cross_asset
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: VIXCLS}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [calm, neutral, stressed]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: wti_crude
-    display_name: WTI Crude Oil
-    category: macro
-    family: cross_asset
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: DCOILWTICO}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [bearish, neutral, bullish]
-    default_thresholds: {}
-    use_cases: [macro_regime, crypto_correlation]
-    is_enabled: true
-  - indicator_key: nasdaq
-    display_name: NASDAQ Composite
-    category: macro
-    family: cross_asset
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: NASDAQCOM}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [bearish, neutral, bullish]
-    default_thresholds: {}
-    use_cases: [macro_regime, crypto_correlation]
-    is_enabled: true
-  - indicator_key: ust_10y_yield
-    display_name: UST 10Y Yield
-    category: macro
-    family: cross_asset
-    source_provider: fred
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: DGS10}
-    supported_assets: [global]
-    supported_timeframes: [1d]
-    output_fields: [value]
-    signal_states: [falling, neutral, rising]
-    default_thresholds: {}
-    use_cases: [macro_regime]
-    is_enabled: true
-  - indicator_key: btc_mvrv
-    display_name: BTC MVRV
-    category: onchain
-    family: valuation
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: mvrv, asset_scope: BTC}
-    supported_assets: [BTC]
-    supported_timeframes: [1h, 24h, 1w]
-    output_fields: [value]
-    signal_states: [undervalued, neutral, stretched, overheated]
-    default_thresholds: {undervalued_lt: 1.0, overheated_gte: 3.5}
-    use_cases: [cycle_filter, review_snapshot]
-    is_enabled: false
-  - indicator_key: eth_mvrv
-    display_name: ETH MVRV
-    category: onchain
-    family: valuation
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: mvrv, asset_scope: ETH}
-    supported_assets: [ETH]
-    supported_timeframes: [1h, 24h, 1w]
-    output_fields: [value]
-    signal_states: [undervalued, neutral, stretched, overheated]
-    default_thresholds: {}
-    use_cases: [cycle_filter, review_snapshot]
-    is_enabled: false
-  - indicator_key: btc_sth_mvrv
-    display_name: BTC STH-MVRV
-    category: onchain
-    family: valuation
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: sth_mvrv, asset_scope: BTC}
-    supported_assets: [BTC]
-    supported_timeframes: [24h, 1w]
-    output_fields: [value]
-    signal_states: [capitulation, neutral, euphoric]
-    default_thresholds: {}
-    use_cases: [short_term_holder_behavior]
-    is_enabled: false
-  - indicator_key: btc_lth_mvrv
-    display_name: BTC LTH-MVRV
-    category: onchain
-    family: valuation
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: lth_mvrv, asset_scope: BTC}
-    supported_assets: [BTC]
-    supported_timeframes: [24h, 1w]
-    output_fields: [value]
-    signal_states: [stressed, neutral, rich]
-    default_thresholds: {}
-    use_cases: [long_term_holder_behavior]
-    is_enabled: false
-  - indicator_key: btc_exchange_net_position_change
-    display_name: BTC Exchange Net Position Change
-    category: onchain
-    family: flows
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: exchange_net_position_change, asset_scope: BTC}
-    supported_assets: [BTC]
-    supported_timeframes: [24h]
-    output_fields: [value]
-    signal_states: [outflow_dominant, neutral, inflow_dominant]
-    default_thresholds: {}
-    use_cases: [exchange_flow_filter, review_snapshot]
-    is_enabled: false
-  - indicator_key: eth_exchange_net_position_change
-    display_name: ETH Exchange Net Position Change
-    category: onchain
-    family: flows
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: exchange_net_position_change, asset_scope: ETH}
-    supported_assets: [ETH]
-    supported_timeframes: [24h]
-    output_fields: [value]
-    signal_states: [outflow_dominant, neutral, inflow_dominant]
-    default_thresholds: {}
-    use_cases: [exchange_flow_filter]
-    is_enabled: false
-  - indicator_key: btc_active_addresses
-    display_name: BTC Active Addresses
-    category: onchain
-    family: activity
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: active_addresses, asset_scope: BTC}
-    supported_assets: [BTC]
-    supported_timeframes: [1h, 24h]
-    output_fields: [value]
-    signal_states: [shrinking, normal, expanding]
-    default_thresholds: {}
-    use_cases: [network_activity_filter]
-    is_enabled: false
-  - indicator_key: eth_active_addresses
-    display_name: ETH Active Addresses
-    category: onchain
-    family: activity
-    source_provider: glassnode
-    source_kind: raw_series
-    calc_engine: raw
-    calc_params: {external_symbol: active_addresses, asset_scope: ETH}
-    supported_assets: [ETH]
-    supported_timeframes: [1h, 24h]
-    output_fields: [value]
-    signal_states: [shrinking, normal, expanding]
-    default_thresholds: {}
-    use_cases: [network_activity_filter]
-    is_enabled: false
+- indicator_key: ema_20
+  display_name: EMA 20
+  category: technical
+  family: trend
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 20
+    input: close
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - bullish
+  - bearish
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - trend_filter
+  - execution_filter
+  - review_snapshot
+  is_enabled: true
+- indicator_key: ema_50
+  display_name: EMA 50
+  category: technical
+  family: trend
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 50
+    input: close
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - bullish
+  - bearish
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - trend_filter
+  - review_snapshot
+  is_enabled: true
+- indicator_key: ema_200
+  display_name: EMA 200
+  category: technical
+  family: trend
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 200
+    input: close
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - bullish
+  - bearish
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - regime_filter
+  - review_snapshot
+  is_enabled: true
+- indicator_key: adx_14
+  display_name: ADX 14
+  category: technical
+  family: trend_strength
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 14
+    input: ohlc
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - weak_trend
+  - developing_trend
+  - strong_trend
+  default_thresholds:
+    weak_trend_lt: 20
+    strong_trend_gte: 25
+  use_cases:
+  - trend_strength_filter
+  - leverage_scaling
+  is_enabled: true
+- indicator_key: macd_12_26_9
+  display_name: MACD 12/26/9
+  category: technical
+  family: momentum
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    fastperiod: 12
+    slowperiod: 26
+    signalperiod: 9
+    input: close
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - macd
+  - signal
+  - hist
+  signal_states:
+  - bullish_cross
+  - bearish_cross
+  - positive_hist
+  - negative_hist
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - momentum_filter
+  - entry_confirmation
+  - review_snapshot
+  is_enabled: true
+- indicator_key: rsi_14
+  display_name: RSI 14
+  category: technical
+  family: momentum
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 14
+    input: close
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - oversold
+  - weak
+  - neutral
+  - strong
+  - overbought
+  default_thresholds:
+    oversold: 30
+    overbought: 70
+  use_cases:
+  - mean_reversion_filter
+  - review_snapshot
+  is_enabled: true
+- indicator_key: atr_14
+  display_name: ATR 14
+  category: technical
+  family: volatility
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 14
+    input: ohlc
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - compressed
+  - normal
+  - expanded
+  default_thresholds: {}
+  use_cases:
+  - stop_distance
+  - position_sizing
+  - volatility_alert
+  is_enabled: true
+- indicator_key: natr_14
+  display_name: NATR 14
+  category: technical
+  family: volatility
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 14
+    input: ohlc
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - compressed
+  - normal
+  - expanded
+  default_thresholds: {}
+  use_cases:
+  - cross_asset_volatility_compare
+  - leverage_scaling
+  is_enabled: true
+- indicator_key: bbands_20_2
+  display_name: BBANDS 20,2
+  category: technical
+  family: volatility
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    period: 20
+    nbdevup: 2
+    nbdevdn: 2
+    input: close
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - upper
+  - middle
+  - lower
+  - bandwidth
+  - percent_b
+  signal_states:
+  - squeeze
+  - normal
+  - breakout_up
+  - breakout_down
+  default_thresholds: {}
+  use_cases:
+  - breakout_filter
+  - squeeze_detection
+  is_enabled: true
+- indicator_key: obv
+  display_name: OBV
+  category: technical
+  family: volume
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    input: close_volume
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - confirming
+  - diverging
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - volume_confirmation
+  - review_snapshot
+  is_enabled: true
+- indicator_key: volume_surge_ratio
+  display_name: Volume Surge Ratio
+  category: technical
+  family: volume
+  source_provider: gateio
+  source_kind: derived_from_candles
+  calc_engine: custom
+  calc_params:
+    baseline_period: 20
+  supported_assets:
+  - spot
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+  output_fields:
+  - value
+  signal_states:
+  - low
+  - normal
+  - elevated
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - breakout_confirmation
+  - abnormal_activity_alert
+  is_enabled: true
+- indicator_key: mark_price
+  display_name: Mark Price
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: raw_contract_field
+  calc_engine: raw
+  calc_params: {}
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 5s
+  - 15s
+  - 1m
+  output_fields:
+  - value
+  signal_states:
+  - normal
+  default_thresholds: {}
+  use_cases:
+  - pnl_marking
+  - liquidation_risk
+  is_enabled: true
+- indicator_key: index_price
+  display_name: Index Price
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: raw_contract_field
+  calc_engine: raw
+  calc_params: {}
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 5s
+  - 15s
+  - 1m
+  output_fields:
+  - value
+  signal_states:
+  - normal
+  default_thresholds: {}
+  use_cases:
+  - pricing_reference
+  - deviation_alert
+  is_enabled: true
+- indicator_key: funding_rate
+  display_name: Funding Rate
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: raw_contract_field
+  calc_engine: raw
+  calc_params: {}
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 1h
+  output_fields:
+  - value
+  signal_states:
+  - short_biased
+  - neutral
+  - long_biased
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - carry_filter
+  - crowding_filter
+  - pnl_adjustment
+  is_enabled: true
+- indicator_key: funding_rate_zscore
+  display_name: Funding Rate Z-Score
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: derived_from_observations
+  calc_engine: custom
+  calc_params:
+    lookback_points: 60
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - normal
+  - stretched
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - crowding_alert
+  - risk_filter
+  is_enabled: true
+- indicator_key: basis_rate
+  display_name: Basis Rate
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: raw_contract_field
+  calc_engine: raw
+  calc_params: {}
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 1h
+  output_fields:
+  - value
+  signal_states:
+  - backwardation
+  - neutral
+  - contango
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - carry_filter
+  - crowding_filter
+  is_enabled: true
+- indicator_key: basis_rate_zscore
+  display_name: Basis Rate Z-Score
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: derived_from_observations
+  calc_engine: custom
+  calc_params:
+    lookback_points: 60
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1h
+  - 4h
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - normal
+  - stretched
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - crowding_alert
+  - risk_filter
+  is_enabled: true
+- indicator_key: price_to_mark_deviation
+  display_name: Price to Mark Deviation
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: custom_from_last_and_mark
+  calc_engine: custom
+  calc_params: {}
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 5s
+  - 15s
+  - 1m
+  output_fields:
+  - value
+  signal_states:
+  - normal
+  - elevated
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - liquidation_risk
+  - execution_risk
+  is_enabled: true
+- indicator_key: price_to_index_deviation
+  display_name: Price to Index Deviation
+  category: technical
+  family: derivatives_structure
+  source_provider: gateio
+  source_kind: custom_from_last_and_index
+  calc_engine: custom
+  calc_params: {}
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 5s
+  - 15s
+  - 1m
+  output_fields:
+  - value
+  signal_states:
+  - normal
+  - elevated
+  - extreme
+  default_thresholds: {}
+  use_cases:
+  - basis_monitoring
+  - manipulation_watch
+  is_enabled: true
+- indicator_key: cvd_delta
+  display_name: CVD / Delta
+  category: technical
+  family: microstructure
+  source_provider: gateio
+  source_kind: derived_from_trades
+  calc_engine: custom
+  calc_params:
+    lookback_trades: 100
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 1h
+  output_fields:
+  - delta
+  - cvd
+  - buy_volume
+  - sell_volume
+  signal_states:
+  - sell_delta
+  - neutral
+  - buy_delta
+  default_thresholds: {}
+  use_cases:
+  - flow_confirmation
+  - breakout_confirmation
+  is_enabled: true
+- indicator_key: open_interest_notional
+  display_name: Open Interest Notional
+  category: technical
+  family: microstructure
+  source_provider: gateio
+  source_kind: derived_from_contract_stats
+  calc_engine: custom
+  calc_params:
+    interval: 5m
+    lookback_points: 2
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  - 1h
+  output_fields:
+  - open_interest
+  - open_interest_notional
+  - open_interest_change
+  signal_states:
+  - falling
+  - neutral
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - leverage_confirmation
+  - participation_filter
+  is_enabled: true
+- indicator_key: depth_liquidity
+  display_name: Depth Liquidity
+  category: technical
+  family: microstructure
+  source_provider: gateio
+  source_kind: derived_from_order_book
+  calc_engine: custom
+  calc_params:
+    notional: 10000
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  output_fields:
+  - depth_10bps
+  - depth_50bps
+  - depth_100bps
+  - spread_bps
+  signal_states:
+  - thin
+  - normal
+  default_thresholds: {}
+  use_cases:
+  - execution_quality
+  - liquidity_filter
+  is_enabled: true
+- indicator_key: slippage_bps
+  display_name: Slippage BPS
+  category: technical
+  family: microstructure
+  source_provider: gateio
+  source_kind: derived_from_order_book
+  calc_engine: custom
+  calc_params:
+    notional: 10000
+  supported_assets:
+  - perpetual
+  supported_timeframes:
+  - 1m
+  - 5m
+  output_fields:
+  - buy_slippage_bps
+  - sell_slippage_bps
+  - spread_bps
+  signal_states:
+  - normal
+  - wide
+  default_thresholds: {}
+  use_cases:
+  - execution_quality
+  - risk_filter
+  is_enabled: true
+- indicator_key: us_dff
+  display_name: Effective Federal Funds Rate
+  category: macro
+  family: liquidity
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DFF
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - easing
+  - neutral
+  - tightening
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_2y_yield
+  display_name: US 2Y Treasury Yield
+  category: macro
+  family: rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DGS2
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - stable
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_10y_yield
+  display_name: US 10Y Treasury Yield
+  category: macro
+  family: rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DGS10
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - stable
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_10y_2y_spread
+  display_name: US 10Y-2Y Spread
+  category: macro
+  family: curve
+  source_provider: fred
+  source_kind: derived_from_series
+  calc_engine: custom
+  calc_params:
+    formula: us_10y_yield - us_2y_yield
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - deep_inversion
+  - inversion
+  - flat
+  - steepening
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: hy_oas
+  display_name: HY OAS
+  category: macro
+  family: credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: BAMLH0A0HYM2
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - tight
+  - neutral
+  - wide
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: tga
+  display_name: TGA
+  category: macro
+  family: liquidity
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: WTREGEN
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - draining
+  - neutral
+  - absorbing
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: on_rrp
+  display_name: ON RRP
+  category: macro
+  family: liquidity
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: RRPONTSYD
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - neutral
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: financial_conditions
+  display_name: Financial Conditions
+  category: macro
+  family: liquidity
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: NFCI
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - loose
+  - neutral
+  - tight
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_cpi_yoy
+  display_name: US CPI YoY
+  category: macro
+  family: inflation
+  source_provider: bls
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CUUR0000SA0
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  - 1m
+  output_fields:
+  - value
+  - surprise
+  signal_states:
+  - cooling
+  - neutral
+  - heating
+  default_thresholds: {}
+  use_cases:
+  - event_risk
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_core_cpi_yoy
+  display_name: US Core CPI YoY
+  category: macro
+  family: inflation
+  source_provider: bls
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CUUR0000SA0L1E
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  - 1m
+  output_fields:
+  - value
+  - surprise
+  signal_states:
+  - cooling
+  - neutral
+  - heating
+  default_thresholds: {}
+  use_cases:
+  - event_risk
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_nfp
+  display_name: US NFP
+  category: macro
+  family: labor
+  source_provider: bls
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CES0000000001
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  - 1m
+  output_fields:
+  - value
+  - surprise
+  signal_states:
+  - weak
+  - neutral
+  - strong
+  default_thresholds: {}
+  use_cases:
+  - event_risk
+  - macro_regime
+  is_enabled: true
+- indicator_key: us_unemployment_rate
+  display_name: US Unemployment Rate
+  category: macro
+  family: labor
+  source_provider: bls
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: LNS14000000
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  - 1m
+  output_fields:
+  - value
+  - surprise
+  signal_states:
+  - weak
+  - neutral
+  - strong
+  default_thresholds: {}
+  use_cases:
+  - event_risk
+  - macro_regime
+  is_enabled: true
+- indicator_key: ism_mfg_pmi
+  display_name: ISM Manufacturing PMI
+  category: macro
+  family: growth
+  source_provider: ism
+  source_kind: release_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: ISM_MFG_PMI
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  - 1m
+  output_fields:
+  - value
+  signal_states:
+  - contraction
+  - neutral
+  - expansion
+  default_thresholds:
+    expansion_gte: 50
+  use_cases:
+  - macro_regime
+  is_enabled: true
+  note: release_series; routed through macro calendar before provider.fetch_latest().
+- indicator_key: ism_srv_pmi
+  display_name: ISM Services PMI
+  category: macro
+  family: growth
+  source_provider: ism
+  source_kind: release_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: ISM_SRV_PMI
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  - 1m
+  output_fields:
+  - value
+  signal_states:
+  - contraction
+  - neutral
+  - expansion
+  default_thresholds:
+    expansion_gte: 50
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: fomc_event_window
+  display_name: FOMC Event Window
+  category: macro
+  family: calendar
+  source_provider: federal_reserve
+  source_kind: calendar_event
+  calc_engine: stateful
+  calc_params:
+    pre_window_hours: 24
+    post_window_hours: 6
+  supported_assets:
+  - global
+  supported_timeframes:
+  - event
+  output_fields:
+  - state
+  signal_states:
+  - inactive
+  - pre_event
+  - live_event
+  - post_event
+  default_thresholds: {}
+  use_cases:
+  - risk_pause
+  - strategy_filter
+  is_enabled: true
+- indicator_key: dollar_index
+  display_name: Dollar Index
+  category: macro
+  family: cross_asset
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DTWEXBGS
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - weakening
+  - neutral
+  - strengthening
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: gold
+  display_name: Gold
+  category: macro
+  family: cross_asset
+  source_provider: gateio
+  source_kind: spot_ticker
+  calc_engine: raw
+  calc_params:
+    external_symbol: XAUT_USDT
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - falling
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - macro_cross_asset
+  - risk_hedge_confirmation
+  is_enabled: true
+  note: Gate.io XAUT_USDT spot price as gold proxy; high correlation with XAU/USD
+    but not official macro data.
+- indicator_key: vix
+  display_name: VIX
+  category: macro
+  family: cross_asset
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: VIXCLS
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - calm
+  - neutral
+  - stressed
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: wti_crude
+  display_name: WTI Crude Oil
+  category: macro
+  family: cross_asset
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DCOILWTICO
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - bearish
+  - neutral
+  - bullish
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  - crypto_correlation
+  is_enabled: true
+- indicator_key: nasdaq
+  display_name: NASDAQ Composite
+  category: macro
+  family: cross_asset
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: NASDAQCOM
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - bearish
+  - neutral
+  - bullish
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  - crypto_correlation
+  is_enabled: true
+- indicator_key: ust_10y_yield
+  display_name: UST 10Y Yield
+  category: macro
+  family: cross_asset
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DGS10
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - neutral
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: btc_mvrv
+  display_name: BTC MVRV
+  category: onchain
+  family: valuation
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: mvrv
+    asset_scope: BTC
+  supported_assets:
+  - BTC
+  supported_timeframes:
+  - 1h
+  - 24h
+  - 1w
+  output_fields:
+  - value
+  signal_states:
+  - undervalued
+  - neutral
+  - stretched
+  - overheated
+  default_thresholds:
+    undervalued_lt: 1.0
+    overheated_gte: 3.5
+  use_cases:
+  - cycle_filter
+  - review_snapshot
+  is_enabled: false
+- indicator_key: eth_mvrv
+  display_name: ETH MVRV
+  category: onchain
+  family: valuation
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: mvrv
+    asset_scope: ETH
+  supported_assets:
+  - ETH
+  supported_timeframes:
+  - 1h
+  - 24h
+  - 1w
+  output_fields:
+  - value
+  signal_states:
+  - undervalued
+  - neutral
+  - stretched
+  - overheated
+  default_thresholds: {}
+  use_cases:
+  - cycle_filter
+  - review_snapshot
+  is_enabled: false
+- indicator_key: btc_sth_mvrv
+  display_name: BTC STH-MVRV
+  category: onchain
+  family: valuation
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: sth_mvrv
+    asset_scope: BTC
+  supported_assets:
+  - BTC
+  supported_timeframes:
+  - 24h
+  - 1w
+  output_fields:
+  - value
+  signal_states:
+  - capitulation
+  - neutral
+  - euphoric
+  default_thresholds: {}
+  use_cases:
+  - short_term_holder_behavior
+  is_enabled: false
+- indicator_key: btc_lth_mvrv
+  display_name: BTC LTH-MVRV
+  category: onchain
+  family: valuation
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: lth_mvrv
+    asset_scope: BTC
+  supported_assets:
+  - BTC
+  supported_timeframes:
+  - 24h
+  - 1w
+  output_fields:
+  - value
+  signal_states:
+  - stressed
+  - neutral
+  - rich
+  default_thresholds: {}
+  use_cases:
+  - long_term_holder_behavior
+  is_enabled: false
+- indicator_key: btc_exchange_net_position_change
+  display_name: BTC Exchange Net Position Change
+  category: onchain
+  family: flows
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: exchange_net_position_change
+    asset_scope: BTC
+  supported_assets:
+  - BTC
+  supported_timeframes:
+  - 24h
+  output_fields:
+  - value
+  signal_states:
+  - outflow_dominant
+  - neutral
+  - inflow_dominant
+  default_thresholds: {}
+  use_cases:
+  - exchange_flow_filter
+  - review_snapshot
+  is_enabled: false
+- indicator_key: eth_exchange_net_position_change
+  display_name: ETH Exchange Net Position Change
+  category: onchain
+  family: flows
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: exchange_net_position_change
+    asset_scope: ETH
+  supported_assets:
+  - ETH
+  supported_timeframes:
+  - 24h
+  output_fields:
+  - value
+  signal_states:
+  - outflow_dominant
+  - neutral
+  - inflow_dominant
+  default_thresholds: {}
+  use_cases:
+  - exchange_flow_filter
+  is_enabled: false
+- indicator_key: btc_active_addresses
+  display_name: BTC Active Addresses
+  category: onchain
+  family: activity
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: active_addresses
+    asset_scope: BTC
+  supported_assets:
+  - BTC
+  supported_timeframes:
+  - 1h
+  - 24h
+  output_fields:
+  - value
+  signal_states:
+  - shrinking
+  - normal
+  - expanding
+  default_thresholds: {}
+  use_cases:
+  - network_activity_filter
+  is_enabled: false
+- indicator_key: eth_active_addresses
+  display_name: ETH Active Addresses
+  category: onchain
+  family: activity
+  source_provider: glassnode
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: active_addresses
+    asset_scope: ETH
+  supported_assets:
+  - ETH
+  supported_timeframes:
+  - 1h
+  - 24h
+  output_fields:
+  - value
+  signal_states:
+  - shrinking
+  - normal
+  - expanding
+  default_thresholds: {}
+  use_cases:
+  - network_activity_filter
+  is_enabled: false
+- indicator_key: sofr
+  display_name: SOFR
+  category: macro
+  family: policy_rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: SOFR
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: us03m_yield
+  display_name: US 3M Yield
+  category: macro
+  family: policy_rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DGS3MO
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: us30y_yield
+  display_name: US 30Y Yield
+  category: macro
+  family: policy_rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DGS30
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: breakeven_5y
+  display_name: 5Y Breakeven
+  category: macro
+  family: inflation_prices
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: T5YIE
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: breakeven_10y
+  display_name: 10Y Breakeven
+  category: macro
+  family: inflation_prices
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: T10YIE
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: cpi_mom
+  display_name: CPI MoM
+  category: macro
+  family: inflation_prices
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CPIAUCSL
+    transform: mom_pct
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: core_cpi_mom
+  display_name: Core CPI MoM
+  category: macro
+  family: inflation_prices
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CPILFESL
+    transform: mom_pct
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: pce_yoy
+  display_name: PCE YoY
+  category: macro
+  family: inflation_prices
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: PCEPI
+    transform: yoy_pct
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: core_pce_yoy
+  display_name: Core PCE YoY
+  category: macro
+  family: inflation_prices
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: PCEPILFE
+    transform: yoy_pct
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: average_hourly_earnings_yoy
+  display_name: Avg Hourly Earnings YoY
+  category: macro
+  family: growth_jobs
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CES0500000003
+    transform: yoy_pct
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: initial_claims
+  display_name: Initial Jobless Claims
+  category: macro
+  family: growth_jobs
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: ICSA
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: continuing_claims
+  display_name: Continuing Claims
+  category: macro
+  family: growth_jobs
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CCSA
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: jolts_openings
+  display_name: JOLTS Job Openings
+  category: macro
+  family: growth_jobs
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: JTSJOL
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: gdp_qoq
+  display_name: GDP QoQ Annualized
+  category: macro
+  family: growth_jobs
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: A191RL1Q225SBEA
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: fed_balance_sheet
+  display_name: Fed Balance Sheet
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: WALCL
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: bank_reserves
+  display_name: Bank Reserves
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: WRESBAL
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: m2
+  display_name: M2 Money Supply
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: M2SL
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: ig_spread
+  display_name: IG Credit Spread
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: BAMLC0A0CM
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: qqq
+  display_name: QQQ
+  category: macro
+  family: cross_asset
+  source_provider: tiingo
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: QQQ
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - cross_asset_confirmation
+  is_enabled: true
+- indicator_key: spy
+  display_name: SPY
+  category: macro
+  family: cross_asset
+  source_provider: tiingo
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: SPY
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - cross_asset_confirmation
+  is_enabled: true
+- indicator_key: hyg
+  display_name: HYG
+  category: macro
+  family: cross_asset
+  source_provider: tiingo
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: HYG
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - cross_asset_confirmation
+  is_enabled: true
+- indicator_key: btc_usdt
+  display_name: BTC/USDT
+  category: macro
+  family: cross_asset
+  source_provider: gateio
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: BTC_USDT
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - crypto_market
+  is_enabled: true
+- indicator_key: eth_usdt
+  display_name: ETH/USDT
+  category: macro
+  family: cross_asset
+  source_provider: gateio
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: ETH_USDT
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - crypto_market
+  is_enabled: true
+- indicator_key: eth_btc
+  display_name: ETH/BTC
+  category: macro
+  family: cross_asset
+  source_provider: gateio
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: ETH_BTC
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - crypto_market
+  is_enabled: true
+- indicator_key: usd_cny
+  display_name: USD/CNY
+  category: macro
+  family: cross_asset
+  source_provider: openexchangerates
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: CNY
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fx_rate
+  is_enabled: true

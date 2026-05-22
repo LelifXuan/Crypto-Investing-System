@@ -88,6 +88,8 @@ async def get_structure_bundle(
                 "cache_state": "missing",
                 "is_stale": False,
                 "status_message": "暂无结构快照，已加入后台预计算队列。",
+                "freshness_state": "missing",
+                "freshness_message": "暂无可用 K 线，后台会继续尝试补齐。",
             }
         )
     bundle = await service.get_bundle(
@@ -96,7 +98,12 @@ async def get_structure_bundle(
         include_geometry=include_geometry,
         candles_limit=candles_limit,
     )
-    if bundle.cache_state == "missing" or bundle.is_stale:
+    needs_refresh = (
+        bundle.cache_state == "missing"
+        or bundle.is_stale
+        or bundle.freshness_state in {"lagging", "stale", "missing"}
+    )
+    if needs_refresh:
         await precompute_service.enqueue_hint(
             PrecomputeHintRequest(
                 current_page="market-structure",
@@ -110,6 +117,8 @@ async def get_structure_bundle(
             bundle.status_message = "暂无结构快照，已加入后台预计算队列。"
         elif bundle.is_stale:
             bundle.status_message = "结构快照可能滞后，后台正在准备新数据。"
+        elif bundle.freshness_state in {"lagging", "stale"}:
+            bundle.status_message = "K 线数据滞后，后台正在更新 K 线与结构快照。"
     return bundle
 
 

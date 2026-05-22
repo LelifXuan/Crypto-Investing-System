@@ -9,14 +9,13 @@ import httpx
 
 from app.core.config import settings
 
+UTC = timezone.utc
+
 
 def _decimal(value: Any, default: str = "0") -> Decimal:
     if value in (None, ""):
         return Decimal(default)
     return Decimal(str(value))
-
-
-UTC = timezone.utc
 
 
 def _dt_from_seconds(value: Any) -> datetime:

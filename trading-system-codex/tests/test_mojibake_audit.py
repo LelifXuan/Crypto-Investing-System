@@ -49,8 +49,7 @@ def test_api_endpoints_have_no_display_mojibake():
     paths = [str(p.relative_to(ROOT)) for p in py_files]
     findings = _filter_display(audit_mojibake(ROOT, paths))
     assert findings == [], (
-        f"API endpoints have display-level mojibake: "
-        f"{[(f.file_path, f.line) for f in findings]}"
+        f"API endpoints have display-level mojibake: {[(f.file_path, f.line) for f in findings]}"
     )
 
 
@@ -60,8 +59,7 @@ def test_schema_files_have_no_display_mojibake():
     paths = [str(p.relative_to(ROOT)) for p in py_files]
     findings = _filter_display(audit_mojibake(ROOT, paths))
     assert findings == [], (
-        f"Schema files have display-level mojibake: "
-        f"{[(f.file_path, f.line) for f in findings]}"
+        f"Schema files have display-level mojibake: {[(f.file_path, f.line) for f in findings]}"
     )
 
 

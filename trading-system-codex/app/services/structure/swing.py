@@ -207,7 +207,11 @@ class SwingScorer:
                     for pivot in pivots[-12:]
                 ],
                 labels_json=["zigzag"],
-                meta_json={"role": "swing_zigzag", "pivot_count": len(pivots), "extend_to_latest": False},
+                meta_json={
+                    "role": "swing_zigzag",
+                    "pivot_count": len(pivots),
+                    "extend_to_latest": False,
+                },
                 created_at=generated_at,
             )
         ]
@@ -217,54 +221,55 @@ class SwingScorer:
             lag_bars = latest_idx - last_pivot.index
             if lag_bars > 0:
                 latest = candles[-1]
-                geometry.append(StructureGeometry(
-                    geometry_id=build_structure_id("swing", timeframe, "live-leg"),
-                    instrument_id=instrument_id,
-                    timeframe=timeframe,
-                    snapshot_version="pending",
-                    system="swing",
-                    kind="swing_live_leg",
-                    status="provisional",
-                    visible=True,
-                    points_json=[
-                        {
-                            "ts": last_pivot.ts.isoformat(),
-                            "price": last_pivot.price,
-                            "label": last_pivot.kind,
-                            "index": last_pivot.index,
-                            "confirmed": True,
+                geometry.append(
+                    StructureGeometry(
+                        geometry_id=build_structure_id("swing", timeframe, "live-leg"),
+                        instrument_id=instrument_id,
+                        timeframe=timeframe,
+                        snapshot_version="pending",
+                        system="swing",
+                        kind="swing_live_leg",
+                        status="provisional",
+                        visible=True,
+                        points_json=[
+                            {
+                                "ts": last_pivot.ts.isoformat(),
+                                "price": last_pivot.price,
+                                "label": last_pivot.kind,
+                                "index": last_pivot.index,
+                                "confirmed": True,
+                            },
+                            {
+                                "ts": latest.ts_open.isoformat(),
+                                "price": float(latest.close),
+                                "label": "latest_close",
+                                "index": latest_idx,
+                                "confirmed": False,
+                            },
+                        ],
+                        labels_json=["provisional live swing leg"],
+                        meta_json={
+                            "role": "swing_live_leg",
+                            "pivot_count": len(pivots),
+                            "last_confirmed_index": last_pivot.index,
+                            "latest_index": latest_idx,
+                            "lag_bars": lag_bars,
+                            "lag_ratio": round(lag_bars / max(len(candles) - 1, 1), 4),
+                            "extend_to_latest": False,
+                            "provisional": True,
+                            "score_uses_provisional_tail": False,
+                            "display_hint": "虚线尾段为最新收盘观察线，不参与确认评分。",
                         },
-                        {
-                            "ts": latest.ts_open.isoformat(),
-                            "price": float(latest.close),
-                            "label": "latest_close",
-                            "index": latest_idx,
-                            "confirmed": False,
-                        },
-                    ],
-                    labels_json=["provisional live swing leg"],
-                    meta_json={
-                        "role": "swing_live_leg",
-                        "pivot_count": len(pivots),
-                        "last_confirmed_index": last_pivot.index,
-                        "latest_index": latest_idx,
-                        "lag_bars": lag_bars,
-                        "lag_ratio": round(lag_bars / max(len(candles) - 1, 1), 4),
-                        "extend_to_latest": False,
-                        "provisional": True,
-                        "score_uses_provisional_tail": False,
-                        "display_hint": "虚线尾段为最新收盘观察线，不参与确认评分。",
-                    },
-                    created_at=generated_at,
-                ))
+                        created_at=generated_at,
+                    )
+                )
         return geometry
 
     def _symmetry_score(self, pivots: list[Pivot]) -> float:
         if len(pivots) < 4:
             return 0.55
         distances = [
-            abs(pivots[idx].price - pivots[idx - 1].price)
-            for idx in range(1, len(pivots[-6:]))
+            abs(pivots[idx].price - pivots[idx - 1].price) for idx in range(1, len(pivots[-6:]))
         ]
         if not distances:
             return 0.55

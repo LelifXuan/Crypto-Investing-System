@@ -67,7 +67,9 @@ STRATEGY_TYPE_LABELS = {
 }
 
 
-def _confirmation_gates(trigger_ready: bool, rr: float, min_rr: float, side_score: float, trigger_score: float) -> list[str]:
+def _confirmation_gates(
+    trigger_ready: bool, rr: float, min_rr: float, side_score: float, trigger_score: float
+) -> list[str]:
     gates = []
     if not trigger_ready:
         gates.append("入场触发尚未完成")
@@ -82,7 +84,9 @@ def _confirmation_gates(trigger_ready: bool, rr: float, min_rr: float, side_scor
 
 def _next_trigger_text(side: str, snapshot: dict[str, Any]) -> str:
     price = number(snapshot.get("current_price"))
-    key_level = snapshot.get(f"{side}_entry") or snapshot.get("key_support" if side == "long" else "key_resistance")
+    key_level = snapshot.get(f"{side}_entry") or snapshot.get(
+        "key_support" if side == "long" else "key_resistance"
+    )
     if key_level and price:
         key_fmt = f"{float(key_level):,.0f}"
         if side == "long":
@@ -111,8 +115,20 @@ class StrategyGenerator:
 
         long_plan = self._plan("long", snapshot, scores.long_score, state)
         short_plan = self._plan("short", snapshot, scores.short_score, state)
-        primary = long_plan if bias == "long" else short_plan if bias == "short" else self._empty_plan("neutral")
-        alternative = short_plan if bias == "long" else long_plan if bias == "short" else self._empty_plan("neutral")
+        primary = (
+            long_plan
+            if bias == "long"
+            else short_plan
+            if bias == "short"
+            else self._empty_plan("neutral")
+        )
+        alternative = (
+            short_plan
+            if bias == "long"
+            else long_plan
+            if bias == "short"
+            else self._empty_plan("neutral")
+        )
 
         if bias in {"long", "short"} and not primary.get("is_valid", True):
             state = "INVALID_PLAN_LEVELS"
@@ -151,8 +167,14 @@ class StrategyGenerator:
             "long_plan": long_plan,
             "short_plan": short_plan,
             "risk_reward": {
-                "long": {"value": round(scores.rr_long, 2) if scores.rr_long is not None else None, "label": risk_reward_label(scores.rr_long)},
-                "short": {"value": round(scores.rr_short, 2) if scores.rr_short is not None else None, "label": risk_reward_label(scores.rr_short)},
+                "long": {
+                    "value": round(scores.rr_long, 2) if scores.rr_long is not None else None,
+                    "label": risk_reward_label(scores.rr_long),
+                },
+                "short": {
+                    "value": round(scores.rr_short, 2) if scores.rr_short is not None else None,
+                    "label": risk_reward_label(scores.rr_short),
+                },
             },
             "entry_checklist": self._entry_checklist(snapshot, state, bias, scores),
             "gates": self._gates(snapshot, scores),
@@ -175,19 +197,44 @@ class StrategyGenerator:
         th = self.thresholds
         hard_reasons = self._hard_gate_reasons(snapshot)
         if hard_reasons:
-            return {"state": "RISK_OFF", "bias": "risk_off", "reasons": hard_reasons, "entry_mode": "no_trade"}
+            return {
+                "state": "RISK_OFF",
+                "bias": "risk_off",
+                "reasons": hard_reasons,
+                "entry_mode": "no_trade",
+            }
         if clamp(snapshot.get("event_risk_score", 0)) >= th["event_wait"]:
-            return {"state": "EVENT_WAIT", "bias": "neutral", "reasons": ["重大事件窗口临近，等待落地后重新评估。"], "entry_mode": "no_trade"}
+            return {
+                "state": "EVENT_WAIT",
+                "bias": "neutral",
+                "reasons": ["重大事件窗口临近，等待落地后重新评估。"],
+                "entry_mode": "no_trade",
+            }
         if scores.data_quality_score < th["data_quality_min_decision"]:
-            return {"state": "NO_EDGE", "bias": "neutral", "reasons": ["当前数据质量低于最低决策要求，暂不生成交易策略。"], "entry_mode": "no_trade"}
+            return {
+                "state": "NO_EDGE",
+                "bias": "neutral",
+                "reasons": ["当前数据质量低于最低决策要求，暂不生成交易策略。"],
+                "entry_mode": "no_trade",
+            }
         if scores.long_score < th["no_edge_score"] and scores.short_score < th["no_edge_score"]:
-            return {"state": "NO_EDGE", "bias": "neutral", "reasons": ["多空双方都没有形成可交易信号。"], "entry_mode": "no_trade"}
+            return {
+                "state": "NO_EDGE",
+                "bias": "neutral",
+                "reasons": ["多空双方都没有形成可交易信号。"],
+                "entry_mode": "no_trade",
+            }
         if (
             scores.long_score >= th["conflict_both_high"]
             and scores.short_score >= th["conflict_both_high"]
             and abs(scores.long_score - scores.short_score) < th["conflict_gap"]
         ):
-            return {"state": "CONFLICTED_NO_TRADE", "bias": "conflicted", "reasons": ["多空证据同时较强，方向冲突未解除。"], "entry_mode": "no_trade"}
+            return {
+                "state": "CONFLICTED_NO_TRADE",
+                "bias": "conflicted",
+                "reasons": ["多空证据同时较强，方向冲突未解除。"],
+                "entry_mode": "no_trade",
+            }
 
         side = None
         if scores.long_score - scores.short_score >= th["dominant_gap"]:
@@ -195,7 +242,12 @@ class StrategyGenerator:
         elif scores.short_score - scores.long_score >= th["dominant_gap"]:
             side = "short"
         if side is None:
-            return {"state": "OBSERVE", "bias": "neutral", "reasons": ["多空分差不足，等待更清晰的结构或触发信号。"], "entry_mode": "no_trade"}
+            return {
+                "state": "OBSERVE",
+                "bias": "neutral",
+                "reasons": ["多空分差不足，等待更清晰的结构或触发信号。"],
+                "entry_mode": "no_trade",
+            }
 
         side_score = scores.long_score if side == "long" else scores.short_score
         setup_ready = bool(snapshot.get(f"{side}_setup_ready"))
@@ -212,10 +264,26 @@ class StrategyGenerator:
                 "entry_mode": trend_follow.get("entry_mode"),
             }
         if trend_follow.get("ready"):
-            return {"state": trend_follow["state"], "bias": side, "reasons": [], "strong_trend_follow": trend_follow, "entry_mode": trend_follow.get("entry_mode")}
+            return {
+                "state": trend_follow["state"],
+                "bias": side,
+                "reasons": [],
+                "strong_trend_follow": trend_follow,
+                "entry_mode": trend_follow.get("entry_mode"),
+            }
 
-        if side_score >= th["trigger_score"] and setup_ready and trigger_ready and (rr or 0) >= th["min_rr_trade"]:
-            return {"state": f"{side.upper()}_TRIGGERED", "bias": side, "reasons": [], "entry_mode": "pullback_confirm"}
+        if (
+            side_score >= th["trigger_score"]
+            and setup_ready
+            and trigger_ready
+            and (rr or 0) >= th["min_rr_trade"]
+        ):
+            return {
+                "state": f"{side.upper()}_TRIGGERED",
+                "bias": side,
+                "reasons": [],
+                "entry_mode": "pullback_confirm",
+            }
         if side_score >= th["setup_score"] and setup_ready:
             lower_tf = evaluate_lower_tf_trigger(side, snapshot, None, self.config)
             if lower_tf.get("missing"):
@@ -228,7 +296,9 @@ class StrategyGenerator:
                     "blocking_gates": ["缺少次级别周期信号"],
                     "next_trigger": "等待 4h 或 1h 周期出现明确触发信号后重新评估入场。",
                 }
-            gates = _confirmation_gates(trigger_ready, rr or 0, th["min_rr_trade"], side_score, th["trigger_score"])
+            gates = _confirmation_gates(
+                trigger_ready, rr or 0, th["min_rr_trade"], side_score, th["trigger_score"]
+            )
             return {
                 "state": "WAIT_LONG_CONFIRMATION" if side == "long" else "WAIT_SHORT_CONFIRMATION",
                 "bias": side,
@@ -246,7 +316,12 @@ class StrategyGenerator:
                 "blocking_gates": ["setup 结构尚未形成", "入场触发条件未满足"],
                 "next_trigger": f"等待{BIAS_LABELS[side]}方向 setup 结构完整形成后进入 WAIT_CONFIRMATION 阶段。",
             }
-        return {"state": "OBSERVE", "bias": "neutral", "reasons": ["方向优势不足，继续观察。"], "entry_mode": "no_trade"}
+        return {
+            "state": "OBSERVE",
+            "bias": "neutral",
+            "reasons": ["方向优势不足，继续观察。"],
+            "entry_mode": "no_trade",
+        }
 
     def _permission(self, state: str) -> str:
         if state in self.state_permissions:
@@ -259,7 +334,9 @@ class StrategyGenerator:
             return "blocked"
         return "observe_only"
 
-    def _plan(self, side: str, snapshot: dict[str, Any], side_score: float, state: str) -> dict[str, Any]:
+    def _plan(
+        self, side: str, snapshot: dict[str, Any], side_score: float, state: str
+    ) -> dict[str, Any]:
         price = number(snapshot.get("current_price"))
         atr = max(number(snapshot.get("atr_14"), price * 0.025), price * 0.006) if price else 0.0
         if not price:
@@ -270,8 +347,16 @@ class StrategyGenerator:
             tp1 = number(snapshot.get("long_tp1"), entry + atr * 2.2)
             tp2 = number(snapshot.get("long_tp2"), entry + atr * 3.6)
             pattern = "breakout_long" if snapshot.get("breakout_up") else "trend_pullback_long"
-            conditions = ["高周期方向不冲突", "价格回踩后重新站稳关键位", "成交量或资金流至少一项同步改善"]
-            invalidation = ["收盘跌回关键支撑下方", "跌破最近结构低点", "主动买入无法延续且价格失守入场区"]
+            conditions = [
+                "高周期方向不冲突",
+                "价格回踩后重新站稳关键位",
+                "成交量或资金流至少一项同步改善",
+            ]
+            invalidation = [
+                "收盘跌回关键支撑下方",
+                "跌破最近结构低点",
+                "主动买入无法延续且价格失守入场区",
+            ]
             active = state in {"LONG_TRIGGERED", "BREAKOUT_TRIGGERED", "TREND_FOLLOW_TRIGGERED"}
         else:
             entry = number(snapshot.get("short_entry"), price * 1.005)
@@ -279,22 +364,47 @@ class StrategyGenerator:
             tp1 = number(snapshot.get("short_tp1"), entry - atr * 2.2)
             tp2 = number(snapshot.get("short_tp2"), entry - atr * 3.6)
             pattern = "breakdown_short" if snapshot.get("breakout_down") else "trend_retest_short"
-            conditions = ["高周期方向不冲突", "反抽关键位失败或跌破支撑", "主动卖出或空头动量继续增强"]
-            invalidation = ["收盘重新站上关键阻力", "突破最近结构高点", "主动卖出衰竭且价格收回入场区"]
+            conditions = [
+                "高周期方向不冲突",
+                "反抽关键位失败或跌破支撑",
+                "主动卖出或空头动量继续增强",
+            ]
+            invalidation = [
+                "收盘重新站上关键阻力",
+                "突破最近结构高点",
+                "主动卖出衰竭且价格收回入场区",
+            ]
             active = state in {"SHORT_TRIGGERED", "BREAKDOWN_TRIGGERED", "TREND_FOLLOW_TRIGGERED"}
-        levels = normalize_plan_levels(side, entry, stop, tp1, tp2, price, atr, min_rr=self.thresholds.get("min_rr_trade", 1.5))
+        levels = normalize_plan_levels(
+            side, entry, stop, tp1, tp2, price, atr, min_rr=self.thresholds.get("min_rr_trade", 1.5)
+        )
         rr = levels["rr1"] if levels["is_valid"] else None
         return {
             "pattern_type": pattern,
             "pattern_label": STRATEGY_TYPE_LABELS[pattern],
             "direction": side,
-            "entry_mode": "breakout_follow" if pattern == "breakout_long" else "breakdown_follow" if pattern == "breakdown_short" else "pullback_confirm",
+            "entry_mode": "breakout_follow"
+            if pattern == "breakout_long"
+            else "breakdown_follow"
+            if pattern == "breakdown_short"
+            else "pullback_confirm",
             "entry_condition": "触发条件已接近满足" if active else "等待入场确认",
-            "entry_zone": [round(levels["entry"] * 0.998, 2), round(levels["entry"] * 1.002, 2)] if levels["entry"] else None,
-            "entry_price_range": [round(levels["entry"] * 0.998, 2), round(levels["entry"] * 1.002, 2)] if levels["entry"] else None,
+            "entry_zone": [round(levels["entry"] * 0.998, 2), round(levels["entry"] * 1.002, 2)]
+            if levels["entry"]
+            else None,
+            "entry_price_range": [
+                round(levels["entry"] * 0.998, 2),
+                round(levels["entry"] * 1.002, 2),
+            ]
+            if levels["entry"]
+            else None,
             "entry_price": round(levels["entry"], 2) if levels["entry"] else None,
-            "stop_loss_rule": f"结构失效或价格触发 {round(levels['stop'], 2)} 附近" if levels["stop"] else "暂无止损位",
-            "take_profit_rule": f"第一目标 {round(levels['tp1'], 2)}，第二目标 {round(levels['tp2'], 2)}" if levels["tp1"] else "暂无止盈位",
+            "stop_loss_rule": f"结构失效或价格触发 {round(levels['stop'], 2)} 附近"
+            if levels["stop"]
+            else "暂无止损位",
+            "take_profit_rule": f"第一目标 {round(levels['tp1'], 2)}，第二目标 {round(levels['tp2'], 2)}"
+            if levels["tp1"]
+            else "暂无止盈位",
             "stop_price": round(levels["stop"], 2) if levels["stop"] else None,
             "take_profit_1": round(levels["tp1"], 2) if levels["tp1"] else None,
             "take_profit_2": round(levels["tp2"], 2) if levels["tp2"] else None,
@@ -340,37 +450,105 @@ class StrategyGenerator:
             "is_valid": True,
         }
 
-    def _entry_checklist(self, snapshot: dict[str, Any], state: str, bias: str, scores: DirectionScores) -> list[dict[str, Any]]:
+    def _entry_checklist(
+        self, snapshot: dict[str, Any], state: str, bias: str, scores: DirectionScores
+    ) -> list[dict[str, Any]]:
         if bias not in {"long", "short"}:
             return [
                 {"condition": "方向优势", "current_value": "多空分差不足", "status": "未满足"},
-                {"condition": "数据质量", "current_value": round2(scores.data_quality_score), "status": "部分满足"},
+                {
+                    "condition": "数据质量",
+                    "current_value": round2(scores.data_quality_score),
+                    "status": "部分满足",
+                },
             ]
         gap = abs(scores.long_score - scores.short_score)
         return [
-            {"condition": "方向分差", "current_value": round2(gap), "status": "满足" if gap >= self.thresholds["dominant_gap"] else "部分满足"},
-            {"condition": "入场触发", "current_value": STATE_LABELS.get(state, state), "status": "满足" if "TRIGGERED" in state else "部分满足"},
-            {"condition": "盘口执行", "current_value": round2(snapshot.get("execution_quality")), "status": "满足" if number(snapshot.get("execution_quality")) >= 60 else "未满足"},
-            {"condition": "事件风险", "current_value": snapshot.get("event_window_status", "normal"), "status": "满足" if snapshot.get("event_risk_score", 0) < self.thresholds["event_wait"] else "未满足"},
+            {
+                "condition": "方向分差",
+                "current_value": round2(gap),
+                "status": "满足" if gap >= self.thresholds["dominant_gap"] else "部分满足",
+            },
+            {
+                "condition": "入场触发",
+                "current_value": STATE_LABELS.get(state, state),
+                "status": "满足" if "TRIGGERED" in state else "部分满足",
+            },
+            {
+                "condition": "盘口执行",
+                "current_value": round2(snapshot.get("execution_quality")),
+                "status": "满足" if number(snapshot.get("execution_quality")) >= 60 else "未满足",
+            },
+            {
+                "condition": "事件风险",
+                "current_value": snapshot.get("event_window_status", "normal"),
+                "status": "满足"
+                if snapshot.get("event_risk_score", 0) < self.thresholds["event_wait"]
+                else "未满足",
+            },
         ]
 
     def _gates(self, snapshot: dict[str, Any], scores: DirectionScores) -> list[dict[str, Any]]:
-        gates = [{"code": "HARD_GATE", "severity": "block", "message": reason} for reason in self._hard_gate_reasons(snapshot)]
+        gates = [
+            {"code": "HARD_GATE", "severity": "block", "message": reason}
+            for reason in self._hard_gate_reasons(snapshot)
+        ]
         if scores.data_quality_score < 60:
-            gates.append({"code": "DATA_QUALITY_LOW", "severity": "warn", "message": "数据质量偏低，建议只观察或等待缓存补齐。"})
+            gates.append(
+                {
+                    "code": "DATA_QUALITY_LOW",
+                    "severity": "warn",
+                    "message": "数据质量偏低，建议只观察或等待缓存补齐。",
+                }
+            )
         if number(snapshot.get("funding_crowding_score")) > 75:
-            gates.append({"code": "FUNDING_CROWDING", "severity": "warn", "message": "资金费率拥挤，追单回撤风险上升。"})
+            gates.append(
+                {
+                    "code": "FUNDING_CROWDING",
+                    "severity": "warn",
+                    "message": "资金费率拥挤，追单回撤风险上升。",
+                }
+            )
         return gates
 
-    def _gate_diagnostics(self, snapshot: dict[str, Any], scores: DirectionScores, bias: str) -> list[dict[str, Any]]:
+    def _gate_diagnostics(
+        self, snapshot: dict[str, Any], scores: DirectionScores, bias: str
+    ) -> list[dict[str, Any]]:
         if bias not in {"long", "short"}:
             return []
         score = scores.long_score if bias == "long" else scores.short_score
         rr = scores.rr_long if bias == "long" else scores.rr_short
         return [
-            {"code": f"{bias}_setup_score", "status": "pass" if score >= self.thresholds["setup_score"] else "fail", "message": "方向分达到 setup 阈值" if score >= self.thresholds["setup_score"] else "方向分未达到 setup 阈值", "current": round2(score), "required": self.thresholds["setup_score"], "severity": "info"},
-            {"code": f"{bias}_trigger_score", "status": "pass" if score >= self.thresholds["trigger_score"] else "fail", "message": "方向分达到触发阈值" if score >= self.thresholds["trigger_score"] else "方向分未达到触发阈值", "current": round2(score), "required": self.thresholds["trigger_score"], "severity": "info"},
-            {"code": f"{bias}_rr", "status": "pass" if (rr or 0) >= self.thresholds["min_rr_trade"] else "fail", "message": "盈亏比达到交易阈值" if (rr or 0) >= self.thresholds["min_rr_trade"] else "盈亏比不足或缺失", "current": round(rr or 0, 2), "required": self.thresholds["min_rr_trade"], "severity": "warning"},
+            {
+                "code": f"{bias}_setup_score",
+                "status": "pass" if score >= self.thresholds["setup_score"] else "fail",
+                "message": "方向分达到 setup 阈值"
+                if score >= self.thresholds["setup_score"]
+                else "方向分未达到 setup 阈值",
+                "current": round2(score),
+                "required": self.thresholds["setup_score"],
+                "severity": "info",
+            },
+            {
+                "code": f"{bias}_trigger_score",
+                "status": "pass" if score >= self.thresholds["trigger_score"] else "fail",
+                "message": "方向分达到触发阈值"
+                if score >= self.thresholds["trigger_score"]
+                else "方向分未达到触发阈值",
+                "current": round2(score),
+                "required": self.thresholds["trigger_score"],
+                "severity": "info",
+            },
+            {
+                "code": f"{bias}_rr",
+                "status": "pass" if (rr or 0) >= self.thresholds["min_rr_trade"] else "fail",
+                "message": "盈亏比达到交易阈值"
+                if (rr or 0) >= self.thresholds["min_rr_trade"]
+                else "盈亏比不足或缺失",
+                "current": round(rr or 0, 2),
+                "required": self.thresholds["min_rr_trade"],
+                "severity": "warning",
+            },
         ]
 
     def _hard_gate_reasons(self, snapshot: dict[str, Any]) -> list[str]:
@@ -396,11 +574,36 @@ class StrategyGenerator:
     @staticmethod
     def _evidence_matrix(snapshot: dict[str, Any], scores: DirectionScores) -> list[dict[str, Any]]:
         return [
-            {"name": "多周期方向", "long_score": round2(snapshot.get("mtf_trend_bullish")), "short_score": round2(snapshot.get("mtf_trend_bearish")), "detail": "来自当前与相邻周期的方向一致性。"},
-            {"name": "结构与关键位", "long_score": round2(snapshot.get("bullish_structure")), "short_score": round2(snapshot.get("bearish_structure")), "detail": "参考 BOS、区间位置、支撑阻力和价值区。"},
-            {"name": "动量与成交", "long_score": round2(snapshot.get("bullish_momentum")), "short_score": round2(snapshot.get("bearish_momentum")), "detail": "参考 RSI、MACD、ADX、OBV 与成交量确认。"},
-            {"name": "资金流与衍生品", "long_score": round2(snapshot.get("bullish_flow")), "short_score": round2(snapshot.get("bearish_flow")), "detail": "参考 CVD、OI、Funding、Basis 与盘口深度。"},
-            {"name": "综合结果", "long_score": round2(scores.long_score), "short_score": round2(scores.short_score), "detail": "应用惩罚项和风险收益比后的最终多空评分。"},
+            {
+                "name": "多周期方向",
+                "long_score": round2(snapshot.get("mtf_trend_bullish")),
+                "short_score": round2(snapshot.get("mtf_trend_bearish")),
+                "detail": "来自当前与相邻周期的方向一致性。",
+            },
+            {
+                "name": "结构与关键位",
+                "long_score": round2(snapshot.get("bullish_structure")),
+                "short_score": round2(snapshot.get("bearish_structure")),
+                "detail": "参考 BOS、区间位置、支撑阻力和价值区。",
+            },
+            {
+                "name": "动量与成交",
+                "long_score": round2(snapshot.get("bullish_momentum")),
+                "short_score": round2(snapshot.get("bearish_momentum")),
+                "detail": "参考 RSI、MACD、ADX、OBV 与成交量确认。",
+            },
+            {
+                "name": "资金流与衍生品",
+                "long_score": round2(snapshot.get("bullish_flow")),
+                "short_score": round2(snapshot.get("bearish_flow")),
+                "detail": "参考 CVD、OI、Funding、Basis 与盘口深度。",
+            },
+            {
+                "name": "综合结果",
+                "long_score": round2(scores.long_score),
+                "short_score": round2(scores.short_score),
+                "detail": "应用惩罚项和风险收益比后的最终多空评分。",
+            },
         ]
 
     @staticmethod
@@ -433,7 +636,9 @@ class StrategyGenerator:
         return components
 
     @staticmethod
-    def _explain(snapshot: dict[str, Any], state: str, bias: str, scores: DirectionScores, reasons: list[str]) -> list[str]:
+    def _explain(
+        snapshot: dict[str, Any], state: str, bias: str, scores: DirectionScores, reasons: list[str]
+    ) -> list[str]:
         output = [
             f"当前策略状态为“{STATE_LABELS.get(state, state)}”，策略倾向为“{BIAS_LABELS.get(bias, bias)}”。",
             f"多头分 {scores.long_score:.2f}，空头分 {scores.short_score:.2f}，中性分 {scores.neutral_score:.2f}。",

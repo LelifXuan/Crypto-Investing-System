@@ -48,9 +48,9 @@ from app.services.microstructure import (
     summarize_open_interest,
 )
 
+UTC = timezone.utc
 logger = logging.getLogger(__name__)
 
-UTC = timezone.utc
 
 MICROSTRUCTURE_KEYS = {
     "cvd_delta",
@@ -61,14 +61,28 @@ MICROSTRUCTURE_KEYS = {
 
 
 FRESHNESS_DAYS_BY_FREQUENCY = {
-    "intraday": 0.1,
-    "daily": 3,
-    "weekly": 14,
-    "monthly": 45,
-    "quarterly": 120,
-    "fomc": 60,
-    "irregular": 30,
-    "event": 60,
+    "intraday": 0.1, "daily": 3, "weekly": 14,
+    "monthly": 45, "quarterly": 120, "fomc": 60, "irregular": 30, "event": 60,
+}
+
+FALLBACK_SYMBOLS = {
+    "cpi_yoy": {"fred": "CPIAUCSL"},
+    "core_cpi_yoy": {"fred": "CPILFESL"},
+    "cpi_mom": {"fred": "CPIAUCSL"},
+    "core_cpi_mom": {"fred": "CPILFESL"},
+    "nfp": {"fred": "PAYEMS"},
+    "unemployment_rate": {"fred": "UNRATE"},
+    "jolts_openings": {"fred": "JTSJOL"},
+    "gdp_qoq": {"fred": "A191RL1Q225SBEA"},
+    "qqq": {"twelvedata": "QQQ"},
+    "spy": {"twelvedata": "SPY"},
+    "hyg": {"twelvedata": "HYG"},
+    "gold": {"twelvedata": "XAU/USD"},
+    "vix": {"twelvedata": "VIX"},
+    "wti_crude": {"gateio_rwa": "wti_oil", "twelvedata": "WTI"},
+    "wti_oil": {"gateio_rwa": "wti_oil", "twelvedata": "WTI"},
+    "brent_oil": {"gateio_rwa": "brent_oil"},
+    "usd_cny": {"twelvedata": "USD/CNY"},
 }
 
 
@@ -110,6 +124,21 @@ class IndicatorMonitoringService:
             else "daily"
         )
         return FRESHNESS_DAYS_BY_FREQUENCY.get(freq, 30.0)
+
+    def _get_fallback_symbols(self, indicator_key: str, primary_symbol: str) -> list[str]:
+        symbols = [primary_symbol]
+        fb = FALLBACK_SYMBOLS.get(indicator_key, {})
+        for sym in fb.values():
+            if sym not in symbols:
+                symbols.append(sym)
+        return symbols
+
+    def _provider_for_fallback(self, indicator_key: str, symbol: str) -> str:
+        fb = FALLBACK_SYMBOLS.get(indicator_key, {})
+        for src, sym in fb.items():
+            if sym == symbol:
+                return src
+        return "fred"
 
     async def seed_defaults(self, default_instrument_id: str = "btc-usdt-perp") -> None:
         for row in load_indicator_catalog():
@@ -272,8 +301,18 @@ class IndicatorMonitoringService:
         for policy in policies:
             try:
                 results.append(await self.run_policy(policy, trigger_type="manual"))
-            except Exception:
-                continue
+            except Exception as exc:
+                logger.warning("macro sync policy failed: %s", policy.indicator_key, exc_info=True)
+                await self._record_macro_source_health(
+                    provider_key="macro_sync",
+                    source_key=policy.indicator_key,
+                    status="error",
+                    message=str(exc),
+                    payload_json={
+                        "indicator_key": policy.indicator_key,
+                        "policy_id": policy.policy_id,
+                    },
+                )
         await self._refresh_macro_source_health()
         return results
 
@@ -793,61 +832,91 @@ class IndicatorMonitoringService:
         )
         if provider is not None and provider.supports(
             definition.source_provider, definition.source_kind
-        ):
+        ) and not (hasattr(policy, "mode") and policy.mode == "calendar_release"):
             symbol = str(definition.calc_params_json.get("external_symbol"))
             latest_obs = await self.repository.latest_observation(indicator_key)
             freshness_days = self._freshness_days_for_frequency(definition)
             if latest_obs is not None and fresh_in_window(latest_obs, freshness_days):
                 return [latest_obs]
-            fetch_started_at = time_module.perf_counter()
-            try:
-                result = await provider.fetch_latest(symbol)
-                await self._record_macro_source_health(
-                    provider_key=provider.provider_key,
-                    source_key=symbol,
-                    status="live",
-                    message=None,
-                    latency_ms=int((time_module.perf_counter() - fetch_started_at) * 1000),
-                    payload_json={"indicator_key": indicator_key},
-                )
-            except Exception as exc:
-                await self._record_macro_source_health(
-                    provider_key=provider.provider_key,
-                    source_key=symbol,
-                    status="stale",
-                    message=str(exc),
-                    latency_ms=int((time_module.perf_counter() - fetch_started_at) * 1000),
-                    payload_json={"indicator_key": indicator_key},
-                )
-                if latest_obs is not None:
-                    return [latest_obs]
+            symbol_fallback = self._get_fallback_symbols(indicator_key, symbol)
+            result = None
+            last_error = None
+            for sym in symbol_fallback:
+                try:
+                    resolved_provider = (
+                        provider
+                        if sym == symbol
+                        else self.macro_provider_registry.resolve(
+                            source_provider=self._provider_for_fallback(indicator_key, sym),
+                            source_kind="raw_series",
+                        )
+                    )
+                    if resolved_provider is None:
+                        continue
+                    fetch_started_at = time_module.perf_counter()
+                    try:
+                        result = await resolved_provider.fetch_latest(sym)
+                        await self._record_macro_source_health(
+                            provider_key=resolved_provider.provider_key,
+                            source_key=sym,
+                            status="live",
+                            message=None,
+                            latency_ms=int((time_module.perf_counter() - fetch_started_at) * 1000),
+                            payload_json={"indicator_key": indicator_key},
+                        )
+                        break
+                    except Exception as exc:
+                        await self._record_macro_source_health(
+                            provider_key=resolved_provider.provider_key,
+                            source_key=sym,
+                            status="stale",
+                            message=str(exc),
+                            latency_ms=int((time_module.perf_counter() - fetch_started_at) * 1000),
+                            payload_json={"indicator_key": indicator_key},
+                        )
+                        last_error = exc
+                        continue
+                except Exception:
+                    continue
+
+            if result is not None:
+                country_code = "global" if indicator_key in {"dollar_index", "gold"} else "US"
                 obs = await self._persist_observation(
                     definition=definition,
                     run_id=run_id,
-                    country_code="US",
+                    country_code=country_code,
                     timeframe="1d",
-                    observation_ts=datetime.now(timezone.utc),
-                    value_text="unavailable",
-                    value_json={"error": str(exc)[:200], "source": provider.provider_key},
-                    signal_state="source_error",
-                    source_provider=provider.provider_key,
-                    source_ref=symbol,
-                    source_granularity="1d",
+                    observation_ts=result.observation_ts,
+                    value_num=result.value,
+                    value_json=result.metadata or {},
+                    signal_state=self._macro_state(indicator_key, result.value),
+                    source_provider=(
+                        result.source_ref.split(":")[0]
+                        if ":" in str(result.source_ref)
+                        else getattr(result, "source_ref", "unknown")
+                    ),
+                    source_ref=result.source_ref,
+                    source_granularity=getattr(result, "source_granularity", "1d"),
                 )
                 return [obs]
-            country_code = "global" if indicator_key in {"dollar_index", "gold"} else "US"
+
+            if latest_obs is not None:
+                return [latest_obs]
             obs = await self._persist_observation(
                 definition=definition,
                 run_id=run_id,
-                country_code=country_code,
+                country_code="US",
                 timeframe="1d",
-                observation_ts=result.observation_ts,
-                value_num=result.value,
-                value_json=result.metadata or {},
-                signal_state=self._macro_state(indicator_key, result.value),
+                observation_ts=datetime.now(timezone.utc),
+                value_text="unavailable",
+                value_json={
+                    "error": str(last_error)[:200] if last_error else "all sources failed",
+                    "source": "fallback_chain",
+                },
+                signal_state="source_error",
                 source_provider=provider.provider_key,
-                source_ref=result.source_ref,
-                source_granularity=result.source_granularity,
+                source_ref=symbol,
+                source_granularity="1d",
             )
             return [obs]
         if indicator_key == "us_10y_2y_spread":

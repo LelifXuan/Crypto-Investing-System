@@ -58,6 +58,24 @@ def test_structure_price_line_is_visually_subdued() -> None:
     assert '<div class="structure-legend-toggles">' in source
 
 
+def test_structure_page_does_not_render_internal_detail_cards() -> None:
+    source = (ROOT / "app/static/pages/structure.js").read_text(encoding="utf-8")
+    forbidden = [
+        "structure-detail-panel",
+        "renderDetailPanel",
+        "renderDiagnostics",
+        "renderCurrentStructures",
+        "renderEventHistory",
+        "renderAlertHistory",
+        "当前结构",
+        "近期事件",
+        "告警历史",
+        "检测诊断",
+    ]
+    for token in forbidden:
+        assert token not in source
+
+
 def test_knowledge_catalog_does_not_generate_template_body_text() -> None:
     source = (ROOT / "app/static/core/knowledge.js").read_text(encoding="utf-8")
     assert "常见误区是孤立使用" not in source

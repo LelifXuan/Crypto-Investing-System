@@ -1,0 +1,322 @@
+{
+  "version": "portable_macro_never_empty_policy_v2",
+  "principles": [
+    "macro_overview_must_never_return_empty_layers",
+    "macro_indicators_must_never_be_omitted_due_to_live_api_failure",
+    "missing_or_placeholder_values_must_not_be_scored",
+    "low_frequency_macro_data_can_use_wide_freshness_windows",
+    "secrets_must_never_be_written_to_release_package"
+  ],
+  "proxy_detection": {
+    "enabled": true,
+    "priority": [
+      "explicit_env",
+      "portable_env",
+      "windows_system_proxy",
+      "winhttp_proxy",
+      "common_local_ports",
+      "none"
+    ],
+    "common_ports": [
+      7890,
+      7897,
+      7899,
+      1080,
+      10808,
+      10809,
+      20170,
+      2080,
+      8080
+    ],
+    "common_hosts": [
+      "127.0.0.1",
+      "localhost"
+    ],
+    "protocols": [
+      "http",
+      "socks5"
+    ],
+    "state_path": "runtime/config/proxy_state.json",
+    "do_not_log": [
+      "proxy_username",
+      "proxy_password",
+      "api_key",
+      "token",
+      "secret"
+    ]
+  },
+  "per_source_proxy_policy": {
+    "bls": {
+      "mode": "prefer_proxy",
+      "reason": "BLS may be unreachable from mainland networks; fallback cache required"
+    },
+    "coinmarketcap": {
+      "mode": "prefer_proxy",
+      "reason": "CMC may be blocked or rate-limited by network path; fallback cache required"
+    },
+    "fred": {
+      "mode": "direct_first"
+    },
+    "bea": {
+      "mode": "direct_first"
+    },
+    "treasury": {
+      "mode": "direct_first"
+    },
+    "gateio": {
+      "mode": "direct_first"
+    },
+    "tiingo": {
+      "mode": "auto"
+    },
+    "twelvedata": {
+      "mode": "auto"
+    },
+    "alpha_vantage": {
+      "mode": "auto"
+    },
+    "openexchangerates": {
+      "mode": "auto"
+    },
+    "tushare": {
+      "mode": "direct_only"
+    },
+    "zhituapi": {
+      "mode": "direct_only"
+    },
+    "agushuju": {
+      "mode": "direct_only"
+    },
+    "websearch_cache": {
+      "mode": "no_network_required"
+    }
+  },
+  "cache_paths": {
+    "runtime_macro_cache_dir": "runtime/cache/macro",
+    "runtime_observations_json": "runtime/cache/macro/macro_observations.json",
+    "runtime_websearch_json": "runtime/cache/macro/macro_websearch_snapshots.json",
+    "bundled_seed_dir": "app/assets/seed_cache",
+    "bundled_observations_seed": "app/assets/seed_cache/macro_observations_seed.json",
+    "bundled_websearch_seed": "app/assets/seed_cache/macro_websearch_seed.json",
+    "seed_manifest": "app/assets/seed_cache/seed_manifest.json"
+  },
+  "fallback_chain": [
+    {
+      "status": "ok",
+      "source": "live_api",
+      "scoring": "allowed"
+    },
+    {
+      "status": "cached",
+      "source": "runtime_cache_fresh",
+      "scoring": "allowed"
+    },
+    {
+      "status": "stale_cache",
+      "source": "runtime_cache_stale",
+      "scoring": "allowed_if_extended_window"
+    },
+    {
+      "status": "seed_cache",
+      "source": "bundled_seed_cache",
+      "scoring": "allowed_if_seed_window"
+    },
+    {
+      "status": "stale_seed",
+      "source": "bundled_seed_cache_stale",
+      "scoring": "not_allowed"
+    },
+    {
+      "status": "web_cached",
+      "source": "websearch_snapshot_cache",
+      "scoring": "not_allowed"
+    },
+    {
+      "status": "unavailable_placeholder",
+      "source": "indicator_definition",
+      "scoring": "not_allowed"
+    }
+  ],
+  "freshness_windows_days": {
+    "intraday": {
+      "fresh": 0.25,
+      "extended": 1,
+      "seed": 1
+    },
+    "daily": {
+      "fresh": 7,
+      "extended": 30,
+      "seed": 45
+    },
+    "weekly": {
+      "fresh": 30,
+      "extended": 90,
+      "seed": 120
+    },
+    "monthly": {
+      "fresh": 120,
+      "extended": 240,
+      "seed": 365
+    },
+    "quarterly": {
+      "fresh": 240,
+      "extended": 420,
+      "seed": 540
+    },
+    "fomc": {
+      "fresh": 120,
+      "extended": 240,
+      "seed": 365
+    },
+    "irregular": {
+      "fresh": 60,
+      "extended": 120,
+      "seed": 180
+    }
+  },
+  "statuses": [
+    "ok",
+    "cached",
+    "stale_cache",
+    "seed_cache",
+    "stale_seed",
+    "web_cached",
+    "pending_release",
+    "source_error",
+    "proxy_required_unavailable",
+    "auth_missing",
+    "rate_limited",
+    "parser_error",
+    "unavailable_placeholder",
+    "disabled"
+  ],
+  "scoring_eligibility": {
+    "allowed_statuses": [
+      "ok",
+      "cached"
+    ],
+    "conditionally_allowed_statuses": [
+      "stale_cache",
+      "seed_cache"
+    ],
+    "blocked_statuses": [
+      "stale_seed",
+      "web_cached",
+      "source_error",
+      "proxy_required_unavailable",
+      "auth_missing",
+      "rate_limited",
+      "parser_error",
+      "unavailable_placeholder",
+      "disabled"
+    ],
+    "placeholder_value": null,
+    "missing_values_must_not_be_zero": true
+  },
+  "macro_modules": [
+    {
+      "id": "policy_rates",
+      "name_zh": "政策与利率",
+      "required_indicators": [
+        "effr",
+        "sofr",
+        "us03m_yield",
+        "us02y_yield",
+        "us10y_yield",
+        "us30y_yield",
+        "us10y_2y_spread",
+        "us10y_3m_spread"
+      ]
+    },
+    {
+      "id": "inflation_prices",
+      "name_zh": "通胀与价格",
+      "required_indicators": [
+        "cpi_yoy",
+        "cpi_mom",
+        "core_cpi_yoy",
+        "core_cpi_mom",
+        "pce_yoy",
+        "core_pce_yoy",
+        "ppi_yoy",
+        "breakeven_10y",
+        "wti_oil"
+      ]
+    },
+    {
+      "id": "growth_jobs",
+      "name_zh": "增长与就业",
+      "required_indicators": [
+        "nfp",
+        "unemployment_rate",
+        "average_hourly_earnings_yoy",
+        "initial_claims",
+        "continuing_claims",
+        "jolts_openings",
+        "ism_manufacturing",
+        "ism_services",
+        "gdp_qoq"
+      ]
+    },
+    {
+      "id": "liquidity_credit",
+      "name_zh": "流动性与信用",
+      "required_indicators": [
+        "fed_balance_sheet",
+        "reverse_repo",
+        "tga",
+        "bank_reserves",
+        "m2",
+        "hy_spread",
+        "ig_spread",
+        "financial_conditions",
+        "stablecoin_supply",
+        "btc_etf_flow"
+      ]
+    },
+    {
+      "id": "usd_real_rates",
+      "name_zh": "美元与实际利率",
+      "required_indicators": [
+        "dxy",
+        "real_yield_10y",
+        "real_yield_5y",
+        "gold"
+      ]
+    },
+    {
+      "id": "cross_asset",
+      "name_zh": "跨资产确认",
+      "required_indicators": [
+        "qqq",
+        "spy",
+        "vix",
+        "move_index",
+        "hyg",
+        "btc_qqq_corr_20d",
+        "eth_btc",
+        "btc_dominance"
+      ]
+    }
+  ],
+  "release_cleanup": {
+    "remove_before_release": [
+      ".env",
+      "__pycache__",
+      "*.pyc",
+      ".pytest_cache",
+      ".ruff_cache",
+      ".mypy_cache",
+      "runtime/logs/*.log",
+      "runtime/tmp/*",
+      "logs/*.log"
+    ],
+    "keep_for_portable": [
+      "runtime_env",
+      "portable_runtime.lock.json",
+      "requirements-portable.txt",
+      "start_portable.bat",
+      "TradingSystemLauncher.exe"
+    ]
+  }
+}

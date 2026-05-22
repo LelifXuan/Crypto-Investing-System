@@ -15,7 +15,9 @@ class IterationEngine:
         instrument_id: str | None = None,
         timeframe: str | None = None,
     ) -> list[dict[str, Any]]:
-        review = await ReviewEngine(self.repository).build_review(instrument_id, timeframe, limit=80)
+        review = await ReviewEngine(self.repository).build_review(
+            instrument_id, timeframe, limit=80
+        )
         proposals: list[dict[str, Any]] = []
         if review["total_signals"] == 0:
             return []
@@ -40,4 +42,3 @@ class IterationEngine:
                 }
             )
         return proposals
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+import re
 
 import pytest
 
@@ -11,6 +12,9 @@ from app.db.models.market import MacroEventCalendar
 from app.repositories.market_repository import MarketRepository
 from app.services.indicator_monitoring import IndicatorMonitoringService
 from app.services.macro_overview import MacroOverviewService
+
+BAD_TEXT_TOKENS = ("????", "\ufffd", "\u951f", "\u934b", "\u7039", "\u93c6")
+LONG_DECIMAL_RE = re.compile(r"\d+\.\d{3,}")
 
 
 @pytest.fixture()
@@ -55,11 +59,33 @@ async def test_macro_overview_returns_six_layers(macro_overview_db, monkeypatch)
     assert overview.growth_score <= 100
     assert overview.liquidity_score <= 100
     assert overview.regime_label_cn
-    assert overview.operation_bias in {"偏多", "偏空", "观望"}
+    assert overview.operation_bias in {"bullish", "bearish", "neutral", "observe"}
     assert any(layer.layer_key == "rates_policy" for layer in overview.layers)
     assert any(
-        item.indicator_key == "us_dff" for layer in overview.layers for item in layer.indicators
+        item.indicator_key in {"effr", "us_dff"}
+        for layer in overview.layers
+        for item in layer.indicators
     )
+    assert all(item.status_reason for layer in overview.layers for item in layer.indicators)
+    assert all(
+        token not in item.label + item.insight
+        for layer in overview.layers
+        for item in layer.indicators
+        for token in BAD_TEXT_TOKENS
+    )
+    assert all(
+        not LONG_DECIMAL_RE.search(item.insight)
+        for layer in overview.layers
+        for item in layer.indicators
+    )
+    assert all(
+        "当前值" not in item.insight and "已纳入宏观总分" not in item.insight
+        for layer in overview.layers
+        for item in layer.indicators
+    )
+    labels = {item.indicator_key: item.label for layer in overview.layers for item in layer.indicators}
+    assert labels["effr"] == "美国有效联邦基金利率"
+    assert labels["us10y_yield"] == "美国10年期国债收益率"
 
 
 @pytest.mark.asyncio
@@ -90,4 +116,4 @@ async def test_macro_overview_event_window_statuses(macro_overview_db) -> None:
 
     assert overview.event_window_status == "临近发布"
     assert overview.next_event_title == "US CPI (2026-04)"
-    assert overview.operation_bias == "观望"
+    assert overview.operation_bias == "observe"

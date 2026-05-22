@@ -78,9 +78,7 @@ def format_text(findings: list[HygieneFinding]) -> str:
     total_mb = sum(f.size_mb for f in findings)
     lines.append(f"  Total waste: {total_mb:.1f} MB\n")
     for f in findings:
-        lines.append(
-            f"  [{f.name}] {f.path}  ({f.size_mb:.1f} MB, {f.file_count} files)"
-        )
+        lines.append(f"  [{f.name}] {f.path}  ({f.size_mb:.1f} MB, {f.file_count} files)")
     lines.append(
         "\nRecommendation: Add to .gitignore or clean_release.py, then run clean_release.py."
     )
@@ -95,9 +93,7 @@ def format_json(findings: list[HygieneFinding]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Audit repository for release hygiene violations."
-    )
+    parser = argparse.ArgumentParser(description="Audit repository for release hygiene violations.")
     parser.add_argument("--root", default=".", help="Repository root directory.")
     parser.add_argument("--json", action="store_true", help="Output findings as JSON.")
     args = parser.parse_args()

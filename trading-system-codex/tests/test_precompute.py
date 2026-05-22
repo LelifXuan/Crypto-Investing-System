@@ -107,9 +107,7 @@ async def test_precompute_task_status_reports_queued_task(precompute_db) -> None
     )
 
     task_key = (
-        response.queued_keys[0]
-        if response.queued_keys
-        else "analysis:btc-usdt-perp:1d:420:v2"
+        response.queued_keys[0] if response.queued_keys else "analysis:btc-usdt-perp:1d:420:v2"
     )
     status = await precompute_service.task_status(task_key)
 
@@ -132,9 +130,7 @@ async def test_precompute_task_status_endpoint(precompute_db) -> None:
         )
     )
     task_key = (
-        response.queued_keys[0]
-        if response.queued_keys
-        else "analysis:btc-usdt-perp:1d:420:v2"
+        response.queued_keys[0] if response.queued_keys else "analysis:btc-usdt-perp:1d:420:v2"
     )
 
     with TestClient(create_app(enable_lifespan=False)) as client:

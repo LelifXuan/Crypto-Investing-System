@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.schemas.common import ORMModel
 from app.schemas.market import CandleRead
 
-SUPPORTED_STRUCTURE_TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"]
+SUPPORTED_STRUCTURE_TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M", "30d"]
 
 
 class StructurePoint(BaseModel):
@@ -171,3 +171,7 @@ class StructureTabBundleRead(BaseModel):
     cache_state: str = "ready"
     is_stale: bool = False
     status_message: str | None = None
+    last_candle_ts: datetime | None = None
+    freshness_lag_seconds: int | None = None
+    freshness_state: str = "unknown"
+    freshness_message: str | None = None

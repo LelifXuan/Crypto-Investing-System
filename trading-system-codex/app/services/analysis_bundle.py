@@ -21,7 +21,6 @@ from app.services.page_snapshot_cache import (
 )
 
 UTC = timezone.utc
-
 WINDOW_PROFILES = {
     "1h": {
         "short": {"visibleBars": 96, "calcBars": 360},
@@ -136,10 +135,7 @@ class AnalysisBundleService:
             allow_stale=False,
             refresh=False,
         )
-        candles = [
-            CandleRead.model_validate(item)
-            for item in market_bundle.get("candles", [])
-        ]
+        candles = [CandleRead.model_validate(item) for item in market_bundle.get("candles", [])]
         source_updated_at = candles[-1].ts_open if candles else (mark.ts_event if mark else now)
         core_indicator_series = {
             key: value

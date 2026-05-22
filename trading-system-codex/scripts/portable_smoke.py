@@ -64,8 +64,8 @@ def main() -> int:
                 raise SystemExit("portable bundle extraction failed: cannot determine bundle root")
 
         runtime_root = bundle_root / "runtime"
-        embedded_python = bundle_root / "runtime_env" / "python" / (
-            "python.exe" if os.name == "nt" else "python"
+        embedded_python = (
+            bundle_root / "runtime_env" / "python" / ("python.exe" if os.name == "nt" else "python")
         )
         if not embedded_python.exists():
             raise SystemExit(f"embedded Python runtime missing: {embedded_python}")

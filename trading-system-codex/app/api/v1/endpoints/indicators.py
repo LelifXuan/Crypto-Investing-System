@@ -23,7 +23,6 @@ from app.services.indicators import IndicatorService
 from app.services.precompute import precompute_service
 
 UTC = timezone.utc
-
 router = APIRouter(prefix="/indicators", tags=["indicators"])
 
 

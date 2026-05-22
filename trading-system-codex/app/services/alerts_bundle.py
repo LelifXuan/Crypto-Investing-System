@@ -25,9 +25,8 @@ from app.services.page_snapshot_cache import (
     microstructure_cache_key,
 )
 
-logger = logging.getLogger(__name__)
-
 UTC = timezone.utc
+logger = logging.getLogger(__name__)
 
 
 def _candle_ts(candle, fallback: datetime) -> datetime:
@@ -129,8 +128,7 @@ class AlertsBundleService:
             ),
             "contract_snapshot": contract_snapshot,
             "alert_events": [
-                AlertEventRead.model_validate(item).model_dump(mode="json")
-                for item in alert_events
+                AlertEventRead.model_validate(item).model_dump(mode="json") for item in alert_events
             ],
             "final_decision": final_decision,
         }

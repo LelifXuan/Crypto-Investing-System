@@ -51,7 +51,9 @@ def risk_reward_label(rr: float | None) -> str:
     return "盈亏比优秀，但仍需确认目标是否现实"
 
 
-def compute_risk_reward(direction: str, entry: float | None, stop: float | None, tp1: float | None) -> float | None:
+def compute_risk_reward(
+    direction: str, entry: float | None, stop: float | None, tp1: float | None
+) -> float | None:
     if not entry or not stop or not tp1:
         return None
     if direction == "long" and entry > stop:

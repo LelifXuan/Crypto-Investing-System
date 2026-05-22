@@ -3,12 +3,11 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 
-import httpx
-
-from app.services.macro.cache_store import CacheStore
-from app.services.macro.secret_loader import SecretLoader
-from app.services.macro.providers.base import MacroFetchResult
 from app.core.decimal_utils import D
+from app.services.macro.cache_store import CacheStore
+from app.services.macro.providers.base import MacroFetchResult
+from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -22,7 +21,10 @@ class TiingoMacroProvider:
         self.base_url = "https://api.tiingo.com"
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
-        return source_provider == self.provider_key and source_kind in ("raw_series", "release_series")
+        return source_provider == self.provider_key and source_kind in (
+            "raw_series",
+            "release_series",
+        )
 
     async def _request(self, endpoint: str, params: dict = None):
         cache_key = f"tiingo:{endpoint}"
@@ -34,7 +36,7 @@ class TiingoMacroProvider:
 
         url = f"{self.base_url}{endpoint}"
         start = time.time()
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with client_for_source("tiingo", timeout=20) as client:
             resp = await client.get(url, params=params)
         latency = int((time.time() - start) * 1000)
 
@@ -62,7 +64,9 @@ class TiingoMacroProvider:
         rows = sorted(data, key=lambda x: x.get("date", ""))
         latest = rows[-1]
         return MacroFetchResult(
-            observation_ts=datetime.fromisoformat(f"{latest['date']}T00:00:00+00:00").astimezone(UTC),
+            observation_ts=datetime.fromisoformat(f"{latest['date']}T00:00:00+00:00").astimezone(
+                UTC
+            ),
             value=D(str(latest.get("close", 0))),
             source_ref=source_key,
             source_granularity="1d",
@@ -81,6 +85,18 @@ class TiingoMacroProvider:
         try:
             key = self.secrets.get("TIINGO_API_KEY", required=True) or ""
             await self._request("/tiingo/daily/SPY/prices", {"resampleFreq": "daily", "token": key})
-            return {"source": "tiingo", "status": "ok", "latency_ms": int((time.time() - start) * 1000), "auth": "present", "error": None}
+            return {
+                "source": "tiingo",
+                "status": "ok",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": "present",
+                "error": None,
+            }
         except Exception as exc:
-            return {"source": "tiingo", "status": "error", "latency_ms": int((time.time() - start) * 1000), "auth": self.secrets.auth_state({"TIINGO_API_KEY"}), "error": str(exc)[:200]}
+            return {
+                "source": "tiingo",
+                "status": "error",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": self.secrets.auth_state({"TIINGO_API_KEY"}),
+                "error": str(exc)[:200],
+            }

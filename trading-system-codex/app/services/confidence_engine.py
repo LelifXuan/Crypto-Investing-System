@@ -88,9 +88,7 @@ class ConfidenceEngine:
             execution_score=execution_score,
             hard_veto_caps=hard_veto_caps,
         )
-        confidence_score = self._clamp(
-            raw_confidence - penalties["total"], 0.0, confidence_cap
-        )
+        confidence_score = self._clamp(raw_confidence - penalties["total"], 0.0, confidence_cap)
         hard_veto_triggered = bool(hard_veto_caps) or confidence_cap == 0.0
         recommended_action = self._recommended_action(
             confidence_score=confidence_score,
@@ -189,11 +187,7 @@ class ConfidenceEngine:
         overall_confidence = self._clamp(payload.structure.overall_confidence, 0.0, 1.0)
         direction_agreement = self._clamp(payload.structure.direction_agreement, 0.0, 1.0)
         evidence_density = self._clamp(payload.structure.evidence_density, 0.0, 1.0)
-        raw = (
-            overall_confidence * 0.5
-            + direction_agreement * 0.3
-            + evidence_density * 0.2
-        )
+        raw = overall_confidence * 0.5 + direction_agreement * 0.3 + evidence_density * 0.2
         if payload.structure.conflict_state:
             raw -= 0.18
         raw = self._clamp(raw, 0.0, 1.0)
@@ -244,9 +238,7 @@ class ConfidenceEngine:
         if payload.open_interest_notional is not None:
             confirmations.append(0.75 if payload.open_interest_notional > 0 else 0.35)
         if payload.depth_liquidity is not None:
-            confirmations.append(
-                self._clamp(payload.depth_liquidity / 500000.0, 0.0, 1.0)
-            )
+            confirmations.append(self._clamp(payload.depth_liquidity / 500000.0, 0.0, 1.0))
         if payload.slippage_bps is not None:
             confirmations.append(self._clamp(1.0 - payload.slippage_bps / 25.0, 0.0, 1.0))
         if payload.spread_bps is not None:
@@ -512,11 +504,7 @@ class ConfidenceEngine:
             return "observe"
         if 50 <= confidence_score < 65:
             return "wait_for_confirmation"
-        if (
-            65 <= confidence_score < 75
-            and execution_score >= 50
-            and conflict_level <= 1
-        ):
+        if 65 <= confidence_score < 75 and execution_score >= 50 and conflict_level <= 1:
             return "probe"
         if (
             confidence_score >= 82
@@ -549,11 +537,7 @@ class ConfidenceEngine:
             return 0.15
         if confidence_score < 82:
             return 0.35
-        if (
-            confidence_score < 90
-            and conflict_level <= 1
-            and execution_score >= 70
-        ):
+        if confidence_score < 90 and conflict_level <= 1 and execution_score >= 70:
             return 0.6
         if (
             confidence_score >= 90
@@ -576,22 +560,25 @@ class ConfidenceEngine:
         direction_label: str,
     ) -> list[str]:
         lines = [
-            f"方向判断：{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}，综合趋势结构、动量、资金流与执行质量。",
-            f"当前置信上限 {confidence_cap:.0f} 分，已综合数据质量、多周期一致性、结构确认、动量量能、衍生品微观结构、行情环境、执行质量和风险门禁。",
+            (
+                f"?????{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}?"
+                "???????????????????"
+            ),
+            (f"?????? {confidence_cap:.0f} ??????????????????????????????????????????????????"),
         ]
         if penalties["total"] > 0:
             lines.append(
-                f"扣分项：数据缺失扣 {penalties['missing_inputs']:.0f} 分，"
-                f"冲突扣 {penalties['conflict']:.0f} 分，"
-                f"异常行情扣 {penalties['abnormal_market']:.0f} 分"
+                f"????????? {penalties['missing_inputs']:.0f} ??"
+                f"??? {penalties['conflict']:.0f} ??"
+                f"????? {penalties['abnormal_market']:.0f} ??"
             )
         if payload.structure.available and payload.structure.top_reasons:
-            lines.append(f"结构证据：{payload.structure.top_reasons[0]}")
+            lines.append(f"?????{payload.structure.top_reasons[0]}")
         if risk_gates:
             gate_text = " ".join(RISK_GATE_LABEL_ZH.get(item, item) for item in risk_gates)
-            lines.append(f"风险门禁：{gate_text}")
+            lines.append(f"?????{gate_text}")
         action_text = ACTION_LABEL_ZH.get(recommended_action, recommended_action)
-        lines.append(f"建议动作：{action_text}")
+        lines.append(f"?????{action_text}")
         return lines
 
     def _pair_alignment(self, left: str, right: str) -> float:

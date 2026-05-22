@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
-
 
 def data_status_label(status: str) -> str:
     labels = {
@@ -42,12 +39,25 @@ def confidence_label(confidence: str) -> str:
 
 
 def confidence_css(confidence: str) -> str:
-    css_map = {"high": "impact-favorable", "medium": "impact-neutral", "low": "impact-warning", "insufficient": "impact-danger"}
+    css_map = {
+        "high": "impact-favorable",
+        "medium": "impact-neutral",
+        "low": "impact-warning",
+        "insufficient": "impact-danger",
+    }
     return css_map.get(confidence, "impact-neutral")
 
 
 def frequency_label(freq: str) -> str:
-    labels = {"intraday": "日内", "daily": "每日", "weekly": "每周", "monthly": "每月", "quarterly": "每季", "fomc": "FOMC", "irregular": "不定期"}
+    labels = {
+        "intraday": "日内",
+        "daily": "每日",
+        "weekly": "每周",
+        "monthly": "每月",
+        "quarterly": "每季",
+        "fomc": "FOMC",
+        "irregular": "不定期",
+    }
     return labels.get(freq, freq)
 
 

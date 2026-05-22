@@ -468,6 +468,9 @@ class RiskEvaluationRead(BaseModel):
 class MacroOverviewIndicatorRead(BaseModel):
     indicator_key: str
     label: str
+    display_code: str | None = None
+    display_label: str | None = None
+    unit: str = ""
     tooltip: str
     region: str = "global"
     source_provider: str | None = None
@@ -476,7 +479,9 @@ class MacroOverviewIndicatorRead(BaseModel):
     observation_ts: datetime | None = None
     signal_state: str | None = None
     status: str = "missing"
+    fallback_level: str | None = None
     is_scored: bool = False
+    score_block_reason: str | None = None
     status_reason: str | None = None
     insight: str
     event_title: str | None = None
@@ -529,14 +534,14 @@ class MacroOverviewResponse(BaseModel):
     growth_score: int
     liquidity_score: int
     total_score: int = 0
-    score_scale: str = "-100 ~ +100"
-    score_band: str = "中性"
+    score_scale: str = "0 ~ 100"
+    score_band: str = "中性震荡"
     score_explanation: str = ""
     confidence: str = "low"
     data_completeness: dict[str, float] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     layer_contributions: dict[str, float] = Field(default_factory=dict)
-    operation_bias: str = "观望"
+    operation_bias: str = "observe"
     event_window_status: str = ""
     event_window_summary: str = ""
     next_event_title: str | None = None

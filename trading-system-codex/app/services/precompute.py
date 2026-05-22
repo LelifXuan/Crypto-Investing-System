@@ -35,7 +35,6 @@ from app.services.cache_registry import (
 from app.services.monitoring_dashboard import MonitoringDashboardService
 
 UTC = timezone.utc
-
 logger = logging.getLogger(__name__)
 
 PRIORITY_WEIGHTS = {

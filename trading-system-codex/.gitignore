@@ -8,6 +8,11 @@ __pycache__/
 *.pyd
 *.sqlite3
 .env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
 .venv/
 .vscode/
 .idea/

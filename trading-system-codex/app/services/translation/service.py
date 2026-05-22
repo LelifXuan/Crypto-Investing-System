@@ -101,9 +101,7 @@ class MarketEventTranslationService:
         self, existing_payload: dict | None, title: str | None, summary: str | None
     ) -> dict:
         status = (
-            "pending"
-            if self.needs_translation(existing_payload, title, summary)
-            else "skipped"
+            "pending" if self.needs_translation(existing_payload, title, summary) else "skipped"
         )
         if not self.enabled:
             status = "disabled"
@@ -151,10 +149,7 @@ class MarketEventTranslationService:
             texts = [original_title]
             if original_summary:
                 texts.append(original_summary)
-            translated = [
-                await self.translate_text(item, client=client)
-                for item in texts
-            ]
+            translated = [await self.translate_text(item, client=client) for item in texts]
             translated_title = translated[0] if len(translated) > 0 else original_title
             translated_summary = translated[1] if len(translated) > 1 else original_summary
             return TranslationBundle(
@@ -191,6 +186,7 @@ class MarketEventTranslationService:
         if self.provider in {"local", "local_glossary", "glossary"}:
             return self.local_glossary_translate(cleaned)
         from app.services.translation.providers.router import get_translation_provider
+
         provider_obj = get_translation_provider(self.provider)
         if provider_obj is None:
             return self.local_glossary_translate(cleaned)

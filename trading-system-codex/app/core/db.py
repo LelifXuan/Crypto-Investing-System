@@ -37,7 +37,9 @@ class DatabaseManager:
                     cache_kb = int(getattr(settings, "sqlite_cache_size_kb", 65536))
                     await connection.execute(text(f"PRAGMA cache_size=-{cache_kb}"))
                     await connection.execute(text("PRAGMA temp_store=MEMORY"))
-                    checkpoint_pages = int(getattr(settings, "sqlite_wal_autocheckpoint_pages", 1000))
+                    checkpoint_pages = int(
+                        getattr(settings, "sqlite_wal_autocheckpoint_pages", 1000)
+                    )
                     await connection.execute(text(f"PRAGMA wal_autocheckpoint={checkpoint_pages}"))
                     mmap_mb = int(getattr(settings, "sqlite_mmap_size_mb", 256))
                     if mmap_mb > 0:

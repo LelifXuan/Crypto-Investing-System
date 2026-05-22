@@ -9,6 +9,8 @@ import pytest
 from app.services import monitoring_dashboard
 from app.services.monitoring_dashboard import MonitoringDashboardService
 
+BAD_TEXT_TOKENS = ("????", "\ufffd", "\u951f", "\u934b", "\u7039", "\u93c6")
+
 
 class FakeAnalysisBundleService:
     def __init__(self, repository) -> None:
@@ -86,12 +88,26 @@ def test_monitoring_source_status_is_structured_and_has_no_glassnode() -> None:
     assert payload["ashare_etf"]["label"] == "A股ETF"
 
 
-def test_monitoring_frontend_has_source_status_and_no_mojibake() -> None:
+def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
     source = Path("app/static/pages/monitoring.js")
     content = source.read_text(encoding="utf-8")
 
+    assert "monitoring-surface" in content
     assert "信源状态" in content
-    assert "source-status-root" in content
+    assert "monitoring-source-list" in content
+    assert "monitoring-topbar" in content
+    assert "monitoring-snapshot-grid" in content
+    assert "macroTitle(item)" in content
+    assert "item?.label" in content
+    assert "未获取指标" in content
+    assert "DATA_STATUS_VALUES" in content
+    assert "NON_MAIN_INDICATOR_STATUSES" in content
+    assert "item?.status || item?.source_status" in content
+    assert "!item?.is_scored && !hasIndicatorValue" not in content
     assert "Glassnode" not in content
-    for token in ["闁", "閳", "锟", "閸", "鐎", "閺", "鍋", "瀹", "鏆"]:
+    assert "observationValue(item)" not in content
+    assert "[object Object]" not in content
+    assert "参与评分" not in content
+    assert "macro-indicator-grid" in content
+    for token in BAD_TEXT_TOKENS:
         assert token not in content

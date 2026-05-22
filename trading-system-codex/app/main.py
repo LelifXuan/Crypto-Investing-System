@@ -18,6 +18,7 @@ from app.repositories.auth_repository import AuthRepository
 from app.repositories.bootstrap_repository import BootstrapRepository
 from app.repositories.market_repository import MarketRepository
 from app.services.bootstrap import seed_local_defaults, warm_local_market_data
+from app.services.network.http_client_factory import init_network
 from app.web.router import web_router
 
 
@@ -74,6 +75,7 @@ async def lifespan(app: FastAPI):
     warmup_task: asyncio.Task | None = None
     warmup_instrument_ids: list[str] | None = None
     bootstrap_runtime_environment()
+    init_network()
     await db_manager.connect()
     if settings.auto_create_schema:
         await db_manager.create_schema()
@@ -118,6 +120,7 @@ async def lifespan(app: FastAPI):
     if _should_start_worker("precompute"):
         await _load_worker("precompute").start()
     if settings.local_auto_bootstrap_enabled and warmup_instrument_ids:
+
         async def run_startup_warmup(instrument_ids: list[str]) -> None:
             # Let interactive page requests and precompute hints take the lead first.
             await asyncio.sleep(8)

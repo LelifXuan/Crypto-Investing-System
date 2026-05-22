@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Cross-check audit findings and track remaining tasks across rounds."""
+
 from __future__ import annotations
-import json, sys
+
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -9,49 +11,50 @@ CHECK_PATTERNS = {
     "overlay_extrapolation": {
         "file": "app/static/pages/structure.js",
         "check": "shouldExtendToLatest",
-        "desc": "Safe overlay extrapolation with role-based opt-in"
+        "desc": "Safe overlay extrapolation with role-based opt-in",
     },
     "translation_status_endpoint": {
         "file": "app/api/v1/endpoints/market_events.py",
         "check": "translations/status",
-        "desc": "Translation status endpoint exists"
+        "desc": "Translation status endpoint exists",
     },
     "translation_db_stats": {
         "file": "app/api/v1/endpoints/market_events.py",
         "check": "MarketEventTranslationMap",
-        "desc": "Translation status connected to real DB"
+        "desc": "Translation status connected to real DB",
     },
     "viewport_hidden_filter": {
         "file": "app/static/pages/structure.js",
         "check": "visibleGeometry",
-        "desc": "Viewport focus excludes hidden geometry"
+        "desc": "Viewport focus excludes hidden geometry",
     },
     "cache_first_get": {
         "file": "app/services/structure/snapshot_service.py",
         "check": "cache_state",
-        "desc": "Cache-first GET pattern in structure service"
+        "desc": "Cache-first GET pattern in structure service",
     },
     "macro_total_score": {
         "file": "app/schemas/market.py",
         "check": "total_score",
-        "desc": "Macro total/composite score in schema"
+        "desc": "Macro total/composite score in schema",
     },
     "swing_pivots_param": {
         "file": "app/services/structure/swing.py",
         "check": "pivots:",
-        "desc": "SwingScorer accepts optional shared pivots"
+        "desc": "SwingScorer accepts optional shared pivots",
     },
     "strategy_tp_wording": {
         "file": "app/services/strategy_signal/strategy_generator.py",
         "check": "\u6b62\u76c8\u4f4d",
-        "desc": "Strategy take-profit wording updated"
+        "desc": "Strategy take-profit wording updated",
     },
     "monitoring_normal_label": {
         "file": "app/static/pages/monitoring.js",
         "check": "\u4e2d\u6027",
-        "desc": "Normal -> neutral label fix"
+        "desc": "Normal -> neutral label fix",
     },
 }
+
 
 def main():
     results = []
@@ -82,6 +85,7 @@ def main():
     else:
         print("\nAll checks passed!")
         return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

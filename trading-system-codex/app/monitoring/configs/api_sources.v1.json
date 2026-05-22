@@ -1,0 +1,302 @@
+{
+  "version": "api_sources_v1",
+  "security": {
+    "secrets_policy": "env_only",
+    "forbid_in_git": true,
+    "forbid_in_logs": true,
+    "forbid_in_frontend": true
+  },
+  "status_enum": [
+    "ok",
+    "missing",
+    "stale",
+    "cached",
+    "pending_release",
+    "source_error",
+    "auth_missing",
+    "rate_limited",
+    "disabled",
+    "parser_error"
+  ],
+  "sources": {
+    "fred": {
+      "type": "official_macro_api",
+      "env": "FRED_API_KEY",
+      "base_url": "https://api.stlouisfed.org/fred",
+      "auth": {
+        "type": "query",
+        "param": "api_key"
+      },
+      "endpoints": {
+        "series_observations": {
+          "method": "GET",
+          "path": "/series/observations",
+          "default_params": {
+            "file_type": "json",
+            "sort_order": "desc",
+            "limit": 2
+          }
+        }
+      },
+      "priority": "primary_macro"
+    },
+    "bls": {
+      "type": "official_macro_api",
+      "env": "BLS_API_KEY",
+      "base_url": "https://api.bls.gov/publicAPI/v2",
+      "auth": {
+        "type": "json_body",
+        "param": "registrationkey"
+      },
+      "endpoints": {
+        "timeseries": {
+          "method": "POST",
+          "path": "/timeseries/data/"
+        }
+      },
+      "priority": "primary_macro_inflation_jobs"
+    },
+    "bea": {
+      "type": "official_macro_api",
+      "env": "BEA_API_KEY",
+      "base_url": "https://apps.bea.gov/api",
+      "auth": {
+        "type": "query",
+        "param": "UserID"
+      },
+      "endpoints": {
+        "get_data": {
+          "method": "GET",
+          "path": "/data",
+          "default_params": {
+            "method": "GetData",
+            "ResultFormat": "JSON"
+          }
+        },
+        "get_parameter_values": {
+          "method": "GET",
+          "path": "/data",
+          "default_params": {
+            "method": "GetParameterValues",
+            "ResultFormat": "JSON"
+          }
+        }
+      },
+      "priority": "primary_macro_growth"
+    },
+    "gateio": {
+      "type": "exchange_api",
+      "env": [
+        "GATEIO_API_KEY",
+        "GATEIO_API_SECRET"
+      ],
+      "base_url": "https://api.gateio.ws/api/v4",
+      "auth": {
+        "type": "none_for_public_market",
+        "private_auth": "gate_api_v4_signature"
+      },
+      "endpoints": {
+        "spot_tickers": {
+          "method": "GET",
+          "path": "/spot/tickers"
+        },
+        "spot_candlesticks": {
+          "method": "GET",
+          "path": "/spot/candlesticks"
+        },
+        "futures_tickers": {
+          "method": "GET",
+          "path": "/futures/usdt/tickers"
+        },
+        "futures_funding_rate": {
+          "method": "GET",
+          "path": "/futures/usdt/funding_rate"
+        }
+      },
+      "priority": "primary_crypto_rwa"
+    },
+    "coinmarketcap": {
+      "type": "crypto_market_data_api",
+      "env": "COINMARKETCAP_API_KEY",
+      "base_url": "https://pro-api.coinmarketcap.com",
+      "auth": {
+        "type": "header",
+        "header": "X-CMC_PRO_API_KEY"
+      },
+      "endpoints": {
+        "quotes_latest": {
+          "method": "GET",
+          "path": "/v1/cryptocurrency/quotes/latest"
+        },
+        "global_metrics": {
+          "method": "GET",
+          "path": "/v1/global-metrics/quotes/latest"
+        }
+      },
+      "priority": "crypto_confirmation"
+    },
+    "alphavantage": {
+      "type": "market_data_api",
+      "env": "ALPHA_VANTAGE_API_KEY",
+      "base_url": "https://www.alphavantage.co",
+      "auth": {
+        "type": "query",
+        "param": "apikey"
+      },
+      "endpoints": {
+        "query": {
+          "method": "GET",
+          "path": "/query"
+        }
+      },
+      "priority": "cross_asset_fallback"
+    },
+    "nasdaq_data_link": {
+      "type": "research_market_data_api",
+      "env": "NASDAQ_DATA_LINK_API_KEY",
+      "base_url": "https://data.nasdaq.com/api/v3",
+      "auth": {
+        "type": "query",
+        "param": "api_key"
+      },
+      "endpoints": {
+        "datasets": {
+          "method": "GET",
+          "path": "/datasets/{database_code}/{dataset_code}.json"
+        },
+        "datatables": {
+          "method": "GET",
+          "path": "/datatables/{datatable_code}.json"
+        }
+      },
+      "priority": "research_fallback"
+    },
+    "openexchangerates": {
+      "type": "fx_api",
+      "env": "OPENEXCHANGERATES_APP_ID",
+      "base_url": "https://openexchangerates.org/api",
+      "auth": {
+        "type": "query",
+        "param": "app_id"
+      },
+      "endpoints": {
+        "latest": {
+          "method": "GET",
+          "path": "/latest.json"
+        }
+      },
+      "priority": "fx"
+    },
+    "tushare": {
+      "type": "python_sdk",
+      "env": "TUSHARE_TOKEN",
+      "package": "tushare",
+      "auth": {
+        "type": "sdk_token",
+        "function": "ts.pro_api"
+      },
+      "endpoints": {
+        "fund_daily": {
+          "sdk_method": "pro.fund_daily"
+        },
+        "fund_basic": {
+          "sdk_method": "pro.fund_basic"
+        },
+        "trade_cal": {
+          "sdk_method": "pro.trade_cal"
+        }
+      },
+      "priority": "china_etf_primary"
+    },
+    "zhituapi": {
+      "type": "china_market_data_api",
+      "env": "ZHITUAPI_TOKEN",
+      "base_url": "https://api.zhituapi.com",
+      "auth": {
+        "type": "query",
+        "param": "token"
+      },
+      "endpoints": {
+        "fund_list_etf": {
+          "method": "GET",
+          "path": "/fund/list/etf"
+        },
+        "fund_list_all": {
+          "method": "GET",
+          "path": "/fund/list/all"
+        }
+      },
+      "priority": "china_etf_fallback"
+    },
+    "agushuju": {
+      "type": "china_market_data_api",
+      "env": "AGUSHUJU_API_KEY",
+      "base_url_env": "AGUSHUJU_API_BASE_URL",
+      "auth": {
+        "type": "query",
+        "param": "token"
+      },
+      "endpoints": {},
+      "enabled_by_default": false,
+      "note": "Do not guess endpoints. Migrate from existing project code or vendor docs.",
+      "priority": "china_etf_fallback"
+    },
+    "twelvedata": {
+      "type": "market_data_api",
+      "env": "TWELVEDATA_API_KEY",
+      "base_url": "https://api.twelvedata.com",
+      "auth": {
+        "type": "query",
+        "param": "apikey"
+      },
+      "endpoints": {
+        "time_series": {
+          "method": "GET",
+          "path": "/time_series"
+        },
+        "symbol_search": {
+          "method": "GET",
+          "path": "/symbol_search"
+        }
+      },
+      "priority": "cross_asset"
+    },
+    "tiingo": {
+      "type": "market_data_api",
+      "env": "TIINGO_API_KEY",
+      "base_url": "https://api.tiingo.com",
+      "auth": {
+        "type": "query_or_header",
+        "query_param": "token",
+        "header": "Authorization: Token ${TIINGO_API_KEY}"
+      },
+      "endpoints": {
+        "daily_prices": {
+          "method": "GET",
+          "path": "/tiingo/daily/{ticker}/prices"
+        },
+        "news": {
+          "method": "GET",
+          "path": "/tiingo/news"
+        }
+      },
+      "priority": "us_etf_primary"
+    },
+    "websearch_cache": {
+      "type": "fallback",
+      "env": null,
+      "auth": {
+        "type": "none"
+      },
+      "default_is_scored": false,
+      "use_for": [
+        "fedwatch_next_meeting",
+        "btc_etf_flow",
+        "move_index",
+        "gdpnow",
+        "policy_news"
+      ],
+      "priority": "confirmation_only"
+    }
+  }
+}

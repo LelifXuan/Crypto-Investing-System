@@ -4,7 +4,11 @@ import argparse
 from pathlib import Path
 
 CATEGORIES = {
-    "数据文件": ["data/trading_system.db", "data/trading_system.db-wal", "data/trading_system.db-shm"],
+    "数据文件": [
+        "data/trading_system.db",
+        "data/trading_system.db-wal",
+        "data/trading_system.db-shm",
+    ],
     "缓存目录": ["data/cache", "cache"],
     "日志文件": ["logs"],
     "临时文件": ["tmp"],
@@ -59,19 +63,28 @@ def main():
                 if cnt > 0:
                     details.append(f"{rel}/ ({cnt} 文件, {_fmt(sz)})")
         if cat_size > 0 or args.json:
-            results.append({
-                "label": label,
-                "size_bytes": int(cat_size),
-                "size": _fmt(cat_size),
-                "files": cat_files,
-                "details": details,
-            })
+            results.append(
+                {
+                    "label": label,
+                    "size_bytes": int(cat_size),
+                    "size": _fmt(cat_size),
+                    "files": cat_files,
+                    "details": details,
+                }
+            )
             total_size += cat_size
             total_files += cat_files
 
     if args.json:
         import json
-        print(json.dumps({"total_size": _fmt(total_size), "total_files": total_files, "categories": results}, ensure_ascii=False, indent=2))
+
+        print(
+            json.dumps(
+                {"total_size": _fmt(total_size), "total_files": total_files, "categories": results},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(f"项目存储总计: {_fmt(total_size)} ({total_files} 文件)")
         print("-" * 50)
@@ -83,8 +96,8 @@ def main():
             for d in r["details"]:
                 print(f"    - {d}")
         print("-" * 50)
-        print(f"可清理项: logs/、tmp/、cache/、Python 缓存")
-        print(f"禁止删除: data/trading_system.db、.env")
+        print("可清理项: logs/、tmp/、cache/、Python 缓存")
+        print("禁止删除: data/trading_system.db、.env")
 
 
 def _fmt(size: float) -> str:

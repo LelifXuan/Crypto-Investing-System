@@ -1,0 +1,588 @@
+{
+  "version": "macro_indicator_api_map_v1",
+  "freshness_days": {
+    "intraday": 0.1,
+    "daily": 3,
+    "weekly": 14,
+    "monthly": 45,
+    "quarterly": 120,
+    "fomc": 60,
+    "irregular": 30
+  },
+  "indicators": {
+    "effr": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "EFFR"
+        }
+      ]
+    },
+    "sofr": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "SOFR"
+        }
+      ]
+    },
+    "us03m_yield": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DGS3MO"
+        }
+      ]
+    },
+    "us02y_yield": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DGS2"
+        }
+      ]
+    },
+    "us10y_yield": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DGS10"
+        }
+      ]
+    },
+    "us30y_yield": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DGS30"
+        }
+      ]
+    },
+    "us10y_2y_spread": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "pp",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "T10Y2Y"
+        }
+      ]
+    },
+    "us10y_3m_spread": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "pp",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "T10Y3M"
+        }
+      ]
+    },
+    "cpi_yoy": {
+      "module": "inflation_prices",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "yoy_pct",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "CUSR0000SA0"
+        },
+        {
+          "source": "fred",
+          "symbol": "CPIAUCSL"
+        }
+      ]
+    },
+    "cpi_mom": {
+      "module": "inflation_prices",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "mom_pct",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "CUSR0000SA0"
+        },
+        {
+          "source": "fred",
+          "symbol": "CPIAUCSL"
+        }
+      ]
+    },
+    "core_cpi_yoy": {
+      "module": "inflation_prices",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "yoy_pct",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "CUSR0000SA0L1E"
+        },
+        {
+          "source": "fred",
+          "symbol": "CPILFESL"
+        }
+      ]
+    },
+    "core_cpi_mom": {
+      "module": "inflation_prices",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "mom_pct",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "CUSR0000SA0L1E"
+        },
+        {
+          "source": "fred",
+          "symbol": "CPILFESL"
+        }
+      ]
+    },
+    "pce_yoy": {
+      "module": "inflation_prices",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "yoy_pct",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "PCEPI"
+        },
+        {
+          "source": "bea",
+          "dataset": "NIPA"
+        }
+      ]
+    },
+    "core_pce_yoy": {
+      "module": "inflation_prices",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "yoy_pct",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "PCEPILFE"
+        },
+        {
+          "source": "bea",
+          "dataset": "NIPA"
+        }
+      ]
+    },
+    "breakeven_5y": {
+      "module": "inflation_prices",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "T5YIE"
+        }
+      ]
+    },
+    "breakeven_10y": {
+      "module": "inflation_prices",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "T10YIE"
+        }
+      ]
+    },
+    "wti_oil": {
+      "module": "inflation_prices",
+      "frequency": "daily",
+      "unit": "USD/bbl",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DCOILWTICO"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "WTI"
+        }
+      ]
+    },
+    "nfp": {
+      "module": "growth_jobs",
+      "frequency": "monthly",
+      "unit": "thousand persons",
+      "transform": "monthly_diff",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "CES0000000001"
+        },
+        {
+          "source": "fred",
+          "symbol": "PAYEMS"
+        }
+      ]
+    },
+    "unemployment_rate": {
+      "module": "growth_jobs",
+      "frequency": "monthly",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "LNS14000000"
+        },
+        {
+          "source": "fred",
+          "symbol": "UNRATE"
+        }
+      ]
+    },
+    "average_hourly_earnings_yoy": {
+      "module": "growth_jobs",
+      "frequency": "monthly",
+      "unit": "%",
+      "transform": "yoy_pct",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "CES0500000003"
+        }
+      ]
+    },
+    "initial_claims": {
+      "module": "growth_jobs",
+      "frequency": "weekly",
+      "unit": "persons",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "ICSA"
+        }
+      ]
+    },
+    "continuing_claims": {
+      "module": "growth_jobs",
+      "frequency": "weekly",
+      "unit": "persons",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "CCSA"
+        }
+      ]
+    },
+    "jolts_openings": {
+      "module": "growth_jobs",
+      "frequency": "monthly",
+      "unit": "thousand openings",
+      "sources": [
+        {
+          "source": "bls",
+          "symbol": "JTSJOL"
+        },
+        {
+          "source": "fred",
+          "symbol": "JTSJOL"
+        }
+      ]
+    },
+    "gdp_qoq": {
+      "module": "growth_jobs",
+      "frequency": "quarterly",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "bea",
+          "dataset": "NIPA",
+          "table": "T10101"
+        },
+        {
+          "source": "fred",
+          "symbol": "A191RL1Q225SBEA"
+        }
+      ]
+    },
+    "fed_balance_sheet": {
+      "module": "liquidity_credit",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "WALCL"
+        }
+      ]
+    },
+    "reverse_repo": {
+      "module": "liquidity_credit",
+      "frequency": "daily",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "RRPONTSYD"
+        }
+      ]
+    },
+    "tga": {
+      "module": "liquidity_credit",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "WTREGEN"
+        }
+      ]
+    },
+    "bank_reserves": {
+      "module": "liquidity_credit",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "WRESBAL"
+        }
+      ]
+    },
+    "m2": {
+      "module": "liquidity_credit",
+      "frequency": "monthly",
+      "unit": "USD billion",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "M2SL"
+        }
+      ]
+    },
+    "hy_spread": {
+      "module": "liquidity_credit",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "BAMLH0A0HYM2"
+        }
+      ]
+    },
+    "ig_spread": {
+      "module": "liquidity_credit",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "BAMLC0A0CM"
+        }
+      ]
+    },
+    "financial_conditions": {
+      "module": "liquidity_credit",
+      "frequency": "weekly",
+      "unit": "index",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "NFCI"
+        }
+      ]
+    },
+    "real_yield_10y": {
+      "module": "usd_real_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DFII10"
+        }
+      ]
+    },
+    "real_yield_5y": {
+      "module": "usd_real_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DFII5"
+        }
+      ]
+    },
+    "vix": {
+      "module": "cross_asset",
+      "frequency": "daily",
+      "unit": "index",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "VIXCLS"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "VIX"
+        }
+      ]
+    },
+    "qqq": {
+      "module": "cross_asset",
+      "frequency": "daily",
+      "unit": "USD",
+      "sources": [
+        {
+          "source": "tiingo",
+          "symbol": "QQQ"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "QQQ"
+        },
+        {
+          "source": "alphavantage",
+          "symbol": "QQQ"
+        }
+      ]
+    },
+    "spy": {
+      "module": "cross_asset",
+      "frequency": "daily",
+      "unit": "USD",
+      "sources": [
+        {
+          "source": "tiingo",
+          "symbol": "SPY"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "SPY"
+        },
+        {
+          "source": "alphavantage",
+          "symbol": "SPY"
+        }
+      ]
+    },
+    "hyg": {
+      "module": "cross_asset",
+      "frequency": "daily",
+      "unit": "USD",
+      "sources": [
+        {
+          "source": "tiingo",
+          "symbol": "HYG"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "HYG"
+        },
+        {
+          "source": "alphavantage",
+          "symbol": "HYG"
+        }
+      ]
+    },
+    "usd_cny": {
+      "module": "usd_real_rates",
+      "frequency": "daily",
+      "unit": "CNY",
+      "sources": [
+        {
+          "source": "openexchangerates",
+          "symbol": "CNY"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "USD/CNY"
+        }
+      ]
+    },
+    "btc_usdt": {
+      "module": "crypto_market",
+      "frequency": "intraday",
+      "unit": "USDT",
+      "sources": [
+        {
+          "source": "gateio",
+          "symbol": "BTC_USDT"
+        },
+        {
+          "source": "coinmarketcap",
+          "symbol": "BTC"
+        }
+      ]
+    },
+    "eth_usdt": {
+      "module": "crypto_market",
+      "frequency": "intraday",
+      "unit": "USDT",
+      "sources": [
+        {
+          "source": "gateio",
+          "symbol": "ETH_USDT"
+        },
+        {
+          "source": "coinmarketcap",
+          "symbol": "ETH"
+        }
+      ]
+    },
+    "eth_btc": {
+      "module": "crypto_market",
+      "frequency": "daily",
+      "unit": "BTC",
+      "sources": [
+        {
+          "source": "gateio",
+          "symbol": "ETH_BTC"
+        }
+      ]
+    },
+    "a_share_cashflow_etf_159201": {
+      "module": "a_share_etf",
+      "frequency": "daily",
+      "unit": "CNY",
+      "sources": [
+        {
+          "source": "tushare",
+          "symbol": "159201.SZ"
+        },
+        {
+          "source": "zhituapi",
+          "symbol": "159201.SZ"
+        },
+        {
+          "source": "agushuju",
+          "symbol": "159201.SZ"
+        }
+      ]
+    }
+  }
+}

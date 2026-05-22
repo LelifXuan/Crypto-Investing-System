@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.core.decimal_utils import DECIMAL_ZERO
+
+UTC = timezone.utc
 
 
 @dataclass(slots=True)

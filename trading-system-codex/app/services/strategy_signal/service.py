@@ -90,7 +90,9 @@ class StrategySignalService:
                 }
             )
             if status in {"stale", "missing", "error"} and enqueue_refresh:
-                await self.enqueue_refresh(instrument_id, timeframe, reason=f"strategy_cache_{status}")
+                await self.enqueue_refresh(
+                    instrument_id, timeframe, reason=f"strategy_cache_{status}"
+                )
                 payload["refresh_enqueued"] = True
             return payload
 
@@ -119,7 +121,8 @@ class StrategySignalService:
                     "data_ts": payload.get("generated_at") or now,
                     "expires_at": expires_at_for_strategy(timeframe, now),
                     "source_version": CACHE_SOURCE_VERSION,
-                    "status_message": payload.get("status_message") or bundle_status_message("fresh"),
+                    "status_message": payload.get("status_message")
+                    or bundle_status_message("fresh"),
                 }
             )
             await self.repository.upsert_page_snapshot_cache(
@@ -169,7 +172,9 @@ class StrategySignalService:
         scores = DirectionScoringEngine(config).compute(snapshot)
         confidence_report = build_confidence_report(snapshot, scores)
         decision = StrategyGenerator(config).build_decision(snapshot, scores)
-        active_setup = await self._get_active_setup(snapshot["instrument_id"], snapshot["timeframe"])
+        active_setup = await self._get_active_setup(
+            snapshot["instrument_id"], snapshot["timeframe"]
+        )
         if active_setup is not None:
             lifecycle = evaluate_setup_lifecycle(active_setup, snapshot, config)
             decision = apply_lifecycle_to_decision(decision, active_setup, lifecycle)
@@ -179,7 +184,9 @@ class StrategySignalService:
                 "moved_atr": lifecycle.get("moved_atr"),
                 "is_missed": lifecycle.get("state") == "MOVE_MISSED",
             }
-            await self._update_setup_state(active_setup["setup_id"], lifecycle.get("state") or "SETUP_DETECTED")
+            await self._update_setup_state(
+                active_setup["setup_id"], lifecycle.get("state") or "SETUP_DETECTED"
+            )
         else:
             candidate = await self._maybe_persist_candidate_setup(snapshot, decision, config)
             if candidate is not None:
@@ -281,7 +288,10 @@ class StrategySignalService:
             return
         result = await self.repository.session.execute(
             select(StrategySignal)
-            .where(StrategySignal.signal_key == setup_id, StrategySignal.signal_type == "strategy_setup")
+            .where(
+                StrategySignal.signal_key == setup_id,
+                StrategySignal.signal_type == "strategy_setup",
+            )
             .order_by(desc(StrategySignal.signal_ts))
             .limit(1)
         )
@@ -325,13 +335,19 @@ class StrategySignalService:
         levels = primary.get("levels") or {}
         if not levels.get("is_valid"):
             return None
-        valid_bars = int((config.get("thresholds", {}).get("setup_valid_bars") or {}).get(snapshot["timeframe"], 10))
+        valid_bars = int(
+            (config.get("thresholds", {}).get("setup_valid_bars") or {}).get(
+                snapshot["timeframe"], 10
+            )
+        )
         setup = build_frozen_setup(
             instrument_id=snapshot["instrument_id"],
             timeframe=snapshot["timeframe"],
             side=side,
             levels=levels,
-            entry_mode=str(decision.get("entry_mode") or primary.get("entry_mode") or "pullback_confirm"),
+            entry_mode=str(
+                decision.get("entry_mode") or primary.get("entry_mode") or "pullback_confirm"
+            ),
             snapshot=snapshot,
             valid_bars=valid_bars,
         )
@@ -339,10 +355,15 @@ class StrategySignalService:
         await self._persist_setup(setup, snapshot, decision, config)
         return setup
 
-    async def _persist_setup(self, setup: dict, snapshot: dict, decision: dict, config: dict) -> None:
+    async def _persist_setup(
+        self, setup: dict, snapshot: dict, decision: dict, config: dict
+    ) -> None:
         result = await self.repository.session.execute(
             select(StrategySignal)
-            .where(StrategySignal.signal_key == setup["setup_id"], StrategySignal.signal_type == "strategy_setup")
+            .where(
+                StrategySignal.signal_key == setup["setup_id"],
+                StrategySignal.signal_type == "strategy_setup",
+            )
             .limit(1)
         )
         if result.scalar_one_or_none() is not None:
@@ -380,7 +401,9 @@ class StrategySignalService:
             metadata_json={
                 "setup_version": "v1.7",
                 "setup": _jsonable(setup),
-                "model_version": str(config.get("model_versions", {}).get("strategy_model", "strategy-signal-v1.7")),
+                "model_version": str(
+                    config.get("model_versions", {}).get("strategy_model", "strategy-signal-v1.7")
+                ),
                 "config_version": str(config.get("version", "market-strategy-signal-v1.7")),
                 "initial_snapshot_hash": setup.get("initial_snapshot_hash"),
             },
@@ -447,7 +470,9 @@ class StrategySignalService:
 
     async def save_signal(self, instrument_id: str, timeframe: str) -> dict:
         bundle = await self.get_bundle(instrument_id, timeframe, enqueue_refresh=False)
-        if bundle.get("cache_state") in {"missing", "updating", "error"} or not bundle.get("decision"):
+        if bundle.get("cache_state") in {"missing", "updating", "error"} or not bundle.get(
+            "decision"
+        ):
             raise StrategySignalUnavailable("暂无可保存的策略信号，请等待后台刷新完成后再保存。")
         snapshot = bundle["snapshot"]
         decision = bundle["decision"]
@@ -469,7 +494,9 @@ class StrategySignalService:
             "signal_key": signal_key,
             "decision_id": signal_key,
             "input_hash": input_hash,
-            "model_version": str(config.get("model_versions", {}).get("strategy_model", "strategy-signal-v1.6")),
+            "model_version": str(
+                config.get("model_versions", {}).get("strategy_model", "strategy-signal-v1.6")
+            ),
             "config_version": str(config.get("version", "market-strategy-signal-v1.6")),
             "payload": bundle,
         }
@@ -488,7 +515,9 @@ class StrategySignalService:
         bundle: dict | None = None,
     ) -> None:
         primary = decision.get("primary_strategy") or {}
-        model_version = str(config.get("model_versions", {}).get("strategy_model", "strategy-signal-v1.6"))
+        model_version = str(
+            config.get("model_versions", {}).get("strategy_model", "strategy-signal-v1.6")
+        )
         config_version = str(config.get("version", "market-strategy-signal-v1.6"))
         metadata = {
             "model_version": model_version,

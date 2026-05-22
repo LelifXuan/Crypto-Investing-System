@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timezone, datetime
-UTC = timezone.utc
+from datetime import datetime, timezone
 
 from app.repositories.market_repository import MarketRepository
 from app.services.cache_registry import (
@@ -10,6 +9,8 @@ from app.services.cache_registry import (
     cache_status,
     dataset_cache_status,
 )
+
+UTC = timezone.utc
 
 
 @dataclass(slots=True)

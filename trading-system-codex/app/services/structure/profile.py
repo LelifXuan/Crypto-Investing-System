@@ -46,9 +46,7 @@ class ProfileScorer:
             top_reasons=reasons,
             conflict_flags=["balance_state"] if profile["balance_score"] >= 0.60 else [],
             metadata={
-                "regime_hint": "balance"
-                if profile["balance_score"] >= 0.60
-                else "transition",
+                "regime_hint": "balance" if profile["balance_score"] >= 0.60 else "transition",
                 "balance_score": profile["balance_score"],
                 "imbalance": profile["imbalance"],
             },

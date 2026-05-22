@@ -18,6 +18,7 @@ def test_storage_manifest_exists_after_startup() -> None:
     manifest = Path("runtime/storage_manifest.json")
     if manifest.exists():
         import json
+
         d = json.loads(manifest.read_text())
         assert "database_path" in d
         assert "long_term" in d

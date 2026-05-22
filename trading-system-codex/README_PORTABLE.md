@@ -3,6 +3,12 @@
 This is a Windows `win-x64` portable package. It includes Python 3.11 embeddable runtime and
 the pinned application dependencies, so users do not need to install Python.
 
+Portable users do not need to set `HTTPS_PROXY` or fill in API keys before opening the
+application. The app auto-detects common local proxies, then falls back through live data,
+runtime cache, bundled seed cache, web snapshots, and explicit unscored placeholders. Optional
+API keys only improve freshness and coverage; missing keys lower confidence instead of making
+pages blank.
+
 ## Start
 
 If you already have the folder `TradingSystemPortable`, use it directly:

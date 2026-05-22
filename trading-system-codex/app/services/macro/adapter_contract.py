@@ -29,6 +29,7 @@ class AdapterResult:
 
     def to_public_dict(self, include_raw: bool = False) -> Dict[str, Any]:
         import dataclasses
+
         d = dataclasses.asdict(self)
         if not include_raw:
             d.pop("raw", None)

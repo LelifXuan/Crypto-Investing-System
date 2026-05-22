@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Optional
 
 FRESHNESS_DAYS = {
-    "intraday": 0.1, "daily": 3, "weekly": 14,
-    "monthly": 45, "quarterly": 120, "fomc": 60, "irregular": 30,
+    "intraday": 0.1,
+    "daily": 3,
+    "weekly": 14,
+    "monthly": 45,
+    "quarterly": 120,
+    "fomc": 60,
+    "irregular": 30,
 }
 
 
@@ -97,7 +102,9 @@ class MacroSnapshot:
     score_band: str = "中性"
     score_explanation: str = ""
     confidence: str = "insufficient"
-    data_completeness: dict = field(default_factory=lambda: {"effective_count": 0, "total_count": 0, "ratio": 0.0})
+    data_completeness: dict = field(
+        default_factory=lambda: {"effective_count": 0, "total_count": 0, "ratio": 0.0}
+    )
     operation_bias: str = "观望"
     regime_label_cn: str = "数据不足"
     regime_summary: str = ""

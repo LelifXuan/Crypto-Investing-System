@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import timezone, datetime, timedelta
-UTC = timezone.utc
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.core.db import db_manager
 from app.repositories.market_repository import MarketRepository
 from app.services.indicator_monitoring import IndicatorMonitoringService
 
+UTC = timezone.utc
 logger = logging.getLogger(__name__)
 STALE_REFRESH_MAX_AGE = timedelta(days=1)
 

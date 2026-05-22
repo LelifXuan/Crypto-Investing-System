@@ -1,36 +1,43 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
 
-UTC = timezone.utc
+from app.core.paths import app_paths
 
+UTC = timezone.utc
 ETF_GROUPS: dict[str, dict[str, Any]] = {
     "halo": {
         "group_label": "HALO",
         "items": [
-            {"code": "563010", "name": "电信ETF", "market": "SH", "order": 20},
-            {"code": "512660", "name": "军工ETF", "market": "SH", "order": 30},
-            {"code": "516950", "name": "基建ETF", "market": "SH", "order": 40},
-            {"code": "512400", "name": "有色金属ETF", "market": "SH", "order": 50},
-            {"code": "159930", "name": "能源ETF", "market": "SZ", "order": 60},
-            {"code": "561560", "name": "电力ETF", "market": "SH", "order": 70},
+            {"code": "563010", "name": "\u7535\u4fe1ETF", "market": "SH", "order": 20},
+            {"code": "512660", "name": "\u519b\u5de5ETF", "market": "SH", "order": 30},
+            {"code": "516950", "name": "\u57fa\u5efaETF", "market": "SH", "order": 40},
+            {"code": "512400", "name": "\u6709\u8272\u91d1\u5c5eETF", "market": "SH", "order": 50},
+            {"code": "159930", "name": "\u80fd\u6e90ETF", "market": "SZ", "order": 60},
+            {"code": "561560", "name": "\u7535\u529bETF", "market": "SH", "order": 70},
         ],
     },
     "cashflow": {
-        "group_label": "现金流",
+        "group_label": "\u73b0\u91d1\u6d41",
         "items": [
-            {"code": "159201", "name": "现金流ETF", "market": "SZ", "order": 10},
+            {"code": "159201", "name": "\u73b0\u91d1\u6d41ETF", "market": "SZ", "order": 10},
         ],
     },
 }
 
 EASTMONEY_FIELDS = "f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18,f20,f21,f8,f10,f13,f124"
+EASTMONEY_BACKUP_BASE_URLS = (
+    "https://push2.eastmoney.com",
+    "https://push2his.eastmoney.com",
+)
 
 
 def utc_now() -> datetime:
@@ -110,16 +117,54 @@ class EastmoneyDirectETFClient:
             "fields": EASTMONEY_FIELDS,
             "secids": ",".join(secid_for_code(code) for code in by_code),
         }
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"}
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds, headers=headers) as client:
-                response = await client.get(f"{self.base_url}/api/qt/ulist.np/get", params=params)
-                response.raise_for_status()
-                payload = response.json()
-        except Exception as exc:  # noqa: BLE001
-            self.last_error = f"{type(exc).__name__}: {exc}"
-            raise RuntimeError(self.last_error) from exc
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+            ),
+            "Referer": "https://quote.eastmoney.com/",
+            "Accept": "application/json,text/plain,*/*",
+        }
+        base_urls = [
+            self.base_url,
+            *[url for url in EASTMONEY_BACKUP_BASE_URLS if url != self.base_url],
+        ]
+        errors: list[str] = []
+        for attempt in range(2):
+            for base_url in base_urls:
+                try:
+                    async with httpx.AsyncClient(
+                        timeout=self.timeout_seconds,
+                        headers=headers,
+                    ) as client:
+                        response = await client.get(
+                            f"{base_url}/api/qt/ulist.np/get",
+                            params=params,
+                        )
+                        response.raise_for_status()
+                        payload = response.json()
+                    quotes = self._parse_payload(payload, by_code)
+                    self.last_success_at = utc_now()
+                    self.last_error = None
+                    return quotes
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{base_url}: {type(exc).__name__}")
+            if attempt == 0:
+                await self._tiny_backoff()
+        self.last_error = "; ".join(errors) or "eastmoney_unavailable"
+        raise RuntimeError(self.last_error)
 
+    @staticmethod
+    async def _tiny_backoff() -> None:
+        import asyncio
+
+        await asyncio.sleep(0.35)
+
+    def _parse_payload(
+        self,
+        payload: dict[str, Any] | None,
+        by_code: dict[str, dict[str, Any]],
+    ) -> list[AShareETFQuote]:
         rows = ((payload or {}).get("data") or {}).get("diff") or []
         if not rows:
             self.last_error = "empty_eastmoney_diff"
@@ -163,9 +208,6 @@ class EastmoneyDirectETFClient:
             quotes.append(
                 self._unavailable_quote(item, "provider_missing_symbol", status="missing")
             )
-
-        self.last_success_at = utc_now()
-        self.last_error = None
         return quotes
 
     @staticmethod
@@ -203,18 +245,49 @@ class EastmoneyDirectETFClient:
 
 
 class AShareETFQuoteService:
+    cache_filename = "ashare_etf_quotes.json"
+
     def __init__(
         self,
         *,
         providers: list[EastmoneyDirectETFClient],
         ttl_seconds: int,
         stale_cache_seconds: int,
+        cache_path: Path | None = None,
     ) -> None:
         self.providers = providers
         self.ttl_seconds = ttl_seconds
         self.stale_cache_seconds = stale_cache_seconds
+        self.cache_path = cache_path or self.default_cache_path()
         self._cache: dict[str, Any] | None = None
         self._cache_written_monotonic = 0.0
+
+    @classmethod
+    def default_cache_path(cls) -> Path:
+        return app_paths.cache_dir / cls.cache_filename
+
+    @classmethod
+    def persistent_cache_summary(cls) -> dict[str, Any]:
+        payload = cls._read_cache_file(cls.default_cache_path())
+        groups = payload.get("groups") if isinstance(payload, dict) else {}
+        latest: dict[str, Any] | None = None
+        if isinstance(groups, dict):
+            for item in groups.values():
+                if not isinstance(item, dict):
+                    continue
+                candidate = item.get("payload") if isinstance(item.get("payload"), dict) else None
+                if not candidate:
+                    continue
+                candidate_ts = str(candidate.get("generated_at") or "")
+                latest_ts = str(latest.get("generated_at") or "") if latest else ""
+                if latest is None or candidate_ts > latest_ts:
+                    latest = candidate
+        return {
+            "has_cache": latest is not None,
+            "generated_at": latest.get("generated_at") if latest else None,
+            "source_status": latest.get("source_status") if latest else None,
+            "cache_status": latest.get("cache_status") if latest else None,
+        }
 
     def catalog(self) -> dict[str, Any]:
         return {
@@ -269,21 +342,26 @@ class AShareETFQuoteService:
                     cache_status="live",
                     warnings=[q.error_message for q in quotes if q.error_message],
                 )
-                self._cache = {"cache_key": cache_key, "payload": payload}
-                self._cache_written_monotonic = time.monotonic()
+                self._store_cache(cache_key, payload)
                 return payload
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{provider.provider_id}: {type(exc).__name__}: {exc}")
 
-        if self._cache and now - self._cache_written_monotonic <= self.stale_cache_seconds:
-            cached = dict(self._cache["payload"])
-            cached["source_status"] = "stale"
-            cached["cache_status"] = "stale"
-            cached["warnings"] = [*cached.get("warnings", []), *errors]
-            return cached
+        stale = self._load_cached_payload(cache_key)
+        if stale:
+            stale = dict(stale)
+            stale["source_status"] = "stale"
+            stale["cache_status"] = "stale"
+            stale["warnings"] = [*stale.get("warnings", []), *errors]
+            self._cache = {"cache_key": cache_key, "payload": stale}
+            self._cache_written_monotonic = time.monotonic()
+            return stale
 
         unavailable = [
-            EastmoneyDirectETFClient._unavailable_quote(item, "行情源暂不可用")
+            EastmoneyDirectETFClient._unavailable_quote(
+                item,
+                "\u884c\u60c5\u6e90\u6682\u4e0d\u53ef\u7528\uff0c\u7b49\u5f85\u4e0b\u6b21\u5237\u65b0",
+            )
             for item in requested_items
         ]
         return self._format_response(
@@ -308,6 +386,39 @@ class AShareETFQuoteService:
                 for index, provider in enumerate(self.providers)
             ],
         }
+
+    def _store_cache(self, cache_key: str, payload: dict[str, Any]) -> None:
+        self._cache = {"cache_key": cache_key, "payload": payload}
+        self._cache_written_monotonic = time.monotonic()
+        stored = self._read_cache_file(self.cache_path)
+        groups = stored.setdefault("groups", {})
+        groups[cache_key] = {"written_at": utc_now().isoformat(), "payload": payload}
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_path.write_text(
+            json.dumps(stored, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+
+    def _load_cached_payload(self, cache_key: str) -> dict[str, Any] | None:
+        if self._cache and self._cache.get("cache_key") == cache_key:
+            return dict(self._cache.get("payload") or {})
+        stored = self._read_cache_file(self.cache_path)
+        groups = stored.get("groups") if isinstance(stored, dict) else {}
+        if not isinstance(groups, dict):
+            return None
+        item = groups.get(cache_key) or groups.get("all")
+        payload = item.get("payload") if isinstance(item, dict) else None
+        return dict(payload) if isinstance(payload, dict) else None
+
+    @staticmethod
+    def _read_cache_file(path: Path) -> dict[str, Any]:
+        try:
+            if not path.exists():
+                return {"version": 1, "groups": {}}
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else {"version": 1, "groups": {}}
+        except (OSError, json.JSONDecodeError):
+            return {"version": 1, "groups": {}}
 
     def _format_response(
         self,

@@ -123,14 +123,28 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def strategy_signal_config_path() -> Path:
-    return app_paths.repo_root / "app" / "monitoring" / "configs" / "market_strategy_signal_config_v17.json"
+    return (
+        app_paths.repo_root
+        / "app"
+        / "monitoring"
+        / "configs"
+        / "market_strategy_signal_config_v17.json"
+    )
 
 
 def load_strategy_signal_config() -> dict[str, Any]:
     candidates = [
         strategy_signal_config_path(),
-        app_paths.repo_root / "app" / "monitoring" / "configs" / "market_strategy_signal_config_v16.json",
-        app_paths.repo_root / "app" / "monitoring" / "configs" / "market_strategy_signal_config_v15.json",
+        app_paths.repo_root
+        / "app"
+        / "monitoring"
+        / "configs"
+        / "market_strategy_signal_config_v16.json",
+        app_paths.repo_root
+        / "app"
+        / "monitoring"
+        / "configs"
+        / "market_strategy_signal_config_v15.json",
     ]
     for path in candidates:
         if not path.exists():

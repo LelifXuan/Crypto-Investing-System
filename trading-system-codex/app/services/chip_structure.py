@@ -118,8 +118,20 @@ class ChipStructureService:
                 "slippage / spread 尚未同步",
             ],
             "evidence": [
-                {"key": "price_change", "label": "区间涨跌", "value": f"{round(change_pct, 2)}%", "impact": "neutral", "summary": f"当前周期起止涨跌约 {round(change_pct, 2)}%"},
-                {"key": "latest_close", "label": "最新收盘", "value": self._fmt(latest_close), "impact": "low", "summary": f"最新收盘价 {self._fmt(latest_close)}"},
+                {
+                    "key": "price_change",
+                    "label": "区间涨跌",
+                    "value": f"{round(change_pct, 2)}%",
+                    "impact": "neutral",
+                    "summary": f"当前周期起止涨跌约 {round(change_pct, 2)}%",
+                },
+                {
+                    "key": "latest_close",
+                    "label": "最新收盘",
+                    "value": self._fmt(latest_close),
+                    "impact": "low",
+                    "summary": f"最新收盘价 {self._fmt(latest_close)}",
+                },
             ],
             "risk_gates": ["MICROSTRUCTURE_MISSING"],
             "allow_futures_long": False,

@@ -197,9 +197,6 @@ function renderShell() {
         <article class="card structure-summary-card" id="structure-summary-panel"></article>
       </section>
 
-      <section class="card structure-detail-card">
-        <div id="structure-detail-panel" class="structure-detail-grid"></div>
-      </section>
     </section>
   `);
 }
@@ -602,8 +599,6 @@ function buildCurrentPriceGuideMarkup(guide, textDecision) {
       <p>${escapeHtml(message)}</p>
       ${nextTrigger ? `<p class="muted">下一触发：${escapeHtml(nextTrigger)}</p>` : ""}
       ${permissionLabel ? `<span class="status-chip chip-neutral">执行权限：${escapeHtml(permissionLabel)}</span>` : ""}
-      ${decision.dominant_evidence && decision.dominant_evidence.length ? `<p class="muted compact">抵消来源：${escapeHtml(decision.dominant_evidence.join(" + "))}</p>` : ""}
-      ${decision.opposing_evidence && decision.opposing_evidence.length ? `<p class="muted compact">负面来源：${escapeHtml(decision.opposing_evidence.join(" + "))}</p>` : ""}
     </div>
   `;
 }
@@ -1012,147 +1007,6 @@ function renderSummary(snapshot) {
   `;
 }
 
-function renderCurrentStructures(items) {
-  if (!items.length) return `<div class="empty-state">当前没有活跃结构。</div>`;
-  return `
-    <div class="structure-detail-list">
-      ${items
-        .map((item) => {
-          const reasons = normalizeTextList(item.reasoning_json).slice(0, 2);
-          return `
-            <article class="structure-mini-card">
-              <div class="list-card-head">
-                <strong>${escapeHtml(item.display_name || item.structure_type || "-")}</strong>
-                ${statusChip(labelFor(STATUS_LABELS, item.lifecycle_status || item.status || "confirmed"))}
-              </div>
-              <p>${escapeHtml(item.summary || "暂无摘要说明。")}</p>
-              ${
-                reasons.length
-                  ? `<ul class="plain-list compact">${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>`
-                  : ""
-              }
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-function renderEventHistory(items) {
-  if (!items.length) return `<div class="empty-state">近期没有结构事件。</div>`;
-  return `
-    <div class="structure-detail-list">
-      ${items
-        .slice(0, 8)
-        .map(
-          (item) => `
-            <article class="structure-mini-card">
-              <div class="list-card-head">
-                <strong>${escapeHtml(labelFor(SYSTEM_LABELS, item.system))}</strong>
-                ${statusChip(labelFor(STATUS_LABELS, item.status || "confirmed"))}
-              </div>
-              <p>${escapeHtml(item.event_name || "-")}</p>
-              <small>${escapeHtml(formatDateTime(item.event_ts))}</small>
-            </article>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function renderAlertHistory(items) {
-  if (!items.length) return `<div class="empty-state">近期没有结构告警。</div>`;
-  return `
-    <div class="structure-detail-list">
-      ${items
-        .slice(0, 6)
-        .map(
-          (item) => `
-            <article class="structure-mini-card">
-              <div class="list-card-head">
-                <strong>${escapeHtml(item.title || item.alert_name || "-")}</strong>
-                ${statusChip(labelFor(STATUS_LABELS, item.severity || "medium"))}
-              </div>
-              <p>${escapeHtml(item.message || "暂无详细说明。")}</p>
-              <small>${escapeHtml(formatDateTime(item.triggered_at))}</small>
-            </article>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function renderDiagnostics(snapshot, diagnostics) {
-  const effectiveDiagnostics = diagnostics || snapshot.diagnostics || {};
-  const notes = normalizeTextList(effectiveDiagnostics.notes);
-  return `
-    <article class="structure-detail-section structure-detail-block is-hidden">
-      <div class="list-card-head">
-        <strong>检测诊断</strong>
-        ${statusChip("只读快照")}
-      </div>
-      <div class="structure-inline-metrics">
-        <span>加载 K 线 ${escapeHtml(String(effectiveDiagnostics.candles_loaded ?? 0))}</span>
-        <span>几何数量 ${escapeHtml(String(effectiveDiagnostics.geometry_count ?? 0))}</span>
-        <span>事件数量 ${escapeHtml(String(effectiveDiagnostics.event_count ?? 0))}</span>
-        <span>告警数量 ${escapeHtml(String(effectiveDiagnostics.alert_count ?? 0))}</span>
-      </div>
-      ${
-        notes.length
-          ? `<ul class="plain-list compact">${notes.slice(0, 3).map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>`
-          : `<p class="structure-copy">当前快照未返回额外诊断备注。</p>`
-      }
-      <p class="structure-copy">回测时请只使用已确认的 pivot、breakout 与 value area 信号，避免把候选形态直接当成最终结论。</p>
-    </article>
-  `;
-}
-
-function renderDetailPanel(payload) {
-  const detailPanel = document.getElementById("structure-detail-panel");
-  const systemFilter = state.selectedSystem;
-  const snapshot = payload.snapshot || {};
-  const activeItems = (snapshot.active_items || []).filter((item) => systemFilter === "all" || item.system === systemFilter);
-  const events = (payload.events || []).filter((item) => systemFilter === "all" || item.system === systemFilter);
-  const alerts = (payload.alerts || []).filter((item) => {
-    if (systemFilter === "all") return true;
-    const system = item.event_payload_json?.system || item.event_payload_json?.event?.system;
-    return !system || system === systemFilter;
-  });
-
-  detailPanel.innerHTML = `
-    <article class="structure-detail-section structure-detail-block">
-      <div class="list-card-head">
-        <strong>当前结构</strong>
-        ${statusChip(systemFilter === "all" ? "全部系统" : labelFor(SYSTEM_LABELS, systemFilter))}
-      </div>
-      ${renderCurrentStructures(activeItems)}
-    </article>
-
-    <article class="structure-detail-section structure-detail-block">
-      <div class="list-card-head">
-        <strong>近期事件</strong>
-        ${statusChip(`${events.length} 条`)}
-      </div>
-      ${renderEventHistory(events)}
-    </article>
-
-    <article class="structure-detail-section structure-detail-block">
-      <div class="list-card-head">
-        <strong>告警历史</strong>
-        ${statusChip(`${alerts.length} 条`)}
-      </div>
-      ${renderAlertHistory(alerts)}
-    </article>
-
-  `;
-  detailPanel.querySelectorAll(".structure-detail-section").forEach((section, index) => {
-    if (index > 0) section.classList.add("is-hidden");
-  });
-}
-
 function renderFromBundle(bundle) {
   if (!bundle) {
     return;
@@ -1164,7 +1018,6 @@ function renderFromBundle(bundle) {
   if (!snapshot) {
     const chartPanel = document.getElementById("structure-chart-panel");
     const summaryPanel = document.getElementById("structure-summary-panel");
-    const detailPanel = document.getElementById("structure-detail-panel");
     if (candles.length) {
       const fallbackSnapshot = {
         active_items: [],
@@ -1183,17 +1036,6 @@ function renderFromBundle(bundle) {
       };
       renderChart(fallbackSnapshot, candles);
       renderSummary(fallbackSnapshot);
-      if (detailPanel) {
-        detailPanel.innerHTML = `
-          <article class="structure-detail-section structure-detail-block">
-            <div class="list-card-head">
-              <strong>检测诊断</strong>
-              ${statusChip("价格降级图")}
-            </div>
-            <p class="structure-copy">${escapeHtml(bundle.status_message || fallbackSnapshot.overall.meaning)}</p>
-          </article>
-        `;
-      }
       renderStatus(bundle.status_message || fallbackSnapshot.overall.meaning, bundle.cache_state === "missing" ? "warning" : "neutral");
       return;
     }
@@ -1210,17 +1052,6 @@ function renderFromBundle(bundle) {
         </article>
       `;
     }
-    if (detailPanel) {
-      detailPanel.innerHTML = `
-        <article class="structure-detail-section structure-detail-block">
-          <div class="list-card-head">
-            <strong>检测诊断</strong>
-            ${statusChip("只读缓存")}
-          </div>
-          <p class="structure-copy">${escapeHtml(bundle.status_message || "尚未生成结构快照。")}</p>
-        </article>
-      `;
-    }
     renderStatus(bundle.status_message || "当前尚无结构快照，请手动刷新。", bundle.cache_state === "missing" ? "warning" : "neutral");
     return;
   }
@@ -1234,18 +1065,16 @@ function renderFromBundle(bundle) {
   };
   renderChart(safeSnapshot, candles);
   renderSummary(safeSnapshot);
-  renderDetailPanel({
-    snapshot: safeSnapshot,
-    events: bundle.events || [],
-    alerts: bundle.alerts || [],
-    diagnostics: bundle.diagnostics,
-  });
   const lastCandleTs = candles[candles.length - 1]?.ts_open;
   const scopeLabel = state.selectedSystem === "all" ? "综合判断" : labelFor(SYSTEM_LABELS, state.selectedSystem);
+  const freshnessMessage = bundle.freshness_message || "";
+  const freshnessTone = bundle.freshness_state === "stale" || bundle.freshness_state === "lagging" ? "warning" : "neutral";
   renderStatus(
-    bundle.status_message ||
+    freshnessMessage && bundle.freshness_state !== "fresh"
+      ? freshnessMessage
+      : bundle.status_message ||
       `快照时间：${formatDateTime(safeSnapshot.generated_at || safeSnapshot.overall?.last_updated_at)} ｜ 最新价格时间：${formatDateTime(lastCandleTs)} ｜ 当前范围：${scopeLabel}`,
-    bundle.is_stale ? "warning" : "neutral",
+    bundle.is_stale ? "warning" : freshnessTone,
   );
 }
 
@@ -1380,12 +1209,6 @@ export async function renderStructure() {
           <p class="eyebrow">加载失败</p>
           <h3>结构快照暂时不可用</h3>
           <p class="structure-copy">${escapeHtml(String(error.message || error))}</p>
-        </article>
-      `;
-      document.getElementById("structure-detail-panel").innerHTML = `
-        <article class="list-card structure-detail-block">
-          <strong>数据暂不可用</strong>
-          <p class="structure-copy">请稍后重试，或点击“手动刷新快照”。</p>
         </article>
       `;
       renderStatus("结构快照读取失败，请稍后重试。", "danger");

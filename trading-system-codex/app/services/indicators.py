@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from datetime import datetime, timezone
-UTC = timezone.utc
 from decimal import Decimal, getcontext
 
 from app.core.config import settings
@@ -13,6 +12,7 @@ from app.quant.indicators import bbands_series, ema_series, macd_series, rsi_wil
 from app.repositories.market_repository import MarketRepository
 from app.services.market import MarketService
 
+UTC = timezone.utc
 getcontext().prec = 28
 
 DEFAULT_INDICATOR_PARAMETERS = {

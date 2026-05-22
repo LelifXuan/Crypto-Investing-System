@@ -34,9 +34,7 @@ async def _ensure_sqlite_schema_compatibility(engine: AsyncEngine) -> None:
         columns = {row[1] for row in rows.fetchall()}
         for name, ddl in PAGE_SNAPSHOT_COLUMNS.items():
             if name not in columns:
-                await conn.execute(
-                    text(f"ALTER TABLE page_snapshot_cache ADD COLUMN {name} {ddl}")
-                )
+                await conn.execute(text(f"ALTER TABLE page_snapshot_cache ADD COLUMN {name} {ddl}"))
 
         await conn.execute(
             text(

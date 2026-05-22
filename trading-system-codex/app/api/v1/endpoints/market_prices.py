@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-UTC = timezone.utc
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +28,7 @@ from app.schemas.market import (
 )
 from app.services.market import MarketService
 
+UTC = timezone.utc
 router = APIRouter(prefix="/market-prices", tags=["market-prices"])
 marketdata_router = APIRouter(prefix="/marketdata", tags=["marketdata"])
 

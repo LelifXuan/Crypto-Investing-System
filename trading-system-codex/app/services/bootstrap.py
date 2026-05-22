@@ -151,7 +151,6 @@ async def seed_local_defaults(
     ).seed_defaults()
 
 
-
 def candle_warmup_limit_for_timeframe(timeframe: str) -> int:
     raw = getattr(settings, "local_bootstrap_candle_limits_by_timeframe", "") or ""
     limits = {}
@@ -231,8 +230,12 @@ async def warm_local_market_data(market_repository: MarketRepository, instrument
     try:
         await MonitoringDashboardService(market_repository).refresh_bundle(instrument_id, "1d")
     except Exception as exc:  # pragma: no cover - depends on external provider
-        logger.warning("startup warmup: monitoring bundle (1d) failed for %s: %s", instrument_id, exc)
+        logger.warning(
+            "startup warmup: monitoring bundle (1d) failed for %s: %s", instrument_id, exc
+        )
     try:
         await MonitoringDashboardService(market_repository).refresh_bundle(instrument_id, "1h")
     except Exception as exc:  # pragma: no cover - depends on external provider
-        logger.warning("startup warmup: monitoring bundle (1h) failed for %s: %s", instrument_id, exc)
+        logger.warning(
+            "startup warmup: monitoring bundle (1h) failed for %s: %s", instrument_id, exc
+        )

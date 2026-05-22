@@ -36,11 +36,32 @@ from .text_logic import resolve_structure_text
 
 UTC = timezone.utc
 
+FRESHNESS_LIMIT_SECONDS = {
+    "1h": 90 * 60,
+    "4h": 5 * 60 * 60,
+    "1d": 30 * 60 * 60,
+    "1w": 8 * 24 * 60 * 60,
+    "30d": 45 * 24 * 60 * 60,
+}
+
+
+def _format_lag(seconds: int) -> str:
+    if seconds < 3600:
+        minutes = max(1, round(seconds / 60))
+        return f"{minutes} 分钟"
+    if seconds < 48 * 3600:
+        hours = round(seconds / 3600, 1)
+        return f"{hours:g} 小时"
+    days = round(seconds / 86400, 1)
+    return f"{days:g} 天"
+
 
 def _compute_text_decision(fusion, classic_bundle, candles: list) -> dict | None:
     try:
         last_candle = candles[-1] if candles else None
-        latest_close = float(last_candle.close) if last_candle and hasattr(last_candle, "close") else None
+        latest_close = (
+            float(last_candle.close) if last_candle and hasattr(last_candle, "close") else None
+        )
 
         local_state = "inside"
         local_level = None
@@ -54,7 +75,6 @@ def _compute_text_decision(fusion, classic_bundle, candles: list) -> dict | None
                 geom = primary.get("geometry")
                 upper = None
                 lower = None
-                pattern_type = None
                 status = None
                 if isinstance(geom, list) and geom:
                     g = geom[0]
@@ -62,13 +82,11 @@ def _compute_text_decision(fusion, classic_bundle, candles: list) -> dict | None
                         g_meta = g.meta_json or {}
                         upper = g_meta.get("upper_boundary")
                         lower = g_meta.get("lower_boundary")
-                        pattern_type = g_meta.get("pattern_type")
                         status = g_meta.get("status") or g.status
                     elif isinstance(g, dict):
                         g_meta = g.get("meta_json") or g.get("meta") or {}
                         upper = g_meta.get("upper_boundary")
                         lower = g_meta.get("lower_boundary")
-                        pattern_type = g_meta.get("pattern_type")
                         status = g_meta.get("status") or g.get("status")
 
                 if status == "invalidated":
@@ -147,7 +165,7 @@ class StructureSnapshotService:
         )
         if not candles:
             if cache is not None:
-                return self._bundle_from_cache(cache, candles=[])
+                return self._bundle_from_cache(cache, candles=[], timeframe=normalized)
             return StructureTabBundleRead(
                 snapshot=None,
                 candles=[],
@@ -157,6 +175,7 @@ class StructureSnapshotService:
                 cache_state="missing",
                 is_stale=False,
                 status_message=bundle_status_message("missing"),
+                **self._freshness_fields(normalized, []),
             )
         if cache is None:
             return StructureTabBundleRead(
@@ -168,9 +187,10 @@ class StructureSnapshotService:
                 cache_state="missing",
                 is_stale=False,
                 status_message=bundle_status_message("missing"),
+                **self._freshness_fields(normalized, candles),
             )
 
-        bundle = self._bundle_from_cache(cache, candles=candles)
+        bundle = self._bundle_from_cache(cache, candles=candles, timeframe=normalized)
         latest_candle_ts = candles[-1].ts_open if candles else None
         generated_at = bundle.snapshot.generated_at if bundle.snapshot else None
         source_data_stale = bool(
@@ -211,7 +231,12 @@ class StructureSnapshotService:
     ) -> StructureTabSnapshotRead:
         # include_diagnostics kept for API compatibility.
         normalized = normalize_timeframe_for_cache(timeframe)
-        candles = await self._load_candles(instrument_id, normalized, None)
+        candles = await self._load_candles(
+            instrument_id,
+            normalized,
+            None,
+            force_refresh=True,
+        )
         if not candles:
             raise ValueError("structure snapshot missing")
         bundle = self._build_bundle_from_candles(
@@ -259,7 +284,12 @@ class StructureSnapshotService:
         candles_limit: int | None = None,
     ) -> StructureTabBundleRead:
         normalized = normalize_timeframe_for_cache(timeframe)
-        candles = await self._load_candles(instrument_id, normalized, candles_limit)
+        candles = await self._load_candles(
+            instrument_id,
+            normalized,
+            candles_limit,
+            force_refresh=True,
+        )
         if not candles:
             return await self.get_bundle(
                 instrument_id,
@@ -315,7 +345,13 @@ class StructureSnapshotService:
                 return cache
         return None
 
-    def _bundle_from_cache(self, cache, *, candles: list[CandleRead]) -> StructureTabBundleRead:
+    def _bundle_from_cache(
+        self,
+        cache,
+        *,
+        candles: list[CandleRead],
+        timeframe: str,
+    ) -> StructureTabBundleRead:
         payload = dict(cache.payload_json or {})
         if candles:
             payload["candles"] = candles
@@ -324,6 +360,7 @@ class StructureSnapshotService:
         bundle.cache_state = state
         bundle.is_stale = state == "stale"
         bundle.status_message = bundle_status_message(state)
+        self._apply_freshness(bundle, timeframe, candles or bundle.candles)
         return bundle
 
     def _build_bundle_from_candles(
@@ -346,6 +383,7 @@ class StructureSnapshotService:
             cache_state=cache_state,
             is_stale=cache_state == "stale",
             status_message=bundle_status_message(cache_state),
+            **self._freshness_fields(timeframe, candles),
         )
 
     async def _persist_bundle(
@@ -397,6 +435,8 @@ class StructureSnapshotService:
         instrument_id: str,
         timeframe: str,
         limit: int | None,
+        *,
+        force_refresh: bool = False,
     ) -> list[CandleRead]:
         fetch_limit = limit or LOOKBACK_BY_TIMEFRAME.get(timeframe, 180)
         try:
@@ -404,8 +444,8 @@ class StructureSnapshotService:
                 instrument_id=instrument_id,
                 timeframe=timeframe,
                 limit=fetch_limit,
-                allow_stale=True,
-                refresh=False,
+                allow_stale=not force_refresh,
+                refresh=force_refresh,
             )
             data = getattr(bundle, "data", None)
             raw_candles = (
@@ -423,6 +463,50 @@ class StructureSnapshotService:
                 item if isinstance(item, CandleRead) else CandleRead.model_validate(item)
             )
         return candles
+
+    def _apply_freshness(
+        self,
+        bundle: StructureTabBundleRead,
+        timeframe: str,
+        candles: list[CandleRead],
+    ) -> None:
+        fields = self._freshness_fields(timeframe, candles)
+        bundle.last_candle_ts = fields["last_candle_ts"]
+        bundle.freshness_lag_seconds = fields["freshness_lag_seconds"]
+        bundle.freshness_state = fields["freshness_state"]
+        bundle.freshness_message = fields["freshness_message"]
+
+    @staticmethod
+    def _freshness_fields(timeframe: str, candles: list[CandleRead]) -> dict:
+        if not candles:
+            return {
+                "last_candle_ts": None,
+                "freshness_lag_seconds": None,
+                "freshness_state": "missing",
+                "freshness_message": "暂无可用 K 线，后台会继续尝试补齐。",
+            }
+
+        last_ts = candles[-1].ts_open
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        lag_seconds = max(0, int((now - last_ts).total_seconds()))
+        threshold = FRESHNESS_LIMIT_SECONDS.get(timeframe, 30 * 60 * 60)
+        if lag_seconds <= threshold:
+            state = "fresh"
+            message = "K 线数据时效正常。"
+        elif lag_seconds <= threshold * 3:
+            state = "lagging"
+            message = f"K 线略有滞后，最新 K 线距离当前约 {_format_lag(lag_seconds)}。"
+        else:
+            state = "stale"
+            message = f"K 线明显滞后，最新 K 线距离当前约 {_format_lag(lag_seconds)}。"
+        return {
+            "last_candle_ts": last_ts,
+            "freshness_lag_seconds": lag_seconds,
+            "freshness_state": state,
+            "freshness_message": message,
+        }
 
     def _build_snapshot(
         self,

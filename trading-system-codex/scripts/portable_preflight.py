@@ -52,9 +52,7 @@ def main() -> int:
     executable = Path(sys.executable).resolve()
     declared_executable = os.getenv("APP_PYTHON_EXE")
     if declared_executable and Path(declared_executable).resolve() != executable:
-        errors.append(
-            f"APP_PYTHON_EXE does not match running interpreter: {declared_executable}"
-        )
+        errors.append(f"APP_PYTHON_EXE does not match running interpreter: {declared_executable}")
     try:
         executable.relative_to(embedded_dir)
     except ValueError:

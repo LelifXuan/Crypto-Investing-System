@@ -143,7 +143,7 @@ export function tooltipIcon(text, tone = "", link = null) {
     : "";
   return `
     <span class="tooltip-anchor compact ${escapeHtml(toneClass)}" tabindex="0" aria-label="${escapeHtml(text)}">
-      <span class="tooltip-icon">?</span>
+      <span class="tooltip-icon">i</span>
       <span class="tooltip-bubble" role="tooltip">${escapeHtml(text)}${linkMarkup}</span>
     </span>
   `;

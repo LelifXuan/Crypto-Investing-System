@@ -1,0 +1,6 @@
+{
+  "version": "macro_seed_cache_v1",
+  "generated_at": null,
+  "description": "Portable seed cache container. Build scripts may export real local macro observations into this file; the empty default never participates in scoring.",
+  "items": []
+}

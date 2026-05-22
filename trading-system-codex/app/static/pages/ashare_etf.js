@@ -34,13 +34,15 @@ function groupLabel(group) {
   return found?.group_label || group.toUpperCase();
 }
 
-function sourceStatusLabel(status) {
+function sourceStatusLabel(status, cacheStatus) {
+  if (status === "ok" && cacheStatus === "live") return "实时行情";
+  if (["stale", "cached"].includes(status) || cacheStatus === "stale") return "使用最近缓存";
   return {
-    ok: "数据源正常",
+    ok: "行情可用",
     partial: "部分可用",
-    stale: "使用缓存",
-    error: "暂不可用",
-  }[status] || "未知";
+    stale: "使用最近缓存",
+    error: "行情源暂不可用",
+  }[status] || "状态未知";
 }
 
 function renderGroupTabs(groups) {
@@ -52,15 +54,14 @@ function renderGroupTabs(groups) {
           ${escapeHtml(group.group_label || group.group)}
         </button>
       `).join("")}
-    </div>
-  `;
+    </div>`;
 }
 
 function renderOverview(payload, loadingMessage = "") {
   const quotes = allQuotes(payload || {});
   const okCount = quotes.filter((item) => item.status === "ok").length;
   const failedCount = Math.max(0, quotes.length - okCount);
-  const statusLabel = sourceStatusLabel(payload?.source_status);
+  const statusLabel = sourceStatusLabel(payload?.source_status, payload?.cache_status);
   const generatedAt = payload?.generated_at ? formatDateTime(payload.generated_at) : "-";
   return `
     <section class="card etf-dashboard-card">
@@ -78,12 +79,8 @@ function renderOverview(payload, loadingMessage = "") {
         <span><small>成功 / 失败</small><strong>${okCount} / ${failedCount}</strong></span>
         <span><small>当前分组</small><strong>${escapeHtml(groupLabel(selectedGroup))}</strong></span>
       </div>
-      <div class="etf-dashboard-bottom">
-        <div id="etf-tabs">${renderGroupTabs(payload?.groups || [])}</div>
-        <div id="etf-status">${loadingMessage ? statusBanner(loadingMessage, "loading") : ""}</div>
-      </div>
-    </section>
-  `;
+      <div class="etf-dashboard-bottom"><div id="etf-tabs">${renderGroupTabs(payload?.groups || [])}</div><div id="etf-status">${loadingMessage ? statusBanner(loadingMessage, "loading") : ""}</div></div>
+    </section>`;
 }
 
 function renderQuoteCard(item) {
@@ -92,18 +89,10 @@ function renderQuoteCard(item) {
   return `
     <article class="etf-quote-card ${unavailable ? "is-unavailable" : ""}">
       <div class="etf-quote-head">
-        <div>
-          <p class="eyebrow">${escapeHtml(item.code)} · ${escapeHtml(item.market || "-")}</p>
-          <h3>${escapeHtml(item.name || item.source_name || item.code)}</h3>
-        </div>
-        <span class="status-chip ${unavailable ? "chip-warning" : "chip-success"}">
-          ${unavailable ? "暂不可用" : "可用"}
-        </span>
+        <div><p class="eyebrow">${escapeHtml(item.code)} ? ${escapeHtml(item.market || "-")}</p><h3>${escapeHtml(item.name || item.source_name || item.code)}</h3></div>
+        <span class="status-chip ${unavailable ? "chip-warning" : "chip-success"}">${unavailable ? "暂不可用" : "可用"}</span>
       </div>
-      <div class="etf-price-row">
-        <strong>${valueText(item.last_price)}</strong>
-        <span class="${changeClass(change)}">${valueText(item.change_pct, "%")} / ${valueText(item.change_amount)}</span>
-      </div>
+      <div class="etf-price-row"><strong>${valueText(item.last_price)}</strong><span class="${changeClass(change)}">${valueText(item.change_pct, "%")} / ${valueText(item.change_amount)}</span></div>
       <div class="etf-metric-grid">
         <span><small>今开</small><b>${valueText(item.open)}</b></span>
         <span><small>最高</small><b>${valueText(item.high)}</b></span>
@@ -115,26 +104,16 @@ function renderQuoteCard(item) {
         <span><small>来源</small><b>${escapeHtml(item.source || "Eastmoney")}</b></span>
       </div>
       ${item.error_message ? `<p class="etf-error">${escapeHtml(item.error_message)}</p>` : ""}
-    </article>
-  `;
+    </article>`;
 }
 
 function renderGroup(group) {
   const items = group.items || [];
   return `
     <section class="card etf-section" id="etf-group-${escapeHtml(group.group || "all")}">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">${escapeHtml(group.group || "ETF")}</p>
-          <h2>${escapeHtml(group.group_label || group.group || "ETF")}</h2>
-        </div>
-        <span class="status-chip chip-neutral">${items.length} 项</span>
-      </div>
-      <div class="etf-grid">
-        ${items.length ? items.map(renderQuoteCard).join("") : '<div class="empty-state">暂无 ETF 行情。</div>'}
-      </div>
-    </section>
-  `;
+      <div class="section-head"><div><p class="eyebrow">${escapeHtml(group.group || "ETF")}</p><h2>${escapeHtml(group.group_label || group.group || "ETF")}</h2></div><span class="status-chip chip-neutral">${items.length} 项</span></div>
+      <div class="etf-grid">${items.length ? items.map(renderQuoteCard).join("") : '<div class="empty-state">暂无 ETF 行情。</div>'}</div>
+    </section>`;
 }
 
 function filteredGroups(payload) {
@@ -143,9 +122,7 @@ function filteredGroups(payload) {
 }
 
 function bindControls() {
-  document.getElementById("etf-refresh-button")?.addEventListener("click", () => {
-    void loadQuotes({ force: true });
-  });
+  document.getElementById("etf-refresh-button")?.addEventListener("click", () => void loadQuotes({ force: true }));
   document.querySelectorAll("[data-etf-group]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedGroup = button.dataset.etfGroup || "all";
@@ -166,13 +143,12 @@ async function loadQuotes({ force = false } = {}) {
   activeController = new AbortController();
   renderEtfPayload(latestPayload || { groups: [] }, force ? "正在刷新 A股ETF 行情" : "正在读取 A股ETF 行情");
   try {
-    const payload = force
-      ? await api.refreshEtfQuotes("all", { signal: activeController.signal })
-      : await api.getEtfQuotes("all", { signal: activeController.signal });
+    const payload = force ? await api.refreshEtfQuotes("all", { signal: activeController.signal }) : await api.getEtfQuotes("all", { signal: activeController.signal });
     renderEtfPayload(payload);
     const tone = payload.source_status === "error" ? "warning" : "success";
-    const message =
-      payload.source_status === "error"
+    const message = payload.cache_status === "stale"
+      ? "行情源暂不可用，已展示最近缓存。"
+      : payload.source_status === "error"
         ? "行情源暂不可用，已保留 ETF 列表。"
         : `行情已更新：${formatDateTime(payload.generated_at)}`;
     document.getElementById("etf-status").innerHTML = statusBanner(message, tone);
@@ -180,22 +156,15 @@ async function loadQuotes({ force = false } = {}) {
     if (error?.name === "AbortError") return;
     renderEtfPayload(latestPayload || { groups: [] });
     document.getElementById("etf-status").innerHTML = statusBanner("A股ETF 行情读取失败，可稍后重试。", "warning");
-    if (!latestPayload) {
-      document.getElementById("etf-groups").innerHTML = '<div class="empty-state">行情源暂不可用。</div>';
-    }
+    if (!latestPayload) document.getElementById("etf-groups").innerHTML = '<div class="empty-state">行情源暂不可用。</div>';
   }
 }
 
 export async function renderAshareEtf() {
-  setRoot(`
-    <section id="etf-overview"></section>
-    <section class="etf-page-grid" id="etf-groups"></section>
-  `);
+  setRoot(`<section id="etf-overview"></section><section class="etf-page-grid" id="etf-groups"></section>`);
   renderEtfPayload({ groups: [] }, "正在读取 A股ETF 行情");
   await loadQuotes();
-  return {
-    unmount: async () => activeController?.abort(),
-  };
+  return { unmount: async () => activeController?.abort() };
 }
 
 export const renderPage = renderAshareEtf;

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone
 
-import httpx
-
-from app.services.macro.cache_store import CacheStore
-from app.services.macro.secret_loader import SecretLoader
-from app.services.macro.providers.base import MacroFetchResult
 from app.core.decimal_utils import D
+from app.services.macro.cache_store import CacheStore
+from app.services.macro.providers.base import MacroFetchResult
+from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -22,7 +21,10 @@ class OpenExchangeRatesMacroProvider:
         self.base_url = "https://openexchangerates.org/api"
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
-        return source_provider == self.provider_key and source_kind in ("raw_series", "release_series")
+        return source_provider == self.provider_key and source_kind in (
+            "raw_series",
+            "release_series",
+        )
 
     def _app_id(self) -> str:
         return self.secrets.get("OPENEXCHANGERATES_APP_ID", required=True) or ""
@@ -37,7 +39,7 @@ class OpenExchangeRatesMacroProvider:
 
         url = f"{self.base_url}{endpoint}"
         start = time.time()
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with client_for_source("openexchangerates", timeout=20) as client:
             resp = await client.get(url, params=params)
         latency = int((time.time() - start) * 1000)
 
@@ -74,6 +76,18 @@ class OpenExchangeRatesMacroProvider:
         start = time.time()
         try:
             await self._request("/latest.json", {"app_id": self._app_id()})
-            return {"source": "openexchangerates", "status": "ok", "latency_ms": int((time.time() - start) * 1000), "auth": "present", "error": None}
+            return {
+                "source": "openexchangerates",
+                "status": "ok",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": "present",
+                "error": None,
+            }
         except Exception as exc:
-            return {"source": "openexchangerates", "status": "error", "latency_ms": int((time.time() - start) * 1000), "auth": self.secrets.auth_state({"OPENEXCHANGERATES_APP_ID"}), "error": str(exc)[:200]}
+            return {
+                "source": "openexchangerates",
+                "status": "error",
+                "latency_ms": int((time.time() - start) * 1000),
+                "auth": self.secrets.auth_state({"OPENEXCHANGERATES_APP_ID"}),
+                "error": str(exc)[:200],
+            }

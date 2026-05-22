@@ -401,3 +401,24 @@ async def test_structure_bundle_reports_stale_snapshot_when_newer_local_candle_e
     assert bundle.cache_state == "stale"
     assert bundle.is_stale is True
     assert bundle.status_message is not None
+    assert bundle.last_candle_ts is not None
+    assert bundle.freshness_state in {"fresh", "lagging", "stale"}
+
+
+@pytest.mark.asyncio
+async def test_structure_api_accepts_month_cache_timeframe(structure_db) -> None:
+    with TestClient(create_app(enable_lifespan=False)) as client:
+        response = client.get(
+            "/api/v1/structure/tab/bundle",
+            params={
+                "instrument_id": "btc-usdt-perp",
+                "timeframe": "30d",
+                "include_geometry": "true",
+                "candles_limit": 120,
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "freshness_state" in payload
+    assert payload["cache_state"] in {"missing", "ready", "stale", "fresh"}

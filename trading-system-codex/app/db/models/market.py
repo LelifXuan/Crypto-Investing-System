@@ -838,8 +838,10 @@ class StructureAlert(Base):
 # AI strategy models
 # =============================================================================
 
+
 class StrategyTemplate(Base):
     """AI strategy template."""
+
     __tablename__ = "strategy_template"
     __table_args__ = (UniqueConstraint("template_key", name="uq_strategy_template_key"),)
 
@@ -870,18 +872,26 @@ class StrategyTemplate(Base):
 
 class StrategyRecommendation(Base):
     """AI strategy recommendation."""
+
     __tablename__ = "strategy_recommendation"
     __table_args__ = (
         UniqueConstraint(
-            "instrument_id", "timeframe", "recommendation_ts", name="uq_strategy_recommendation_unique"
+            "instrument_id",
+            "timeframe",
+            "recommendation_ts",
+            name="uq_strategy_recommendation_unique",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    recommendation_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    recommendation_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True, index=True
+    )
     instrument_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     timeframe: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    recommendation_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    recommendation_ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     template_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     direction: Mapped[str] = mapped_column(String(32), nullable=False)  # long/short
     bias_label: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -898,7 +908,9 @@ class StrategyRecommendation(Base):
     risk_warnings_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     market_conflicts_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     reasoning: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)  # active/expired/triggered/archived
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="active", index=True
+    )  # active/expired/triggered/archived
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     triggered_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
@@ -908,11 +920,10 @@ class StrategyRecommendation(Base):
 
 class StrategySignal(Base):
     """Market strategy signal."""
+
     __tablename__ = "strategy_signal"
     __table_args__ = (
-        UniqueConstraint(
-            "signal_key", "timeframe", "signal_ts", name="uq_strategy_signal_unique"
-        ),
+        UniqueConstraint("signal_key", "timeframe", "signal_ts", name="uq_strategy_signal_unique"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -924,7 +935,9 @@ class StrategySignal(Base):
     timeframe: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     signal_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     direction: Mapped[str] = mapped_column(String(32), nullable=False)  # long/short
-    signal_state: Mapped[str] = mapped_column(String(32), nullable=False)  # pending/active/closed/cancelled
+    signal_state: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # pending/active/closed/cancelled
     confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     entry_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
     stop_loss_price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
@@ -941,6 +954,7 @@ class StrategySignal(Base):
 
 class StrategySignalOutcome(Base):
     """Market strategy signal outcome."""
+
     __tablename__ = "strategy_signal_outcome"
     __table_args__ = (
         UniqueConstraint(
