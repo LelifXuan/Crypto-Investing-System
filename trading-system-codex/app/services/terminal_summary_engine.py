@@ -1904,6 +1904,31 @@ def _decision_describe_trigger(trigger: Mapping[str, Any]) -> str:
     return "下一触发器：" + "，".join(parts) + "。" if parts else ""
 
 
+def _decision_format_trigger(trigger: Any) -> str:
+    """Render the strategy's next_trigger for the trading row.
+
+    The audit (T02) found that ``_decision_as_mapping(decision.get('next_trigger'))``
+    silently swallowed string and list triggers because the formatter only
+    understood dict shapes. The strategy generator can legitimately emit any
+    of: a human string, a list of trigger conditions, or a structured dict.
+    All three must surface in the trading row.
+    """
+
+    if trigger is None or trigger == "" or trigger == [] or trigger == {}:
+        return ""
+    if isinstance(trigger, str):
+        return "下一触发器：" + trigger.strip() + "。"
+    if isinstance(trigger, (list, tuple)):
+        items = [_decision_text(item) for item in trigger if item not in (None, "")]
+        if not items:
+            return ""
+        return "下一触发器：" + "；".join(items) + "。"
+    mapping = _decision_as_mapping(trigger)
+    if mapping:
+        return _decision_describe_trigger(mapping)
+    return "下一触发器：" + _decision_text(trigger) + "。"
+
+
 def _decision_describe_strategy_levels(strategy: Mapping[str, Any]) -> str:
     if not strategy:
         return ""
@@ -2010,10 +2035,10 @@ def _decision_build_trading_row(
     state = _decision_first_present(
         decision, "strategy_state", "strategy_state_label", "state"
     )
-    next_trigger = _decision_as_mapping(decision.get("next_trigger"))
+    next_trigger = decision.get("next_trigger")
     primary_strategy = _decision_as_mapping(decision.get("primary_strategy"))
     no_trade_reasons = _decision_as_list(decision.get("no_trade_reasons"))
-    gates = _decision_as_list(decision.get("gates"))
+    gates = decision.get("gates")
 
     if decision:
         sources.append("strategy.decision")
@@ -2021,7 +2046,7 @@ def _decision_build_trading_row(
             bullets.append(f"策略状态：{_decision_text(state)}。")
         if permission:
             bullets.append(f"交易准入：{_decision_text(permission)}。")
-        trigger_text = _decision_describe_trigger(next_trigger)
+        trigger_text = _decision_format_trigger(next_trigger)
         if trigger_text:
             bullets.append(trigger_text)
         level_text = _decision_describe_strategy_levels(primary_strategy)
