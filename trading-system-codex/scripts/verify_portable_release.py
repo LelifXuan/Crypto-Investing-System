@@ -98,6 +98,55 @@ ABSOLUTE_PATH_PATTERNS = [
 ]
 
 
+# Each finding code maps to a short remediation hint aimed at the
+# engineer reading the JSON report. New findings should add an entry
+# here so the report is self-explanatory.
+REMEDIATION_MAP: dict[str, str] = {
+    "missing_required_file": "Restore the file from the source tree; portable bundle must include it.",
+    "launcher_missing": "Build TradingSystemLauncher.exe via dotnet publish tools/launcher or accept start_portable.bat as the official fallback in the release notes.",
+    "invalid_text_encoding": "Save the file as UTF-8 (no BOM). The bundle verifier requires UTF-8 throughout.",
+    "invalid_json": "Fix the JSON syntax; portable bundle release manifest must be valid JSON.",
+    "invalid_json_type": "The file must contain a JSON object, not a list or scalar.",
+    "runtime_schema_invalid": "Regenerate the embedded runtime via scripts/build_embedded_python_runtime.py so portable_runtime.json has the expected schema_version.",
+    "runtime_platform_invalid": "The lock file must declare platform=win-x64. Update portable_runtime.lock.json.",
+    "runtime_python_version_invalid": "portable_runtime.lock.json must pin python_version to a 3.11.x release. Edit the lock and rebuild.",
+    "stub_runtime_enabled": "Official releases must set PORTABLE_RUNTIME_STUB=0 (or unset) and rebuild the runtime. Fast-test stubs are not allowed for release builds.",
+    "manifest_release_type_invalid": "release_manifest.json release_type must be 'embedded_runtime_portable'. Regenerate via build_portable_bundle.py.",
+    "manifest_python_embedded_invalid": "release_manifest.json must set python_embedded=true. Regenerate via build_portable_bundle.py.",
+    "manifest_platform_invalid": "release_manifest.json must declare platform=win-x64.",
+    "manifest_runtime_path_invalid": "python_runtime_path must be 'runtime_env/python/python.exe' (forward slashes).",
+    "manifest_stub_runtime": "release_manifest.json must record runtime.stub_runtime=false for official releases.",
+    "manifest_absolute_path": "release_manifest.json must not contain local absolute paths. The build process should normalise such references.",
+    "manifest_file_count_mismatch": "file_count in the manifest must equal the number of files in the files list. Rebuild via build_portable_bundle.py.",
+    "manifest_missing_required_file": "Add the missing file to the bundle source tree; portable release must include it.",
+    "lock_python_embedded_invalid": "portable_runtime.lock.json must set python_embedded=true.",
+    "lock_platform_invalid": "portable_runtime.lock.json must target win-x64.",
+    "lock_python_version_invalid": "portable_runtime.lock.json should pin python_version to a 3.11.x release.",
+    "python_exe_not_pe": "runtime_env/python/python.exe is not a Windows PE binary. The embedded runtime did not install correctly; rebuild via build_embedded_python_runtime.py.",
+    "python_exe_too_small": "runtime_env/python/python.exe is suspiciously small; the embedded runtime is likely a stub. Rebuild via build_embedded_python_runtime.py.",
+    "python_dll_not_pe": "runtime_env/python/python311.dll is not a valid Windows DLL. Rebuild the embedded runtime.",
+    "python_dll_too_small": "runtime_env/python/python311.dll is suspiciously small; rebuild the embedded runtime.",
+    "python_zip_too_small": "runtime_env/python/python311.zip is missing the standard library; rebuild the embedded runtime.",
+    "pth_missing_site_packages": "Add 'Lib\\\\site-packages' to runtime_env/python/python311._pth.",
+    "pth_missing_import_site": "Add 'import site' to runtime_env/python/python311._pth.",
+    "pth_parent_path": "Remove any '..' references from python311._pth; portable runtime must not depend on parent directories.",
+    "site_package_missing": "Re-run pip install -r requirements-portable.txt in the embedded runtime. The bundle's site-packages directory is missing the listed package.",
+    "bat_not_using_embedded_python": "start_portable.bat must invoke runtime_env\\\\python\\\\python.exe; it must not fall back to system Python.",
+    "bat_may_use_system_python": "start_portable.bat may be falling back to system Python. Verify only embedded python.exe is referenced.",
+    "bat_missing_app_python_exe": "start_portable.bat should set APP_PYTHON_EXE for logging and preflight. Update the bat.",
+    "sh_not_using_embedded_python": "start_portable.sh should reference runtime_env/python/python or clearly state it is Windows-only.",
+    "forbidden_artifacts_present": "Update release_common.EXCLUDED_* to also cover these paths and rebuild the bundle.",
+    "source_local_artifact_present": "Remove this file from the source tree or extend the gitignore so it never reaches the portable bundle.",
+    "launcher_csproj_not_self_contained": "tools/launcher/TradingSystemLauncher.csproj must set PublishSingleFile=true, SelfContained=true, and RuntimeIdentifier=win-x64.",
+    "launcher_csproj_missing": "Add tools/launcher/TradingSystemLauncher.csproj or document start_portable.bat as the official fallback.",
+    "smoke_skipped_non_windows": "Run the smoke test on a Windows host with the bundled python.exe.",
+    "smoke_python_missing": "Rebuild the embedded runtime; the bundled python.exe is missing.",
+    "smoke_exception": "Check the embedded runtime; the smoke import test could not start.",
+    "smoke_import_failed": "Check embedded runtime site-packages; the smoke import test failed. Last 1000 chars of stderr are attached.",
+    "bundle_missing": "Run build_portable_bundle.py to produce dist/portable_bundle before running the verifier.",
+}
+
+
 def _load_excludes() -> dict[str, set[str]]:
     """Load portable exclusion rules, generating the JSON on demand.
 
@@ -211,6 +260,7 @@ class Finding:
     code: str
     message: str
     path: str | None = None
+    remediation: str | None = None
 
 
 @dataclass
@@ -232,8 +282,20 @@ class Auditor:
         self.findings: list[Finding] = []
         self.summary: dict[str, object] = {}
 
-    def add(self, severity: str, code: str, message: str, path: str | None = None) -> None:
-        self.findings.append(Finding(severity=severity, code=code, message=message, path=path))
+    def add(
+        self,
+        severity: str,
+        code: str,
+        message: str,
+        path: str | None = None,
+        *,
+        remediation: str | None = None,
+    ) -> None:
+        if remediation is None:
+            remediation = REMEDIATION_MAP.get(code)
+        self.findings.append(
+            Finding(severity=severity, code=code, message=message, path=path, remediation=remediation)
+        )
 
     def require_exists(self, path: str, severity: str = "critical") -> bool:
         if not self.reader.exists(path):
