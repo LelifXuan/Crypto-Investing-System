@@ -80,6 +80,17 @@
     "chase_max_distance_atr": 1.5,
     "retest_wait_distance_atr": 1.0
   },
+  "futures_risk": {
+    "default_leverage": 10,
+    "margin_pressure_thresholds": {
+      "downsize": 20,
+      "small": 40,
+      "block": 70
+    },
+    "liquidation_buffer_warn_pct": 3.0,
+    "liquidation_buffer_block_pct": 1.5,
+    "description": "基于 ATR 百分比和默认杠杆（10x BTC 默认）计算 one_atr_margin_impact / stop_margin_impact / liquidation_buffer，并将压力分四档：ok < downsize < small < block。"
+  },
   "entry_modes": {
     "pullback_confirm": {
       "label": "反抽/回踩确认",

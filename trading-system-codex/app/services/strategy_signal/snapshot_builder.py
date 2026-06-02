@@ -213,6 +213,88 @@ def _build_flow_score(derivatives: dict[str, Any]) -> tuple[float, float]:
     return clamp(bullish), clamp(bearish)
 
 
+def _classify_margin_pressure(impact_pct: float, thresholds: dict[str, Any]) -> str:
+    """Map a margin-impact percent to one of ``ok / downsize / small / block``.
+
+    The audit (T06) requires four explicit tiers based on the
+    ``one_atr_margin_impact_pct`` (or its equivalent). The thresholds come
+    from the ``futures_risk.margin_pressure_thresholds`` config block and
+    default to the audit-recommended 20/40/70 levels. A negative impact
+    (e.g. short side) is folded to its absolute value.
+    """
+
+    impact = abs(float(impact_pct))
+    downsize = float(thresholds.get("downsize", 20))
+    small = float(thresholds.get("small", 40))
+    block = float(thresholds.get("block", 70))
+    if impact >= block:
+        return "block"
+    if impact >= small:
+        return "small"
+    if impact >= downsize:
+        return "downsize"
+    return "ok"
+
+
+def _compute_futures_risk(
+    *,
+    atr_pct: float,
+    entry: float,
+    stop: float,
+    leverage: float,
+    thresholds: dict[str, Any],
+    liq_warn_pct: float,
+    liq_block_pct: float,
+) -> dict[str, Any]:
+    """Compute the full futures-margin risk bundle for a trade plan.
+
+    The audit (T06) recommended surfacing the per-trade margin impact
+    percentages and a 4-tier pressure verdict so the trading row can
+    downgrade its tone and the strategy generator can refuse to grant
+    a futures permission when the pressure is in the top tier. All
+    numbers are in percent and rounded for readability; the underlying
+    raw values are also kept for downstream tuners.
+    """
+
+    safe_leverage = max(1.0, float(leverage))
+    stop_distance_pct = (
+        abs(float(entry) - float(stop)) / max(abs(float(entry)), 1e-9) * 100.0
+        if entry
+        else 0.0
+    )
+    one_atr_impact = float(atr_pct) * safe_leverage
+    stop_impact = stop_distance_pct * safe_leverage
+    # Cross-margin liq buffer approximation: at leverage L, the maximum
+    # adverse move before liquidation is 1/L. The buffer is the headroom
+    # remaining once the protective stop is hit.
+    liquidation_buffer = max(0.0, 100.0 / safe_leverage - stop_distance_pct)
+    pressure = _classify_margin_pressure(one_atr_impact, thresholds)
+    risk_blocked = pressure == "block" or liquidation_buffer < liq_block_pct
+    buffer_warning = (
+        "block"
+        if liquidation_buffer < liq_block_pct
+        else "warn"
+        if liquidation_buffer < liq_warn_pct
+        else "ok"
+    )
+    return {
+        "atr_pct": round(float(atr_pct), 4),
+        "leverage": round(safe_leverage, 2),
+        "stop_distance_pct": round(stop_distance_pct, 4),
+        "one_atr_margin_impact_pct": round(one_atr_impact, 4),
+        "stop_margin_impact_pct": round(stop_impact, 4),
+        "liquidation_buffer_pct": round(liquidation_buffer, 4),
+        "futures_margin_pressure": pressure,
+        "liquidation_buffer_warning": buffer_warning,
+        "futures_risk_blocked": risk_blocked,
+        "thresholds": {
+            "downsize": float(thresholds.get("downsize", 20)),
+            "small": float(thresholds.get("small", 40)),
+            "block": float(thresholds.get("block", 70)),
+        },
+    }
+
+
 class StrategySnapshotBuilder:
     """Build market strategy inputs from existing page bundles only."""
 
@@ -350,6 +432,35 @@ class StrategySnapshotBuilder:
         atr_expansion_score = max(0, min(100, atr_pct * 12))
         volume_confirmation = max(0, min(100, 50 + _num(indicators.get("obv_slope")) * 80))
         missing_inputs = list(dict.fromkeys(derivatives.get("missing_inputs") or []))
+        futures_risk_config = config.get("futures_risk") or {}
+        leverage = _num(futures_risk_config.get("default_leverage"), 10) or 10
+        thresholds = futures_risk_config.get("margin_pressure_thresholds") or {}
+        liq_warn_pct = _num(futures_risk_config.get("liquidation_buffer_warn_pct"), 3.0)
+        liq_block_pct = _num(futures_risk_config.get("liquidation_buffer_block_pct"), 1.5)
+        # Compute the futures risk bundle for both sides so the strategy
+        # generator and the terminal summary can reason about it.
+        futures_risk_long = _compute_futures_risk(
+            atr_pct=atr_pct,
+            entry=long_entry,
+            stop=_num(levels.get("structure_invalid_long"), long_entry - atr * 1.6),
+            leverage=leverage,
+            thresholds=thresholds,
+            liq_warn_pct=liq_warn_pct,
+            liq_block_pct=liq_block_pct,
+        )
+        futures_risk_short = _compute_futures_risk(
+            atr_pct=atr_pct,
+            entry=short_entry,
+            stop=_num(levels.get("structure_invalid_short"), short_entry + atr * 1.6),
+            leverage=leverage,
+            thresholds=thresholds,
+            liq_warn_pct=liq_warn_pct,
+            liq_block_pct=liq_block_pct,
+        )
+        futures_risk_active = {
+            "long": futures_risk_long,
+            "short": futures_risk_short,
+        }
         for key, state in dependency_state.items():
             if state in {"missing", "error", "stale", "updating", "degraded"}:
                 missing_inputs.append(f"{key}:{state}")
@@ -394,6 +505,14 @@ class StrategySnapshotBuilder:
             "lower_tf_missing": lower_tf_missing,
             "lower_tf_payload": lower_tf_payload,
             "lower_tf_alignment": lower_tf_alignment,
+            "atr_pct": round(atr_pct, 4),
+            "futures_risk": futures_risk_active,
+            "futures_risk_thresholds": {
+                "downsize": _num(thresholds.get("downsize"), 20),
+                "small": _num(thresholds.get("small"), 40),
+                "block": _num(thresholds.get("block"), 70),
+            },
+            "default_leverage": leverage,
             "direction_score_raw": direction_score,
             "direction_score_scale": direction_metrics.get("scale"),
             "direction_score_normalized": direction_metrics,

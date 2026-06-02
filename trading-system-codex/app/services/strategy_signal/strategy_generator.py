@@ -524,7 +524,83 @@ class StrategyGenerator:
                     severity="warning",
                 )
             )
+        # T06: surface the futures margin pressure verdict as a gate. The
+        # snapshot carries one risk bundle per side (long / short); the
+        # active side is the snapshot's strategy bias. If the bias is not
+        # set we surface the worst side as a generic block so the trading
+        # row still gets a verdict.
+        futures_gates = self._futures_margin_gates(snapshot)
+        gates.extend(futures_gates)
         return [gate.to_dict() for gate in gates]
+
+    @staticmethod
+    def _futures_margin_gates(snapshot: dict[str, Any]) -> list[GateDiagnostic]:
+        risk = snapshot.get("futures_risk") or {}
+        if not isinstance(risk, dict) or not risk:
+            return []
+        diagnostics: list[GateDiagnostic] = []
+        # Pick the active side from the snapshot; fall back to the worst.
+        sides = [side for side in ("long", "short") if side in risk]
+        if not sides:
+            return []
+        worst_pressure_rank = {"ok": 0, "downsize": 1, "small": 2, "block": 3}
+        ranked = sorted(
+            sides,
+            key=lambda side: worst_pressure_rank.get(
+                (risk.get(side) or {}).get("futures_margin_pressure", "ok"), 0
+            ),
+            reverse=True,
+        )
+        active_side = snapshot.get("dominant_direction") or snapshot.get("strategy_bias")
+        if active_side not in {"long", "short"}:
+            active_side = ranked[0]
+        bundle = risk.get(active_side) or {}
+        pressure = bundle.get("futures_margin_pressure") or "ok"
+        impact = number(bundle.get("one_atr_margin_impact_pct"))
+        thresholds = bundle.get("thresholds") or {}
+        if pressure == "block" or bundle.get("futures_risk_blocked"):
+            diagnostics.append(
+                GateDiagnostic(
+                    code="FUTURES_MARGIN_BLOCK",
+                    status="fail",
+                    message=(
+                        f"合约保证金压力过高：{active_side} 侧 one-ATR 影响 {impact:.1f}%，"
+                        f"超过 block 阈值 {thresholds.get('block', 70)}%，合约开仓被拒绝。"
+                    ),
+                    current=impact,
+                    required=thresholds.get("block", 70),
+                    severity="block",
+                )
+            )
+        elif pressure == "small":
+            diagnostics.append(
+                GateDiagnostic(
+                    code="FUTURES_MARGIN_SMALL",
+                    status="warn",
+                    message=(
+                        f"合约保证金压力偏高：{active_side} 侧 one-ATR 影响 {impact:.1f}%，"
+                        f"超过 small 阈值 {thresholds.get('small', 40)}%，建议降至最小观察仓。"
+                    ),
+                    current=impact,
+                    required=thresholds.get("small", 40),
+                    severity="warning",
+                )
+            )
+        elif pressure == "downsize":
+            diagnostics.append(
+                GateDiagnostic(
+                    code="FUTURES_MARGIN_DOWNSIZE",
+                    status="warn",
+                    message=(
+                        f"合约保证金压力中等：{active_side} 侧 one-ATR 影响 {impact:.1f}%，"
+                        f"建议减半仓位。"
+                    ),
+                    current=impact,
+                    required=thresholds.get("downsize", 20),
+                    severity="warning",
+                )
+            )
+        return diagnostics
 
     def _gate_diagnostics(
         self, snapshot: dict[str, Any], scores: DirectionScores, bias: str

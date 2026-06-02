@@ -2086,6 +2086,65 @@ def _decision_format_gates(
     return bullets, has_block, has_warning
 
 
+def _decision_extract_futures_pressure(decision: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Pull the active side's futures margin pressure from the decision bundle.
+
+    The audit (T06) requires the risk row to surface a margin-pressure
+    verdict whenever the active side is non-ok. The decision bundle
+    embeds the snapshot's ``futures_risk`` payload; we accept both the
+    direct dict and the normalized ``primary_strategy`` shape.
+    """
+
+    risk = decision.get("futures_risk") or decision.get("primary_strategy", {}).get(
+        "futures_risk"
+    )
+    if not isinstance(risk, Mapping) or not risk:
+        return None
+    side = decision.get("strategy_bias") or decision.get("dominant_direction")
+    if side not in {"long", "short"}:
+        sides = [key for key in ("long", "short") if key in risk]
+        if not sides:
+            return None
+        side = sides[0]
+    bundle = risk.get(side)
+    if not isinstance(bundle, Mapping):
+        return None
+    return {
+        "side": side,
+        "level": bundle.get("futures_margin_pressure"),
+        "impact_pct": bundle.get("one_atr_margin_impact_pct"),
+        "stop_impact_pct": bundle.get("stop_margin_impact_pct"),
+        "liquidation_buffer_pct": bundle.get("liquidation_buffer_pct"),
+        "leverage": bundle.get("leverage"),
+        "atr_pct": bundle.get("atr_pct"),
+    }
+
+
+def _decision_format_futures_pressure(payload: Mapping[str, Any]) -> str:
+    """Render a one-line summary of the futures margin pressure verdict."""
+
+    level = str(payload.get("level") or "ok")
+    impact = payload.get("impact_pct")
+    buffer = payload.get("liquidation_buffer_pct")
+    leverage = payload.get("leverage")
+    side_label = "做多" if payload.get("side") == "long" else "做空"
+    fragments: list[str] = []
+    if impact is not None:
+        fragments.append(f"one-ATR 影响 {impact}%")
+    if buffer is not None:
+        fragments.append(f"强平缓冲 {buffer}%")
+    if leverage is not None:
+        fragments.append(f"{leverage}x 杠杆")
+    suffix = "；".join(fragments)
+    if level == "block":
+        return f"合约保证金压力=block：{side_label}侧合约开仓被拒绝（{suffix}）。"
+    if level == "small":
+        return f"合约保证金压力偏高：{side_label}侧建议降至最小观察仓（{suffix}）。"
+    if level == "downsize":
+        return f"合约保证金压力中等：{side_label}侧建议减半仓位（{suffix}）。"
+    return ""
+
+
 def _decision_describe_strategy_levels(strategy: Mapping[str, Any]) -> str:
     if not strategy:
         return ""
@@ -2348,6 +2407,17 @@ def _decision_build_risk_row(
         for item in structure_risks[:3]:
             bullets.append(_decision_text(item))
         sources.append("structure.snapshot")
+
+    # T06: surface the futures margin pressure verdict (when the decision
+    # bundle carries a snapshot) as a first-class risk row. The risk
+    # row only shows it when the pressure is non-ok, since pass cases add
+    # noise to the user's mental model.
+    futures_pressure = _decision_extract_futures_pressure(decision)
+    if futures_pressure and futures_pressure.get("level") not in {None, "ok"}:
+        pressure_line = _decision_format_futures_pressure(futures_pressure)
+        if pressure_line:
+            bullets.append(pressure_line)
+            sources.append("strategy.futures_risk")
 
     fallback_watch = _decision_as_list(base_summary.get("watch_points"))
     if not bullets and fallback_watch:
