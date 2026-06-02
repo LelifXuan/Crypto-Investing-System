@@ -103,13 +103,33 @@ def main() -> int:
             ],
             cwd=bundle_root,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         try:
             base_url = f"http://127.0.0.1:{port}"
+            last_error: Exception | None = None
             for endpoint in HEALTH_ENDPOINTS:
-                wait_http_ok(base_url, endpoint)
+                try:
+                    wait_http_ok(base_url, endpoint)
+                except RuntimeError as exc:
+                    last_error = exc
+                    break
+            if last_error is not None:
+                # Capture the tail of server stderr so the failure mode is
+                # obvious from the smoke test output.
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+                stderr_bytes = (
+                    server.stderr.read() if server.stderr else b""
+                )
+                stderr_tail = stderr_bytes.decode("utf-8", errors="replace")[-2000:]
+                raise RuntimeError(
+                    f"portable smoke check failed: {last_error}\n"
+                    f"--- server stderr (last 2000 chars) ---\n{stderr_tail}"
+                ) from last_error
         finally:
             server.terminate()
             try:
