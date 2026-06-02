@@ -165,9 +165,9 @@ class StrategySnapshotBuilder:
         config = load_strategy_signal_config()
 
         direction_score = _num(
-            final_decision.get("direction_score") or chip.get("direction_score"), 50
+            final_decision.get("direction_score") or chip.get("direction_score"), 0
         )
-        direction_metrics = normalize_direction_metrics(direction_score)
+        direction_metrics = normalize_direction_metrics(direction_score, scale="signed")
         execution_score = _num(
             final_decision.get("execution_score") or chip.get("execution_score"), 50
         )
@@ -252,6 +252,7 @@ class StrategySnapshotBuilder:
             "lower_tf_required": bool(trigger_tf),
             "lower_tf_missing": lower_tf_missing,
             "direction_score_raw": direction_score,
+            "direction_score_scale": direction_metrics.get("scale"),
             "direction_score_normalized": direction_metrics,
         }
         snapshot.update(

@@ -35,8 +35,8 @@ def test_short_setup_that_has_reached_tp1_is_not_waiting_for_confirmation():
 
 
 def test_direction_score_normalization_supports_signed_and_legacy_scores():
-    bearish = normalize_direction_metrics(-100)
-    bullish = normalize_direction_metrics(80)
+    bearish = normalize_direction_metrics(-100, scale="signed")
+    bullish = normalize_direction_metrics(80, scale="legacy_0_100")
 
     assert bearish["bearish"] == 100
     assert bearish["bullish"] == 0

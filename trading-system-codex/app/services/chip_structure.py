@@ -38,6 +38,7 @@ class ChipStructureService:
         primary_regime = self._primary_regime(direction_score)
         state_label = "状态置信较低"
         evidence_quality = "proxy_only"
+        evidence_quality_label = "证据不足（仅 K 线涨跌 proxy）"
         risk_score = 45.0 if abs(direction_score) >= 20 else 55.0
         direction_label = (
             "bullish" if direction_score > 15 else "bearish" if direction_score < -15 else "neutral"
@@ -56,6 +57,8 @@ class ChipStructureService:
             "primary_regime_label": self._regime_label(primary_regime),
             "secondary_regime": "confirmation_wait",
             "evidence_quality": evidence_quality,
+            "evidence_quality_label": evidence_quality_label,
+            "direction_score_scale": "signed",
             "weekly_context": "高周期需要结合结构页快照确认。",
             "daily_bias": "日线方向以缓存 K 线变化作为 proxy。",
             "h4_structure": "4H 结构等待成交量与摆动确认。",
@@ -199,6 +202,8 @@ class ChipStructureService:
             "primary_regime_label": "无信号",
             "secondary_regime": "data_missing",
             "evidence_quality": "proxy_only",
+            "evidence_quality_label": "证据不足（缺少 K 线）",
+            "direction_score_scale": "signed",
             "weekly_context": reason,
             "daily_bias": reason,
             "h4_structure": reason,

@@ -85,22 +85,64 @@ def stable_hash(payload: dict[str, Any], length: int = 10) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:length]
 
 
-def normalize_direction_metrics(direction_score: Any) -> dict[str, float]:
-    score = to_float(direction_score, 50.0)
-    if 0.0 <= score <= 100.0:
-        bullish = clamp(score)
-        bearish = clamp(100.0 - score)
-        range_score = clamp(100.0 - abs(score - 50.0) * 2.0)
+DirectionScoreScale = Literal["signed", "legacy_0_100"]
+
+
+def normalize_direction_metrics(
+    direction_score: Any,
+    *,
+    scale: DirectionScoreScale,
+) -> dict[str, float]:
+    """Convert a single direction score into ``{bullish, bearish, range, raw, scale}``.
+
+    The ``scale`` argument is required and must match the contract the caller
+    received from its upstream source. The legacy auto-detection heuristic
+    (``0..100 ⇒ legacy``) was removed because it silently flipped
+    ``chip_structure.direction_score`` (signed ``-100..100``) into a 100 %
+    bearish reading when the value happened to be in ``0..100`` (e.g. ``0``).
+    Callers must now declare the contract:
+
+    * ``scale="signed"`` for ``-100..100`` (chip, final_decision, confidence).
+    * ``scale="legacy_0_100"`` for ``0..100`` legacy percent scores where
+      ``50`` is neutral and ``0/100`` are the bullish/bearish extremes.
+    """
+
+    if scale not in {"signed", "legacy_0_100"}:
+        raise ValueError(
+            "normalize_direction_metrics: scale must be 'signed' or 'legacy_0_100',"
+            f" got {scale!r}"
+        )
+    if scale == "signed":
+        default_score = 0.0
     else:
+        default_score = 50.0
+    score = to_float(direction_score, default_score)
+    if scale == "signed":
         signed = max(-100.0, min(100.0, score))
         bullish = clamp(max(signed, 0.0))
         bearish = clamp(max(-signed, 0.0))
         range_score = clamp(100.0 - abs(signed))
+        return {
+            "bullish": round(bullish, 4),
+            "bearish": round(bearish, 4),
+            "range": round(range_score, 4),
+            "raw": round(signed, 4),
+            "scale": "signed",
+        }
+    if not 0.0 <= score <= 100.0:
+        raise ValueError(
+            "normalize_direction_metrics: legacy_0_100 scale expects a score in"
+            f" 0..100, got {score}"
+        )
+    bullish = clamp(score)
+    bearish = clamp(100.0 - score)
+    range_score = clamp(100.0 - abs(score - 50.0) * 2.0)
     return {
         "bullish": round(bullish, 4),
         "bearish": round(bearish, 4),
         "range": round(range_score, 4),
         "raw": round(score, 4),
+        "scale": "legacy_0_100",
     }
 
 
