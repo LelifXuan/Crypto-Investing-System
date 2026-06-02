@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.exc import SQLAlchemyError
@@ -490,6 +491,49 @@ async def sync_onchain(
             for item in runs
         ]
     )
+
+
+@router.get("/monitoring/decision-brief/history")
+async def get_decision_brief_history(
+    instrument_id: str = Query(default="btc-usdt-perp"),
+    timeframe: str = Query(default="1d"),
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> dict[str, Any]:
+    """Return recent decision_brief snapshots for review.
+
+    The endpoint is read-only. Snapshots are written by
+    ``MonitoringDashboardService.refresh_bundle`` into the
+    ``computed_dataset_cache`` table with
+    ``dataset_type=monitoring_decision_brief``; the persistence layer is
+    a best-effort write, so a missing or partial history is exposed as
+    ``items: []`` rather than as a failure.
+    """
+
+    from app.services.monitoring_decision_review import (
+        count_decision_briefs_for_instrument,
+        list_recent_decision_briefs,
+    )
+
+    items = await list_recent_decision_briefs(
+        session,
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+        limit=limit,
+    )
+    total = await count_decision_briefs_for_instrument(
+        session,
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    return {
+        "instrument_id": instrument_id,
+        "timeframe": timeframe,
+        "limit": limit,
+        "total": total,
+        "items": items,
+    }
 
 
 @router.post("/monitoring/risk-evaluate", response_model=RiskEvaluationRead)

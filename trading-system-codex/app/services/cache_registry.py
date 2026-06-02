@@ -100,6 +100,28 @@ def strategy_bundle_cache_key(
     )
 
 
+def monitoring_decision_brief_cache_key(
+    instrument_id: str,
+    timeframe: str,
+    snapshot_id: str,
+    source_version: str = "decision_brief_v1",
+) -> str:
+    """Cache key for a persisted monitoring decision_brief snapshot.
+
+    ``snapshot_id`` is an ISO-format UTC timestamp; the caller generates it
+    so multiple refreshes in the same second do not collide. The key is
+    versioned independently of PageSnapshotCache so the dataset can be
+    invalidated by a V1.5.1 schema bump without touching other caches.
+    """
+
+    return (
+        "monitoring_decision_brief:"
+        f"{normalize_instrument_id(instrument_id)}:"
+        f"{normalize_timeframe_for_cache(timeframe)}:"
+        f"{snapshot_id}:{source_version}"
+    )
+
+
 def macro_calendar_cache_key(
     limit: int,
     status: str | None,
@@ -192,6 +214,7 @@ def dataset_ttl_seconds(dataset_type: str) -> int:
         "indicator_series_secondary": 240,
         "microstructure": 30,
         "knowledge_catalog": 86400,
+        "monitoring_decision_brief": 86400,
     }
     return mapping.get(dataset_type, 120)
 

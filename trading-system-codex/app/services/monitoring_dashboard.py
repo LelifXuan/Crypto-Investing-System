@@ -20,6 +20,8 @@ from app.services.cache_registry import (
     alerts_bundle_cache_key,
     analysis_cache_key,
     cache_status,
+    expires_at_for_dataset,
+    monitoring_decision_brief_cache_key,
     strategy_bundle_cache_key,
 )
 from app.services.indicator_monitoring import IndicatorMonitoringService
@@ -183,6 +185,12 @@ class MonitoringDashboardService:
             strategy_bundle=strategy_bundle,
             timeframe_snapshots=timeframe_snapshots,
             structure={},
+        )
+        await self._persist_decision_brief_snapshot(
+            instrument_id=instrument_id,
+            timeframe=timeframe,
+            terminal_summary=terminal_summary,
+            source_data_ts=now,
         )
         all_ts = [
             *(self._parse_ts(item.get("observation_ts")) for item in technical_observations),
@@ -519,6 +527,57 @@ class MonitoringDashboardService:
                 "regime": trend.get("state"),
             }
         return snapshots
+
+    async def _persist_decision_brief_snapshot(
+        self,
+        *,
+        instrument_id: str,
+        timeframe: str,
+        terminal_summary: dict[str, Any],
+        source_data_ts,
+    ) -> None:
+        """Persist the just-computed decision_brief to ComputedDatasetCache.
+
+        The snapshot is the raw ``decision_brief`` payload; the wrap
+        includes the consistency value so review tooling can filter
+        quickly. Failures are logged at debug level only - the live
+        terminal_summary is still returned to the caller.
+        """
+
+        decision_brief = terminal_summary.get("decision_brief")
+        if not isinstance(decision_brief, dict):
+            return
+        snapshot_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        consistency = decision_brief.get("source_alignment", {}).get("consistency")
+        meta = {
+            "consistency": consistency,
+            "row_keys": [
+                row.get("key")
+                for row in decision_brief.get("rows", [])
+                if isinstance(row, dict)
+            ],
+        }
+        try:
+            await self.repository.upsert_computed_dataset_cache(
+                cache_key=monitoring_decision_brief_cache_key(
+                    instrument_id, timeframe, snapshot_id
+                ),
+                dataset_type="monitoring_decision_brief",
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                payload_json=decision_brief,
+                cache_state="fresh",
+                source_data_ts=source_data_ts,
+                source_version="decision_brief_v1",
+                calculated_at=datetime.now(timezone.utc),
+                expires_at=expires_at_for_dataset(
+                    "monitoring_decision_brief", datetime.now(timezone.utc)
+                ),
+                cost_ms=0,
+                meta_json=meta,
+            )
+        except Exception as exc:
+            logger.debug("decision_brief snapshot write skipped: %s", exc)
 
     @staticmethod
     def _latest_series_value(values: Any) -> float | None:
