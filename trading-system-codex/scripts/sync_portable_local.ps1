@@ -22,6 +22,23 @@ if ($WhatIf) {
   exit 0
 }
 
+# Concurrency guard: refuse to sync if a previous sync lock is still
+# held by a running process. Lock is removed automatically on exit
+# via the trailing Remove-Item.
+$lockPath = Join-Path $PortableRoot ".sync.lock"
+if (Test-Path -LiteralPath $lockPath) {
+  $holderPid = $null
+  try {
+    $holder = Get-Content -LiteralPath $lockPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    $holderPid = $holder.pid
+  } catch {}
+  if ($holderPid -and (Get-Process -Id $holderPid -ErrorAction SilentlyContinue)) {
+    throw "another portable sync is running (pid $holderPid); lock at $lockPath"
+  }
+  Write-Log "stale sync lock found (pid $holderPid no longer alive); removing"
+  Remove-Item -LiteralPath $lockPath -Force
+}
+
 if (-not $SkipBuild) {
   $env:RELEASE_STRICT = "1"
   if ($env:PORTABLE_RUNTIME_STUB -eq "1") {
@@ -31,6 +48,26 @@ if (-not $SkipBuild) {
   if ($LASTEXITCODE -ne 0) {
     throw "portable bundle build failed with exit code $LASTEXITCODE"
   }
+}
+
+# Take the sync lock once the build is known-good. We write the
+# lock AFTER the build step (rather than before) so a failed build
+# does not leave a stale lock blocking subsequent runs.
+$lockPath = Join-Path $PortableRoot ".sync.lock"
+$portableRootReady = (Test-Path -LiteralPath $PortableRoot)
+if ($portableRootReady -and -not (Test-Path -LiteralPath $lockPath)) {
+  $lockPath | Set-Content -Value (ConvertTo-Json @{ pid = $PID; started_at = (Get-Date).ToString('o') }) -Encoding UTF8
+  $script:SyncLockPath = $lockPath
+  $script:CleanupLock = {
+    param($p)
+    if ($p -and (Test-Path -LiteralPath $p)) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+  }
+  # Register cleanup so the lock is removed even if the script
+  # exits via an unhandled exception.
+  Register-EngineEvent -SourceIdentifier ([System.Guid]::NewGuid().ToString()) -Action {
+    if ($script:CleanupLock) { & $script:CleanupLock $script:SyncLockPath }
+  } | Out-Null
+  $syncLockRegistered = $true
 }
 
 if (-not (Test-Path -LiteralPath $PortableRoot)) {

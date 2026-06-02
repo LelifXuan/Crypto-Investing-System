@@ -50,6 +50,12 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [
+    "scripts/sync_portable_local.ps1",
+    "scripts/dev.ps1",
+    "scripts/dev_env.ps1",
+    "tools/launcher/Program.cs",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import socket
 import subprocess
@@ -44,7 +45,18 @@ def wait_http_ok(base_url: str, path: str, timeout_s: float = 40.0) -> None:
     raise RuntimeError(f"portable smoke check failed for {path}: {last_error}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Smoke-test a freshly built portable bundle."
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Override the uvicorn port. 0 (default) picks a free port automatically.",
+    )
+    args = parser.parse_args(argv)
+
     if not PORTABLE_ZIP.exists():
         raise SystemExit(f"portable bundle not found: {PORTABLE_ZIP}")
 
@@ -69,7 +81,7 @@ def main() -> int:
         )
         if not embedded_python.exists():
             raise SystemExit(f"embedded Python runtime missing: {embedded_python}")
-        port = pick_port()
+        port = args.port or pick_port()
         env = os.environ.copy()
         env.update(
             {
@@ -143,4 +155,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
