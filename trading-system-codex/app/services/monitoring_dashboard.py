@@ -56,8 +56,13 @@ class MonitoringDashboardService:
         *,
         allow_refresh: bool = False,
     ) -> MonitoringDashboardRead:
-        instrument_id = MONITORING_TECH_INSTRUMENT_ID
-        timeframe = MONITORING_TECH_TIMEFRAME
+        # T07 audit fix: honor the caller's instrument/timeframe so a 4h
+        # ETH dashboard query is not silently redirected to btc/1d. The
+        # constant MONITORING_TECH_INSTRUMENT_ID remains the default for
+        # the API layer (see app/api/v1/monitoring.py) and for the
+        # background indicator scheduler; it is no longer enforced here.
+        instrument_id = instrument_id or MONITORING_TECH_INSTRUMENT_ID
+        timeframe = timeframe or MONITORING_TECH_TIMEFRAME
         now = datetime.now(timezone.utc)
         cache = await self.repository.get_page_snapshot_cache(
             monitoring_dashboard_cache_key(instrument_id, timeframe)
@@ -124,8 +129,8 @@ class MonitoringDashboardService:
         )
 
     async def refresh_bundle(self, instrument_id: str, timeframe: str) -> MonitoringDashboardRead:
-        instrument_id = MONITORING_TECH_INSTRUMENT_ID
-        timeframe = MONITORING_TECH_TIMEFRAME
+        instrument_id = instrument_id or MONITORING_TECH_INSTRUMENT_ID
+        timeframe = timeframe or MONITORING_TECH_TIMEFRAME
         started = time.perf_counter()
         now = datetime.now(timezone.utc)
         monitoring_service = IndicatorMonitoringService(self.repository)
