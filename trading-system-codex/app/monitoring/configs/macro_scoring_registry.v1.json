@@ -1,0 +1,135 @@
+{
+  "version": "macro_scoring_registry_v1",
+  "score_scale": {"min": 0, "neutral": 50, "max": 100},
+  "bias_thresholds": {"bullish_gte": 65, "bearish_lte": 35},
+  "missing_data_policy": "not_scored_exclude_from_layer_mean",
+  "indicators": [
+    {
+      "indicator_key": "us_dff",
+      "aliases": ["effr"],
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {"low": 2.5, "high": 6.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "利率压力缓和",
+      "bearish_label": "利率压力偏强"
+    },
+    {
+      "indicator_key": "us_10y_yield",
+      "aliases": ["us10y_yield", "ust_10y_yield"],
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {"low": 2.5, "high": 6.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "长端利率压力缓和",
+      "bearish_label": "长端利率压力偏强"
+    },
+    {
+      "indicator_key": "us_cpi_yoy",
+      "aliases": ["cpi_yoy"],
+      "formula_id": "inverse_linear",
+      "unit": "% YoY",
+      "thresholds": {"low": 2.0, "high": 5.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "通胀压力缓和",
+      "bearish_label": "通胀压力偏强"
+    },
+    {
+      "indicator_key": "us_core_cpi_yoy",
+      "aliases": ["core_cpi_yoy"],
+      "formula_id": "inverse_linear",
+      "unit": "% YoY",
+      "thresholds": {"low": 2.0, "high": 5.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "核心通胀压力缓和",
+      "bearish_label": "核心通胀压力偏强"
+    },
+    {
+      "indicator_key": "us_nfp",
+      "aliases": ["nfp"],
+      "formula_id": "direct_linear",
+      "unit": "thousand",
+      "thresholds": {"low": 0, "high": 250},
+      "higher_value_bias": "bullish_for_risk_assets",
+      "bullish_label": "就业偏强",
+      "bearish_label": "就业偏弱"
+    },
+    {
+      "indicator_key": "us_unemployment_rate",
+      "aliases": ["unemployment_rate"],
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {"low": 3.5, "high": 5.5},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "就业市场健康",
+      "bearish_label": "失业率偏高"
+    },
+    {
+      "indicator_key": "dollar_index",
+      "aliases": ["dxy"],
+      "formula_id": "inverse_linear",
+      "unit": "index",
+      "thresholds": {"low": 98.0, "high": 108.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "美元压力缓和",
+      "bearish_label": "美元走强压制风险"
+    },
+    {
+      "indicator_key": "ism_mfg_pmi",
+      "aliases": ["ism_manufacturing"],
+      "formula_id": "direct_linear",
+      "unit": "index",
+      "thresholds": {"low": 45.0, "high": 55.0},
+      "higher_value_bias": "bullish_for_risk_assets",
+      "bullish_label": "制造业景气扩张",
+      "bearish_label": "制造业景气收缩"
+    },
+    {
+      "indicator_key": "ism_srv_pmi",
+      "aliases": ["ism_services"],
+      "formula_id": "direct_linear",
+      "unit": "index",
+      "thresholds": {"low": 45.0, "high": 55.0},
+      "higher_value_bias": "bullish_for_risk_assets",
+      "bullish_label": "服务业景气扩张",
+      "bearish_label": "服务业景气收缩"
+    },
+    {
+      "indicator_key": "hy_oas",
+      "aliases": ["hy_spread"],
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {"low": 3.5, "high": 8.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "信用风险偏低",
+      "bearish_label": "信用风险抬升"
+    },
+    {
+      "indicator_key": "vix",
+      "formula_id": "inverse_linear",
+      "unit": "index",
+      "thresholds": {"low": 15.0, "high": 28.0},
+      "higher_value_bias": "bearish_for_risk_assets",
+      "bullish_label": "波动平稳",
+      "bearish_label": "波动升高"
+    },
+    {
+      "indicator_key": "wti_crude",
+      "aliases": ["wti_oil"],
+      "formula_id": "range_mid",
+      "unit": "USD/bbl",
+      "thresholds": {"low": 55.0, "high": 95.0},
+      "higher_value_bias": "mixed",
+      "bullish_label": "油价处于需求确认区间",
+      "bearish_label": "油价极端波动"
+    },
+    {
+      "indicator_key": "gold",
+      "formula_id": "momentum_20d",
+      "unit": "USD/oz",
+      "higher_value_bias": "mixed",
+      "bullish_label": "黄金避险需求温和",
+      "bearish_label": "黄金避险需求升高"
+    }
+  ]
+}
