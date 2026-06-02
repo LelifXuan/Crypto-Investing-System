@@ -1671,10 +1671,11 @@ def _decision_matrix_row(
                 strategy_decision, "strategy_bias", "bias", "direction"
             )
             direction = _decision_direction(bias) or "neutral"
+            # Only data-quality fields count. State and permission are
+            # semantic - "blocked" does not mean weak evidence.
             strength_values = [
                 strategy_decision.get("confidence_score"),
-                strategy_decision.get("strategy_state"),
-                strategy_decision.get("strategy_permission"),
+                strategy_decision.get("data_quality_score"),
             ]
     elif source == "terminal_summary":
         direction = _decision_direction(base_summary.get("bias")) or "neutral"
@@ -1736,6 +1737,77 @@ _MATRIX_ROW_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "weight": 0.15,
     },
 )
+
+
+# Map decision_brief row ``source_refs`` to matrix keys. The mapping
+# favours the closest evidence we have on hand. Unrecognised references
+# fall back to the strategy_gates row (best-effort) so the row still
+# receives an evidence_strength.
+_SOURCE_REF_TO_MATRIX_KEY: dict[str, str] = {
+    "alerts.chip_structure": "chip_structure",
+    "alerts.divergence_summary": "divergence_summary",
+    "alerts.final_decision": "strategy_gates",
+    "strategy.decision": "strategy_gates",
+    "strategy.gates": "strategy_gates",
+    "structure.snapshot": "strategy_gates",
+    "analysis.1w": "1w_trend",
+    "analysis.1d": "1d_bias",
+    "analysis.4h": "4h_trigger",
+    "analysis.30d": "1w_trend",
+    "analysis.1M": "1w_trend",
+}
+
+EVIDENCE_STRENGTH_THRESHOLD = 0.5
+
+
+def _row_evidence_strength(
+    source_refs: Sequence[str],
+    matrix: Sequence[Mapping[str, Any]],
+    base_summary: Mapping[str, Any],
+) -> float:
+    """Compute the minimum evidence_strength across the row's sources.
+
+    The matrix is the source of truth for per-source strength. ``terminal_summary``
+    is a self-referential fallback and never counts as independent evidence,
+    so when the only source ref is the terminal summary itself the row is
+    treated as having no real evidence (strength 0.0). The same applies when
+    source_refs is empty.
+    """
+
+    matrix_strengths: list[float] = []
+    matrix_index = {
+        str(item.get("key")): item for item in matrix if isinstance(item, Mapping)
+    }
+    for ref in source_refs or []:
+        if ref == "terminal_summary":
+            continue
+        key = _SOURCE_REF_TO_MATRIX_KEY.get(str(ref))
+        if key and key in matrix_index:
+            strength = matrix_index[key].get("evidence_strength")
+            if isinstance(strength, (int, float)):
+                matrix_strengths.append(float(strength))
+    if matrix_strengths:
+        return round(min(matrix_strengths), 4)
+    return 0.0
+
+
+def _apply_evidence_strength(row: dict[str, Any], strength: float) -> dict[str, Any]:
+    """Attach evidence_strength to a row and demote tone/summary when low.
+
+    When the strength is below ``EVIDENCE_STRENGTH_THRESHOLD`` the row is
+    treated as advisory only: the tone becomes ``warning`` and the summary
+    is prefixed with an explicit uncertainty note so the user never reads
+    a directional verdict that is not actually supported by the data.
+    """
+
+    row["evidence_strength"] = round(float(strength), 4)
+    if strength < EVIDENCE_STRENGTH_THRESHOLD:
+        row["tone"] = "warning"
+        prefix = f"证据强度 {int(strength * 100)}%，结论置信度有限。"
+        existing = str(row.get("summary") or "")
+        if not existing.startswith(prefix):
+            row["summary"] = prefix + existing
+    return row
 
 
 def _decision_describe_timeframes(timeframe_snapshots: Mapping[str, Any]) -> str:
@@ -1907,14 +1979,19 @@ def _decision_build_market_row(
         )
         tone = bias
 
-    return {
+    dedup_sources = _decision_dedupe_text(sources, limit=8)
+    row = {
         "key": "market_situation",
         "title": "市场情况",
         "tone": tone,
         "summary": summary,
         "bullets": _decision_dedupe_text(bullets, limit=6),
-        "source_refs": _decision_dedupe_text(sources, limit=8),
+        "source_refs": dedup_sources,
     }
+    strength = _row_evidence_strength(
+        dedup_sources, alignment.get("matrix") or [], base_summary
+    )
+    return _apply_evidence_strength(row, strength)
 
 
 def _decision_build_trading_row(
@@ -2002,14 +2079,19 @@ def _decision_build_trading_row(
         )
         tone = _decision_direction(base_summary.get("bias")) or "neutral"
 
-    return {
+    dedup_sources = _decision_dedupe_text(sources, limit=8)
+    row = {
         "key": "trading_guidance",
         "title": "交易指引",
         "tone": tone,
         "summary": summary,
         "bullets": _decision_dedupe_text(bullets, limit=6),
-        "source_refs": _decision_dedupe_text(sources, limit=8),
+        "source_refs": dedup_sources,
     }
+    strength = _row_evidence_strength(
+        dedup_sources, alignment.get("matrix") or [], base_summary
+    )
+    return _apply_evidence_strength(row, strength)
 
 
 def _decision_build_risk_row(
@@ -2103,11 +2185,16 @@ def _decision_build_risk_row(
             "筹码/背离反向确认以及策略 gates 未通过。"
         )
 
-    return {
+    dedup_sources = _decision_dedupe_text(sources, limit=8)
+    row = {
         "key": "risk_invalidation",
         "title": "风险点 / 失效条件",
         "tone": "warning",
         "summary": summary,
         "bullets": _decision_dedupe_text(bullets, limit=6),
-        "source_refs": _decision_dedupe_text(sources, limit=8),
+        "source_refs": dedup_sources,
     }
+    strength = _row_evidence_strength(
+        dedup_sources, alignment.get("matrix") or [], base_summary
+    )
+    return _apply_evidence_strength(row, strength)

@@ -478,3 +478,82 @@ def test_decision_brief_matrix_reflects_cross_source_conflict() -> None:
     assert by_key["1d_bias"]["direction"] == "bearish"
     assert by_key["1w_trend"]["direction"] == "bearish"
     assert summary["decision_brief"]["source_alignment"]["consistency"] == "conflict"
+
+
+# ---------------------------------------------------------------------------
+# evidence_strength and tone demotion (V1.5 P3)
+# ---------------------------------------------------------------------------
+
+
+def test_decision_brief_rows_carry_evidence_strength() -> None:
+    summary = TerminalSummaryEngine().build(
+        alerts_bundle={
+            "chip_structure": {"direction": "bearish", "confidence_score": 0.8},
+        },
+        strategy_bundle={
+            "decision": {
+                "strategy_bias": "bearish",
+                "strategy_state": "blocked",
+                "confidence_score": 0.7,
+            }
+        },
+        timeframe_snapshots={
+            "4h": {"bias": "bearish", "confidence": 0.6},
+            "1d": {"bias": "bearish", "confidence": 0.8},
+            "1w": {"bias": "bearish", "confidence": 0.7},
+        },
+    )
+    for row in summary["decision_brief"]["rows"]:
+        assert "evidence_strength" in row
+        assert 0.0 <= row["evidence_strength"] <= 1.0
+    risk = next(r for r in summary["decision_brief"]["rows"] if r["key"] == "risk_invalidation")
+    assert risk["tone"] == "warning"
+    assert risk["evidence_strength"] == 0.0
+
+
+def test_decision_brief_demotes_tone_when_evidence_strength_low() -> None:
+    summary = TerminalSummaryEngine().build()
+    for row in summary["decision_brief"]["rows"]:
+        # Without any optional inputs every source is missing so the row's
+        # evidence_strength collapses to 0.0 and the tone must demote to
+        # warning. Risk row is always warning.
+        assert row["evidence_strength"] == 0.0
+        assert row["tone"] == "warning"
+        if row["key"] != "risk_invalidation":
+            # Summary is prefixed with an explicit uncertainty note.
+            assert "证据强度" in row["summary"]
+            assert "置信度有限" in row["summary"]
+
+
+def test_decision_brief_partial_evidence_keeps_directional_tone() -> None:
+    summary = TerminalSummaryEngine().build(
+        alerts_bundle={
+            "chip_structure": {
+                "direction": "bullish",
+                "confidence_score": 0.9,
+                "evidence_quality": "high",
+            },
+        },
+        strategy_bundle={
+            "decision": {
+                "strategy_bias": "bullish",
+                "strategy_state": "ready",
+                "strategy_permission": "允许条件触发",
+                "confidence_score": 0.9,
+            }
+        },
+        timeframe_snapshots={
+            "4h": {"bias": "bullish", "confidence": 0.7},
+            "1d": {"bias": "bullish", "confidence": 0.8},
+            "1w": {"bias": "bullish", "confidence": 0.8},
+        },
+    )
+    for row in summary["decision_brief"]["rows"]:
+        # All real sources are well above 0.5 so the row's evidence_strength
+        # must not be 0 and the demotion prefix must not be applied to the
+        # summary (the risk row is always warning regardless).
+        if row["key"] != "risk_invalidation":
+            assert row["evidence_strength"] >= 0.5, row
+            assert "证据强度" not in row["summary"], row
+        else:
+            assert row["tone"] == "warning"
