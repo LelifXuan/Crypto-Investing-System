@@ -315,12 +315,34 @@ class StrategySnapshotBuilder:
         funding_z = abs(_num(derivatives.get("funding_zscore")))
         trigger_tf = (config.get("timeframe_mapping") or {}).get(tf)
         lower_tf_required = bool(trigger_tf)
-        # Only mark the lower timeframe as missing when a trigger timeframe is
-        # configured AND we have evidence the data is actually short. The
-        # data quality score already aggregates analysis/alerts/monitoring
-        # cache states, so a score below 60 implies the dependency is too
-        # degraded to use the lower timeframe for execution triggers.
-        lower_tf_missing = lower_tf_required and data_quality_score < 60
+        # T05 audit fix: actually load the lower timeframe snapshot instead
+        # of inferring it from the aggregate data quality score. The data
+        # quality heuristic was masking cases where the lower timeframe is
+        # perfectly available but the higher timeframe bundle is degraded.
+        lower_tf_payload = None
+        lower_tf_alignment: dict[str, Any] = {"status": "not_required"}
+        if lower_tf_required and trigger_tf:
+            lower_tf_payload = await self._load_lower_tf_snapshot(
+                instrument=instrument, lower_tf=trigger_tf
+            )
+            if lower_tf_payload is None:
+                lower_tf_missing = True
+                lower_tf_alignment = {
+                    "status": "missing",
+                    "required_timeframe": trigger_tf,
+                    "current_timeframe": tf,
+                    "message": "缺少次级周期快照，方向优势不能直接升级为入场触发。",
+                }
+            else:
+                lower_tf_missing = False
+                lower_tf_alignment = self._compute_lower_tf_alignment(
+                    higher_direction=direction_metrics,
+                    lower_payload=lower_tf_payload,
+                    higher_timeframe=tf,
+                    lower_timeframe=trigger_tf,
+                )
+        else:
+            lower_tf_missing = False
         ema20 = _num(indicators.get("ema_20"))
         ema20_prev = _num(indicators.get("ema_20_prev"), ema20)
         ema20_slope = ema20 - ema20_prev
@@ -370,6 +392,8 @@ class StrategySnapshotBuilder:
             "trigger_timeframe": trigger_tf,
             "lower_tf_required": bool(trigger_tf),
             "lower_tf_missing": lower_tf_missing,
+            "lower_tf_payload": lower_tf_payload,
+            "lower_tf_alignment": lower_tf_alignment,
             "direction_score_raw": direction_score,
             "direction_score_scale": direction_metrics.get("scale"),
             "direction_score_normalized": direction_metrics,
@@ -629,6 +653,115 @@ class StrategySnapshotBuilder:
             if any(token in joined for token in tokens):
                 penalties.append({"input": key, "cap": cap, "message": message})
         return penalties
+
+    async def _load_lower_tf_snapshot(
+        self, *, instrument: str, lower_tf: str
+    ) -> dict[str, Any] | None:
+        """Load the strategy bundle for the lower trigger timeframe.
+
+        T05 audit fix: the snapshot used to mark ``lower_tf_missing`` whenever
+        the aggregate data quality score was below 60, which conflated the
+        higher timeframe bundle health with the lower timeframe's own
+        availability. The lower timeframe is now read directly from the
+        ``strategy_bundle`` page snapshot cache; if it is not there (no
+        scheduled refresh has produced it yet) we still return ``None`` so
+        the snapshot can mark the trigger as missing.
+        """
+
+        cache_key = strategy_bundle_cache_key(instrument, lower_tf)
+        try:
+            cached = await self.repository.get_page_snapshot_cache(cache_key)
+        except Exception as exc:
+            logger.debug("lower_tf snapshot cache read failed: %s", exc)
+            return None
+        if cached is None:
+            return None
+        payload = getattr(cached, "payload_json", None) or {}
+        if not isinstance(payload, dict):
+            return None
+        decision = payload.get("decision") or {}
+        if not isinstance(decision, dict):
+            decision = {}
+        cache_state = getattr(cached, "cache_state", "unknown")
+        return {
+            "instrument_id": instrument,
+            "timeframe": lower_tf,
+            "cache_state": cache_state,
+            "snapshot_at": (
+                cached.snapshot_at.isoformat()
+                if getattr(cached, "snapshot_at", None) is not None
+                else None
+            ),
+            "expires_at": (
+                cached.expires_at.isoformat()
+                if getattr(cached, "expires_at", None) is not None
+                else None
+            ),
+            "strategy_state": decision.get("strategy_state"),
+            "strategy_state_label": decision.get("strategy_state_label"),
+            "strategy_bias": decision.get("strategy_bias"),
+            "direction_score": decision.get("direction_confidence")
+            or decision.get("long_score")
+            or decision.get("short_score"),
+            "long_score": decision.get("long_score"),
+            "short_score": decision.get("short_score"),
+            "mtf_trend_bullish": decision.get("mtf_trend_bullish"),
+            "mtf_trend_bearish": decision.get("mtf_trend_bearish"),
+            "confidence": decision.get("direction_confidence")
+            or decision.get("confidence_score"),
+            "next_trigger": decision.get("next_trigger"),
+            "gates": decision.get("gates"),
+        }
+
+    @staticmethod
+    def _compute_lower_tf_alignment(
+        *,
+        higher_direction: dict[str, float],
+        lower_payload: dict[str, Any],
+        higher_timeframe: str,
+        lower_timeframe: str,
+    ) -> dict[str, Any]:
+        """Compare the higher-timeframe direction against the lower-timeframe snapshot."""
+
+        higher_bullish = float(higher_direction.get("bullish") or 0)
+        higher_bearish = float(higher_direction.get("bearish") or 0)
+        higher_diff = higher_bullish - higher_bearish
+        higher_label = (
+            "bullish"
+            if higher_diff > 5
+            else "bearish"
+            if higher_diff < -5
+            else "neutral"
+        )
+
+        long_score = _num(lower_payload.get("long_score"))
+        short_score = _num(lower_payload.get("short_score"))
+        lower_diff = long_score - short_score
+        lower_label = (
+            "bullish"
+            if lower_diff > 5
+            else "bearish"
+            if lower_diff < -5
+            else "neutral"
+        )
+        if higher_label == "neutral" or lower_label == "neutral":
+            status = "neutral"
+        elif higher_label == lower_label:
+            status = "aligned"
+        else:
+            status = "conflict"
+
+        return {
+            "status": status,
+            "required_timeframe": lower_timeframe,
+            "current_timeframe": higher_timeframe,
+            "higher_label": higher_label,
+            "lower_label": lower_label,
+            "long_score": long_score,
+            "short_score": short_score,
+            "lower_strategy_state": lower_payload.get("strategy_state"),
+            "lower_cache_state": lower_payload.get("cache_state"),
+        }
 
     async def _structure_payload(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
         try:
