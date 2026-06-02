@@ -272,6 +272,7 @@ class Report:
     counts: dict[str, int]
     findings: list[dict[str, str | None]]
     summary: dict[str, object]
+    summary_text: str = ""
 
 
 class Auditor:
@@ -747,6 +748,13 @@ class Auditor:
             counts[finding.severity] = counts.get(finding.severity, 0) + 1
         failed = counts.get("critical", 0) > 0 or (self.strict and counts.get("high", 0) > 0)
         status = "fail" if failed else "pass"
+        launcher = self.summary.get("launcher_present")
+        summary_text = (
+            f"status={status} | critical={counts.get('critical', 0)} | "
+            f"high={counts.get('high', 0)} | medium={counts.get('medium', 0)} | "
+            f"low={counts.get('low', 0)} | info={counts.get('info', 0)} | "
+            f"launcher={'present' if launcher else 'missing'}"
+        )
         return Report(
             status=status,
             strict=self.strict,
@@ -755,6 +763,7 @@ class Auditor:
             counts=counts,
             findings=[asdict(finding) for finding in self.findings],
             summary=self.summary,
+            summary_text=summary_text,
         )
 
 
