@@ -26,10 +26,18 @@ import json
 import os
 import re
 import subprocess
+import sys
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from release_common import (  # noqa: E402
+    dump_portable_excludes,
+    load_portable_excludes,
+    PORTABLE_EXCLUDES_JSON,
+)
 
 REQUIRED_ROOT_FILES = [
     "start_portable.bat",
@@ -48,19 +56,6 @@ REQUIRED_PYTHON_FILES = [
     "runtime_env/python/python311._pth",
 ]
 
-REQUIRED_SITE_PACKAGES = [
-    "fastapi",
-    "uvicorn",
-    "sqlalchemy",
-    "aiosqlite",
-    "pydantic",
-    "starlette",
-    "alembic",
-    "jinja2",
-    "httpx",
-    "websockets",
-]
-
 SMOKE_IMPORTS = [
     "fastapi",
     "uvicorn",
@@ -74,37 +69,20 @@ SMOKE_IMPORTS = [
     "websockets",
 ]
 
-FORBIDDEN_EXACT = {
-    ".env",
-    "runtime/config/portable.env",
-}
-
-FORBIDDEN_PARTS = {
-    ".git",
-    ".venv",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-}
-
-FORBIDDEN_ROOT_PREFIXES = (
-    "runtime/",
-    "run/",
-    "logs/",
-    "cache/",
-    "tmp/",
-    "data/",
-    "dist/",
-)
-
-FORBIDDEN_SUFFIXES = (
-    ".db",
-    ".db-wal",
-    ".db-shm",
-    ".log",
-    ".pyc",
-    ".pyo",
-)
+# Required site-packages. B6 will replace this with a parse of
+# requirements-portable.txt via portable_modules.parse_requirements.
+REQUIRED_SITE_PACKAGES = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "aiosqlite",
+    "pydantic",
+    "starlette",
+    "alembic",
+    "jinja2",
+    "httpx",
+    "websockets",
+]
 
 ABSOLUTE_PATH_PATTERNS = [
     r"[A-Za-z]:\\",
@@ -112,6 +90,24 @@ ABSOLUTE_PATH_PATTERNS = [
     r"/mnt/",
     r"/Users/",
 ]
+
+
+def _load_excludes() -> dict[str, set[str]]:
+    """Load portable exclusion rules, generating the JSON on demand.
+
+    The verifier and the PowerShell sync script must agree on what is
+    forbidden. ``release_common.dump_portable_excludes`` is the single
+    source of truth; we ensure the file exists before reading.
+    """
+
+    if not PORTABLE_EXCLUDES_JSON.exists():
+        dump_portable_excludes()
+    payload = load_portable_excludes()
+    return {
+        "exact": set(payload.get("excluded_files", [])),
+        "parts": set(payload.get("excluded_dirs", [])),
+        "suffixes": set(payload.get("excluded_suffixes", [])),
+    }
 
 
 class BundleReader(Protocol):
@@ -537,20 +533,21 @@ class Auditor:
                 )
 
     def check_forbidden_artifacts(self) -> None:
+        excludes = _load_excludes()
+        exact = excludes["exact"]
+        parts_forbidden = excludes["parts"]
+        suffixes_forbidden = excludes["suffixes"]
         forbidden: list[str] = []
         for name in self.reader.list_files():
             norm = name.replace("\\", "/").lstrip("/")
             parts = set(norm.split("/"))
-            if norm in FORBIDDEN_EXACT:
+            if norm in exact:
                 forbidden.append(norm)
                 continue
-            if parts.intersection(FORBIDDEN_PARTS):
+            if parts.intersection(parts_forbidden):
                 forbidden.append(norm)
                 continue
-            if norm.startswith(FORBIDDEN_ROOT_PREFIXES):
-                forbidden.append(norm)
-                continue
-            if norm.endswith(FORBIDDEN_SUFFIXES):
+            if norm.endswith(tuple(suffixes_forbidden)):
                 forbidden.append(norm)
                 continue
         self.summary["forbidden_artifact_count"] = len(forbidden)
