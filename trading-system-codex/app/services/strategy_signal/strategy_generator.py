@@ -10,6 +10,7 @@ from app.services.strategy_signal.risk_reward import (
 )
 from app.services.strategy_signal.scoring_engine import DirectionScores
 from app.services.strategy_signal.setup_lifecycle import (
+    GateDiagnostic,
     evaluate_lower_tf_trigger,
     evaluate_strong_trend_follow,
     normalize_plan_levels,
@@ -492,27 +493,38 @@ class StrategyGenerator:
         ]
 
     def _gates(self, snapshot: dict[str, Any], scores: DirectionScores) -> list[dict[str, Any]]:
-        gates = [
-            {"code": "HARD_GATE", "severity": "block", "message": reason}
+        gates: list[GateDiagnostic] = [
+            GateDiagnostic(
+                code="HARD_GATE",
+                status="fail",
+                message=reason,
+                severity="block",
+            )
             for reason in self._hard_gate_reasons(snapshot)
         ]
         if scores.data_quality_score < 60:
             gates.append(
-                {
-                    "code": "DATA_QUALITY_LOW",
-                    "severity": "warn",
-                    "message": "数据质量偏低，建议只观察或等待缓存补齐。",
-                }
+                GateDiagnostic(
+                    code="DATA_QUALITY_LOW",
+                    status="warn",
+                    message="数据质量偏低，建议只观察或等待缓存补齐。",
+                    current=round2(scores.data_quality_score),
+                    required=60.0,
+                    severity="warning",
+                )
             )
         if number(snapshot.get("funding_crowding_score")) > 75:
             gates.append(
-                {
-                    "code": "FUNDING_CROWDING",
-                    "severity": "warn",
-                    "message": "资金费率拥挤，追单回撤风险上升。",
-                }
+                GateDiagnostic(
+                    code="FUNDING_CROWDING",
+                    status="warn",
+                    message="资金费率拥挤，追单回撤风险上升。",
+                    current=round2(snapshot.get("funding_crowding_score")),
+                    required=75.0,
+                    severity="warning",
+                )
             )
-        return gates
+        return [gate.to_dict() for gate in gates]
 
     def _gate_diagnostics(
         self, snapshot: dict[str, Any], scores: DirectionScores, bias: str

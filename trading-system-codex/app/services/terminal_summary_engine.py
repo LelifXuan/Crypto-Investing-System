@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field
 from math import isfinite
 from typing import Any
 
+from app.services.strategy_signal.setup_lifecycle import GateDiagnostic
+
 MODULE_KEYS = (
     "macro",
     "technical_trend",
@@ -1929,6 +1931,161 @@ def _decision_format_trigger(trigger: Any) -> str:
     return "下一触发器：" + _decision_text(trigger) + "。"
 
 
+_BLOCK_SEVERITIES = {"block", "blocked", "blocking"}
+_WARN_SEVERITIES = {"warn", "warning"}
+_PASS_STATUSES = {"pass", "ok"}
+
+
+def _decision_gate_from_any(item: Any) -> GateDiagnostic | None:
+    """Normalize a single gate entry into a ``GateDiagnostic``.
+
+    Accepts a ``GateDiagnostic`` instance, a dict with the standard fields,
+    a plain string (treated as the message), or ``None`` (skipped). Unknown
+    shapes return ``None`` so the caller can filter them out and the row
+    never silently renders a half-parsed value.
+    """
+
+    if item is None:
+        return None
+    if isinstance(item, GateDiagnostic):
+        return item
+    if isinstance(item, Mapping):
+        code = str(item.get("code") or item.get("id") or "UNKNOWN_GATE")
+        raw_severity = str(
+            item.get("severity") or item.get("level") or "info"
+        ).lower()
+        status = str(item.get("status") or "info").lower()
+        message = str(item.get("message") or item.get("reason") or code)
+        # Map "warn" / "blocked" / "blocking" to the canonical severity set.
+        if raw_severity in _BLOCK_SEVERITIES:
+            severity = "block"
+        elif raw_severity in _WARN_SEVERITIES:
+            severity = "warning"
+        elif raw_severity in {"info"}:
+            severity = "info"
+        else:
+            severity = "info"
+        return GateDiagnostic(
+            code=code,
+            status=status if status in {"pass", "fail", "warn", "missing", "info"} else "info",
+            message=message,
+            current=item.get("current", item.get("value")),
+            required=item.get("required", item.get("threshold")),
+            severity=severity,
+        )
+    if isinstance(item, str):
+        text = item.strip()
+        if not text:
+            return None
+        lowered = text.lower()
+        if lowered in _BLOCK_SEVERITIES:
+            return GateDiagnostic(
+                code=text, status="fail", message=text, severity="block"
+            )
+        if lowered in _WARN_SEVERITIES:
+            return GateDiagnostic(
+                code=text, status="warn", message=text, severity="warning"
+            )
+        if lowered in _PASS_STATUSES:
+            return GateDiagnostic(
+                code=text, status="pass", message=text, severity="info"
+            )
+        return GateDiagnostic(code=text, status="info", message=text, severity="info")
+    return None
+
+
+def _decision_normalize_gates(gates: Any) -> list[GateDiagnostic]:
+    """Normalize any gates payload into a list of ``GateDiagnostic``."""
+
+    if gates is None:
+        return []
+    if isinstance(gates, GateDiagnostic):
+        return [gates]
+    if isinstance(gates, Mapping):
+        if not gates:
+            return []
+        normalized = _decision_gate_from_any(gates)
+        return [normalized] if normalized else []
+    if isinstance(gates, (list, tuple, set)):
+        output: list[GateDiagnostic] = []
+        for item in gates:
+            normalized = _decision_gate_from_any(item)
+            if normalized is not None:
+                output.append(normalized)
+        return output
+    if isinstance(gates, str):
+        normalized = _decision_gate_from_any(gates)
+        return [normalized] if normalized else []
+    return []
+
+
+def _decision_format_gate_bullet(gate: GateDiagnostic) -> str:
+    """Render one GateDiagnostic as a Chinese sentence fragment."""
+
+    if gate.severity == "block" or gate.status in {"fail", "missing"}:
+        prefix = "未通过"
+    elif gate.severity == "warning" or gate.status == "warn":
+        prefix = "风险提示"
+    elif gate.status in _PASS_STATUSES:
+        prefix = "已通过"
+    else:
+        prefix = "门槛"
+    body = gate.message or gate.code
+    extras: list[str] = []
+    if gate.current is not None and gate.current != "":
+        extras.append(f"当前 {_decision_text(gate.current)}")
+    if gate.required is not None and gate.required != "":
+        extras.append(f"要求 {_decision_text(gate.required)}")
+    if extras:
+        body = body + "（" + "，".join(extras) + "）"
+    return f"{prefix}：{body}"
+
+
+def _decision_format_gates(
+    gates: Any, *, limit: int = 4
+) -> tuple[list[str], bool, bool]:
+    """Render gates for both the trading row and the risk row.
+
+    Returns a tuple of (bullets, has_block, has_warning). Pass / info gates
+    are folded (not surfaced as bullets) per the T03 spec; the trading row
+    never needs to see gates it has already cleared. ``has_block`` is True
+    when at least one gate is severity block or status fail/missing; those
+    are the gates the audit found were silently dropped. ``has_warning`` lets
+    the trading row downgrade the tone to ``warning`` even when no gate is
+    fully blocking.
+    """
+
+    normalized = _decision_normalize_gates(gates)
+    if not normalized:
+        return [], False, False
+
+    def priority(gate: GateDiagnostic) -> int:
+        if gate.severity == "block" or gate.status in {"fail", "missing"}:
+            return 0
+        if gate.severity == "warning" or gate.status == "warn":
+            return 1
+        return 2
+
+    def is_surfaced(gate: GateDiagnostic) -> bool:
+        # Fold pass / info gates; they have already cleared and only add noise.
+        if gate.status in _PASS_STATUSES or gate.severity == "info":
+            return False
+        return True
+
+    surfaced = [gate for gate in normalized if is_surfaced(gate)]
+    ordered = sorted(surfaced, key=priority)
+    bullets = [_decision_format_gate_bullet(gate) for gate in ordered[:limit]]
+    has_block = any(
+        gate.severity == "block" or gate.status in {"fail", "missing"}
+        for gate in normalized
+    )
+    has_warning = any(
+        gate.severity == "warning" or gate.status == "warn"
+        for gate in normalized
+    )
+    return bullets, has_block, has_warning
+
+
 def _decision_describe_strategy_levels(strategy: Mapping[str, Any]) -> str:
     if not strategy:
         return ""
@@ -2038,7 +2195,12 @@ def _decision_build_trading_row(
     next_trigger = decision.get("next_trigger")
     primary_strategy = _decision_as_mapping(decision.get("primary_strategy"))
     no_trade_reasons = _decision_as_list(decision.get("no_trade_reasons"))
-    gates = decision.get("gates")
+    raw_gates = decision.get("gates")
+    gate_bullets, gates_block, gates_warn = _decision_format_gates(raw_gates, limit=3)
+    if gate_bullets:
+        joined = "；".join(gate_bullets)
+        prefix = "执行前必须通过的策略门槛：" if gates_block else "策略门槛状态："
+        bullets.append(prefix + joined + "。")
 
     if decision:
         sources.append("strategy.decision")
@@ -2052,9 +2214,6 @@ def _decision_build_trading_row(
         level_text = _decision_describe_strategy_levels(primary_strategy)
         if level_text:
             bullets.append(level_text)
-        if gates:
-            joined = "；".join(_decision_text(item) for item in gates[:3])
-            bullets.append("执行前必须通过策略 gates：" + joined + "。")
         if no_trade_reasons:
             joined = "；".join(_decision_text(item) for item in no_trade_reasons[:3])
             bullets.append("当前限制：" + joined + "。")
@@ -2074,7 +2233,19 @@ def _decision_build_trading_row(
         sources.append("alerts.final_decision")
 
     consistency = alignment.get("consistency") or "degraded"
-    if consistency == "conflict":
+    if gates_block:
+        summary = (
+            "策略存在未通过的门槛，优先观察或等待解除；"
+            "执行必须等待所有 block 级别门槛全部解除。"
+        )
+        tone = "warning"
+    elif gates_warn and consistency != "conflict":
+        summary = (
+            "策略门槛以警示为主，准入仍以 AI 策略页为准；"
+            "若警示项升级为 block，须立即降级或撤销。"
+        )
+        tone = "warning"
+    elif consistency == "conflict":
         summary = (
             "跨页面方向冲突，当前交易指引降级为等待确认；"
             "只有当策略 gates 与关键价位同时确认后才允许执行。"
@@ -2136,21 +2307,15 @@ def _decision_build_risk_row(
     for missing in alignment.get("missing_sources") or []:
         bullets.append(f"数据缺口：{missing} 缺失或未刷新，当前摘要需要降级处理。")
 
-    blocking_gates = _decision_as_list(
-        _decision_first_present(
-            decision, "blocking_gates", "blocked_gates", "gates"
-        )
+    raw_blocking_gates = _decision_first_present(
+        decision, "blocking_gates", "blocked_gates", "gates"
     )
-    blocking_only = [
-        item for item in blocking_gates if str(item).lower() in {"block", "blocked", "blocking"}
-    ]
-    if blocking_only:
-        joined = "；".join(_decision_text(item) for item in blocking_only[:4])
-        bullets.append("未通过的策略门槛：" + joined + "。")
-        sources.append("strategy.gates")
-    elif blocking_gates:
-        joined = "；".join(_decision_text(item) for item in blocking_gates[:4])
-        bullets.append("策略门槛状态：" + joined + "。")
+    risk_gate_bullets, risk_gates_block, _ = _decision_format_gates(
+        raw_blocking_gates, limit=4
+    )
+    if risk_gate_bullets:
+        prefix = "未通过的策略门槛：" if risk_gates_block else "策略门槛状态："
+        bullets.append(prefix + "；".join(risk_gate_bullets) + "。")
         sources.append("strategy.gates")
 
     no_trade_reasons = _decision_as_list(decision.get("no_trade_reasons"))
