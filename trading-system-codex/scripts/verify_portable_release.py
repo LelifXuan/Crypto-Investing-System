@@ -34,6 +34,7 @@ from typing import Protocol
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_common import (  # noqa: E402
+    PROJECT_ROOT,
     dump_portable_excludes,
     load_portable_excludes,
     PORTABLE_EXCLUDES_JSON,
@@ -69,20 +70,25 @@ SMOKE_IMPORTS = [
     "websockets",
 ]
 
-# Required site-packages. B6 will replace this with a parse of
-# requirements-portable.txt via portable_modules.parse_requirements.
-REQUIRED_SITE_PACKAGES = [
-    "fastapi",
-    "uvicorn",
-    "sqlalchemy",
-    "aiosqlite",
-    "pydantic",
-    "starlette",
-    "alembic",
-    "jinja2",
-    "httpx",
-    "websockets",
-]
+
+def _load_required_site_packages() -> list[str]:
+    """Parse requirements-portable.txt for the canonical site-packages
+    list. ``portable_modules.parse_requirements`` is the single source of
+    truth so this list and the preflight check cannot drift.
+    """
+
+    from portable_modules import parse_requirements
+
+    requirements = PROJECT_ROOT / "requirements-portable.txt"
+    if not requirements.exists():
+        return SMOKE_IMPORTS
+    return parse_requirements(requirements)
+
+
+# Required site-packages. Populated at audit time by
+# ``_load_required_site_packages`` so changes to the requirements file
+# flow through without script edits.
+REQUIRED_SITE_PACKAGES: list[str] = []
 
 ABSOLUTE_PATH_PATTERNS = [
     r"[A-Za-z]:\\",
@@ -451,6 +457,7 @@ class Auditor:
                 )
 
     def check_pth_and_site_packages(self) -> None:
+        required_packages = _load_required_site_packages()
         pth = "runtime_env/python/python311._pth"
         text = self.read_text(pth)
         if text is not None:
@@ -479,7 +486,7 @@ class Auditor:
 
         names = set(self.reader.list_files())
         package_presence: dict[str, bool] = {}
-        for package in REQUIRED_SITE_PACKAGES:
+        for package in required_packages:
             package_path = f"runtime_env/python/Lib/site-packages/{package}/__init__.py"
             alt_prefix = f"runtime_env/python/Lib/site-packages/{package}/"
             present = package_path in names or any(name.startswith(alt_prefix) for name in names)
