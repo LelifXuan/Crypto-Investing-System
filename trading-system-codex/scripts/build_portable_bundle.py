@@ -102,14 +102,11 @@ def _write_manifest(runtime_metadata: dict[str, object]) -> None:
     )
 
 
-def main() -> int:
-    strict_release = _strict_release_enabled()
-    stub_runtime = _stub_runtime_requested()
-    if strict_release and stub_runtime:
-        raise RuntimeError(
-            "PORTABLE_RUNTIME_STUB=1 is only allowed for fast tests; official releases must "
-            "use the embedded Python runtime."
-        )
+def _assemble_source_tree(*, stub_runtime: bool) -> None:
+    """Copy the project source tree into PORTABLE_ROOT, honouring
+    ``should_skip`` for both top-level entries and nested directories.
+    """
+
     if PORTABLE_ROOT.exists():
         shutil.rmtree(PORTABLE_ROOT)
     PORTABLE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -134,12 +131,9 @@ def main() -> int:
         else:
             shutil.copy2(path, destination)
 
-    runtime_metadata = build_runtime(
-        PORTABLE_ROOT / "runtime_env" / "python",
-        lock_path=RUNTIME_LOCK,
-        requirements=PORTABLE_REQUIREMENTS,
-        stub=stub_runtime,
-    )
+
+def _finalize_bundle(runtime_metadata: dict[str, object]) -> None:
+    """Copy top-level portable artifacts and emit the release manifest."""
 
     shutil.copy2(PROJECT_ROOT / "start_portable.bat", PORTABLE_ROOT / "start_portable.bat")
     shutil.copy2(PROJECT_ROOT / "start_portable.sh", PORTABLE_ROOT / "start_portable.sh")
@@ -150,12 +144,39 @@ def main() -> int:
     if LAUNCHER_EXE.exists():
         shutil.copy2(LAUNCHER_EXE, PORTABLE_ROOT / "TradingSystemLauncher.exe")
     _write_manifest(runtime_metadata)
+
+
+def _archive_bundle() -> None:
+    """Zip the portable root and emit the sha256 sidecar."""
+
     archive_base = str(PORTABLE_ZIP.with_suffix(""))
     shutil.make_archive(archive_base, "zip", root_dir=PORTABLE_ROOT)
     PORTABLE_SHA256.write_text(
         f"{_archive_sha256(PORTABLE_ZIP)}  {PORTABLE_ZIP.name}\n",
         encoding="utf-8",
     )
+
+
+def main() -> int:
+    strict_release = _strict_release_enabled()
+    stub_runtime = _stub_runtime_requested()
+    if strict_release and stub_runtime:
+        raise RuntimeError(
+            "PORTABLE_RUNTIME_STUB=1 is only allowed for fast tests; official releases must "
+            "use the embedded Python runtime."
+        )
+
+    _assemble_source_tree(stub_runtime=stub_runtime)
+
+    runtime_metadata = build_runtime(
+        PORTABLE_ROOT / "runtime_env" / "python",
+        lock_path=RUNTIME_LOCK,
+        requirements=PORTABLE_REQUIREMENTS,
+        stub=stub_runtime,
+    )
+
+    _finalize_bundle(runtime_metadata)
+    _archive_bundle()
     print(f"portable bundle created at {PORTABLE_ROOT}")
     print(f"portable zip created at {PORTABLE_ZIP}")
     print(f"portable sha256 created at {PORTABLE_SHA256}")
