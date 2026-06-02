@@ -19,6 +19,42 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOCK = PROJECT_ROOT / "portable_runtime.lock.json"
 DEFAULT_REQUIREMENTS = PROJECT_ROOT / "requirements-portable.txt"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "dist" / "runtime_downloads"
+DEFAULT_META_FILE = PROJECT_ROOT / "dist" / ".portable_runtime_meta.json"
+
+
+def _hash_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _hash_payload(payload: str) -> str:
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _read_meta(meta_file: Path) -> dict[str, Any] | None:
+    if not meta_file.exists():
+        return None
+    try:
+        return json.loads(meta_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def _cache_matches(
+    meta: dict[str, Any] | None,
+    *,
+    lock_sha: str,
+    requirements_sha: str,
+) -> bool:
+    if not meta:
+        return False
+    return (
+        meta.get("lock_sha256") == lock_sha
+        and meta.get("requirements_sha256") == requirements_sha
+    )
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -227,6 +263,7 @@ def build_runtime(
     force: bool = True,
     skip_deps: bool = False,
     stub: bool = False,
+    meta_file: Path = DEFAULT_META_FILE,
 ) -> dict[str, Any]:
     lock = _read_json(lock_path)
     if lock.get("platform") != "win-x64":
@@ -236,11 +273,25 @@ def build_runtime(
     if not requirements.exists():
         raise RuntimeError(f"portable requirements file not found: {requirements}")
 
+    lock_sha = _hash_payload(json.dumps(_read_json(lock_path), sort_keys=True))
+    requirements_sha = _hash_file(requirements)
+    cache_valid = _cache_matches(
+        _read_meta(meta_file),
+        lock_sha=lock_sha,
+        requirements_sha=requirements_sha,
+    )
+
     runtime_dir = target.resolve()
-    if runtime_dir.exists() and force:
+    if runtime_dir.exists() and force and not cache_valid:
         shutil.rmtree(runtime_dir)
     if stub:
         return _build_stub_runtime(runtime_dir, lock, requirements)
+
+    if cache_valid and not force:
+        print(f"portable runtime cache hit for {runtime_dir} (lock+requirements unchanged)")
+        # Refresh metadata so the generated_at stays accurate but the
+        # expensive pip install + scrub steps are skipped.
+        return _write_runtime_metadata(runtime_dir, lock, requirements, stub=False)
 
     archive = _ensure_embed_zip(lock, cache_dir)
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -250,7 +301,23 @@ def build_runtime(
     _install_dependencies(runtime_dir, requirements, cache_dir, skip_deps=skip_deps)
     _prune_runtime_artifacts(runtime_dir)
     _scrub_runtime_text_examples(runtime_dir)
-    return _write_runtime_metadata(runtime_dir, lock, requirements, stub=False)
+    metadata = _write_runtime_metadata(runtime_dir, lock, requirements, stub=False)
+    # Record cache fingerprint for the next build call.
+    meta_file.parent.mkdir(parents=True, exist_ok=True)
+    meta_file.write_text(
+        json.dumps(
+            {
+                "lock_sha256": lock_sha,
+                "requirements_sha256": requirements_sha,
+                "python_version": lock.get("python_version"),
+                "generated_at": datetime.now(UTC).isoformat(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return metadata
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -259,6 +326,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
     parser.add_argument("--requirements", type=Path, default=DEFAULT_REQUIREMENTS)
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument("--meta-file", type=Path, default=DEFAULT_META_FILE)
     parser.add_argument("--skip-deps", action="store_true")
     parser.add_argument("--no-force", action="store_true")
     parser.add_argument(
@@ -277,12 +345,14 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(
             "stub portable runtime is forbidden when RELEASE_STRICT=1 or CI_RELEASE=1"
         )
+    env_force = os.getenv("PORTABLE_FORCE_RUNTIME") == "1"
+    force = (not args.no_force) or env_force
     metadata = build_runtime(
         args.target,
         lock_path=args.lock,
         requirements=args.requirements,
         cache_dir=args.cache_dir,
-        force=not args.no_force,
+        force=force,
         skip_deps=args.skip_deps,
         stub=stub,
     )
