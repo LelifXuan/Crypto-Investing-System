@@ -16,6 +16,7 @@ from app.services.cache_registry import (
 )
 from app.services.monitoring_dashboard import MonitoringDashboardService
 from app.services.strategy_signal.config_loader import load_strategy_signal_config
+from app.services.strategy_signal.risk_reward import clamp
 from app.services.strategy_signal.setup_lifecycle import normalize_direction_metrics
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,124 @@ def _status_score(*statuses: str | None) -> int:
         elif status in {"stale", "updating"}:
             score -= 15
     return max(0, min(100, score))
+
+
+def _build_trend_score(indicators: dict[str, Any]) -> tuple[float, float]:
+    """Compute the multi-timeframe trend component from EMA / ADX inputs.
+
+    The audit (T04) found that the same ``direction_metrics`` value was reused
+    for trend, structure and regime fields, so any change in chip direction
+    was triple-counted. Trend now lives on its own: EMA20/50/200 alignment,
+    EMA20 slope, and ADX strength all contribute. Returns ``(bullish, bearish)``
+    scores in 0..100.
+    """
+
+    ema20 = _num(indicators.get("ema_20"))
+    ema50 = _num(indicators.get("ema_50"))
+    ema200 = _num(indicators.get("ema_200"))
+    ema20_prev = _num(indicators.get("ema_20_prev"), ema20)
+    ema20_slope = ema20 - ema20_prev
+    adx = _num(indicators.get("adx_14"), 20)
+
+    bullish = 50.0
+    bearish = 50.0
+    if ema20 and ema50:
+        if ema20 > ema50:
+            bullish += 15.0
+            bearish -= 10.0
+        elif ema20 < ema50:
+            bearish += 15.0
+            bullish -= 10.0
+    if ema50 and ema200:
+        if ema50 > ema200:
+            bullish += 10.0
+        elif ema50 < ema200:
+            bearish += 10.0
+    if ema20_slope > 0:
+        bullish += 10.0
+    elif ema20_slope < 0:
+        bearish += 10.0
+    if adx >= 25:
+        if bullish > bearish:
+            bullish += 10.0
+        elif bearish > bullish:
+            bearish += 10.0
+    return clamp(bullish), clamp(bearish)
+
+
+def _build_structure_score(structure_overall: dict[str, Any]) -> tuple[float, float]:
+    """Compute the structure component from BOS / swing / value area.
+
+    Pulled out of the direction-metrics piggyback (T04). The structure page
+    already publishes ``bias_score`` (or ``bullish_score``) on its overall
+    payload; fall back to the ``bias`` label when the numeric score is
+    missing. Returns ``(bullish, bearish)``.
+    """
+
+    bias_score = _num(structure_overall.get("bias_score"))
+    if not bias_score:
+        bias_score = _num(structure_overall.get("bullish_score"))
+    if bias_score:
+        return clamp(bias_score), clamp(100.0 - bias_score)
+    bias = str(
+        structure_overall.get("bias")
+        or structure_overall.get("overall_bias")
+        or structure_overall.get("direction")
+        or ""
+    ).lower()
+    if bias in {"bullish", "long", "up"}:
+        return 70.0, 30.0
+    if bias in {"bearish", "short", "down"}:
+        return 30.0, 70.0
+    return 50.0, 50.0
+
+
+def _build_regime_fit(structure_overall: dict[str, Any], regime: str | None) -> tuple[float, float, float]:
+    """Compute the regime-fit component from the market regime classification.
+
+    Pulled out of the direction-metrics piggyback (T04). Trend regimes
+    reward either side symmetrically (both long and short can fit);
+    balance / transition regimes penalize both directions. ``range_structure``
+    is the inverse of the strongest directional fit and is used by the
+    neutral-weight scorer.
+    """
+
+    regime_value = str(regime or structure_overall.get("regime") or "").lower()
+    if regime_value in {"trend", "trending"}:
+        return 65.0, 65.0, 35.0
+    if regime_value in {"balance", "range", "ranging"}:
+        return 35.0, 35.0, 80.0
+    if regime_value in {"transition", "shock"}:
+        return 40.0, 40.0, 60.0
+    return 50.0, 50.0, 50.0
+
+
+def _build_flow_score(derivatives: dict[str, Any]) -> tuple[float, float]:
+    """Compute the money-flow component from CVD / OI change / funding.
+
+    The audit (T04) found that OI was being treated as a raw number while
+    CVD is z-scored, and the two were being summed with the same weight
+    (250). This routine keeps the OI percent weight, the CVD z-score weight,
+    and the funding-z weight separate so the audit can tune them in
+    isolation. OI is assumed to be a percent value per the
+    ``oi_change_pct`` field name; values in (0, 1) are treated as decimals
+    and rescaled to percent.
+    """
+
+    cvd = _num(derivatives.get("cvd_norm"))
+    oi_raw = _num(derivatives.get("oi_change_pct"))
+    # Normalize to percent: oi_change_pct should be a percent (4.0 == 4 %).
+    # Decimal sources slip in (< 1) and are silently rescaled.
+    oi_change = oi_raw * 100.0 if -1.0 < oi_raw < 1.0 else oi_raw
+    funding_z = abs(_num(derivatives.get("funding_zscore")))
+
+    bullish = 50.0 + max(0.0, cvd) * 18.0 + max(0.0, oi_change) * 6.0
+    bearish = 50.0 + max(0.0, -cvd) * 18.0 + max(0.0, -oi_change) * 6.0
+    # Funding z dilutes both sides: extreme funding often precedes reversals.
+    dilution = min(20.0, funding_z * 12.0)
+    bullish -= dilution
+    bearish -= dilution
+    return clamp(bullish), clamp(bearish)
 
 
 class StrategySnapshotBuilder:
@@ -268,17 +387,19 @@ class StrategySnapshotBuilder:
                 if derivatives.get("spread_bps") is not None
                 else 50,
                 "macro_event_availability": 100 if macro_status else 60,
-                "mtf_trend_bullish": direction_metrics["bullish"],
-                "mtf_trend_bearish": direction_metrics["bearish"],
-                "bullish_structure": direction_metrics["bullish"],
-                "bearish_structure": direction_metrics["bearish"],
-                "range_structure": direction_metrics["range"],
-                "regime_fit_long": direction_metrics["bullish"],
-                "regime_fit_short": direction_metrics["bearish"],
-                "bullish_momentum": 50 + max(0, rsi - 50) * 1.3 + max(0, macd - macd_prev) * 3,
-                "bearish_momentum": 50 + max(0, 50 - rsi) * 1.3 + max(0, macd_prev - macd) * 3,
-                "bullish_flow": 50 + max(0, cvd) * 20 + max(0, oi_change) * 250,
-                "bearish_flow": 50 + max(0, -cvd) * 20 + max(0, -oi_change) * 250,
+                **self._feature_components(
+                    indicators=indicators,
+                    structure_overall=structure_overall,
+                    regime=structure_overall.get("regime") or chip.get("regime"),
+                    derivatives=derivatives,
+                    direction_metrics=direction_metrics,
+                    rsi=rsi,
+                    macd=macd,
+                    macd_prev=macd_prev,
+                    cvd=cvd,
+                    oi_change=oi_change,
+                    adx=adx,
+                ),
                 "low_volume_confirmation": 50,
                 "low_adx": max(0, 60 - adx),
                 "derivatives_long_confirmation": 50 + max(0, oi_change) * 250,
@@ -360,6 +481,72 @@ class StrategySnapshotBuilder:
             )
         except Exception as exc:
             logger.debug("strategy bundle cache write skipped: %s", exc)
+
+    @staticmethod
+    def _feature_components(
+        *,
+        indicators: dict[str, Any],
+        structure_overall: dict[str, Any],
+        regime: str | None,
+        derivatives: dict[str, Any],
+        direction_metrics: dict[str, float],
+        rsi: float,
+        macd: float,
+        macd_prev: float,
+        cvd: float,
+        oi_change: float,
+        adx: float,
+    ) -> dict[str, float]:
+        """Combine the 5 independent feature sources into the snapshot feature row.
+
+        Each feature family now lives in its own helper so the audit (T04)
+        can tune weights in isolation and a regression in one family does
+        not silently poison the others. The 5 families are:
+
+        * **trend** — EMA 20/50/200 alignment + slope + ADX strength
+        * **structure** — BOS / swing / value area from structure page
+        * **regime_fit** — market-regime classifier (trend/balance/transition)
+        * **momentum** — RSI / MACD histogram (no change in source)
+        * **flow** — CVD / OI / funding-z, with explicit unit normalization
+        """
+
+        trend_bullish, trend_bearish = _build_trend_score(indicators)
+        struct_bullish, struct_bearish = _build_structure_score(structure_overall)
+        regime_long, regime_short, range_score = _build_regime_fit(structure_overall, regime)
+        flow_bullish, flow_bearish = _build_flow_score(derivatives)
+        # Momentum still derives from RSI / MACD; capped to a sensible 0..100
+        # band because the audit flagged the previous raw-add formula as
+        # able to escape the 0..100 range.
+        bullish_momentum = clamp(
+            50.0 + max(0.0, rsi - 50.0) * 1.3 + max(0.0, macd - macd_prev) * 3.0
+        )
+        bearish_momentum = clamp(
+            50.0 + max(0.0, 50.0 - rsi) * 1.3 + max(0.0, macd_prev - macd) * 3.0
+        )
+        # Direction-score kept in the snapshot as a labeled aggregate, not as
+        # a re-source for trend/structure/regime (T04).
+        return {
+            "mtf_trend_bullish": trend_bullish,
+            "mtf_trend_bearish": trend_bearish,
+            "mtf_trend_source": "ema+adx+vwap",
+            "bullish_structure": struct_bullish,
+            "bearish_structure": struct_bearish,
+            "structure_source": "structure_overall",
+            "regime_fit_long": regime_long,
+            "regime_fit_short": regime_short,
+            "regime_source": str(regime or structure_overall.get("regime") or "unknown"),
+            "range_structure": range_score,
+            "bullish_momentum": bullish_momentum,
+            "bearish_momentum": bearish_momentum,
+            "momentum_source": "rsi+macd",
+            "bullish_flow": flow_bullish,
+            "bearish_flow": flow_bearish,
+            "flow_source": "cvd+oi+funding",
+            "derivatives_long_confirmation": flow_bullish,
+            "derivatives_short_confirmation": flow_bearish,
+            "direction_score_aggregate": direction_metrics["bullish"]
+            - direction_metrics["bearish"],
+        }
 
     @staticmethod
     def _indicators(core: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
