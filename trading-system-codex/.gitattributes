@@ -1,13 +1,54 @@
-* text=auto eol=lf
+# Line ending policy: keep source on LF, Windows scripts on CRLF,
+# binary untouched. Run ``git add --renormalize .`` once after adding
+# this file to normalize any existing CRLF in tracked sources.
 
-.env export-ignore
-.pytest_cache export-ignore
-.ruff_cache export-ignore
-.mypy_cache export-ignore
-.venv export-ignore
-run export-ignore
-dist export-ignore
-build export-ignore
-.local_secrets export-ignore
-trading_system.db export-ignore
-AGENTS.md export-ignore
+# Source code (LF)
+*.py        text eol=lf
+*.pyi       text eol=lf
+*.js        text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.htm       text eol=lf
+*.json      text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.md        text eol=lf
+*.rst       text eol=lf
+*.txt       text eol=lf
+*.ini       text eol=lf
+*.cfg       text eol=lf
+*.lock      text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+*.editorconfig text eol=lf
+
+# Windows scripts (CRLF)
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+*.cmd       text eol=crlf
+
+# Shell scripts (LF)
+*.sh        text eol=lf
+
+# SQL (LF, but keep as text for diffs)
+*.sql       text eol=lf
+
+# Binary (no conversion)
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.exe       binary
+*.dll       binary
+*.pyd       binary
+*.so        binary
+*.dylib     binary
+*.whl       binary
+*.sqlite3   binary
+*.db        binary
