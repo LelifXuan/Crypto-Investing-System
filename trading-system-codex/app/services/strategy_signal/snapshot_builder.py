@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -8,9 +9,16 @@ from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for
 from app.repositories.market_repository import MarketRepository
 from app.services.alerts_bundle import AlertsBundleService
 from app.services.analysis_bundle import AnalysisBundleService
+from app.services.cache_registry import (
+    CACHE_SOURCE_VERSION,
+    expires_at_for_strategy,
+    strategy_bundle_cache_key,
+)
 from app.services.monitoring_dashboard import MonitoringDashboardService
 from app.services.strategy_signal.config_loader import load_strategy_signal_config
 from app.services.strategy_signal.setup_lifecycle import normalize_direction_metrics
+
+logger = logging.getLogger(__name__)
 
 
 def _field(item: Any, key: str, default: Any = None) -> Any:
@@ -187,7 +195,13 @@ class StrategySnapshotBuilder:
         adx = _num(indicators.get("adx_14"), 20)
         funding_z = abs(_num(derivatives.get("funding_zscore")))
         trigger_tf = (config.get("timeframe_mapping") or {}).get(tf)
-        lower_tf_missing = trigger_tf is not None
+        lower_tf_required = bool(trigger_tf)
+        # Only mark the lower timeframe as missing when a trigger timeframe is
+        # configured AND we have evidence the data is actually short. The
+        # data quality score already aggregates analysis/alerts/monitoring
+        # cache states, so a score below 60 implies the dependency is too
+        # degraded to use the lower timeframe for execution triggers.
+        lower_tf_missing = lower_tf_required and data_quality_score < 60
         ema20 = _num(indicators.get("ema_20"))
         ema20_prev = _num(indicators.get("ema_20_prev"), ema20)
         ema20_slope = ema20 - ema20_prev
@@ -309,7 +323,42 @@ class StrategySnapshotBuilder:
                 "event_window_status": macro_status,
             }
         )
+        await self._persist_strategy_cache(instrument, tf, snapshot)
         return snapshot
+
+    async def _persist_strategy_cache(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        snapshot: dict[str, Any],
+    ) -> None:
+        """Best-effort write of the strategy snapshot to PageSnapshotCache.
+
+        The strategy decision is what the monitoring overview decision_brief
+        reuses. If the write fails (e.g. transient DB issue), the caller
+        still gets the snapshot in memory; the next refresh will retry.
+        """
+
+        now = datetime.now(UTC)
+        try:
+            await self.repository.upsert_page_snapshot_cache(
+                cache_key=strategy_bundle_cache_key(instrument_id, timeframe),
+                page_type="strategy",
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                payload_json={"decision": snapshot},
+                status="ready",
+                cache_state="fresh",
+                snapshot_at=now,
+                data_ts=now,
+                expires_at=expires_at_for_strategy(timeframe, now),
+                source_updated_at=now,
+                source_version=CACHE_SOURCE_VERSION,
+                cost_ms=0,
+                meta_json={"source": "strategy_snapshot_builder"},
+            )
+        except Exception as exc:
+            logger.debug("strategy bundle cache write skipped: %s", exc)
 
     @staticmethod
     def _indicators(core: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:

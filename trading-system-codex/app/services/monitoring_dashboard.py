@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -14,20 +15,32 @@ from app.schemas.market import (
     MonitoringDashboardRead,
 )
 from app.services.analysis_bundle import AnalysisBundleService
-from app.services.cache_registry import CACHE_SOURCE_VERSION
+from app.services.cache_registry import (
+    CACHE_SOURCE_VERSION,
+    alerts_bundle_cache_key,
+    analysis_cache_key,
+    cache_status,
+    strategy_bundle_cache_key,
+)
 from app.services.indicator_monitoring import IndicatorMonitoringService
 from app.services.page_snapshot_cache import (
     bundle_status_message,
-    cache_status,
     expires_at_for_page,
     monitoring_dashboard_cache_key,
 )
+from app.services.technical_signal_classifier import classify_signals
+from app.services.terminal_summary_engine import TerminalSummaryEngine
 
 UTC = timezone.utc
 logger = logging.getLogger(__name__)
 
 
 MONITORING_STALE_MAX_AGE = timedelta(days=1)
+MONITORING_TECH_INSTRUMENT_ID = "btc-usdt-perp"
+MONITORING_TECH_TIMEFRAME = "1d"
+MONITORING_TECH_MAX_AGE = timedelta(hours=18)
+MONITORING_SUMMARY_TIMEFRAMES = ("4h", "1d", "1w")
+MONITORING_PRIMARY_TIMEFRAME = "1d"
 
 
 class MonitoringDashboardService:
@@ -41,11 +54,18 @@ class MonitoringDashboardService:
         *,
         allow_refresh: bool = False,
     ) -> MonitoringDashboardRead:
+        instrument_id = MONITORING_TECH_INSTRUMENT_ID
+        timeframe = MONITORING_TECH_TIMEFRAME
+        now = datetime.now(timezone.utc)
         cache = await self.repository.get_page_snapshot_cache(
             monitoring_dashboard_cache_key(instrument_id, timeframe)
         )
         status = cache_status(cache)
         payload = cache.payload_json if cache is not None else {}
+        technical_observations = self._fresh_technical_observations(
+            payload.get("technical_observations", []),
+            now,
+        )
         if allow_refresh and (
             cache is None
             or status in {"missing", "stale", "error", "updating"}
@@ -61,17 +81,27 @@ class MonitoringDashboardService:
             macro_overview = payload.get("macro_overview")
         if isinstance(macro_overview, dict) and macro_overview.get("status") == "unavailable":
             macro_overview = None
+        alerts_bundle = await self._load_cached_alerts_bundle(instrument_id, timeframe)
+        strategy_bundle = await self._load_cached_strategy_bundle(instrument_id, timeframe)
+        timeframe_snapshots = await self._load_cached_analysis_timeframes(instrument_id)
+        terminal_summary = self._terminal_summary_payload(
+            payload.get("terminal_summary"),
+            macro_overview,
+            technical_observations,
+            alerts_bundle=alerts_bundle,
+            strategy_bundle=strategy_bundle,
+            timeframe_snapshots=timeframe_snapshots,
+            structure=payload.get("structure") or {},
+        )
         return MonitoringDashboardRead.model_validate(
             {
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
                 "macro_overview": macro_overview,
-                "technical_observations": payload.get("technical_observations", []),
+                "terminal_summary": terminal_summary,
+                "technical_observations": technical_observations,
                 "technical_source": payload.get("technical_source"),
-                "technical_indicator_count": payload.get(
-                    "technical_indicator_count",
-                    len(payload.get("technical_observations", [])),
-                ),
+                "technical_indicator_count": len(technical_observations),
                 "onchain_observations": [],
                 "alert_events": self._filter_monitoring_alert_events(
                     payload.get("alert_events", [])
@@ -92,6 +122,8 @@ class MonitoringDashboardService:
         )
 
     async def refresh_bundle(self, instrument_id: str, timeframe: str) -> MonitoringDashboardRead:
+        instrument_id = MONITORING_TECH_INSTRUMENT_ID
+        timeframe = MONITORING_TECH_TIMEFRAME
         started = time.perf_counter()
         now = datetime.now(timezone.utc)
         monitoring_service = IndicatorMonitoringService(self.repository)
@@ -136,6 +168,22 @@ class MonitoringDashboardService:
             technical_from_analysis,
             legacy_technical,
         )
+        technical_observations = self._fresh_technical_observations(
+            technical_observations,
+            now,
+        )
+        alerts_bundle = await self._load_cached_alerts_bundle(instrument_id, timeframe)
+        strategy_bundle = await self._load_cached_strategy_bundle(instrument_id, timeframe)
+        timeframe_snapshots = await self._load_cached_analysis_timeframes(instrument_id)
+        terminal_summary = self._terminal_summary_payload(
+            None,
+            macro_overview,
+            technical_observations,
+            alerts_bundle=alerts_bundle,
+            strategy_bundle=strategy_bundle,
+            timeframe_snapshots=timeframe_snapshots,
+            structure={},
+        )
         all_ts = [
             *(self._parse_ts(item.get("observation_ts")) for item in technical_observations),
         ]
@@ -143,6 +191,7 @@ class MonitoringDashboardService:
         source_updated_at = max(all_ts, default=now)
         payload = {
             "macro_overview": macro_overview,
+            "terminal_summary": terminal_summary,
             "technical_observations": technical_observations,
             "technical_source": (
                 "analysis_bundle" if technical_from_analysis else "indicator_observations"
@@ -226,7 +275,22 @@ class MonitoringDashboardService:
         observation_ts = latest_candle.ts_open if latest_candle else now
         if observation_ts.tzinfo is None:
             observation_ts = observation_ts.replace(tzinfo=UTC)
+        if now - observation_ts > MONITORING_TECH_MAX_AGE:
+            logger.info(
+                "monitoring technical snapshot ignored because %s/%s is older than %s hours",
+                instrument_id,
+                timeframe,
+                int(MONITORING_TECH_MAX_AGE.total_seconds() // 3600),
+            )
+            return []
         close = self._to_float(getattr(latest_candle, "close", None))
+        previous_candle = candles[-2] if len(candles) >= 2 else None
+        previous_close = self._to_float(getattr(previous_candle, "close", None))
+        close_change_pct = (
+            ((close - previous_close) / previous_close * 100)
+            if close is not None and previous_close not in {None, 0}
+            else None
+        )
         items: list[dict[str, Any]] = []
         for key in [
             "ema_20",
@@ -242,6 +306,10 @@ class MonitoringDashboardService:
             "plus_di",
             "minus_di",
             "obv",
+            "vwap_50",
+            "vwap_100",
+            "vwap_spread_pct",
+            "vwap_slope_10",
             "kdj_j",
             "cci_20",
             "volume",
@@ -261,7 +329,12 @@ class MonitoringDashboardService:
                     "observation_ts": observation_ts.isoformat(),
                     "value_num": value,
                     "value_text": None,
-                    "value_json": {"source": "analysis_bundle"},
+                    "value_json": {
+                        "source": "analysis_bundle",
+                        "close": close,
+                        "previous_close": previous_close,
+                        "close_change_pct": close_change_pct,
+                    },
                     "baseline_num": None,
                     "delta_num": None,
                     "zscore_num": None,
@@ -275,8 +348,24 @@ class MonitoringDashboardService:
                     "quality_score": Decimal("95"),
                     "freshness_label": "current",
                     "freshness_seconds": max(0, int((now - observation_ts).total_seconds())),
+                    "comment": self._indicator_comment(key, value, close),
                 }
             )
+
+        signals = classify_signals(
+            candles, bundle.core_indicator_series or {}, bundle.secondary_indicator_series or {}
+        )
+        for signal in signals:
+            for item in items:
+                if item["indicator_key"] == signal.get("indicator_key"):
+                    item["signal_state"] = signal.get("signal_state", item["signal_state"])
+                    item["signal_label"] = signal.get("signal_label", "")
+                    item["tone"] = signal.get("tone", "neutral")
+                    item["formula"] = signal.get("formula", "")
+                    item["rule"] = signal.get("rule", "")
+                    item["comment"] = signal.get("comment", "")
+                    break
+
         return items
 
     @staticmethod
@@ -290,6 +379,25 @@ class MonitoringDashboardService:
         for item in preferred:
             merged[(str(item.get("indicator_key")), item.get("timeframe"))] = item
         return list(merged.values())
+
+    @classmethod
+    def _fresh_technical_observations(
+        cls,
+        items: Any,
+        now: datetime,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(items, list):
+            return []
+        fresh: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            ts = cls._parse_ts(item.get("observation_ts") or item.get("updated_at"))
+            if ts is None:
+                continue
+            if now - ts <= MONITORING_TECH_MAX_AGE:
+                fresh.append(item)
+        return fresh
 
     @classmethod
     def _filter_monitoring_alert_events(cls, items: Any) -> list[dict[str, Any]]:
@@ -310,10 +418,107 @@ class MonitoringDashboardService:
         if isinstance(payload, dict):
             parts.extend(str(value) for value in payload.values())
         haystack = " ".join(str(part or "").lower() for part in parts)
-        return any(
-            token in haystack
-            for token in ("glassnode", "demo_fallback", "onchain", "链上")
+        return any(token in haystack for token in ("glassnode", "demo_fallback", "onchain", "链上"))
+
+    @staticmethod
+    def _terminal_summary_payload(
+        _cached: Any,
+        macro_overview: dict[str, Any] | None,
+        technical_observations: list[dict[str, Any]],
+        *,
+        alerts_bundle: Mapping[str, Any] | None = None,
+        strategy_bundle: Mapping[str, Any] | None = None,
+        timeframe_snapshots: Mapping[str, Any] | None = None,
+        structure: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return TerminalSummaryEngine().build(
+            macro_overview=macro_overview or {},
+            technical_observations=technical_observations,
+            alerts_bundle=alerts_bundle,
+            strategy_bundle=strategy_bundle,
+            timeframe_snapshots=timeframe_snapshots,
+            structure=structure,
         )
+
+    async def _load_cached_alerts_bundle(
+        self, instrument_id: str, timeframe: str
+    ) -> dict[str, Any]:
+        """Read the alerts bundle from the existing PageSnapshotCache.
+
+        Does not trigger any refresh. If the cache is missing or stale, an
+        empty dict is returned so the decision_brief can mark
+        ``source_alignment.missing_sources`` instead of fabricating evidence.
+        """
+
+        try:
+            cache = await self.repository.get_page_snapshot_cache(
+                alerts_bundle_cache_key(instrument_id, timeframe)
+            )
+        except Exception as exc:
+            logger.debug("alerts bundle cache read failed: %s", exc)
+            return {}
+        if cache is None:
+            return {}
+        payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
+        return dict(payload)
+
+    async def _load_cached_strategy_bundle(
+        self, instrument_id: str, timeframe: str
+    ) -> dict[str, Any]:
+        """Read the strategy bundle from the existing PageSnapshotCache.
+
+        Strictly cache-only. StrategySignalService.build() itself depends on
+        MonitoringDashboardService, so a synchronous refresh here would create
+        a recursion loop. The decision_brief only needs the cached decision
+        payload; if it is missing, missing_sources is populated.
+        """
+
+        try:
+            cache = await self.repository.get_page_snapshot_cache(
+                strategy_bundle_cache_key(instrument_id, timeframe)
+            )
+        except Exception as exc:
+            logger.debug("strategy bundle cache read failed: %s", exc)
+            return {}
+        if cache is None:
+            return {}
+        payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
+        return dict(payload)
+
+    async def _load_cached_analysis_timeframes(
+        self, instrument_id: str
+    ) -> dict[str, dict[str, Any]]:
+        """Read compact snapshots of 4h/1d/1w analysis bundles from cache.
+
+        Returns a mapping keyed by timeframe. Each value contains ``bias``,
+        ``score`` and ``confidence`` derived from the cached
+        ``module_scores.technical_trend`` block, so the decision_brief can
+        describe multi-timeframe state without re-running the analysis
+        computation. Empty when the cache is missing.
+        """
+
+        snapshots: dict[str, dict[str, Any]] = {}
+        for timeframe in MONITORING_SUMMARY_TIMEFRAMES:
+            try:
+                cache = await self.repository.get_page_snapshot_cache(
+                    analysis_cache_key(instrument_id, timeframe, 240)
+                )
+            except Exception as exc:
+                logger.debug("analysis cache read failed for %s/%s: %s", instrument_id, timeframe, exc)
+                continue
+            if cache is None:
+                continue
+            payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
+            trend = ((payload.get("module_scores") or {}).get("technical_trend")) or {}
+            impact = str(trend.get("impact") or "")
+            score = trend.get("score")
+            snapshots[timeframe] = {
+                "bias": impact or trend.get("state") or "neutral",
+                "score": score,
+                "confidence": trend.get("confidence"),
+                "regime": trend.get("state"),
+            }
+        return snapshots
 
     @staticmethod
     def _latest_series_value(values: Any) -> float | None:
@@ -398,7 +603,115 @@ class MonitoringDashboardService:
             if value <= -100:
                 return "weak"
             return "neutral"
+        if key in {"vwap_50", "vwap_100"}:
+            if close is None:
+                return "neutral"
+            buffer = abs(value) * 0.01
+            if close > value + buffer:
+                return "bullish"
+            if close < value - buffer:
+                return "bearish"
+            return "neutral"
+        if key == "vwap_spread_pct":
+            if value >= 0.5:
+                return "bullish"
+            if value <= -0.5:
+                return "bearish"
+            return "neutral"
+        if key == "vwap_slope_10":
+            if value > 0:
+                return "weak_bullish"
+            if value < 0:
+                return "weak_bearish"
+            return "neutral"
         return "normal"
+
+    @staticmethod
+    def _indicator_comment(key: str, value: float, close: float | None) -> str:
+        c = close or 0
+        if key == "ema_20":
+            (value / c - 1) * 100 if c else 0
+            return "EMA20在价上" if value > c else "EMA20在价下"
+        if key == "ema_50":
+            (value / c - 1) * 100 if c else 0
+            return "EMA50在价上" if value > c else "EMA50在价下"
+        if key == "ema_200":
+            (value / c - 1) * 100 if c else 0
+            return "EMA200在价上" if value > c else "EMA200在价下"
+        if key == "bbands_width":
+            return f"BOLL带宽 {value:.1f}%"
+        if key == "percent_b":
+            if value >= 1.0:
+                return "PercentB > 1 突破上轨"
+            if value <= 0:
+                return "PercentB < 0 跌破下轨"
+            return "PercentB 带内"
+        if key == "natr_14":
+            if value >= 3.5:
+                return "NATR偏高事件"
+            if value >= 2.0:
+                return "NATR正常偏高"
+            return "NATR波动正常"
+        if key == "adx_14":
+            if value >= 30:
+                return "ADX强趋势"
+            if value >= 22:
+                return "ADX趋势成形"
+            return "ADX趋势偏弱"
+        if key == "atr_14":
+            natr_val = (value / c * 100) if c > 0 else 0
+            if natr_val >= 3.5:
+                return "ATR波动偏高"
+            if natr_val >= 2.0:
+                return "ATR正常偏高"
+            return "ATR波动正常"
+        if key == "macd_hist":
+            return "MACD柱状值"
+        if key == "rsi_14":
+            return "RSI动量"
+        if key == "obv":
+            return "OBV量能参考"
+        if key == "volume":
+            return "成交量参考"
+        if key == "plus_di":
+            return "+DI方向指示"
+        if key == "minus_di":
+            return "-DI方向指示"
+        if key == "kdj_j":
+            if value >= 95:
+                return "KDJ超买"
+            if value <= 5:
+                return "KDJ超卖"
+            if value > 50:
+                return "KDJ偏多"
+            if value < 50:
+                return "KDJ偏空"
+            return "KDJ中性"
+        if key == "cci_20":
+            if value >= 200:
+                return "CCI过热"
+            if value >= 100:
+                return "CCI偏多扩张"
+            if value <= -200:
+                return "CCI超跌"
+            if value <= -100:
+                return "CCI偏空扩张"
+            return "CCI常态"
+        if key in {"vwap_50", "vwap_100"}:
+            return "VWAP在价上" if value > c else "VWAP在价下" if value < c else "VWAP平价"
+        if key == "vwap_spread_pct":
+            if value >= 0.5:
+                return "VWAP价差偏多"
+            if value <= -0.5:
+                return "VWAP价差偏空"
+            return "VWAP价差中性"
+        if key == "vwap_slope_10":
+            if value > 0:
+                return "VWAP斜率上行"
+            if value < 0:
+                return "VWAP斜率下行"
+            return "VWAP斜率平"
+        return ""
 
     async def _category_is_stale(
         self,
@@ -503,7 +816,7 @@ class MonitoringDashboardService:
                 status["gateio"] = self._source_status_entry(
                     "online",
                     "Gate.io",
-                    "K 线缓存可用；技术、结构和告警会复用本地快照。",
+                    "K 线缓存及快照可用。",
                     updated_at=updated_at,
                 )
             else:
@@ -526,9 +839,7 @@ class MonitoringDashboardService:
             rate_obs = dff or effr
             if rate_obs and rate_obs.value_num is not None:
                 updated_at = (
-                    rate_obs.observation_ts.isoformat()
-                    if rate_obs.observation_ts
-                    else None
+                    rate_obs.observation_ts.isoformat() if rate_obs.observation_ts else None
                 )
                 status["fred"] = self._source_status_entry(
                     "online",
@@ -594,7 +905,7 @@ class MonitoringDashboardService:
             return self._source_status_entry(
                 "stale_cache",
                 "A股ETF",
-                "A股ETF 行情独立于加密货币工作流；当前可读取最近行情快照。",
+                "A股ETF 行情快照可用。",
                 updated_at=summary.get("generated_at"),
             )
         return self._source_status_entry(

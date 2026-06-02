@@ -430,7 +430,10 @@ class DivergenceService:
                 "score": 0.0,
                 "confidence": 0.12,
                 "leaders": [],
-                "message": (f"??????????????ADX {_to_float(adx):.1f}?ATR {_to_float(atr):.1f}?"),
+                "message": (
+                    f"当前未发现有效背离。ADX {_to_float(adx):.1f}，"
+                    f"ATR {_to_float(atr):.1f}。"
+                ),
                 "trend_context": trend_context,
                 "signal_kind": "warning",
                 "entry_signal": False,
@@ -547,19 +550,19 @@ class DivergenceService:
             "hidden_bearish": "隐藏顶背离",
         }.get(divergence_type, "背离信号")
         return (
-            f"???? {price_change * 100:.2f}%?"
-            f"{indicator} ?? {indicator_change * 100:.2f}%???{label}?"
+            f"价格变化 {price_change * 100:.2f}%，"
+            f"{indicator} 变化 {indicator_change * 100:.2f}%，形成{label}。"
         )
 
     def _confirmation(self, direction: str, price: float) -> str:
         if direction == "bullish":
-            return f"{price:.2f} "
-        return f"{price:.2f} "
+            return f"收回 {price:.2f} 上方后确认"
+        return f"跌回 {price:.2f} 下方后确认"
 
     def _invalidation(self, direction: str, price: float) -> str:
         if direction == "bullish":
-            return f"{price:.2f}"
-        return f"{price:.2f} "
+            return f"跌破 {price:.2f} 后失效"
+        return f"突破 {price:.2f} 后失效"
 
     def _cci_series(
         self, highs: list[Decimal], lows: list[Decimal], closes: list[Decimal], period: int = 20

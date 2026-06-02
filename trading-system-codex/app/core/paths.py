@@ -41,10 +41,11 @@ def resolve_app_paths() -> AppPaths:
     repo_root = Path(__file__).resolve().parents[2]
     distribution_mode = _detect_distribution_mode()
     bundle_root = Path(os.getenv("APP_BUNDLE_ROOT") or repo_root).resolve()
+    default_source_runtime_root = repo_root.parent / "runtime_dev" / "source_runtime"
     runtime_root = (
         Path(os.getenv("APP_RUNTIME_ROOT")).resolve()
         if os.getenv("APP_RUNTIME_ROOT")
-        else (bundle_root / "runtime" if distribution_mode == "portable" else bundle_root)
+        else (bundle_root / "runtime" if distribution_mode == "portable" else default_source_runtime_root)
     )
     config_dir = runtime_root / "config"
     data_dir = runtime_root / "data"

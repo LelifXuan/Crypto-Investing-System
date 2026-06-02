@@ -3,8 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 TEXT_EXTENSIONS = {".py", ".js", ".html", ".css", ".md", ".json", ".yaml", ".yml", ".toml"}
 SKIP_DIRS = {

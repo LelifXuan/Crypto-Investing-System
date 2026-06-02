@@ -18,6 +18,9 @@ const HIDDEN_KNOWLEDGE_TAGS = new Set([
   "market-structure",
 ]);
 
+let isMounted = false;
+let searchTimer = null;
+
 function visibleKnowledgeTags(item) {
   const tags = [item.family, ...(item.tags || [])].filter(Boolean);
   return tags
@@ -83,6 +86,56 @@ function filteredSections() {
       return { ...section, items };
     })
     .filter((section) => section.items.length);
+}
+
+function updateKnowledgeContent() {
+  const sections = filteredSections();
+  const totalTerms = allItems().filter((item) => item.display_mode !== "hidden").length;
+  const visibleTerms = sections.reduce((sum, s) => sum + s.items.length, 0);
+  const familyFilterOptions = familyOptions();
+
+  const metricsEl = document.querySelector(".knowledge-metrics");
+  if (metricsEl) {
+    metricsEl.innerHTML = [
+      metricCard("目录版本", knowledgeCatalogVersion, "当前知识目录版本"),
+      metricCard("术语总数", totalTerms, "可见术语数量"),
+      metricCard("当前匹配", visibleTerms, state.query ? `搜索：${state.query}` : "当前过滤条件下的术语数量"),
+    ].join("");
+  }
+
+  const contentEl = document.querySelector(".knowledge-sections");
+  if (contentEl) {
+    contentEl.innerHTML = sections.length
+      ? sections.map((section) => `
+        <article class="card knowledge-section-card" id="section-${escapeHtml(section.id)}">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">${escapeHtml(section.id.toUpperCase())}</p>
+              <h2>${escapeHtml(section.title)}</h2>
+              <p class="section-summary">${escapeHtml(section.summary)}</p>
+            </div>
+            <div class="knowledge-section-count">${section.items.length} 项</div>
+          </div>
+          <div class="knowledge-card-grid">
+            ${section.items.map((item) => renderTermCard(item)).join("")}
+          </div>
+        </article>
+      `).join("")
+      : '<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽分区、家族、等级过滤。</p></section>';
+  }
+
+  const familyEl = document.getElementById("knowledge-family-filter");
+  if (familyEl && familyEl.options.length !== familyFilterOptions.length) {
+    const currentValue = familyEl.value;
+    familyEl.innerHTML = familyFilterOptions.map((item) =>
+      `<option value="${item.key}" ${state.family === item.key ? "selected" : ""}>${escapeHtml(item.label)}</option>`
+    ).join("");
+    if (familyFilterOptions.some((item) => item.key === currentValue)) {
+      familyEl.value = currentValue;
+    }
+  }
+
+  bindToggleButtons();
 }
 
 function renderTags(values, className = "status-chip chip-neutral") {
@@ -254,23 +307,24 @@ function renderKnowledgeLayout() {
 
   document.getElementById("knowledge-search")?.addEventListener("input", (event) => {
     state.query = event.target.value || "";
-    renderKnowledgeLayout();
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => renderKnowledge(), 300);
   });
   document.getElementById("knowledge-page-filter")?.addEventListener("change", (event) => {
     state.page = event.target.value || "all";
-    renderKnowledgeLayout();
+    renderKnowledge();
   });
   document.getElementById("knowledge-section-filter")?.addEventListener("change", (event) => {
     state.section = event.target.value || "all";
-    renderKnowledgeLayout();
+    renderKnowledge();
   });
   document.getElementById("knowledge-family-filter")?.addEventListener("change", (event) => {
     state.family = event.target.value || "all";
-    renderKnowledgeLayout();
+    renderKnowledge();
   });
   document.getElementById("knowledge-level-filter")?.addEventListener("change", (event) => {
     state.level = event.target.value || "all";
-    renderKnowledgeLayout();
+    renderKnowledge();
   });
 
   bindToggleButtons();
@@ -281,6 +335,11 @@ function renderKnowledgeLayout() {
 }
 
 export async function renderKnowledge() {
-  renderKnowledgeLayout();
+  if (!isMounted) {
+    renderKnowledgeLayout();
+    isMounted = true;
+  } else {
+    updateKnowledgeContent();
+  }
   window.addEventListener("hashchange", focusHashTarget);
 }

@@ -19,19 +19,25 @@ This project is a local research tool, not a public SaaS app and not an automate
 - `scripts/`: workspace automation, cleanup, release packaging
 - `docs/`: project documentation and archived notes
 
+Local runtime state is intentionally kept outside this repository:
+
+- `..\runtime_dev\.venv`: development Python environment
+- `..\runtime_dev\source_runtime`: source-mode database, logs, cache, and temp files
+- `..\TradingSystemPortable`: generated portable build; do not edit it by hand
+
 ## Windows Quick Start
 
-1. Create and activate a supported virtual environment.
+1. Create and activate a supported virtual environment outside the source tree.
 
 ```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
+py -3.11 -m venv ..\runtime_dev\.venv
+..\runtime_dev\.venv\Scripts\Activate.ps1
 ```
 
 You can also use:
 
 ```powershell
-py -3.14 -m venv .venv
+py -3.14 -m venv ..\runtime_dev\.venv
 ```
 
 2. Copy the example environment file.
@@ -40,10 +46,11 @@ py -3.14 -m venv .venv
 Copy-Item .env.example .env
 ```
 
-3. Install dependencies.
+3. Install dependencies and run the quality check.
 
 ```powershell
 python scripts/tasks.py install
+python scripts/tasks.py check
 ```
 
 4. Start the local app.
@@ -51,6 +58,23 @@ python scripts/tasks.py install
 ```powershell
 python scripts/tasks.py dev-local
 ```
+
+If you use the workspace-standard external environment, this helper starts the
+source instance on port `8002` and keeps runtime files out of the repository:
+
+```powershell
+.\scripts\dev_env.ps1 -StartServer
+```
+
+For double-click startup from the source tree, use:
+
+```powershell
+.\start_source.bat
+```
+
+`start_portable.bat` is only for the generated `TradingSystemPortable` bundle.
+It expects an embedded Python runtime at `runtime_env\python` and will fail when
+double-clicked from the source repository.
 
 5. Open the local UI.
 
@@ -70,9 +94,11 @@ Available tasks:
 - `dev-local`: run Uvicorn on `127.0.0.1:8002`
 - `test`: run `pytest -q`
 - `lint`: run `ruff check .`
-- `check`: run lint, tests, compile smoke, and `import app.main`
+- `check`: run lint, tests, compile smoke, import check, and JS syntax check
 - `clean`: remove generated caches, logs, and safe local runtime artifacts
 - `release-zip`: build the GitHub release zip
+- `build-portable`: build the portable distribution bundle
+- `portable-preflight`: validate the portable bundle before release
 
 Development tasks fail fast when:
 

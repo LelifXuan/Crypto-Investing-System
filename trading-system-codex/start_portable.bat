@@ -35,7 +35,17 @@ echo.
 
 if not exist "%APP_PYTHON_EXE%" (
   echo error: embedded Python runtime missing: %APP_PYTHON_EXE%
-  echo Please use the win-x64 portable bundle that contains runtime_env\python.
+  echo.
+  echo This launcher is only for the generated portable bundle.
+  echo It requires runtime_env\python inside the same folder.
+  echo.
+  echo If you are working from the source repository, use:
+  echo   start_source.bat
+  echo or:
+  echo   powershell -ExecutionPolicy Bypass -File .\scripts\dev_env.ps1 -StartServer
+  echo.
+  echo If you want the portable app, use the generated folder:
+  echo   ..\TradingSystemPortable\start_portable.bat
   >>"%APP_CONSOLE_LOG%" echo error: embedded Python runtime missing: %APP_PYTHON_EXE%
   goto fail
 )

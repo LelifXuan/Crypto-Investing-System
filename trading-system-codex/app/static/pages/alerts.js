@@ -239,16 +239,47 @@ function chipRiskMarkup(label) {
   return statusChip(text, className);
 }
 
-function formatChipComponentLabel(key) {
+function internalLabel(value) {
+  const text = String(value ?? "").trim();
   const mapping = {
-    data_quality_score: "数据质量",
-    timeframe_alignment_score: "周期一致性",
-    structure_confirmation_score: "结构确认",
-    momentum_volume_score: "量价动能",
-    derivatives_micro_score: "衍生品/微观",
-    regime_fit_score: "市场状态 匹配",
+    proxy_only: "证据不足，仅供观察",
+    partially_confirmed: "部分确认",
+    confirmed: "已确认",
+    pending: "待确认",
+    missing: "缺失",
+    blocked: "受阻",
+    acceptable: "可接受",
+    good: "良好",
+    strong: "较强",
+    low: "较低",
+    high: "较高",
+    invalid: "无效",
+    watch_only: "仅供观察",
+    normal: "正常",
+    elevated: "风险抬升",
+    extreme: "风险极高",
+    MICROSTRUCTURE_MISSING: "缺少微观结构数据",
+    NO_USABLE_CANDLES: "缺少可用 K 线",
+    EXECUTION_SCORE_TOO_LOW: "盘口执行分过低",
+    SLIPPAGE_HARD_LIMIT: "滑点超过限制",
+    SPREAD_HARD_LIMIT: "买卖价差超过限制",
+    PRICE_INDEX_DEVIATION_EXTREME: "价格相对指数价偏离过大",
+    PRICE_MARK_DEVIATION_EXTREME: "价格相对标记价偏离过大",
   };
-  return mapping[key] || key;
+  return mapping[text] || text || "—";
+}
+
+function safeDisplay(value, fallback = "—") {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "number" && !Number.isFinite(value)) return fallback;
+  const text = String(value);
+  if (["NaN", "nan", "None", "null", "undefined"].includes(text)) return fallback;
+  return internalLabel(text);
+}
+
+function formatPctLabel(value, fallback = "0%") {
+  const text = safeDisplay(value, fallback);
+  return text === "—" ? fallback : text;
 }
 
 const EXPLAIN_TRANSLATIONS = [
@@ -272,6 +303,11 @@ function localizeExplainText(value) {
     .replaceAll("SPREAD_HARD_LIMIT", "买卖价差超过硬限制")
     .replaceAll("PRICE_INDEX_DEVIATION_EXTREME", "成交价相对指数价偏离过大")
     .replaceAll("PRICE_MARK_DEVIATION_EXTREME", "成交价相对标记价偏离过大")
+    .replaceAll("MICROSTRUCTURE_MISSING", "缺少微观结构数据")
+    .replaceAll("proxy_only", "证据不足，仅供观察")
+    .replaceAll("partially_confirmed", "部分确认")
+    .replaceAll("confirmed", "已确认")
+    .replaceAll("pending", "待确认")
     .replaceAll("observe", "仅观察")
     .replaceAll("wait_for_confirmation", "等待确认")
     .replaceAll("probe", "小仓试探")
@@ -340,64 +376,23 @@ function fallbackChipStructureCard(errorMessage = "") {
   `;
 }
 
-function renderChipAppendix(payload) {
-  if (!payload || typeof payload !== "object") {
-    return "";
-  }
-  const confirmation = Array.isArray(payload.entry_confirmation_required) ? payload.entry_confirmation_required : [];
-  const invalidation = Array.isArray(payload.invalidation_conditions) ? payload.invalidation_conditions : [];
-  const riskNotes = Array.isArray(payload.risk_notes) ? payload.risk_notes : [];
-  const missingInputs = Array.isArray(payload.missing_inputs) ? payload.missing_inputs : [];
-  return `
-    <section class="card alert-block">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">附加说明</p>
-          <h2>附加说明</h2>
-        </div>
-      </div>
-      <div class="alert-chip-bottom-grid">
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>确认条件</strong></div>
-          ${confirmation.length ? `<ul class="structure-bullet-list">${confirmation.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>暂无额外确认条件。</p>`}
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>失效条件</strong></div>
-          ${invalidation.length ? `<ul class="structure-bullet-list">${invalidation.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>暂无额外失效条件。</p>`}
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>风险提示</strong></div>
-          ${riskNotes.length ? `<ul class="structure-bullet-list">${riskNotes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>暂无额外风险提示。</p>`}
-        </article>
-        <article class="alert-chip-block">
-          <div class="list-card-head"><strong>缺失输入</strong></div>
-          ${missingInputs.length ? `<ul class="structure-bullet-list">${missingInputs.slice(0, 6).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>当前关键输入已完整。</p>`}
-        </article>
-      </div>
-    </section>
-  `;
-}
-
 function renderChipStructureCard(payload) {
   if (!payload || typeof payload !== "object") {
     return fallbackChipStructureCard();
   }
-  const timeframeCards = Array.isArray(payload.timeframes) ? payload.timeframes : [];
-  const evidence = Array.isArray(payload.evidence) ? payload.evidence : [];
   const explain = Array.isArray(payload.explain) ? payload.explain : [];
   const riskGates = Array.isArray(payload.risk_gates) ? payload.risk_gates : [];
-  const components = payload && typeof payload.components === "object" && payload.components
-    ? Object.entries(payload.components)
-    : [];
   const confidenceLabel = payload.confidence_label || "watch_only";
   const executionLabel = payload.execution_label || "blocked";
   const riskLabel = payload.risk_label || "normal";
   const recommendedAction = payload.recommended_action_v2 || payload.recommended_action;
   const allowFuturesLong = payload.allow_futures_long === true;
-  const stateConfidenceLabel = payload.state_confidence_label || chipActionLabel(payload.confidence_label) || "状态置信待定";
+  const stateConfidenceLabel = payload.state_confidence_label || internalLabel(payload.confidence_label) || "状态置信待定";
   const executionQualityLabel = payload.execution_quality_label || "盘口执行质量待定";
   const entryTriggerLabel = payload.entry_trigger_label || "交易触发待定";
   const positionReason = payload.allocation_reason || payload.position_sizing_reason || "当前暂无明确仓位建议。";
+  const components = payload.components || {};
+  const componentRows = Object.entries(components).slice(0, 4);
   const scoreItems = [
     ["方向分", formatNumber(payload.direction_score, 0)],
     ["状态置信", formatNumber(payload.confidence_score, 0)],
@@ -425,10 +420,10 @@ function renderChipStructureCard(payload) {
         <article class="alert-chip-primary-card">
           <div class="list-card-head"><strong>主结论</strong>${chipStateLabelMarkup(payload)}</div>
           <h3>${escapeHtml(chipRegimeLabel(payload.primary_regime))}</h3>
-          <p class="section-summary">${escapeHtml(payload.instrument_id)} · ${escapeHtml(payload.timeframe)} · 次级情景：${escapeHtml(chipRegimeLabel(payload.secondary_regime))}</p>
+          <p class="section-summary">${escapeHtml(safeDisplay(payload.instrument_id))} · ${escapeHtml(safeDisplay(payload.timeframe))} · 次级情景：${escapeHtml(chipRegimeLabel(payload.secondary_regime))}</p>
           <div class="alert-chip-primary-actions">
             ${statusChip(chipActionLabel(recommendedAction), "chip-event alert-pill")}
-            ${statusChip(allowFuturesLong ? "允许评估合约" : "合约 0%", allowFuturesLong ? "chip-bullish alert-pill" : "chip-bearish alert-pill")}
+            ${statusChip(allowFuturesLong ? "允许评估合约" : "合约门控未通过", allowFuturesLong ? "chip-bullish alert-pill" : "chip-bearish alert-pill")}
           </div>
           <p>${escapeHtml(positionReason)}</p>
         </article>
@@ -441,7 +436,7 @@ function renderChipStructureCard(payload) {
           <article class="alert-chip-block">
             <div class="list-card-head"><strong>状态置信</strong></div>
             <p>${chipConfidenceMarkup(confidenceLabel)}</p>
-            <p>${escapeHtml(stateConfidenceLabel)} · 上限 ${formatNumber(payload.confidence_cap, 0)} · 证据 ${escapeHtml(payload.evidence_quality || "-")}</p>
+            <p>${escapeHtml(stateConfidenceLabel)} · 上限 ${formatNumber(payload.confidence_cap, 0)} · ${escapeHtml(internalLabel(payload.evidence_quality))}</p>
           </article>
           <article class="alert-chip-block">
             <div class="list-card-head"><strong>盘口执行质量</strong></div>
@@ -451,7 +446,7 @@ function renderChipStructureCard(payload) {
           <article class="alert-chip-block">
             <div class="list-card-head"><strong>风险等级</strong></div>
             <p>${chipRiskMarkup(riskLabel)}</p>
-            <p>${riskGates.length ? `风控门禁：${escapeHtml(riskGates.join(" / "))}` : "当前未触发额外风控门禁。"}</p>
+            <p>${riskGates.length ? `主要限制：${escapeHtml(riskGates.map(internalLabel).join(" / "))}` : "当前未触发额外风控限制。"}</p>
           </article>
         </div>
       </div>
@@ -462,86 +457,42 @@ function renderChipStructureCard(payload) {
         <article class="alert-chip-block">
           <div class="list-card-head"><strong>交易触发状态</strong></div>
           <p>${statusChip(entryTriggerLabel, entryTriggerLabel.includes("可用") ? "chip-bullish alert-pill" : "chip-event alert-pill")}</p>
-          <p>执行准备度：${escapeHtml(payload.execution_readiness || "-")}</p>
+          <p>执行准备度：${escapeHtml(internalLabel(payload.execution_readiness))}</p>
         </article>
         <article class="alert-chip-block">
           <div class="list-card-head"><strong>仓位解释</strong></div>
           <div class="alert-chip-allocation-row">
-            <span>现货 <strong>${escapeHtml(payload.spot_allocation_label || "0%")}</strong></span>
-            <span>合约 <strong>${escapeHtml(payload.futures_allocation_label || "0%")}</strong></span>
-            <span>试探 <strong>${escapeHtml(payload.probe_position_label || "0%")}</strong></span>
+            <span>现货 <strong>${escapeHtml(formatPctLabel(payload.spot_allocation_label))}</strong></span>
+            <span>合约 <strong>${escapeHtml(formatPctLabel(payload.futures_allocation_label))}</strong></span>
+            <span>试探 <strong>${escapeHtml(formatPctLabel(payload.probe_position_label))}</strong></span>
           </div>
           <p>${allowFuturesLong ? "合约开多门槛已通过。" : "合约开多门槛未通过，合约仓位保持 0%。"}</p>
         </article>
       </div>
-      <div class="alert-chip-support-grid">
+      <div class="alert-chip-support-grid alert-chip-support-grid-compact">
         <article class="alert-chip-block">
           <div class="list-card-head"><strong>引擎解释</strong></div>
-          ${explain.length ? `<ul class="structure-bullet-list">${explain.map((item) => `<li>${escapeHtml(localizeExplainText(item))}</li>`).join("")}</ul>` : `<p>当前暂无引擎解释。</p>`}
+          ${explain.length ? `<ul class="structure-bullet-list">${explain.slice(0, 4).map((item) => `<li>${escapeHtml(localizeExplainText(item))}</li>`).join("")}</ul>` : `<p>当前暂无引擎解释。</p>`}
         </article>
         <article class="alert-chip-block">
-          <div class="list-card-head"><strong>核心组件</strong></div>
-          ${components.length ? `
-            <div class="alert-chip-components">
-              ${components.slice(0, 6).map(([key, value]) => `
-                <div class="alert-chip-component-row">
-                  <span>${escapeHtml(formatChipComponentLabel(key))}</span>
-                  <strong>${formatNumber(value.raw * 100, 0)}</strong>
-                </div>
-              `).join("")}
-            </div>
-          ` : `<p>当前暂无组件拆解。</p>`}
+          <div class="list-card-head"><strong>证据组件</strong></div>
+          ${componentRows.length ? `<div class="alert-chip-components">${componentRows.map(([key, value]) => `<div class="alert-chip-component-row"><span>${escapeHtml(internalLabel(key))}</span><strong>${formatNumber(value?.weighted ?? value?.raw ?? 0, 2)}</strong></div>`).join("")}</div>` : `<p>当前暂无组件评分。</p>`}
         </article>
-      </div>
-      <div class="alert-chip-timeframes">
-        ${timeframeCards.map((item) => `
-          <article class="alert-chip-timeframe">
-            <div class="list-card-head">
-              <strong>${escapeHtml(item.timeframe)}</strong>
-              ${statusChip(item.bias === "bullish" ? "偏多" : item.bias === "bearish" ? "偏空" : "中性", `chip-${item.bias === "bullish" ? "bullish" : item.bias === "bearish" ? "bearish" : "neutral"} alert-pill`)}
-            </div>
-            <p>${escapeHtml(item.summary)}</p>
-          </article>
-        `).join("")}
-      </div>
-      <div class="alert-chip-evidence">
-        ${evidence.map((item) => `
-          <article class="alert-chip-evidence-item">
-            <div class="list-card-head">
-              <strong>${escapeHtml(item.label)}</strong>
-              ${statusChip(
-                item.impact === "bullish" ? "偏多"
-                  : item.impact === "bullish_soft" ? "中性偏多"
-                  : item.impact === "bearish" ? "偏空"
-                  : item.impact === "bearish_soft" ? "中性偏空"
-                  : item.impact === "filter" ? "过滤"
-                  : item.impact === "risk" ? "风险"
-                  : "中性",
-                `chip-${
-                  item.impact === "bullish_soft" ? "bullish-soft"
-                  : item.impact === "bearish_soft" ? "bearish-soft"
-                  : item.impact === "filter" ? "event"
-                  : item.impact === "risk" ? "bearish"
-                  : item.impact || "neutral"
-                } alert-pill`,
-              )}
-            </div>
-            <div class="divergence-score-row"><span>${escapeHtml(item.value)}</span></div>
-            <p>${escapeHtml(item.summary)}</p>
-          </article>
-        `).join("")}
       </div>
     </section>
   `;
 }
 
 const autoRefreshKeys = new Set();
+let isMounted = false;
 
 export async function renderAlerts() {
   let activeController = null;
-  setRoot(`
+  if (!isMounted) {
+    setRoot(`
     <section id="alerts-statusbar"></section>
     <section id="alerts-chip-structure"></section>
+    <section id="alerts-chip-appendix"></section>
     <section class="card divergence-alert-card alert-block">
       <div class="section-head">
         <div>
@@ -586,8 +537,9 @@ export async function renderAlerts() {
           </table>
         </div>
     </section>
-    <section id="alerts-chip-appendix"></section>
   `);
+    isMounted = true;
+  }
 
   const renderStatus = (message, tone = "neutral") => {
     const el = document.getElementById("alerts-statusbar");
@@ -611,6 +563,13 @@ export async function renderAlerts() {
       throw error;
     }
     const items = bundle.alert_events || [];
+    const seen = new Set();
+    const dedupedItems = items.filter(item => {
+      const key = `${item.rule_key || item.indicator_key}|${item.instrument_id || ""}|${String(item.triggered_at || "").slice(0, 16)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     const divergence = bundle.divergence_summary || {
       instrument_id: appState.selectedInstrumentId,
       timeframe: appState.selectedTimeframe,
@@ -646,12 +605,9 @@ export async function renderAlerts() {
     document.getElementById("alerts-chip-structure").innerHTML = chipStructure
       ? renderChipStructureCard(chipStructure)
       : fallbackChipStructureCard(bundle.status_message || "筹码结构接口暂不可用。");
-    document.getElementById("alerts-chip-appendix").innerHTML = chipStructure
-      ? renderChipAppendix(chipStructure)
-      : "";
 
-    document.getElementById("alerts-body").innerHTML = items.length
-      ? items.map((item) => `
+    document.getElementById("alerts-body").innerHTML = dedupedItems.length
+      ? dedupedItems.map((item) => `
         <tr>
           <td class="alert-col-time">${formatDateOnly(item.triggered_at)}</td>
           <td class="alert-col-severity">${severityChip(item.severity)}</td>
@@ -691,11 +647,11 @@ export async function renderAlerts() {
       `).join("")
       : '<tr><td colspan="7" class="empty-row">当前没有告警。</td></tr>';
 
-    const openItems = items.filter((item) => item.status === "open");
+    const openItems = dedupedItems.filter((item) => item.status === "open");
     document.getElementById("alerts-summary").innerHTML = [
       metricCard("当前待处理", openItems.length, "仍处于待处理状态的站内告警。"),
       metricCard("最高优先级", openItems.find((item) => item.severity === "critical") ? "严重" : "普通", "当前最高告警等级。"),
-      metricCard("最新触发", items[0] ? formatIndicatorName(items[0].indicator_key) : "-", items[0]?.message || "暂无告警说明。"),
+      metricCard("最新触发", dedupedItems[0] ? formatIndicatorName(dedupedItems[0].indicator_key) : "-", dedupedItems[0]?.message || "暂无告警说明。"),
     ].join("");
 
     const divergenceItems = [...divergence.signals, ...divergence.filters].slice(0, 7);
@@ -784,7 +740,6 @@ export async function renderAlerts() {
     document.getElementById("alerts-chip-structure").innerHTML = fallbackChipStructureCard(
       String(error?.message || error || "告警摘要暂不可用。"),
     );
-    document.getElementById("alerts-chip-appendix").innerHTML = "";
     document.getElementById("alerts-divergence").innerHTML =
       '<div class="empty-state">背离摘要暂不可用。</div>';
     document.getElementById("alerts-summary").innerHTML = [

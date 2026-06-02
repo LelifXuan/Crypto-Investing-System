@@ -4,12 +4,11 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, TypedDict
 
-import httpx
-
 from app.core.decimal_utils import D
 from app.services.macro.cache_store import CacheStore
 from app.services.macro.providers.base import MacroFetchResult
 from app.services.macro.secret_loader import SecretLoader
+from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
 
@@ -20,12 +19,22 @@ class GateQuoteCandidate(TypedDict):
 
 
 RWA_CANDIDATES: dict[str, list[GateQuoteCandidate]] = {
-    "qqq": [{"market": "spot", "symbol": "QQQ_USDT", "settle": "usdt"}],
-    "spy": [{"market": "spot", "symbol": "SPY_USDT", "settle": "usdt"}],
+    # Legacy macro keys stay stable, but the source is now Gate.io TradFi index CFD.
+    "qqq": [{"market": "futures", "symbol": "NAS100_USDT", "settle": "usdt"}],
+    "spy": [{"market": "futures", "symbol": "SPX500_USDT", "settle": "usdt"}],
+    "nasdaq_100": [{"market": "futures", "symbol": "NAS100_USDT", "settle": "usdt"}],
+    "sp500": [{"market": "futures", "symbol": "SPX500_USDT", "settle": "usdt"}],
+    "vix": [{"market": "futures", "symbol": "VIX_USDT", "settle": "usdt"}],
     # Gate.io UI displays CLUSDT/BZUSDT, but API v4 futures contracts use CL_USDT/BZ_USDT.
     "wti_oil": [{"market": "futures", "symbol": "CL_USDT", "settle": "usdt"}],
     "brent_oil": [{"market": "futures", "symbol": "BZ_USDT", "settle": "usdt"}],
     "gold": [{"market": "spot", "symbol": "XAUT_USDT", "settle": "usdt"}],
+    # Direct contract aliases are used by fallback chains and diagnostics.
+    "NAS100_USDT": [{"market": "futures", "symbol": "NAS100_USDT", "settle": "usdt"}],
+    "SPX500_USDT": [{"market": "futures", "symbol": "SPX500_USDT", "settle": "usdt"}],
+    "VIX_USDT": [{"market": "futures", "symbol": "VIX_USDT", "settle": "usdt"}],
+    "CL_USDT": [{"market": "futures", "symbol": "CL_USDT", "settle": "usdt"}],
+    "BZ_USDT": [{"market": "futures", "symbol": "BZ_USDT", "settle": "usdt"}],
 }
 
 MIN_QUOTE_VOLUME_USDT = 5000
@@ -64,7 +73,7 @@ class GateioRwaMacroProvider:
                 return cached, 0, True
 
         start = time.time()
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with client_for_source("gateio_rwa", timeout=10) as client:
             resp = await client.get(url, params=params)
         latency = int((time.time() - start) * 1000)
         resp.raise_for_status()
@@ -76,7 +85,7 @@ class GateioRwaMacroProvider:
         return data, latency, False
 
     async def _discover_active_pair(self, indicator_id: str) -> Optional[GateQuoteCandidate]:
-        candidates = RWA_CANDIDATES.get(indicator_id, [])
+        candidates = RWA_CANDIDATES.get(indicator_id) or RWA_CANDIDATES.get(indicator_id.lower(), [])
         for candidate in candidates:
             try:
                 data, _, _ = await self._fetch_ticker(candidate)

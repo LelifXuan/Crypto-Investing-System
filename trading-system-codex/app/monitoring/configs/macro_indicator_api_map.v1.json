@@ -76,6 +76,21 @@
         }
       ]
     },
+    "us_5y_yield": {
+      "module": "policy_rates",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "DGS5"
+        },
+        {
+          "source": "twelvedata",
+          "symbol": "DGS5"
+        }
+      ]
+    },
     "us10y_2y_spread": {
       "module": "policy_rates",
       "frequency": "daily",
@@ -221,6 +236,10 @@
       "frequency": "daily",
       "unit": "USD/bbl",
       "sources": [
+        {
+          "source": "gateio_rwa",
+          "symbol": "CL_USDT"
+        },
         {
           "source": "fred",
           "symbol": "DCOILWTICO"
@@ -443,6 +462,10 @@
       "unit": "index",
       "sources": [
         {
+          "source": "gateio_rwa",
+          "symbol": "VIX_USDT"
+        },
+        {
           "source": "fred",
           "symbol": "VIXCLS"
         },
@@ -455,8 +478,12 @@
     "qqq": {
       "module": "cross_asset",
       "frequency": "daily",
-      "unit": "USD",
+      "unit": "index",
       "sources": [
+        {
+          "source": "gateio_rwa",
+          "symbol": "NAS100_USDT"
+        },
         {
           "source": "tiingo",
           "symbol": "QQQ"
@@ -474,8 +501,12 @@
     "spy": {
       "module": "cross_asset",
       "frequency": "daily",
-      "unit": "USD",
+      "unit": "index",
       "sources": [
+        {
+          "source": "gateio_rwa",
+          "symbol": "SPX500_USDT"
+        },
         {
           "source": "tiingo",
           "symbol": "SPY"
@@ -521,6 +552,10 @@
         {
           "source": "twelvedata",
           "symbol": "USD/CNY"
+        },
+        {
+          "source": "alphavantage",
+          "symbol": "FX_DAILY:USD:CNY"
         }
       ]
     },

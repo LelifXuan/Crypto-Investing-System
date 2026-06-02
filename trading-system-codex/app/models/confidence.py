@@ -61,6 +61,20 @@ class ConfidenceComponentScore:
     weighted: float
     detail: dict[str, float | str | bool] = field(default_factory=dict)
 
+    @property
+    def raw_score(self) -> float:
+        return self.raw
+
+    @property
+    def available(self) -> bool:
+        value = self.detail.get("available", True)
+        return bool(value)
+
+    @property
+    def label(self) -> str:
+        value = self.detail.get("label")
+        return str(value) if value else "当前证据"
+
 
 @dataclass(slots=True)
 class ConfidenceEngineReport:

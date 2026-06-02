@@ -18,15 +18,6 @@ COMMAND_DEPENDENCIES = {
     "lint": ("ruff",),
     "check": ("ruff", "pytest"),
 }
-FRONTEND_CHECK_FILES = [
-    "app/static/main.js",
-    "app/static/core/api.js",
-    "app/static/core/dom.js",
-    "app/static/pages/structure.js",
-    "app/static/pages/structure/index.js",
-    "app/static/pages/monitoring.js",
-]
-
 
 class TaskError(RuntimeError):
     """Raised when a task cannot run in the current environment."""
@@ -68,8 +59,10 @@ def ensure_virtualenv(command: str) -> None:
         return
     raise TaskError(
         f"{command} must run inside an activated virtual environment. "
-        "Create one with `py -3.11 -m venv .venv` or `py -3.14 -m venv .venv`, "
-        "then activate it before running this task."
+        "Create one outside the source tree with "
+        "`py -3.11 -m venv ..\\runtime_dev\\.venv` or "
+        "`py -3.14 -m venv ..\\runtime_dev\\.venv`, then activate it before "
+        "running this task. On Windows you can also run `scripts\\dev_env.ps1 -StartServer`."
     )
 
 
@@ -110,6 +103,17 @@ def ensure_node_for_check() -> None:
     )
 
 
+def _collect_frontend_files() -> list[str]:
+    static_root = PROJECT_ROOT / "app" / "static"
+    if not static_root.is_dir():
+        return []
+    paths: list[str] = []
+    for js_file in sorted(static_root.rglob("*.js")):
+        rel = str(js_file.relative_to(PROJECT_ROOT)).replace("\\", "/")
+        paths.append(rel)
+    return paths
+
+
 def build_check_steps() -> list[list[str]]:
     steps = [
         [sys.executable, "-m", "ruff", "check", "."],
@@ -117,7 +121,8 @@ def build_check_steps() -> list[list[str]]:
         [sys.executable, "-m", "compileall", "app", "tests", "scripts/tasks.py"],
         [sys.executable, "-c", "import app.main"],
     ]
-    steps.extend([["node", "--check", path] for path in FRONTEND_CHECK_FILES])
+    for path in _collect_frontend_files():
+        steps.append(["node", "--check", path])
     return steps
 
 
@@ -151,8 +156,18 @@ def run_lint() -> None:
 
 def run_check() -> None:
     ensure_node_for_check()
-    for step in build_check_steps():
-        run_step(step)
+    steps = build_check_steps()
+    passed = 0
+    for i, step in enumerate(steps):
+        label = f"[{i+1}/{len(steps)}] {' '.join(step[:3])}..."
+        try:
+            run_step(step)
+            passed += 1
+        except SystemExit:
+            print(f"  FAILED: {label}")
+    print(f"\n===== check complete: {passed}/{len(steps)} steps passed =====")
+    if passed < len(steps):
+        raise SystemExit(1)
 
 
 def run_clean() -> None:
@@ -164,9 +179,16 @@ def run_release_zip() -> None:
 
 
 def run_portable_preflight() -> None:
+    portable_root = PROJECT_ROOT / "dist" / "portable_bundle"
+    embedded_python = portable_root / "runtime_env" / "python" / "python.exe"
+    if not embedded_python.exists():
+        raise TaskError(
+            "portable-preflight requires a built portable bundle. "
+            "Run `python scripts/tasks.py build-portable` first."
+        )
     run_step_with_env(
-        [sys.executable, "scripts/portable_preflight.py"],
-        {"APP_DISTRIBUTION_MODE": "portable", "APP_BUNDLE_ROOT": str(PROJECT_ROOT)},
+        [str(embedded_python), "scripts/portable_preflight.py"],
+        {"APP_DISTRIBUTION_MODE": "portable", "APP_BUNDLE_ROOT": str(portable_root)},
     )
 
 

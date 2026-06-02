@@ -37,6 +37,7 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
     required_ids = {
         "sma",
         "ema",
+        "vwap",
         "vegas_channel",
         "kdj",
         "cci",
@@ -110,6 +111,10 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
     vegas_text = json.dumps(by_id["vegas_channel"], ensure_ascii=False)
     for phrase in ("EMA12 上穿", "EMA12 下穿", "通道金叉", "通道死叉"):
         assert phrase in vegas_text
+
+    vwap_text = json.dumps(by_id["vwap"], ensure_ascii=False)
+    for phrase in ("VWAP50", "VWAP100", "1%", "0.5%"):
+        assert phrase in vwap_text
 
     etf_text = json.dumps(by_id["halo_etf"], ensure_ascii=False)
     assert "电信" in etf_text

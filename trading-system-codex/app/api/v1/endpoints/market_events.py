@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import logging
+import time as _time
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, get_db_session, require_roles
 from app.core.config import settings
-from app.db.models.market import MarketEvent
+from app.db.models.market import MarketEvent, MarketEventTranslationMap
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import MarketEventCreate, MarketEventQueryResponse, MarketEventRead
 from app.services.market import MarketService
@@ -177,52 +177,64 @@ async def get_translation_status(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    from app.db.models.market import MarketEventTranslationMap
     from app.workers.market_event_translation import market_event_translation_worker
 
-    total_events = 0
-    translated = 0
-    pending = 0
-    failed = 0
-    try:
-        total_events = (
-            await session.execute(select(func.count()).select_from(MarketEventTranslationMap))
-        ).scalar() or 0
-        translated = (
-            await session.execute(
-                select(func.count()).where(MarketEventTranslationMap.status == "translated")
-            )
-        ).scalar() or 0
-        pending = (
-            await session.execute(
-                select(func.count()).where(
-                    MarketEventTranslationMap.status.in_(["pending", "queued"])
-                )
-            )
-        ).scalar() or 0
-        failed = (
-            await session.execute(
-                select(func.count()).where(MarketEventTranslationMap.status == "failed")
-            )
-        ).scalar() or 0
-    except Exception:
-        pass
+    # The translation status endpoint is the public surface that summarizes
+    # how many MarketEventTranslationMap rows are in each lifecycle state. The
+    # aggregation lives in MarketRepository so the public counts stay
+    # consistent with the normalized translation table instead of the
+    # denormalized event payload.
+    _ = MarketEventTranslationMap
 
     worker_status = market_event_translation_worker.worker_status
-    return {
-        "total": total_events,
-        "translated": translated,
-        "pending": pending,
-        "failed": failed,
+    base_response = {
         "queued": worker_status.get("queued", 0),
         "inflight": worker_status.get("inflight", 0),
         "queue_depth": worker_status.get("queue_size", 0),
         "worker_running": worker_status.get("running", False),
-        "disabled": not settings.market_events_translate_enabled,
         "last_error": worker_status.get("last_error"),
         "last_error_at": worker_status.get("last_error_at"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    if not settings.market_events_translate_enabled:
+        return {
+            "total": 0, "translated": 0, "pending": 0, "failed": 0,
+            "disabled": True,
+            **base_response,
+        }
+
+    repo = MarketRepository(session)
+    counts = await repo.count_market_event_translation_maps_by_status()
+    translated = int(counts.get("translated", 0))
+    pending = int(counts.get("pending", 0))
+    failed = int(counts.get("error", 0)) + int(counts.get("failed", 0))
+    total = int(counts.get("total", 0))
+
+    if total == 0:
+        events = await repo.list_recent_market_events(limit=500)
+        translatable = 0
+        for event in events:
+            if event.title and _looks_translatable(event.title):
+                translatable += 1
+        total = translatable
+
+    return {
+        "total": total,
+        "translated": translated,
+        "pending": pending,
+        "failed": failed,
+        "disabled": False,
+        **base_response,
+    }
+
+
+def _looks_translatable(text: str) -> bool:
+    if not text:
+        return False
+    latin_count = sum(1 for ch in text if ch.isascii() and ch.isalpha())
+    cjk_count = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff" or "\u3040" <= ch <= "\u309f")
+    return latin_count >= 3 and cjk_count == 0
 
 
 @router.post("/translations/refresh")
@@ -264,11 +276,12 @@ async def refresh_translations(
     )
     translated_items = 0
     if not market_event_translation_worker.worker_status.get("running"):
-        for _ in range(max(1, min(max_batches, 10))):
+        deadline = _time.monotonic() + 30
+        while translated_items < 200 and _time.monotonic() < deadline:
             processed = await market_event_translation_worker.run_once()
-            translated_items += processed
             if processed <= 0:
                 break
+            translated_items += processed
     worker_status = market_event_translation_worker.worker_status
     return {
         "status": "queued" if pending_ids else "nothing_to_translate",

@@ -12,6 +12,15 @@ from app.services.network.http_client_factory import client_for_source
 UTC = timezone.utc
 
 
+def _parse_iso_dt(value: str) -> datetime:
+    if not value:
+        raise ValueError("empty date")
+    v = str(value).strip()
+    if "T" in v:
+        return datetime.fromisoformat(v).astimezone(UTC)
+    return datetime.fromisoformat(f"{v}T00:00:00+00:00").astimezone(UTC)
+
+
 class TwelveDataMacroProvider:
     provider_key = "twelvedata"
 
@@ -72,9 +81,7 @@ class TwelveDataMacroProvider:
         rows = sorted(values, key=lambda x: x.get("datetime", ""))
         latest = rows[-1]
         return MacroFetchResult(
-            observation_ts=datetime.fromisoformat(
-                f"{latest['datetime']}T00:00:00+00:00"
-            ).astimezone(UTC),
+            observation_ts=_parse_iso_dt(str(latest.get("datetime", ""))),
             value=D(str(latest.get("close", 0))),
             source_ref=source_key,
             source_granularity="1d",

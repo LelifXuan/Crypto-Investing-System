@@ -105,7 +105,11 @@ class AlertsBundleService:
             candles,
             indicator_matrix=indicator_matrix,
         )
-        alert_events = await self.repository.list_alert_events(limit=50)
+        alert_events = await self.repository.list_alert_events(
+            instrument_id=instrument_id,
+            timeframe=normalized_timeframe,
+            limit=50,
+        )
         final_decision = await FinalDecisionService(self.repository).build(
             instrument_id, normalized_timeframe
         )

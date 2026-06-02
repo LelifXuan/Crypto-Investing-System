@@ -1,15 +1,17 @@
 import { api } from "./api.js";
 
-export function scheduleIdlePrecompute({
-  page,
-  instrumentId,
-  timeframe,
-  viewWindow = "default",
-  visible = true,
-  candidates = [],
-  reason = "idle_after_first_paint",
-  priority = 5,
-}) {
+export function scheduleIdlePrecompute(options = {}) {
+  const page = options.page ?? options.current_page;
+  const instrumentId = options.instrumentId ?? options.instrument_id;
+  const timeframe = options.timeframe;
+  const viewWindow = options.viewWindow ?? options.view_window ?? "default";
+  const visible = options.visible ?? true;
+  const candidates = options.candidates ?? [];
+  const reason = options.reason ?? "idle_after_first_paint";
+  const priority = options.priority ?? 5;
+  if (!page || !instrumentId || !timeframe) {
+    return Promise.resolve();
+  }
   const run = () =>
     api.precomputeHint({
       current_page: page,

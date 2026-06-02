@@ -202,7 +202,9 @@ def build_frozen_setup(
     valid_bars: int = 10,
 ) -> dict[str, Any]:
     created = datetime.now(UTC)
-    valid_until = created + timedelta(hours=max(valid_bars, 1))
+    bar_hours = {"1h": 1, "4h": 4, "1d": 24, "1w": 168, "30d": 720, "1M": 720}
+    hours = max(valid_bars * bar_hours.get(timeframe, 1), 1)
+    valid_until = created + timedelta(hours=hours)
     setup_id = build_setup_id(instrument_id, timeframe, side, levels, created.isoformat())
     return {
         "setup_id": setup_id,

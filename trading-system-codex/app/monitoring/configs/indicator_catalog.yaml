@@ -731,6 +731,75 @@ indicators:
   use_cases:
   - macro_regime
   is_enabled: true
+- indicator_key: us_5y_yield
+  display_name: US 5Y Treasury Yield
+  category: macro
+  family: rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DGS5
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - stable
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: real_yield_5y
+  display_name: US 5Y Real Yield (TIPS)
+  category: macro
+  family: real_rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DFII5
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - stable
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
+- indicator_key: real_yield_10y
+  display_name: US 10Y Real Yield (TIPS)
+  category: macro
+  family: real_rates
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: DFII10
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - falling
+  - stable
+  - rising
+  default_thresholds: {}
+  use_cases:
+  - macro_regime
+  is_enabled: true
 - indicator_key: us_10y_2y_spread
   display_name: US 10Y-2Y Spread
   category: macro
@@ -1200,7 +1269,7 @@ indicators:
   use_cases:
   - cycle_filter
   - review_snapshot
-  is_enabled: false
+  is_enabled: true
 - indicator_key: eth_mvrv
   display_name: ETH MVRV
   category: onchain
@@ -1228,7 +1297,7 @@ indicators:
   use_cases:
   - cycle_filter
   - review_snapshot
-  is_enabled: false
+  is_enabled: true
 - indicator_key: btc_sth_mvrv
   display_name: BTC STH-MVRV
   category: onchain
@@ -1253,7 +1322,7 @@ indicators:
   default_thresholds: {}
   use_cases:
   - short_term_holder_behavior
-  is_enabled: false
+  is_enabled: true
 - indicator_key: btc_lth_mvrv
   display_name: BTC LTH-MVRV
   category: onchain
@@ -1278,7 +1347,7 @@ indicators:
   default_thresholds: {}
   use_cases:
   - long_term_holder_behavior
-  is_enabled: false
+  is_enabled: true
 - indicator_key: btc_exchange_net_position_change
   display_name: BTC Exchange Net Position Change
   category: onchain
@@ -1303,7 +1372,7 @@ indicators:
   use_cases:
   - exchange_flow_filter
   - review_snapshot
-  is_enabled: false
+  is_enabled: true
 - indicator_key: eth_exchange_net_position_change
   display_name: ETH Exchange Net Position Change
   category: onchain
@@ -1327,7 +1396,7 @@ indicators:
   default_thresholds: {}
   use_cases:
   - exchange_flow_filter
-  is_enabled: false
+  is_enabled: true
 - indicator_key: btc_active_addresses
   display_name: BTC Active Addresses
   category: onchain
@@ -1352,7 +1421,7 @@ indicators:
   default_thresholds: {}
   use_cases:
   - network_activity_filter
-  is_enabled: false
+  is_enabled: true
 - indicator_key: eth_active_addresses
   display_name: ETH Active Addresses
   category: onchain
@@ -1377,7 +1446,7 @@ indicators:
   default_thresholds: {}
   use_cases:
   - network_activity_filter
-  is_enabled: false
+  is_enabled: true
 - indicator_key: sofr
   display_name: SOFR
   category: macro
@@ -1801,7 +1870,7 @@ indicators:
   display_name: QQQ
   category: macro
   family: cross_asset
-  source_provider: tiingo
+  source_provider: gateio_rwa
   source_kind: raw_series
   calc_engine: raw
   calc_params:
@@ -1824,7 +1893,7 @@ indicators:
   display_name: SPY
   category: macro
   family: cross_asset
-  source_provider: tiingo
+  source_provider: gateio_rwa
   source_kind: raw_series
   calc_engine: raw
   calc_params:

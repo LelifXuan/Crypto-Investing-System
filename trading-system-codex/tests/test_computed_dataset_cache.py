@@ -32,6 +32,10 @@ def test_secondary_indicator_series_uses_canonical_adx_keys() -> None:
         "obv",
         "obv_change_5",
         "obv_slope",
+        "vwap_50",
+        "vwap_100",
+        "vwap_spread_pct",
+        "vwap_slope_10",
         "kdj_k",
         "kdj_d",
         "kdj_j",
@@ -41,4 +45,7 @@ def test_secondary_indicator_series_uses_canonical_adx_keys() -> None:
     assert len(payload["plus_di"]) == len(candles)
     assert len(payload["minus_di"]) == len(candles)
     assert len(payload["obv_slope"]) == len(candles)
+    assert len(payload["vwap_50"]) == len(candles)
+    assert len(payload["vwap_100"]) == len(candles)
     assert any(item is not None for item in payload["obv_slope"][6:])
+    assert any(item is not None for item in payload["vwap_50"][50:])

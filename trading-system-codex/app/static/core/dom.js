@@ -82,7 +82,7 @@ export function formatIndicatorName(raw) {
 export function formatNumber(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
-  if (Number.isNaN(num)) return String(value);
+  if (Number.isNaN(num)) return "-";
   const safeDigits = Math.max(0, Math.min(Number(digits) || 0, 2));
   return num.toLocaleString("zh-CN", {
     minimumFractionDigits: 0,
@@ -93,14 +93,14 @@ export function formatNumber(value, digits = 2) {
 export function formatSigned(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
-  if (Number.isNaN(num)) return String(value);
+  if (Number.isNaN(num)) return "-";
   return `${num > 0 ? "+" : ""}${formatNumber(num, digits)}`;
 }
 
 export function formatPercent(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
-  if (Number.isNaN(num)) return String(value);
+  if (Number.isNaN(num)) return "-";
   const safeDigits = Math.max(0, Math.min(Number(digits) || 0, 2));
   return `${num.toLocaleString("zh-CN", {
     minimumFractionDigits: 0,
@@ -247,5 +247,16 @@ export function observationValue(value) {
 
 export function tableEmptyRow(colspan, text = "暂无数据") {
   return `<tr><td colspan="${colspan}" class="empty-row">${escapeHtml(text)}</td></tr>`;
+}
+
+export function dataFreshnessHint(updatedAt, status, cacheStatus) {
+  if (!updatedAt && !cacheStatus) return "";
+  const age = updatedAt ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60000) : null;
+  let hint = "";
+  if (cacheStatus === "stale") hint = "缓存数据，可能滞后";
+  else if (cacheStatus === "live") hint = age !== null ? `${age} 分钟前更新` : "实时数据";
+  else if (status === "error") hint = "数据源暂不可用，使用缓存";
+  else hint = formatDateTime(updatedAt);
+  return `<span class="freshness-hint">${escapeHtml(hint)}</span>`;
 }
 

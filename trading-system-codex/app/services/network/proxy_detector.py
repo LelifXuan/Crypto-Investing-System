@@ -242,11 +242,12 @@ def write_proxy_state(
 SOURCE_PROXY_POLICY = {
     "bls": "prefer_proxy",
     "coinmarketcap": "prefer_proxy",
-    "fred": "direct_first",
+    "fred": "auto",
     "bea": "direct_first",
     "treasury": "direct_first",
     "treasury_fiscaldata": "direct_first",
     "gateio": "direct_first",
+    "gateio_rwa": "direct_first",
     "tiingo": "auto",
     "twelvedata": "auto",
     "alpha_vantage": "auto",
@@ -255,6 +256,7 @@ SOURCE_PROXY_POLICY = {
     "tushare": "direct_only",
     "zhituapi": "direct_only",
     "agushuju": "direct_only",
+    "eastmoney_direct": "direct_only",
     "websearch_cache": "no_network_required",
 }
 

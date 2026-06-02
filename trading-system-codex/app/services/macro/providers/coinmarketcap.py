@@ -75,7 +75,10 @@ class CoinMarketCapMacroProvider:
         )
         rows = data.get("data", {}).get(symbol, [])
         row = rows[0] if rows else {}
-        value = float(row.get("quote", {}).get(convert, {}).get("price", 0))
+        price = row.get("quote", {}).get(convert, {}).get("price")
+        if price is None or float(price) <= 0:
+            raise ValueError(f"CMC missing price for {symbol}")
+        value = float(price)
         return MacroFetchResult(
             observation_ts=datetime.now(UTC),
             value=D(str(value)),

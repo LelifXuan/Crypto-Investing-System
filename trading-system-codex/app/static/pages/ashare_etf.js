@@ -69,7 +69,6 @@ function renderOverview(payload, loadingMessage = "") {
         <div>
           <p class="eyebrow">A-SHARE ETF</p>
           <h2>A股ETF</h2>
-          <p class="section-summary">展示 HALO 与现金流 ETF 的基础行情快照，不参与 Gate.io 数据流。</p>
         </div>
         <button class="primary-action" id="etf-refresh-button">刷新行情</button>
       </div>
@@ -83,16 +82,27 @@ function renderOverview(payload, loadingMessage = "") {
     </section>`;
 }
 
+function priceText(item) {
+  if (item.last_price !== null && item.last_price !== undefined && item.last_price !== "") {
+    return { value: formatNumber(item.last_price, 2), label: "实时" };
+  }
+  if (item.prev_close !== null && item.prev_close !== undefined && item.prev_close !== "") {
+    return { value: `${formatNumber(item.prev_close, 2)} (昨收)`, label: "昨收参考" };
+  }
+  return { value: "暂不可用", label: "暂无" };
+}
+
 function renderQuoteCard(item) {
   const unavailable = item.status !== "ok";
   const change = item.change_pct;
+  const price = priceText(item);
   return `
     <article class="etf-quote-card ${unavailable ? "is-unavailable" : ""}">
       <div class="etf-quote-head">
-        <div><p class="eyebrow">${escapeHtml(item.code)} ? ${escapeHtml(item.market || "-")}</p><h3>${escapeHtml(item.name || item.source_name || item.code)}</h3></div>
-        <span class="status-chip ${unavailable ? "chip-warning" : "chip-success"}">${unavailable ? "暂不可用" : "可用"}</span>
+        <div><p class="eyebrow">${escapeHtml(item.code)} · ${escapeHtml(item.market || "-")}</p><h3>${escapeHtml(item.name || item.source_name || item.code)}</h3></div>
+        <span class="status-chip ${unavailable ? "chip-warning" : (item.last_price != null ? "chip-success" : "chip-neutral")}">${unavailable ? "暂不可用" : price.label}</span>
       </div>
-      <div class="etf-price-row"><strong>${valueText(item.last_price)}</strong><span class="${changeClass(change)}">${valueText(item.change_pct, "%")} / ${valueText(item.change_amount)}</span></div>
+      <div class="etf-price-row"><strong>${escapeHtml(price.value)}</strong><span class="${changeClass(change)}">${valueText(item.change_pct, "%")} / ${valueText(item.change_amount)}</span></div>
       <div class="etf-metric-grid">
         <span><small>今开</small><b>${valueText(item.open)}</b></span>
         <span><small>最高</small><b>${valueText(item.high)}</b></span>

@@ -39,6 +39,7 @@ from app.quant.indicators import (
 )
 from app.repositories.market_repository import MarketRepository
 from app.services.contract_snapshot import ContractSnapshotService
+from app.services.macro.indicator_key_aliases import canonical_macro_key, canonical_provider_key
 from app.services.macro.provider_registry import MacroProviderRegistry
 from app.services.market import MarketService
 from app.services.microstructure import (
@@ -66,23 +67,31 @@ FRESHNESS_DAYS_BY_FREQUENCY = {
 }
 
 FALLBACK_SYMBOLS = {
-    "cpi_yoy": {"fred": "CPIAUCSL"},
-    "core_cpi_yoy": {"fred": "CPILFESL"},
-    "cpi_mom": {"fred": "CPIAUCSL"},
-    "core_cpi_mom": {"fred": "CPILFESL"},
-    "nfp": {"fred": "PAYEMS"},
-    "unemployment_rate": {"fred": "UNRATE"},
-    "jolts_openings": {"fred": "JTSJOL"},
-    "gdp_qoq": {"fred": "A191RL1Q225SBEA"},
-    "qqq": {"twelvedata": "QQQ"},
-    "spy": {"twelvedata": "SPY"},
-    "hyg": {"twelvedata": "HYG"},
-    "gold": {"twelvedata": "XAU/USD"},
-    "vix": {"twelvedata": "VIX"},
-    "wti_crude": {"gateio_rwa": "wti_oil", "twelvedata": "WTI"},
-    "wti_oil": {"gateio_rwa": "wti_oil", "twelvedata": "WTI"},
-    "brent_oil": {"gateio_rwa": "brent_oil"},
-    "usd_cny": {"twelvedata": "USD/CNY"},
+    "us_cpi_yoy": {"fred": "CPIAUCSL"},
+    "us_core_cpi_yoy": {"fred": "CPILFESL"},
+    "us_nfp": {"fred": "PAYEMS"},
+    "us_unemployment_rate": {"fred": "UNRATE"},
+    "us_10y_yield": {"fred": "DGS10"},
+    "us_5y_yield": {"fred": "DGS5", "twelvedata": "DGS5"},
+    "real_yield_5y": {"fred": "DFII5"},
+    "real_yield_10y": {"fred": "DFII10"},
+    "us_2y_yield": {"fred": "DGS2"},
+    "us_dff": {"fred": "DFF"},
+    "dollar_index": {"fred": "DTWEXBGS"},
+    "wti_crude": {"gateio_rwa": "CL_USDT", "fred": "DCOILWTICO", "twelvedata": "WTI"},
+    "vix": {"gateio_rwa": "VIX_USDT", "fred": "VIXCLS", "twelvedata": "VIX"},
+    "hy_oas": {"fred": "BAMLH0A0HYM2"},
+    "tga": {"fred": "WTREGEN"},
+    "on_rrp": {"fred": "RRPONTSYD"},
+    "ism_mfg_pmi": {"fred": "NAPM"},
+    "ism_srv_pmi": {},
+    "gold": {"gateio_rwa": "XAUT_USDT"},
+    "qqq": {"gateio_rwa": "NAS100_USDT", "tiingo": "QQQ", "twelvedata": "QQQ"},
+    "spy": {"gateio_rwa": "SPX500_USDT", "tiingo": "SPY", "twelvedata": "SPY"},
+    "hyg": {"tiingo": "HYG", "twelvedata": "HYG", "alphavantage": "TIME_SERIES_DAILY:HYG"},
+    "btc_usdt": {"gateio": "BTC_USDT"},
+    "eth_usdt": {"gateio": "ETH_USDT"},
+    "usd_cny": {"twelvedata": "USD/CNY", "alphavantage": "FX_DAILY:USD:CNY"},
 }
 
 
@@ -825,9 +834,10 @@ class IndicatorMonitoringService:
         policy: IndicatorMonitoringPolicy,
         run_id: str,
     ) -> list[IndicatorObservation]:
-        indicator_key = definition.indicator_key
+        indicator_key = canonical_macro_key(definition.indicator_key)
+        source_provider = canonical_provider_key(definition.source_provider)
         provider = self.macro_provider_registry.resolve(
-            source_provider=definition.source_provider,
+            source_provider=source_provider,
             source_kind=definition.source_kind,
         )
         if provider is not None and provider.supports(
@@ -836,7 +846,7 @@ class IndicatorMonitoringService:
             symbol = str(definition.calc_params_json.get("external_symbol"))
             latest_obs = await self.repository.latest_observation(indicator_key)
             freshness_days = self._freshness_days_for_frequency(definition)
-            if latest_obs is not None and fresh_in_window(latest_obs, freshness_days):
+            if latest_obs is not None and fresh_in_window(latest_obs, freshness_days) and latest_obs.signal_state != "source_error":
                 return [latest_obs]
             symbol_fallback = self._get_fallback_symbols(indicator_key, symbol)
             result = None
@@ -1069,11 +1079,23 @@ class IndicatorMonitoringService:
         policy: IndicatorMonitoringPolicy,
         run_id: str,
     ) -> list[IndicatorObservation]:
-        logger.info(
-            "skip onchain indicator %s: provider is not part of active monitoring workflow",
-            definition.indicator_key,
+        now = datetime.now(timezone.utc)
+        asset_code = policy.asset_code or (definition.supported_assets_json or ["BTC"])[0]
+        value = self._demo_onchain_value(definition.indicator_key, asset_code, now)
+        observation = await self._persist_observation(
+            definition=definition,
+            run_id=run_id,
+            observation_ts=now,
+            value_num=value,
+            value_json={"value": str(value), "source": "demo_onchain"},
+            signal_state=self._onchain_state(definition.indicator_key, value),
+            source_provider=definition.source_provider,
+            source_ref=f"demo:{definition.indicator_key}:{asset_code}",
+            source_granularity=policy.timeframe or "1d",
+            asset_code=asset_code,
+            quality_score=Decimal(settings.monitoring_demo_quality_score),
         )
-        return []
+        return [observation]
 
     async def _persist_observation(
         self,
@@ -1150,6 +1172,26 @@ class IndicatorMonitoringService:
             for rule in rules:
                 if not self._rule_matches(rule, observation):
                     continue
+                window_seconds = int(rule.dedupe_window_seconds or 300)
+                epoch = int(observation.observation_ts.timestamp())
+                window_bucket = (epoch // window_seconds) * window_seconds
+                scope = observation.instrument_id or observation.asset_code or "global"
+                dedupe_key = "|".join([
+                    rule.rule_key,
+                    scope,
+                    observation.timeframe or "",
+                    str(window_bucket),
+                ])
+                cooldown = int(rule.cooldown_seconds or 300)
+                recent = await self.repository.latest_alert_event(
+                    rule_key=rule.rule_key,
+                    scope=scope,
+                    timeframe=observation.timeframe or "",
+                )
+                if recent is not None:
+                    age = (datetime.now(timezone.utc) - recent.triggered_at).total_seconds()
+                    if age < cooldown:
+                        continue
                 await self.repository.add_alert_event(
                     IndicatorAlertEvent(
                         alert_event_id=new_id("alr"),
@@ -1163,14 +1205,7 @@ class IndicatorMonitoringService:
                         timeframe=observation.timeframe,
                         triggered_at=datetime.now(timezone.utc),
                         resolved_at=None,
-                        dedupe_key="|".join(
-                            [
-                                rule.rule_key,
-                                observation.instrument_id or observation.asset_code or "global",
-                                observation.timeframe or "",
-                                observation.observation_ts.isoformat(),
-                            ]
-                        ),
+                        dedupe_key=dedupe_key,
                         title=rule.rule_key,
                         message=rule.message_template.format(
                             instrument_id=observation.instrument_id or "",

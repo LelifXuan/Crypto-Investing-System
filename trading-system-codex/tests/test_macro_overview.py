@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-import re
 
 import pytest
 
@@ -11,7 +11,7 @@ from app.core.db import db_manager
 from app.db.models.market import MacroEventCalendar
 from app.repositories.market_repository import MarketRepository
 from app.services.indicator_monitoring import IndicatorMonitoringService
-from app.services.macro_overview import MacroOverviewService
+from app.services.macro_overview import MacroOverviewService, _unit_for_indicator
 
 BAD_TEXT_TOKENS = ("????", "\ufffd", "\u951f", "\u934b", "\u7039", "\u93c6")
 LONG_DECIMAL_RE = re.compile(r"\d+\.\d{3,}")
@@ -29,6 +29,13 @@ async def macro_overview_db(tmp_path, monkeypatch):
         yield
     finally:
         await db_manager.disconnect()
+
+
+def test_macro_overview_units_for_key_macro_indicators() -> None:
+    assert _unit_for_indicator("average_hourly_earnings_yoy") == "%"
+    assert _unit_for_indicator("reverse_repo") == "USD billion"
+    assert _unit_for_indicator("reverse_repo", "USD million") == "USD billion"
+    assert _unit_for_indicator("m2") == "USD billion"
 
 
 @pytest.mark.asyncio

@@ -56,6 +56,7 @@ IMPLEMENTED_SOURCES = {
     "federal_reserve",
     "treasury",
     "gateio",
+    "gateio_rwa",
     "eastmoney",
     "eastmoney_quote",
     "coinmarketcap",

@@ -57,10 +57,13 @@ class OpenExchangeRatesMacroProvider:
 
     async def fetch_latest(self, source_key: str) -> MacroFetchResult:
         data, _, _ = await self._request("/latest.json", {"app_id": self._app_id()})
-        rate = float(data.get("rates", {}).get(source_key, 0))
+        rate = data.get("rates", {}).get(source_key)
+        if rate is None or float(rate) <= 0:
+            raise ValueError(f"OXR missing rate for {source_key}")
+        rate_val = float(rate)
         return MacroFetchResult(
             observation_ts=datetime.now(UTC),
-            value=D(str(rate)),
+            value=D(str(rate_val)),
             source_ref=source_key,
             source_granularity="1d",
         )

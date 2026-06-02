@@ -523,6 +523,7 @@ class MacroOverviewLayerRead(BaseModel):
     is_scored: bool = True
     not_scored_reason: str | None = None
     indicators: list[MacroOverviewIndicatorRead] = []
+    contribution: float = 0
 
 
 class MacroOverviewResponse(BaseModel):
@@ -582,12 +583,14 @@ class AlertsBundleRead(BundleMetaRead):
     divergence_summary: DivergenceSummaryRead | None = None
     alert_events: list[AlertEventRead] = Field(default_factory=list)
     final_decision: dict = Field(default_factory=dict)
+    contract_snapshot: dict = Field(default_factory=dict)
 
 
 class MonitoringDashboardRead(BundleMetaRead):
     instrument_id: str
     timeframe: str
     macro_overview: MacroOverviewResponse | None = None
+    terminal_summary: dict[str, Any] | None = None
     technical_observations: list[IndicatorObservationRead] = Field(default_factory=list)
     technical_source: str | None = None
     technical_indicator_count: int = 0

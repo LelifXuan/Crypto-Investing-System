@@ -21,6 +21,10 @@ class FakeAnalysisBundleService:
             cache_state="fresh",
             candles=[
                 SimpleNamespace(
+                    ts_open=datetime(2026, 5, 13, tzinfo=UTC),
+                    close=105,
+                ),
+                SimpleNamespace(
                     ts_open=datetime(2026, 5, 14, tzinfo=UTC),
                     close=100,
                 )
@@ -39,6 +43,10 @@ class FakeAnalysisBundleService:
                 "obv": [None, 1000],
                 "obv_slope": [None, 0.2],
                 "obv_change_5": [None, 120],
+                "vwap_50": [None, 98],
+                "vwap_100": [None, 96],
+                "vwap_spread_pct": [None, 2.1],
+                "vwap_slope_10": [None, 0.4],
                 "kdj_j": [None, 50],
                 "cci_20": [None, 80],
                 "volume": [None, 10],
@@ -62,10 +70,16 @@ async def test_monitoring_builds_technical_observations_from_analysis_bundle(mon
 
     by_key = {item["indicator_key"]: item for item in items}
     assert by_key["ema_20"]["signal_state"] == "bullish"
-    assert by_key["rsi_14"]["signal_state"] == "strong"
+    assert by_key["rsi_14"]["signal_state"] == "bullish"
     assert by_key["macd_hist"]["signal_state"] == "positive_hist"
     assert by_key["adx_14"]["signal_state"] == "strong_trend"
+    assert by_key["vwap_50"]["signal_state"] == "bullish"
+    assert by_key["vwap_spread_pct"]["signal_state"] == "bullish"
     assert by_key["ema_20"]["source_provider"] == "analysis_bundle"
+    assert by_key["ema_20"]["value_json"]["previous_close"] == 105
+    assert by_key["ema_20"]["value_json"]["close_change_pct"] == pytest.approx(
+        (100 - 105) / 105 * 100
+    )
 
 
 def test_monitoring_source_status_is_structured_and_has_no_glassnode() -> None:
@@ -95,14 +109,20 @@ def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
     assert "monitoring-surface" in content
     assert "信源状态" in content
     assert "monitoring-source-list" in content
+    assert "renderSourcePanel(data)" in content
     assert "monitoring-topbar" in content
     assert "monitoring-snapshot-grid" in content
+    assert "renderTerminalSummary(data)" in content
+    assert "terminal-summary-card" in content
+    assert "monitoring-left-stack" in content
+    assert "monitoring-right-stack" in content
+    assert "全局市场摘要" in content
+    assert "全局摘要暂不可用" in content
     assert "macroTitle(item)" in content
     assert "item?.label" in content
     assert "未获取指标" in content
-    assert "DATA_STATUS_VALUES" in content
-    assert "NON_MAIN_INDICATOR_STATUSES" in content
-    assert "item?.status || item?.source_status" in content
+    assert "INVALID_TEXT_VALUES" in content
+    assert "validMacroIndicator(item)" in content
     assert "!item?.is_scored && !hasIndicatorValue" not in content
     assert "Glassnode" not in content
     assert "observationValue(item)" not in content
@@ -111,3 +131,19 @@ def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
     assert "macro-indicator-grid" in content
     for token in BAD_TEXT_TOKENS:
         assert token not in content
+
+
+def test_monitoring_technical_observations_drop_items_older_than_18h() -> None:
+    now = datetime(2026, 5, 27, 12, tzinfo=UTC)
+    fresh = {
+        "indicator_key": "ema_20",
+        "observation_ts": datetime(2026, 5, 26, 19, tzinfo=UTC).isoformat(),
+    }
+    stale = {
+        "indicator_key": "rsi_14",
+        "observation_ts": datetime(2026, 5, 26, 17, 59, tzinfo=UTC).isoformat(),
+    }
+
+    result = MonitoringDashboardService._fresh_technical_observations([fresh, stale], now)
+
+    assert result == [fresh]

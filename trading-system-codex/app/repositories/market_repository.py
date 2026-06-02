@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import delete, desc, or_, select, tuple_
+from sqlalchemy import asc, delete, desc, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -217,6 +217,7 @@ class MarketRepository:
         limit: int = 200,
         from_ts: datetime | None = None,
         to_ts: datetime | None = None,
+        ascending: bool = False,
     ) -> list[MarketCandle]:
         stmt = select(MarketCandle).where(
             MarketCandle.instrument_id == instrument_id,
@@ -226,9 +227,11 @@ class MarketRepository:
             stmt = stmt.where(MarketCandle.ts_open >= from_ts)
         if to_ts is not None:
             stmt = stmt.where(MarketCandle.ts_open <= to_ts)
-        stmt = stmt.order_by(desc(MarketCandle.ts_open)).limit(limit)
+        order_by = asc(MarketCandle.ts_open) if ascending else desc(MarketCandle.ts_open)
+        stmt = stmt.order_by(order_by).limit(limit)
         result = await self.session.execute(stmt)
-        return list(reversed(result.scalars().all()))
+        candles = list(result.scalars().all())
+        return candles if ascending else list(reversed(candles))
 
     async def get_page_snapshot_cache(self, cache_key: str) -> PageSnapshotCache | None:
         result = await self.session.execute(
@@ -341,40 +344,49 @@ class MarketRepository:
         error_message: str | None = None,
         meta_json: dict | None = None,
     ) -> ComputedDatasetCache:
+        from sqlalchemy.exc import IntegrityError
+        encoded_payload = jsonable_encoder(payload_json)
+        encoded_meta = jsonable_encoder(meta_json or {})
+        model = ComputedDatasetCache(
+            cache_key=cache_key,
+            dataset_type=dataset_type,
+            instrument_id=instrument_id,
+            timeframe=timeframe,
+            source_data_ts=source_data_ts,
+            source_hash=source_hash,
+            payload_json=encoded_payload,
+            cache_state=cache_state,
+            source_version=source_version,
+            calculated_at=calculated_at,
+            expires_at=expires_at,
+            cost_ms=cost_ms,
+            error_message=error_message,
+            meta_json=encoded_meta,
+        )
         existing = await self.get_computed_dataset_cache(cache_key)
         if existing is None:
-            model = ComputedDatasetCache(
-                cache_key=cache_key,
-                dataset_type=dataset_type,
-                instrument_id=instrument_id,
-                timeframe=timeframe,
-                source_data_ts=source_data_ts,
-                source_hash=source_hash,
-                payload_json=jsonable_encoder(payload_json),
-                cache_state=cache_state,
-                source_version=source_version,
-                calculated_at=calculated_at,
-                expires_at=expires_at,
-                cost_ms=cost_ms,
-                error_message=error_message,
-                meta_json=jsonable_encoder(meta_json or {}),
-            )
-            self.session.add(model)
-            await self.session.flush()
-            return model
+            try:
+                self.session.add(model)
+                await self.session.flush()
+                return model
+            except IntegrityError:
+                await self.session.rollback()
+                existing = await self.get_computed_dataset_cache(cache_key)
+                if existing is None:
+                    raise
         existing.dataset_type = dataset_type
         existing.instrument_id = instrument_id
         existing.timeframe = timeframe
         existing.source_data_ts = source_data_ts
         existing.source_hash = source_hash
-        existing.payload_json = jsonable_encoder(payload_json)
+        existing.payload_json = encoded_payload
         existing.cache_state = cache_state
         existing.source_version = source_version
         existing.calculated_at = calculated_at
         existing.expires_at = expires_at
         existing.cost_ms = cost_ms
         existing.error_message = error_message
-        existing.meta_json = jsonable_encoder(meta_json or {})
+        existing.meta_json = encoded_meta
         await self.session.flush()
         return existing
 
@@ -684,6 +696,40 @@ class MarketRepository:
             stmt = stmt.where(MarketEventTranslationMap.target_language == target_language)
         result = await self.session.execute(stmt.order_by(MarketEventTranslationMap.field_name))
         return list(result.scalars().all())
+
+    async def count_market_event_translation_maps_by_status(
+        self,
+        *,
+        target_language: str | None = None,
+        provider: str | None = None,
+    ) -> dict[str, int]:
+        """Aggregate MarketEventTranslationMap rows grouped by `status`.
+
+        Returns a mapping like ``{"translated": 12, "pending": 4, "error": 1}``.
+        Always includes a "total" key for the row count under the same filters.
+        Used by the translation status endpoint so the public stats reflect the
+        normalized translation table rather than denormalized payload fields.
+        """
+        stmt = select(
+            MarketEventTranslationMap.status,
+            func.count(MarketEventTranslationMap.id),
+        ).group_by(MarketEventTranslationMap.status)
+        if target_language is not None:
+            stmt = stmt.where(
+                MarketEventTranslationMap.target_language == target_language
+            )
+        if provider is not None:
+            stmt = stmt.where(MarketEventTranslationMap.provider == provider)
+        result = await self.session.execute(stmt)
+        counts: dict[str, int] = {}
+        total = 0
+        for status_value, count_value in result.all():
+            key = str(status_value or "unknown")
+            count_int = int(count_value or 0)
+            counts[key] = count_int
+            total += count_int
+        counts["total"] = total
+        return counts
 
     async def add_market_event_links(self, links: list[MarketEventInstrument]) -> None:
         if not links:
@@ -1034,11 +1080,28 @@ class MarketRepository:
         await self.session.flush()
         return event
 
+    async def latest_alert_event(
+        self,
+        rule_key: str,
+        scope: str = "",
+        timeframe: str = "",
+    ) -> IndicatorAlertEvent | None:
+        stmt = (
+            select(IndicatorAlertEvent)
+            .where(IndicatorAlertEvent.rule_key == rule_key)
+            .order_by(desc(IndicatorAlertEvent.triggered_at))
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_alert_events(
         self,
         status: str | None = None,
         severity: str | None = None,
         category: str | None = None,
+        instrument_id: str | None = None,
+        timeframe: str | None = None,
         limit: int = 100,
     ) -> list[IndicatorAlertEvent]:
         stmt = select(IndicatorAlertEvent)
@@ -1046,6 +1109,10 @@ class MarketRepository:
             stmt = stmt.where(IndicatorAlertEvent.status == status)
         if severity:
             stmt = stmt.where(IndicatorAlertEvent.severity == severity)
+        if instrument_id:
+            stmt = stmt.where(IndicatorAlertEvent.instrument_id == instrument_id)
+        if timeframe:
+            stmt = stmt.where(IndicatorAlertEvent.timeframe == timeframe)
         if category:
             rules = [rule.rule_key for rule in await self.list_alert_rules(category=category)]
             if not rules:

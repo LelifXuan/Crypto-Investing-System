@@ -522,6 +522,11 @@ class StrategySignalService:
         metadata = {
             "model_version": model_version,
             "config_version": config_version,
+            "entry_mode": primary.get("entry_mode") or decision.get("entry_mode"),
+            "take_profit_2": _decimal(primary.get("take_profit_2")),
+            "entry_conditions": primary.get("entry_conditions") or primary.get("confirmation_criteria", []),
+            "invalidation_rules": primary.get("invalidation_rules") or primary.get("invalidation_criteria", []),
+            "trigger_diagnostics": decision.get("trigger_diagnostics"),
         }
         if decision.get("active_setup"):
             metadata["setup_version"] = "v1.7"

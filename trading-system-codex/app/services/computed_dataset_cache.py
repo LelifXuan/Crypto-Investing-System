@@ -15,6 +15,7 @@ from app.quant.indicators import (
     macd_series,
     obv_series,
     rsi_wilder_series,
+    vwap_series,
 )
 from app.repositories.market_repository import MarketRepository
 from app.services.cache_registry import (
@@ -80,6 +81,30 @@ def _obv_slope(
             output.append(None)
             continue
         output.append((value - values[index - period]) / denominator)
+    return output
+
+
+def _spread_pct(
+    first: list[Decimal | None],
+    second: list[Decimal | None],
+) -> list[Decimal | None]:
+    output: list[Decimal | None] = []
+    for left, right in zip(first, second, strict=False):
+        if left is None or right is None or right == 0:
+            output.append(None)
+            continue
+        output.append(((left - right) / right) * Decimal("100"))
+    return output
+
+
+def _value_slope_pct(values: list[Decimal | None], period: int) -> list[Decimal | None]:
+    output: list[Decimal | None] = []
+    for index, value in enumerate(values):
+        previous = values[index - period] if index >= period else None
+        if value is None or previous is None or previous == 0:
+            output.append(None)
+            continue
+        output.append(((value - previous) / previous) * Decimal("100"))
     return output
 
 
@@ -186,6 +211,8 @@ class ComputedDatasetCacheService:
         boll = bbands_series(closes, 20, Decimal("2"))
         kdj = kdj_series(highs, lows, closes, 9)
         obv_values = obv_series(closes, volumes).series
+        vwap_50 = vwap_series(highs, lows, closes, volumes, 50).series
+        vwap_100 = vwap_series(highs, lows, closes, volumes, 100).series
         return {
             "bbands_upper": _series_to_json(boll.upper.series),
             "bbands_middle": _series_to_json(boll.middle.series),
@@ -198,6 +225,10 @@ class ComputedDatasetCacheService:
             "obv": _series_to_json(obv_values),
             "obv_change_5": _series_to_json(_rolling_change(obv_values, 5)),
             "obv_slope": _series_to_json(_obv_slope(obv_values, volumes, 5)),
+            "vwap_50": _series_to_json(vwap_50),
+            "vwap_100": _series_to_json(vwap_100),
+            "vwap_spread_pct": _series_to_json(_spread_pct(vwap_50, vwap_100)),
+            "vwap_slope_10": _series_to_json(_value_slope_pct(vwap_50, 10)),
             "kdj_k": _series_to_json(kdj.k.series),
             "kdj_d": _series_to_json(kdj.d.series),
             "kdj_j": _series_to_json(kdj.j.series),

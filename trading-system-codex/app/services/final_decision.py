@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.repositories.market_repository import MarketRepository
+from app.services.chip_structure import ChipStructureService
+from app.services.macro_overview import MacroOverviewService
 
 UTC = timezone.utc
 
@@ -68,8 +70,6 @@ class FinalDecisionService:
 
     async def _chip_payload(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
         try:
-            from app.services.chip_structure import ChipStructureService
-
             return await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
         except Exception as exc:
             return {
@@ -98,8 +98,6 @@ class FinalDecisionService:
 
     async def _macro_payload(self) -> dict[str, Any]:
         try:
-            from app.services.macro_overview import MacroOverviewService
-
             macro = await MacroOverviewService(self.repository).build_overview()
             return macro.model_dump(mode="json")
         except Exception as exc:

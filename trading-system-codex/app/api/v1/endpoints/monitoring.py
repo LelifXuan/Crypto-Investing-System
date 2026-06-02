@@ -328,12 +328,31 @@ async def get_divergence_summary(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    candles = await MarketRepository(session).list_candles(
+    repository = MarketRepository(session)
+    candles = await repository.list_candles(
         instrument_id=instrument_id, timeframe=timeframe, limit=limit
     )
     from app.services.divergence import DivergenceService
+    from app.services.indicator_matrix import IndicatorMatrixService
 
-    payload = DivergenceService().analyze(instrument_id, timeframe, candles)
+    # Reuse the same indicator matrix that AlertsBundleService feeds into
+    # its divergence calculation so the standalone endpoint and the
+    # alerts bundle never disagree for the same instrument/timeframe.
+    indicator_matrix: dict | None = None
+    try:
+        indicator_matrix = await IndicatorMatrixService(repository).get_matrix(
+            instrument_id=instrument_id,
+            timeframe=timeframe,
+            limit=limit,
+        )
+    except Exception:
+        indicator_matrix = None
+    payload = DivergenceService().analyze(
+        instrument_id,
+        timeframe,
+        candles,
+        indicator_matrix=indicator_matrix,
+    )
     return DivergenceSummaryRead.model_validate(payload)
 
 
@@ -345,11 +364,13 @@ async def get_chip_structure(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     repository = MarketRepository(session)
+    # Use the latest candle of the requested timeframe (not 1h) so the cache
+    # key reflects the actual data source the chip analysis will use.
     latest_candles = await repository.list_candles(
-        instrument_id=instrument_id, timeframe="1h", limit=1
+        instrument_id=instrument_id, timeframe=timeframe, limit=1
     )
     latest_candle_ts = latest_candles[-1].ts_open.isoformat() if latest_candles else "missing"
-    cache_key = f"monitoring:chip_structure:v2:{instrument_id}:{timeframe}:{latest_candle_ts}"
+    cache_key = f"monitoring:chip_structure:v3:{instrument_id}:{timeframe}:{latest_candle_ts}"
 
     async def producer() -> dict:
         from app.services.chip_structure import ChipStructureService

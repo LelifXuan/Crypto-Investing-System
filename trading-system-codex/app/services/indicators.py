@@ -171,7 +171,8 @@ class IndicatorService:
             if newest_ts.tzinfo is None:
                 newest_ts = newest_ts.replace(tzinfo=timezone.utc)
             age_seconds = (datetime.now(timezone.utc) - newest_ts).total_seconds()
-            if age_seconds <= settings.indicator_refresh_interval_seconds or not auto_calculate:
+            refresh_interval_seconds = max(settings.indicator_refresh_interval_seconds, 600)
+            if age_seconds <= refresh_interval_seconds or not auto_calculate:
                 return values, refreshed
         elif not auto_calculate:
             return values, refreshed

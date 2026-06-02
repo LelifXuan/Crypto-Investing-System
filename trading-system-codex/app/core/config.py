@@ -184,6 +184,14 @@ class Settings(BaseSettings):
         default=True,
         alias="MARKET_EVENTS_TRANSLATION_CACHE_ENABLED",
     )
+    tencent_tmt_secret_id: str = Field(default="", alias="TENCENT_TMT_SECRET_ID")
+    tencent_tmt_secret_key: str = Field(default="", alias="TENCENT_TMT_SECRET_KEY")
+    tencent_tmt_region: str = Field(default="ap-guangzhou", alias="TENCENT_TMT_REGION")
+    tencent_tmt_endpoint: str = Field(
+        default="https://tmt.tencentcloudapi.com",
+        alias="TENCENT_TMT_ENDPOINT",
+    )
+    tencent_tmt_project_id: int = Field(default=0, alias="TENCENT_TMT_PROJECT_ID")
     market_event_feed_urls: list[str] = Field(
         default_factory=lambda: [
             "https://cointelegraph.com/rss/tag/markets",

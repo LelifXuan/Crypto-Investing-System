@@ -62,7 +62,7 @@ class BeaMacroProvider:
         points = []
         for row in rows:
             time_period = row.get("TimePeriod") or row.get("TimePeriodName")
-            value = row.get("DataValue")
+            row.get("DataValue")
             if time_period:
                 s = str(time_period)
                 if "M" in s:
@@ -76,7 +76,10 @@ class BeaMacroProvider:
                         iso = date(int(s[:4]), 1, 1).isoformat()
                     except ValueError:
                         continue
-                points.append({"date": iso, "value": value})
+                value_raw = row.get("DataValue", "")
+                if isinstance(value_raw, str):
+                    value_raw = value_raw.replace(",", "")
+                points.append({"date": iso, "value": value_raw})
         return points
 
     async def fetch_latest(self, source_key: str) -> MacroFetchResult:

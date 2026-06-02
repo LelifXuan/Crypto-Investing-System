@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -8,9 +9,10 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
 
-import httpx
-
 from app.core.paths import app_paths
+from app.services.network.http_client_factory import client_for_source
+
+logger = logging.getLogger(__name__)
 
 UTC = timezone.utc
 ETF_GROUPS: dict[str, dict[str, Any]] = {
@@ -133,7 +135,8 @@ class EastmoneyDirectETFClient:
         for attempt in range(2):
             for base_url in base_urls:
                 try:
-                    async with httpx.AsyncClient(
+                    async with client_for_source(
+                        "eastmoney_direct",
                         timeout=self.timeout_seconds,
                         headers=headers,
                     ) as client:
@@ -152,6 +155,7 @@ class EastmoneyDirectETFClient:
             if attempt == 0:
                 await self._tiny_backoff()
         self.last_error = "; ".join(errors) or "eastmoney_unavailable"
+        logger.warning("Eastmoney ETF fetch failed: %s", self.last_error)
         raise RuntimeError(self.last_error)
 
     @staticmethod
@@ -346,6 +350,7 @@ class AShareETFQuoteService:
                 return payload
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{provider.provider_id}: {type(exc).__name__}: {exc}")
+                logger.warning("ETF provider %s failed: %s", provider.provider_id, exc)
 
         stale = self._load_cached_payload(cache_key)
         if stale:

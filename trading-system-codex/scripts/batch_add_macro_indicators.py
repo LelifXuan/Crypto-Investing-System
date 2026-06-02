@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Batch-add missing macro indicators to catalog and refresh policies."""
-import yaml, json
+
+import yaml
 
 ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
 

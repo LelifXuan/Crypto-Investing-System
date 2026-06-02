@@ -15,6 +15,7 @@ from app.schemas.market import (
     MacroOverviewResponse,
 )
 from app.services.macro.fallback_resolver import fallback_for_indicator
+from app.services.macro.indicator_key_aliases import canonical_macro_key
 
 UTC = timezone.utc
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "monitoring" / "configs"
@@ -102,7 +103,55 @@ DISPLAY_CODE_BY_INDICATOR = {
     "pce_yoy": "US PCE",
     "core_pce_yoy": "US Core PCE",
     "nfp": "US NFP",
+    "real_yield_5y": "DFII5",
+    "wti_oil": "WTI",
+    "brent_oil": "Brent",
+    "vix": "VIX",
+    "qqq": "NAS100",
+    "spy": "US500",
+    "hyg": "HYG",
+    "usd_cny": "USD/CNY",
 }
+
+UNIT_BY_INDICATOR = {
+    "average_hourly_earnings_yoy": "%",
+    "bank_reserves": "USD million",
+    "breakeven_5y": "%",
+    "breakeven_10y": "%",
+    "cpi_mom": "%",
+    "cpi_yoy": "%",
+    "core_cpi_mom": "%",
+    "core_cpi_yoy": "%",
+    "core_pce_yoy": "%",
+    "effr": "%",
+    "fed_balance_sheet": "USD million",
+    "financial_conditions": "index",
+    "gdp_qoq": "%",
+    "hy_spread": "pp",
+    "initial_claims": "persons",
+    "continuing_claims": "persons",
+    "investment_grade_spread": "pp",
+    "m2": "USD billion",
+    "nfp": "thousand persons",
+    "pce_yoy": "%",
+    "reverse_repo": "USD billion",
+    "sofr": "%",
+    "us02y_yield": "%",
+    "us03m_yield": "%",
+    "us10y_2y_spread": "pp",
+    "us10y_3m_spread": "pp",
+    "us10y_yield": "%",
+    "us30y_yield": "%",
+    "unemployment_rate": "%",
+    "wti_oil": "USD/bbl",
+    "brent_oil": "USD/bbl",
+    "vix": "index",
+    "qqq": "index",
+    "spy": "index",
+    "hyg": "USD",
+    "usd_cny": "CNY",
+}
+FORCE_UNIT_BY_INDICATOR = {"reverse_repo"}
 
 CLEAN_INDICATOR_LABELS = {
     "effr": ("美国有效联邦基金利率", "美联储政策利率的实际成交水平。"),
@@ -213,6 +262,17 @@ ALIASES = {
     "wti_oil": ("wti_crude",),
 }
 
+TRADFI_LABEL_OVERRIDES = {
+    "wti_oil": ("WTI原油", "Gate.io CL 原油代理，作为能源价格与通胀压力参考。"),
+    "brent_oil": ("Brent原油", "Gate.io BZ 原油代理，作为全球能源价格参考。"),
+    "real_yield_5y": ("美国5年实际利率", "FRED DFII5，用于观察中期实际利率压力。"),
+    "vix": ("VIX波动率", "Gate.io VIX 或 FRED VIXCLS，用于观察风险厌恶程度。"),
+    "qqq": ("纳斯达克100指数", "Gate.io NAS100 指数代理，用于观察美股科技风险偏好。"),
+    "spy": ("标普500指数", "Gate.io US500 指数代理，用于观察美股宽基风险偏好。"),
+    "hyg": ("高收益债ETF", "高收益债ETF用于观察信用风险偏好，依赖外部ETF行情源。"),
+    "usd_cny": ("美元兑人民币", "美元兑人民币用于观察人民币与美元流动性压力。"),
+}
+
 FALLBACK_LAYERS = (
     ("rates_policy", ("effr", "us02y_yield", "us10y_yield", "us10y_2y_spread")),
     ("inflation", ("cpi_yoy", "core_cpi_yoy", "breakeven_10y", "wti_oil")),
@@ -231,7 +291,10 @@ class MacroOverviewService:
 
     async def build_overview(self, *, now: datetime | None = None) -> MacroOverviewResponse:
         now = now or datetime.now(UTC)
-        observations = await self.repository.list_indicator_observations(limit=1200)
+        observations = await self.repository.list_indicator_observations(
+            category="macro",
+            limit=5000,
+        )
         definitions = {
             item.indicator_key: item
             for item in await self.repository.list_indicator_definitions(enabled_only=True)
@@ -284,6 +347,8 @@ class MacroOverviewService:
             )
 
         layer_contributions = _layer_contributions(layer_scores)
+        for layer in layers:
+            layer.contribution = layer_contributions.get(layer.layer_key, 0.0)
         total_score = _total_score(layer_contributions)
         event_items = _event_items(events, now)
         event_status, event_summary, next_event = _event_window(events, now)
@@ -345,7 +410,7 @@ class MacroOverviewService:
                     tooltip=tooltip,
                     layer_key=layer_key,
                     frequency=str(item.get("frequency") or "daily"),
-                    unit=str(item.get("unit") or ""),
+                    unit=_unit_for_indicator(key, str(item.get("unit") or "")),
                     display_code=display_code,
                     display_label=display_label,
                     aliases=ALIASES.get(key, ()),
@@ -384,6 +449,9 @@ class MacroOverviewService:
         _ = layer
         obs = _find_observation(latest_by_key, spec)
         if obs is None:
+            derived = _derived_indicator_read(spec, latest_by_key)
+            if derived is not None:
+                return derived
             fallback = fallback_for_indicator(spec.indicator_key, None, spec.frequency)
             return self._indicator_from_fallback(spec, fallback)
 
@@ -411,7 +479,7 @@ class MacroOverviewService:
             label=spec.label,
             display_code=spec.display_code,
             display_label=spec.display_label or spec.label,
-            unit=spec.unit,
+            unit=_unit_for_indicator(spec.indicator_key, spec.unit),
             tooltip=tooltip,
             region="global",
             source_provider=getattr(obs, "source_provider", None) or spec.source_provider,
@@ -462,7 +530,7 @@ class MacroOverviewService:
             label=spec.label,
             display_code=spec.display_code,
             display_label=spec.display_label or spec.label,
-            unit=spec.unit,
+            unit=_unit_for_indicator(spec.indicator_key, spec.unit),
             tooltip=spec.tooltip,
             region="global",
             source_provider=str(fallback.get("source") or spec.source_provider or "placeholder"),
@@ -518,6 +586,7 @@ def _fallback_layer_specs() -> tuple[MacroLayerSpec, ...]:
                     label=label,
                     tooltip=tooltip,
                     layer_key=layer_key,
+                    unit=_unit_for_indicator(key),
                     display_code=display_code,
                     display_label=display_label,
                     aliases=ALIASES.get(key, ()),
@@ -528,6 +597,8 @@ def _fallback_layer_specs() -> tuple[MacroLayerSpec, ...]:
 
 
 def _indicator_label(key: str) -> tuple[str, str]:
+    if key in TRADFI_LABEL_OVERRIDES:
+        return TRADFI_LABEL_OVERRIDES[key]
     if key in CLEAN_INDICATOR_LABELS:
         return CLEAN_INDICATOR_LABELS[key]
     if key in INDICATOR_LABELS:
@@ -545,10 +616,97 @@ def _display_fields(key: str, label: str) -> tuple[str | None, str]:
     return code, f"{code} {label}"
 
 
+def _unit_for_indicator(key: str, configured_unit: str | None = None) -> str:
+    if key in FORCE_UNIT_BY_INDICATOR:
+        return UNIT_BY_INDICATOR.get(key, str(configured_unit or "").strip())
+    configured = str(configured_unit or "").strip()
+    if configured:
+        return configured
+    return UNIT_BY_INDICATOR.get(key, "")
+
+
 def _find_observation(latest_by_key: dict[str, Any], spec: MacroIndicatorSpec) -> Any | None:
     for key in (spec.indicator_key, *spec.aliases):
         if key in latest_by_key:
             return latest_by_key[key]
+    return None
+
+
+def _derived_indicator_read(
+    spec: MacroIndicatorSpec,
+    latest_by_key: dict[str, Any],
+) -> MacroOverviewIndicatorRead | None:
+    dependencies: tuple[tuple[str, ...], tuple[str, ...]]
+    if spec.indicator_key == "us10y_3m_spread":
+        dependencies = (
+            ("us10y_yield", "us_10y_yield", "ust_10y_yield"),
+            ("us03m_yield",),
+        )
+    elif spec.indicator_key == "real_yield_10y":
+        dependencies = (
+            ("us10y_yield", "us_10y_yield", "ust_10y_yield"),
+            ("breakeven_10y",),
+        )
+    else:
+        return None
+
+    left = _observation_by_any_key(latest_by_key, dependencies[0])
+    right = _observation_by_any_key(latest_by_key, dependencies[1])
+    left_value = _decimal_or_none(getattr(left, "value_num", None) if left else None)
+    right_value = _decimal_or_none(getattr(right, "value_num", None) if right else None)
+    if left_value is None or right_value is None:
+        return None
+
+    value = left_value - right_value
+    left_ts = getattr(left, "observation_ts", None)
+    right_ts = getattr(right, "observation_ts", None)
+    obs_ts = min(
+        [item for item in (left_ts, right_ts) if isinstance(item, datetime)],
+        default=None,
+    )
+    status = "ok"
+    is_scored = _is_scored_indicator(
+        spec.indicator_key,
+        status,
+        None,
+        value,
+        None,
+        True,
+    )
+    return MacroOverviewIndicatorRead(
+        indicator_key=spec.indicator_key,
+        label=spec.label,
+        display_code=spec.display_code,
+        display_label=spec.display_label or spec.label,
+        unit=_unit_for_indicator(spec.indicator_key, spec.unit),
+        tooltip=spec.tooltip,
+        region="global",
+        source_provider="derived",
+        value_num=value,
+        value_text=None,
+        observation_ts=obs_ts,
+        signal_state="neutral",
+        status=status,
+        fallback_level="derived",
+        is_scored=is_scored,
+        score_block_reason=None if is_scored else "缺少可评分依赖项。",
+        status_reason="由可用宏观指标派生。",
+        insight=_indicator_insight(
+            spec.label,
+            value,
+            None,
+            status,
+            is_scored,
+            obs_ts,
+        ),
+    )
+
+
+def _observation_by_any_key(latest_by_key: dict[str, Any], keys: tuple[str, ...]) -> Any | None:
+    for key in keys:
+        item = latest_by_key.get(key)
+        if item is not None:
+            return item
     return None
 
 
@@ -588,7 +746,9 @@ def _is_scored_indicator(
         return False
     if _decimal_or_none(value) is not None:
         return bool(fallback_scored)
-    return indicator_key in SCORABLE_TEXT_INDICATORS and normalized_text in {"active", "inactive"}
+    return indicator_key in SCORABLE_TEXT_INDICATORS and normalized_text in {
+        "active", "inactive", "pre_event", "post_event", "live_event",
+    }
 
 
 def _score_block_reason(status: str, fallback: dict[str, Any]) -> str:
@@ -610,44 +770,78 @@ def _decimal_or_none(value: Any | None) -> Decimal | None:
 
 def _score_indicator(item: MacroOverviewIndicatorRead) -> int:
     value = item.value_num
-    key = item.indicator_key
-    if value is None and item.value_text:
-        return 50
-    if value is None:
+    orig_key = item.indicator_key
+
+    if orig_key == "fomc_event_window":
+        text = str(item.value_text or "").strip().lower()
+        return {
+            "inactive": 50,
+            "pre_event": 25,
+            "post_event": 35,
+            "live_event": 20,
+        }.get(text, 50)
+
+    canon_key = canonical_macro_key(orig_key)
+    if value is None or item.value_text is not None:
         return 50
     x = float(value)
 
-    if key in {"effr", "sofr", "us03m_yield", "us02y_yield", "us10y_yield", "us30y_yield"}:
-        return _inverse_score(x, low=2.5, high=6.0)
-    if key in {"real_yield_10y", "real_yield_5y"}:
-        return _inverse_score(x, low=0.5, high=2.8)
-    if key in {"us10y_2y_spread", "us10y_3m_spread"}:
-        return _range_score(x, bearish_below=-0.7, bullish_above=0.4)
-    if key in {
-        "cpi_yoy",
-        "core_cpi_yoy",
-        "pce_yoy",
-        "core_pce_yoy",
-        "breakeven_5y",
-        "breakeven_10y",
-    }:
-        return _inverse_score(x, low=2.0, high=5.0)
-    if key in {"cpi_mom", "core_cpi_mom"}:
+    if orig_key in {"cpi_mom", "core_cpi_mom"}:
         return _inverse_score(x, low=0.15, high=0.55)
-    if key in {"nfp", "retail_sales", "gdp_qoq"}:
+    if orig_key in {"real_yield_10y", "real_yield_5y"}:
+        return _inverse_score(x, low=0.5, high=2.8)
+
+    if canon_key in {"us_dff", "sofr", "us_2y_yield", "us_10y_yield"}:
+        return _inverse_score(x, low=2.5, high=6.0)
+    if canon_key in {"us_10y_2y_spread", "us10y_3m_spread"}:
+        return _range_score(x, bearish_below=-0.7, bullish_above=0.4)
+    if canon_key in {"us_cpi_yoy", "us_core_cpi_yoy"}:
+        return _inverse_score(x, low=2.0, high=5.0)
+    if canon_key in {"us_nfp", "retail_sales", "gdp_qoq"}:
         return _direct_score(x, low=0.0, high=250.0)
-    if key in {"unemployment_rate", "initial_claims", "continuing_claims"}:
+    if canon_key in {"us_unemployment_rate", "initial_claims", "continuing_claims"}:
         return _inverse_score(x, low=3.5, high=5.5)
-    if key in {"ism_manufacturing", "ism_services"}:
+    if canon_key in {"ism_mfg_pmi", "ism_srv_pmi"}:
         return _direct_score(x, low=45.0, high=55.0)
-    if key in {"hy_spread", "investment_grade_spread", "vix"}:
+    if canon_key in {"hy_oas", "ig_spread", "vix"}:
         return _inverse_score(x, low=3.5, high=8.0)
-    if key in {"dxy", "usd_cny"}:
+    if canon_key in {"dollar_index", "usd_cny"}:
         return _inverse_score(x, low=98.0, high=108.0)
-    if key in {"gold", "qqq", "spy", "hyg"}:
-        return _direct_score(x, low=0.0, high=max(x * 1.2, 1.0))
-    if key in {"wti_oil"}:
+    if canon_key in {"wti_crude"}:
         return _range_mid_score(x, low=55.0, high=95.0)
+    if canon_key in {"gold", "qqq", "spy", "hyg"}:
+        return _price_20d_momentum(x, canon_key, item)
+    return 50
+
+@dataclass
+class _MomentumBacking:
+    key: str
+    values: list[float]
+
+_momentum_store: dict[str, _MomentumBacking] = {}
+
+def _price_20d_momentum(current: float, key: str, item) -> int:
+    ctx = _momentum_store.get(key)
+    if ctx is None:
+        _momentum_store[key] = _MomentumBacking(key=key, values=[current])
+        return 50
+    ctx.values.append(current)
+    if len(ctx.values) > 20:
+        ctx.values = ctx.values[-20:]
+    if len(ctx.values) < 5:
+        return 50
+    avg_first_5 = sum(ctx.values[:5]) / min(5, len(ctx.values))
+    if avg_first_5 <= 0:
+        return 50
+    pct = (current - avg_first_5) / avg_first_5 * 100
+    if pct > 8:
+        return 80
+    if pct > 3:
+        return 65
+    if pct < -8:
+        return 20
+    if pct < -3:
+        return 35
     return 50
 
 
@@ -683,14 +877,14 @@ def _score_to_bias(score: int) -> str:
 
 def _score_band(score: int) -> str:
     if score >= 70:
-        return "偏宽松"
+        return "显著偏暖"
     if score >= 55:
-        return "中性偏暖"
+        return "温和偏暖"
     if score <= 30:
-        return "偏紧"
+        return "显著偏紧"
     if score <= 45:
-        return "中性偏紧"
-    return "中性震荡"
+        return "温和偏紧"
+    return "宏观中性"
 
 
 def _layer_summary(
@@ -747,26 +941,26 @@ def _confidence(completeness: dict[str, float]) -> str:
 def _operation_bias(score: int, completeness: dict[str, float]) -> str:
     if float(completeness.get("ratio") or 0) < 0.35:
         return "observe"
-    if score >= 65:
+    if score >= 55:
         return "bullish"
-    if score <= 35:
+    if score <= 45:
         return "bearish"
     return "neutral"
 
 
 def _regime_key(score: int) -> str:
-    if score >= 65:
+    if score >= 55:
         return "risk_on"
-    if score <= 35:
+    if score <= 45:
         return "risk_off"
     return "neutral"
 
 
 def _regime_label(score: int) -> str:
     return {
-        "risk_on": "风险偏好改善",
-        "risk_off": "风险偏好承压",
-        "neutral": "中性震荡",
+        "risk_on": "宏观偏暖",
+        "risk_off": "宏观偏紧",
+        "neutral": "宏观中性",
     }[_regime_key(score)]
 
 
@@ -876,10 +1070,10 @@ def _placeholder_reason(spec: MacroIndicatorSpec) -> tuple[str, str]:
         )
     if provider in {"tiingo", "openexchangerates", "alpha_vantage", "twelvedata"}:
         return (
-            "当前指标需要外部行情源，便携版默认不强制配置。",
+            "该指标需第三方行情源 API Key，请确认配置有效后执行宏观刷新。",
             "待接入行情源或 API Key",
         )
-    if provider in {"fred", "bls", "bea"}:
+    if provider in {"fred", "bls", "bea", "gateio", "gateio_rwa"}:
         return (
             "当前运行缓存中没有该指标，需要执行宏观刷新并确认数据源可达。",
             "同步未运行或缓存未命中",

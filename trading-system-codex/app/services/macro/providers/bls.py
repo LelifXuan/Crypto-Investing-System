@@ -26,7 +26,7 @@ class BlsMacroProvider:
         )
 
     def _api_key(self) -> str:
-        return self.secrets.get("BLS_API_KEY", required=True) or ""
+        return self.secrets.get("BLS_API_KEY", required=False) or ""
 
     async def _fetch_series_json(self, series_id: str, startyear: str, endyear: str):
         cache_params = {"series_id": series_id, "startyear": startyear, "endyear": endyear}

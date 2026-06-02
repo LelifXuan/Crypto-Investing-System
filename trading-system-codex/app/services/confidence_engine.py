@@ -559,26 +559,35 @@ class ConfidenceEngine:
         recommended_action: str,
         direction_label: str,
     ) -> list[str]:
+        available_components = [
+            component.label
+            for component in components.values()
+            if component.available and component.raw_score is not None
+        ]
+        component_text = "、".join(available_components[:4]) or "当前可用证据"
         lines = [
             (
-                f"?????{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}?"
-                "???????????????????"
+                f"方向判断为{DIRECTION_LABEL_ZH.get(direction_label, direction_label)}，"
+                f"主要来自{component_text}的综合加权。"
             ),
-            (f"?????? {confidence_cap:.0f} ??????????????????????????????????????????????????"),
+            (
+                f"当前置信上限为 {confidence_cap:.0f}，由证据质量、冲突等级、"
+                "执行质量和缺失输入共同限制。"
+            ),
         ]
         if penalties["total"] > 0:
             lines.append(
-                f"????????? {penalties['missing_inputs']:.0f} ??"
-                f"??? {penalties['conflict']:.0f} ??"
-                f"????? {penalties['abnormal_market']:.0f} ??"
+                f"处罚项：缺失输入扣 {penalties['missing_inputs']:.0f}，"
+                f"冲突扣 {penalties['conflict']:.0f}，"
+                f"异常市场扣 {penalties['abnormal_market']:.0f}。"
             )
         if payload.structure.available and payload.structure.top_reasons:
-            lines.append(f"?????{payload.structure.top_reasons[0]}")
+            lines.append(f"结构侧证据：{payload.structure.top_reasons[0]}")
         if risk_gates:
             gate_text = " ".join(RISK_GATE_LABEL_ZH.get(item, item) for item in risk_gates)
-            lines.append(f"?????{gate_text}")
+            lines.append(f"风控门禁：{gate_text}")
         action_text = ACTION_LABEL_ZH.get(recommended_action, recommended_action)
-        lines.append(f"?????{action_text}")
+        lines.append(f"建议动作：{action_text}")
         return lines
 
     def _pair_alignment(self, left: str, right: str) -> float:

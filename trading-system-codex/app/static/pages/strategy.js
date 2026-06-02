@@ -12,6 +12,7 @@ let statusBanner;
 let statusChip;
 
 const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
+let isMounted = false;
 let lastBundle = null;
 let activeController = null;
 let requestToken = 0;
@@ -21,8 +22,8 @@ const STATE_CONFIG = {
   NO_EDGE: { label: "多空不明", tone: "chip-neutral", hint: "多空分差不足，等待更清晰的结构与触发。" },
   OBSERVE: { label: "观察等待", tone: "chip-neutral", hint: "已有线索，但暂未形成可执行策略。" },
   CONFLICTED_NO_TRADE: { label: "多空冲突", tone: "chip-warning", hint: "多空证据互相抵消，暂不交易。" },
-  LONG_BIAS: { label: "偏多观察", tone: "chip-bullish", hint: "多头占优，但触发条件未齐。" },
-  SHORT_BIAS: { label: "偏空观察", tone: "chip-bearish", hint: "空头占优，但触发条件未齐。" },
+  LONG_BIAS: { label: "偏多观察", tone: "chip-bullish", hint: "多头占优，setup 尚未形成完整结构。" },
+  SHORT_BIAS: { label: "偏空观察", tone: "chip-bearish", hint: "空头占优，setup 尚未形成完整结构。" },
   SETUP_DETECTED: { label: "策略结构已形成", tone: "chip-neutral", hint: "已有可跟踪 setup，等待触发或失效。" },
   WAIT_LONG_CONFIRMATION: { label: "等待多头确认", tone: "chip-bullish", hint: "偏多结构存在，等待入场触发。" },
   WAIT_SHORT_CONFIRMATION: { label: "等待空头确认", tone: "chip-bearish", hint: "偏空结构存在，等待入场触发。" },
@@ -190,6 +191,7 @@ function renderShell() {
     <section id="strategy-content" class="strategy-content">
       ${emptyState("正在读取最近一次可用策略信号。")}
     </section>
+    <section id="strategy-review"></section>
   `);
 }
 
@@ -218,6 +220,34 @@ function renderScoreBars(decision) {
 function formatZone(zone) {
   if (Array.isArray(zone) && zone.length) return zone.map((item) => numberText(item)).join(" - ");
   return cleanText(zone, "-");
+}
+
+function renderTriggerBoard(decision, gates) {
+  const permission = cleanText(decision.strategy_permission_label || PERMISSION_LABELS[decision.strategy_permission] || "仅观察");
+  const nextTrigger = decision.next_trigger || decision.trigger_summary || "";
+  const blocking = Array.isArray(decision.blocking_gates) ? decision.blocking_gates : [];
+  const failedGates = (gates || []).filter((g) => (g.status || g.severity) === "fail" || (g.status || g.severity) === "block");
+  const checklist = (decision.entry_checklist || []).filter((c) => c.status !== "满足" && c.status !== "通过");
+  return `
+    <section class="strategy-trigger-board">
+      <div class="strategy-trigger-grid">
+        <article class="strategy-trigger-card">
+          <div class="card-head-inline"><p class="eyebrow">TRIGGER</p><h3>执行权限</h3></div>
+          <div class="strategy-permission"><strong>${escapeHtml(permission)}</strong></div>
+        </article>
+        <article class="strategy-trigger-card">
+          <div class="card-head-inline"><p class="eyebrow">NEXT</p><h3>下一触发</h3></div>
+          <p>${escapeHtml(cleanText(nextTrigger, "等待策略引擎下一轮评估。"))}</p>
+        </article>
+        <article class="strategy-trigger-card">
+          <div class="card-head-inline"><p class="eyebrow">GATES</p><h3>未满足条件</h3></div>
+          ${blocking.length ? `<div class="strategy-gate-list">${blocking.map((g) => `<span class="status-chip chip-danger">${escapeHtml(cleanText(g))}</span>`).join("")}</div>` : ""}
+          ${!blocking.length && checklist.length ? `<div class="strategy-gate-list">${checklist.map((c) => `<span class="status-chip chip-warning">${escapeHtml(cleanText(c.condition))}：${escapeHtml(cleanText(c.status))}</span>`).join("")}</div>` : ""}
+          ${!blocking.length && !checklist.length ? `<p class="muted">所有条件已满足。</p>` : ""}
+        </article>
+      </div>
+    </section>
+  `;
 }
 
 function renderSetupContinuity(decision) {
@@ -270,13 +300,10 @@ function renderPlanSummary(title, plan, fallback) {
         ${miniMetric("止损", plan.stop_loss_rule || "-")}
         ${miniMetric("止盈", plan.take_profit_rule || "-")}
       </div>
-      <details>
-        <summary>查看条件</summary>
-        <div class="strategy-list-pair">
-          <div><strong>确认条件</strong>${list(plan.entry_conditions || plan.confirmation_criteria, "暂无确认条件")}</div>
-          <div><strong>失效条件</strong>${list(plan.invalidation_rules || plan.invalidation_criteria, "暂无失效条件")}</div>
-        </div>
-      </details>
+      <div class="strategy-list-pair">
+        <div><strong>确认条件</strong>${list(plan.entry_conditions || plan.confirmation_criteria, "暂无确认条件")}</div>
+        <div><strong>失效条件</strong>${list(plan.invalidation_rules || plan.invalidation_criteria, "暂无失效条件")}</div>
+      </div>
     </article>
   `;
 }
@@ -409,6 +436,8 @@ function renderBundle(bundle) {
       </article>
     </section>
 
+    ${renderTriggerBoard(decision, decision.trigger_diagnostics || decision.gates || [])}
+
     <section class="strategy-main-grid">
       ${renderPlanSummary("主策略", primary, "当前多空不明，暂不形成主策略。")}
       ${renderPlanSummary("备用策略", alternative, "主策略失效后再等待备用路径。")}
@@ -419,7 +448,7 @@ function renderBundle(bundle) {
       <article class="card strategy-compact-card"><h3>入场条件检查</h3>${renderChecklist(decision.entry_checklist || [])}</article>
     </section>
 
-    <section class="strategy-main-grid compact is-hidden">
+    <section class="strategy-main-grid compact">
       <article class="card strategy-compact-card"><h3>触发门禁诊断</h3>${renderGateDiagnostics(decision)}</article>
       <article class="card strategy-compact-card"><h3>风险门禁</h3>${renderReasons(decision)}</article>
     </section>
@@ -432,15 +461,107 @@ function renderBundle(bundle) {
         </div>
         ${renderEvidence(decision.evidence_matrix || [])}
       </article>
-      <article class="card strategy-compact-card is-hidden">
-        <h3>复盘与迭代</h3>
-        <div class="strategy-review-columns">
-          <div><strong>复盘标签</strong>${list(decision.review_tags || [], "暂无复盘标签。", 5)}</div>
-          <div><strong>迭代建议</strong>${list((bundle.iteration_proposals || []).map((item) => item.proposal || item.message || String(item)), "暂无迭代建议。", 5)}</div>
+    </section>
+  `;
+}
+
+function renderReviewPanel(review) {
+  if (!review || !review.latest_records) {
+    return '<article class="card strategy-compact-card"><h3>信号历史</h3><p class="muted">暂无已保存策略记录，点击保存信号后开始跟踪。</p></article>';
+  }
+  const records = review.latest_records || [];
+  const summary = review.summary || {};
+  if (!records.length) {
+    return '<article class="card strategy-compact-card"><h3>信号历史</h3><p class="muted">暂无已保存策略记录，点击保存信号后开始跟踪。</p></article>';
+  }
+
+  const statusLabel = (s) => {
+    const m = { tp1_hit: "TP1 命中", tp2_hit: "TP2 命中", stop_hit: "止损", active: "跟踪中", insufficient_data: "数据不足", pending: "等待评估" };
+    return m[s] || s || "-";
+  };
+  const statusTone = (s) => {
+    if (s === "tp1_hit" || s === "tp2_hit") return "chip-bullish";
+    if (s === "stop_hit") return "chip-bearish";
+    return "chip-neutral";
+  };
+  const fmtR = (v) => v != null ? `${(v * 100).toFixed(1)}%` : "-";
+  const fmtP = (v) => v != null ? formatNumber(v, 2) : "-";
+
+  return `
+    <section class="strategy-review">
+      <article class="card strategy-compact-card">
+        <div class="card-head-inline">
+          <div>
+            <p class="eyebrow">REVIEW</p>
+            <h3>信号历史与复盘</h3>
+          </div>
+          <button class="button-link" id="strategy-review-refresh">更新复盘</button>
+        </div>
+        <div class="strategy-inline-metrics">
+          ${[
+            ["总记录", summary.total_signals || records.length],
+            ["已完成", summary.closed_signals || "-"],
+            ["TP 命中率", summary.tp1_hit_rate != null ? summary.tp1_hit_rate + "%" : "-"],
+            ["止损率", summary.stop_hit_rate != null ? summary.stop_hit_rate + "%" : "-"],
+            ["平均 MFE", summary.avg_mfe != null ? summary.avg_mfe + "%" : "-"],
+            ["平均 MAE", summary.avg_mae != null ? summary.avg_mae + "%" : "-"],
+          ].map(([l, v]) => `<span><small>${escapeHtml(String(l))}</small><strong>${escapeHtml(String(v))}</strong></span>`).join("")}
+        </div>
+        ${review.review_warnings?.length ? `<div class="strategy-review-warnings">${review.review_warnings.map(w => `<p class="muted">${escapeHtml(w)}</p>`).join("")}</div>` : ""}
+      </article>
+      <article class="card strategy-compact-card">
+        <div class="table-wrap">
+          <table class="strategy-review-table">
+            <thead>
+              <tr>
+                <th>时间</th><th>方向</th><th>状态</th><th>入场</th><th>止损</th><th>TP1</th>
+                <th>结果</th><th>1K</th><th>6K</th><th>24K</th><th>MFE/MAE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${records.map(r => `
+                <tr>
+                  <td>${escapeHtml(String(r.signal_ts || "").slice(0, 16))}</td>
+                  <td>${r.direction === "long" ? '<span class="status-chip chip-bullish">多</span>' : '<span class="status-chip chip-bearish">空</span>'}</td>
+                  <td>${escapeHtml(r.state || "-")}</td>
+                  <td>${fmtP(r.entry_price)}</td>
+                  <td>${fmtP(r.stop_loss_price)}</td>
+                  <td>${fmtP(r.take_profit_price)}</td>
+                  <td><span class="status-chip ${statusTone(r.outcome_status)}">${statusLabel(r.outcome_status)}</span></td>
+                  <td>${fmtR(r.return_1)}</td>
+                  <td>${fmtR(r.return_6)}</td>
+                  <td>${fmtR(r.return_24)}</td>
+                  <td>${fmtR(r.mfe)} / ${fmtR(r.mae)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
         </div>
       </article>
     </section>
   `;
+}
+
+async function loadReview() {
+  try {
+    const review = await api.getStrategyReview(appState.selectedInstrumentId, appState.selectedTimeframe);
+    const el = document.getElementById("strategy-review");
+    if (el) el.innerHTML = renderReviewPanel(review);
+    setTimeout(() => {
+      const btn = document.getElementById("strategy-review-refresh");
+      if (btn) {
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "更新中";
+          await loadReview();
+          btn.disabled = false;
+          btn.textContent = "更新复盘";
+        });
+      }
+    }, 100);
+  } catch (e) {
+    console.warn("strategy:review:error", e);
+  }
 }
 
 async function loadStrategy(options = {}) {
@@ -503,14 +624,20 @@ async function enqueueRefresh({ auto = false } = {}) {
   }
 }
 
+function syncStrategyControls() {
+  const instrumentSelect = document.getElementById("strategy-instrument");
+  const timeframeSelect = document.getElementById("strategy-timeframe");
+  if (instrumentSelect) instrumentSelect.value = appState.selectedInstrumentId;
+  if (timeframeSelect) timeframeSelect.value = appState.selectedTimeframe;
+}
+
 async function refreshAfterSelection({ instrumentId, timeframe }) {
   if (pollTimer) window.clearTimeout(pollTimer);
   requestToken += 1;
   if (instrumentId) appState.selectedInstrumentId = instrumentId;
   if (timeframe) appState.selectedTimeframe = timeframe;
   persistState();
-  renderShell();
-  attachEvents();
+  syncStrategyControls();
   await loadStrategy({ force: true });
   await enqueueRefresh({ auto: true });
 }
@@ -529,6 +656,7 @@ function attachEvents() {
     try {
       await api.saveStrategySnapshot(appState.selectedInstrumentId, appState.selectedTimeframe);
       document.getElementById("strategy-status").innerHTML = statusBanner("策略信号已保存。", "success");
+      await loadReview();
     } catch (error) {
       document.getElementById("strategy-status").innerHTML = statusBanner(
         `保存失败：${error?.message || "暂无可保存策略"}`,
@@ -542,9 +670,23 @@ function attachEvents() {
 
 export async function renderStrategy() {
   await ensureDeps();
-  renderShell();
-  attachEvents();
+
+  if (!isMounted) {
+    renderShell();
+    attachEvents();
+    isMounted = true;
+  } else {
+    syncStrategyControls();
+  }
+
   await loadStrategy();
+  await loadReview();
+
+  return () => {
+    if (pollTimer) window.clearTimeout(pollTimer);
+    activeController?.abort();
+    isMounted = false;
+  };
 }
 
 export default renderStrategy;

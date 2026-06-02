@@ -183,7 +183,7 @@ export async function renderMarketEvents() {
 
   async function pollTranslations() {
     let pollCount = 0;
-    const maxPolls = 20;
+    const maxPolls = 40;
     const pollInterval = 3000;
     stopTranslationPolling();
     translationPollTimer = window.setInterval(async () => {
@@ -192,27 +192,62 @@ export async function renderMarketEvents() {
         const statusData = await api.getMarketEventTranslationStatus();
         if (statusData.disabled) {
           stopTranslationPolling();
+          invalidateCache("/marketevents");
+          await load(true);
           renderStatus("中文翻译未启用，已显示原文", "warning");
           return;
         }
-        const pending = Number(statusData.pending || 0) + Number(statusData.queued || 0) + Number(statusData.queue_depth || 0);
+        const pending = (statusData.pending || 0) + (statusData.queued || 0) + (statusData.queue_depth || 0);
+        const translated = statusData.translated || 0;
+        const total = (translated + pending) || statusData.total || 0;
         if (pending <= 0) {
           stopTranslationPolling();
           invalidateCache("/marketevents");
           await load(true);
-          renderStatus("中文翻译已更新", "success");
+          renderStatus(translated > 0 ? `中文翻译完成：${translated} 条已翻译` : "未发现需要翻译的内容", "success");
           return;
         }
-        renderStatus(`中文翻译处理中：待处理 ${pending} 条`, "loading");
+        const progress = total > 0 ? `已完成 ${translated}/${total} 条` : `已翻译 ${translated} 条`;
+        renderStatus(`翻译进度：${progress}，${pending} 条排队中`, "loading");
         if (pollCount >= maxPolls) {
           stopTranslationPolling();
-          renderStatus("中文翻译仍在后台处理，已先显示原文", "warning");
+          invalidateCache("/marketevents");
+          await load(true);
+          renderStatus(
+            `翻译仍在继续：${progress}，${pending} 条等待中`,
+            "warning",
+          );
+          showContinueTranslationButton();
+          return;
         }
       } catch (error) {
         stopTranslationPolling();
         renderStatus(`中文翻译状态读取失败：${String(error?.message || error).slice(0, 40)}`, "warning");
       }
     }, pollInterval);
+  }
+
+  function showContinueTranslationButton() {
+    const statusbar = document.getElementById("events-statusbar");
+    if (!statusbar) return;
+    const existing = document.getElementById("events-continue-translate");
+    if (existing) return;
+    const button = document.createElement("button");
+    button.id = "events-continue-translate";
+    button.type = "button";
+    button.className = "primary-button compact";
+    button.textContent = "继续等待翻译";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "已加入队列";
+      try {
+        invalidateCache("/marketevents");
+        await pollTranslations();
+      } finally {
+        button.remove();
+      }
+    });
+    statusbar.insertAdjacentElement("afterend", button);
   }
 
   document.getElementById("events-refresh").addEventListener("click", async () => {
@@ -233,16 +268,16 @@ export async function renderMarketEvents() {
   document.getElementById("events-translate-toggle").addEventListener("click", async () => {
     appState.translateEvents = !appState.translateEvents;
     persistState();
+    const toggleBtn = document.getElementById("events-translate-toggle");
+    if (toggleBtn) toggleBtn.textContent = appState.translateEvents ? "关闭中文翻译" : "开启中文翻译";
     if (appState.translateEvents) {
-      renderStatus("已开启中文翻译，正在处理当前可见事件", "loading");
-      await api.refreshMarketEventTranslations({ limit: 50, maxBatches: 5 });
-      invalidateCache("/marketevents");
-      await load(true);
+      renderStatus("已开启中文翻译，正在入队", "loading");
+      api.refreshMarketEventTranslations({ limit: 50, maxBatches: 10 }).catch(() => {});
       await pollTranslations();
     } else {
       stopTranslationPolling();
       invalidateCache("/marketevents");
-      await renderMarketEvents();
+      await load(true);
     }
   });
 

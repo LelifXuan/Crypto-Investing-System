@@ -98,6 +98,18 @@ def _next_trigger_text(side: str, snapshot: dict[str, Any]) -> str:
     return "4h/1h 收盘给出次级别空头确认后开放执行权限。"
 
 
+def _trigger_summary(state: str, bias: str, snapshot: dict[str, Any]) -> str:
+    if state in {"RISK_OFF", "NO_EDGE"}:
+        return "当前市场条件不支持方向性入场，等待风险解除或数据质量恢复。"
+    if state in {"LONG_BIAS", "SHORT_BIAS"}:
+        return f"{BIAS_LABELS[bias]}方向占优但setup结构未形成，等待K线形态和关键位确认。"
+    if state.startswith("WAIT"):
+        return f"{BIAS_LABELS[bias]}方向评分占优但入场触发未完成，等待次级别确认或关键位收盘触发。"
+    if state.endswith("TRIGGERED"):
+        return f"{BIAS_LABELS[bias]}策略已触发，按计划执行并跟踪止盈止损。"
+    return "多空方向不明确，系统等待更清晰的结构信号。"
+
+
 class StrategyGenerator:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
@@ -149,6 +161,9 @@ class StrategyGenerator:
             "strategy_bias_label": BIAS_LABELS.get(bias, bias),
             "strategy_permission": permission,
             "strategy_permission_label": PERMISSION_LABELS.get(permission, permission),
+            "blocking_gates": state_context.get("blocking_gates", []),
+            "next_trigger": state_context.get("next_trigger") or _trigger_summary(state, bias, snapshot),
+            "trigger_summary": _trigger_summary(state, bias, snapshot),
             "long_score": round2(scores.long_score),
             "short_score": round2(scores.short_score),
             "neutral_score": round2(scores.neutral_score),
@@ -456,36 +471,24 @@ class StrategyGenerator:
         if bias not in {"long", "short"}:
             return [
                 {"condition": "方向优势", "current_value": "多空分差不足", "status": "未满足"},
-                {
-                    "condition": "数据质量",
-                    "current_value": round2(scores.data_quality_score),
-                    "status": "部分满足",
-                },
+                {"condition": "数据质量", "current_value": round2(scores.data_quality_score), "status": "部分满足"},
             ]
         gap = abs(scores.long_score - scores.short_score)
+        side_score = scores.long_score if bias == "long" else scores.short_score
+        setup_ready = bool(snapshot.get(f"{bias}_setup_ready"))
+        trigger_ready = bool(snapshot.get(f"{bias}_trigger_ready"))
+        rr = scores.rr_long if bias == "long" else scores.rr_short
+        execution = number(snapshot.get("execution_quality"))
         return [
-            {
-                "condition": "方向分差",
-                "current_value": round2(gap),
-                "status": "满足" if gap >= self.thresholds["dominant_gap"] else "部分满足",
-            },
-            {
-                "condition": "入场触发",
-                "current_value": STATE_LABELS.get(state, state),
-                "status": "满足" if "TRIGGERED" in state else "部分满足",
-            },
-            {
-                "condition": "盘口执行",
-                "current_value": round2(snapshot.get("execution_quality")),
-                "status": "满足" if number(snapshot.get("execution_quality")) >= 60 else "未满足",
-            },
-            {
-                "condition": "事件风险",
-                "current_value": snapshot.get("event_window_status", "normal"),
-                "status": "满足"
-                if snapshot.get("event_risk_score", 0) < self.thresholds["event_wait"]
-                else "未满足",
-            },
+            {"condition": "方向分差", "current_value": round2(gap), "status": "满足" if gap >= self.thresholds["dominant_gap"] else "部分满足"},
+            {"condition": "方向评分", "current_value": f"{round2(side_score)}/需要{self.thresholds['trigger_score']}", "status": "满足" if side_score >= self.thresholds["trigger_score"] else "未满足"},
+            {"condition": "Setup结构", "current_value": "已完成" if setup_ready else "未完成", "status": "满足" if setup_ready else "未满足"},
+            {"condition": "入场触发", "current_value": "已完成" if trigger_ready else "未完成", "status": "满足" if trigger_ready else "未满足"},
+            {"condition": "风险收益比", "current_value": f"{round(rr, 1) if rr else '-'}/需要{self.thresholds['min_rr_trade']}", "status": "满足" if (rr or 0) >= self.thresholds["min_rr_trade"] else "未满足"},
+            {"condition": "次级周期确认", "current_value": STATE_LABELS.get(state, state), "status": "满足" if "TRIGGERED" in state else "未满足"},
+            {"condition": "盘口执行", "current_value": round2(execution), "status": "满足" if execution >= 60 else "未满足"},
+            {"condition": "事件风险", "current_value": snapshot.get("event_window_status", "normal"), "status": "满足" if snapshot.get("event_risk_score", 0) < self.thresholds["event_wait"] else "未满足"},
+            {"condition": "硬门禁", "current_value": "无" if not self._hard_gate_reasons(snapshot) else "触发", "status": "通过" if not self._hard_gate_reasons(snapshot) else "阻断"},
         ]
 
     def _gates(self, snapshot: dict[str, Any], scores: DirectionScores) -> list[dict[str, Any]]:

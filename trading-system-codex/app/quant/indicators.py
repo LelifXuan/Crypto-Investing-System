@@ -107,6 +107,47 @@ def ema_series(values: Sequence[Decimal | float | int], window: int) -> Indicato
     )
 
 
+def vwap_series(
+    highs: Sequence[Decimal | float | int],
+    lows: Sequence[Decimal | float | int],
+    closes: Sequence[Decimal | float | int],
+    volumes: Sequence[Decimal | float | int],
+    window: int = 50,
+) -> IndicatorSeriesResult:
+    high_values = [_to_decimal(item) for item in highs]
+    low_values = [_to_decimal(item) for item in lows]
+    close_values = [_to_decimal(item) for item in closes]
+    volume_values = [_to_decimal(item) for item in volumes]
+    length = min(len(high_values), len(low_values), len(close_values), len(volume_values))
+    typical = [
+        (high_values[index] + low_values[index] + close_values[index]) / Decimal("3")
+        for index in range(length)
+    ]
+    series: list[Decimal | None] = []
+    for index in range(length):
+        if index + 1 < window:
+            series.append(None)
+            continue
+        start = index - window + 1
+        volume_window = volume_values[start : index + 1]
+        volume_sum = sum(volume_window, DECIMAL_ZERO)
+        if volume_sum == 0:
+            series.append(None)
+            continue
+        pv_sum = sum(
+            typical[item_index] * volume_values[item_index]
+            for item_index in range(start, index + 1)
+        )
+        series.append(pv_sum / volume_sum)
+    ready, immature = _lookback_status(length, window, max(2, window // 3))
+    return IndicatorSeriesResult(
+        series=series,
+        warmup=max(2, window // 3),
+        lookback_ready=ready,
+        is_immature=immature,
+    )
+
+
 def rsi_wilder_series(
     values: Sequence[Decimal | float | int], window: int = 14
 ) -> IndicatorSeriesResult:

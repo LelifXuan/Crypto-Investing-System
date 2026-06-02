@@ -4,6 +4,7 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import httpx
 
@@ -51,13 +52,24 @@ class MarketEventTranslationService:
     _provider_backoff_until: dict[str, float] = {}
 
     def __init__(self, *, enabled: bool | None = None, provider: str | None = None) -> None:
+        configured_provider = (provider or settings.market_events_translation_provider or "").lower()
+        has_internal_tencent_key = bool(
+            settings.tencent_tmt_secret_id and settings.tencent_tmt_secret_key
+        )
         portable_forces_local = (
             settings.app_distribution_mode == "portable"
             and not settings.portable_remote_translation_enabled
+            and not (
+                configured_provider in {"tencent_tmt", "tencent", "tmt"}
+                and has_internal_tencent_key
+            )
         )
-        configured_enabled = settings.market_events_translate_enabled and not portable_forces_local
+        configured_enabled = settings.market_events_translate_enabled
         self.enabled = configured_enabled if enabled is None else enabled
-        self.provider = (provider or settings.market_events_translation_provider or "none").lower()
+        default_provider = (
+            "local_glossary" if portable_forces_local else settings.market_events_translation_provider
+        )
+        self.provider = (provider or default_provider or "none").lower()
         self.target_language = settings.market_events_translation_target_lang
         self.source_language = "en"
 
@@ -81,9 +93,7 @@ class MarketEventTranslationService:
     def should_translate_content(cls, title: str | None, summary: str | None) -> bool:
         return cls.looks_like_english(title) or cls.looks_like_english(summary)
 
-    def needs_translation(
-        self, payload: dict | None, title: str | None, summary: str | None
-    ) -> bool:
+    def needs_translation(self, payload: dict | None, title: str | None, summary: str | None) -> bool:
         if not self.enabled or self.provider in {"none", "disabled"}:
             return False
         payload = dict(payload or {})
@@ -95,14 +105,22 @@ class MarketEventTranslationService:
             or self.is_probably_mojibake(translated_summary)
         ):
             return False
+        retry_after = payload.get("translation_retry_after")
+        if retry_after:
+            try:
+                retry_after_ts = datetime.fromisoformat(str(retry_after).replace("Z", "+00:00"))
+                if retry_after_ts.tzinfo is None:
+                    retry_after_ts = retry_after_ts.replace(tzinfo=timezone.utc)
+                if retry_after_ts > datetime.now(timezone.utc):
+                    return False
+            except ValueError:
+                pass
         return self.should_translate_content(title, summary)
 
     def build_initial_payload(
         self, existing_payload: dict | None, title: str | None, summary: str | None
     ) -> dict:
-        status = (
-            "pending" if self.needs_translation(existing_payload, title, summary) else "skipped"
-        )
+        status = "pending" if self.needs_translation(existing_payload, title, summary) else "skipped"
         if not self.enabled:
             status = "disabled"
         bundle = TranslationBundle(
@@ -122,6 +140,7 @@ class MarketEventTranslationService:
         client: httpx.AsyncClient | None = None,
         event_id: str | None = None,
     ) -> TranslationBundle:
+        del event_id
         original_title = self._clean_text(title)
         original_summary = self._clean_text(summary)
         if not self.enabled or self.provider in {"none", "disabled"}:
@@ -142,9 +161,10 @@ class MarketEventTranslationService:
                 provider=self.provider,
                 target_language=self.target_language,
             )
+
         own_client = client is None
         if own_client:
-            client = httpx.AsyncClient(timeout=15)
+            client = httpx.AsyncClient(timeout=settings.market_events_translation_timeout_seconds)
         try:
             texts = [original_title]
             if original_summary:
@@ -173,7 +193,7 @@ class MarketEventTranslationService:
                 translation_status="error",
                 provider=self.provider,
                 target_language=self.target_language,
-                error=str(exc),
+                error=self._sanitize_error(exc),
             )
         finally:
             if own_client and client is not None:
@@ -190,12 +210,16 @@ class MarketEventTranslationService:
         provider_obj = get_translation_provider(self.provider)
         if provider_obj is None:
             return self.local_glossary_translate(cleaned)
-        translated = await provider_obj.translate_many(
-            [cleaned],
-            source_language=self.source_language,
-            target_language=self.target_language,
-            client=client,
-        )
+        try:
+            translated = await provider_obj.translate_many(
+                [cleaned],
+                source_language=self.source_language,
+                target_language=self.target_language,
+                client=client,
+            )
+        except Exception as exc:
+            self._mark_provider_backoff(str(exc))
+            return self.local_glossary_translate(cleaned)
         result = self._clean_text(translated[0] if translated else "")
         return result or self.local_glossary_translate(cleaned)
 
@@ -230,6 +254,14 @@ class MarketEventTranslationService:
 
     def text_cache_key(self, text: str) -> str:
         return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _sanitize_error(exc: Exception) -> str:
+        text = str(exc)
+        for marker in ("SecretId", "SecretKey", "Authorization", "Credential="):
+            if marker in text:
+                return "translation_provider_error"
+        return text[:240]
 
     @staticmethod
     def _clean_text(value: str | None) -> str:

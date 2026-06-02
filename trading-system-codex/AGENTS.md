@@ -90,7 +90,81 @@
 - 所有数据库变更必须有 migration 思维
 - 所有新接口都要更新 OpenAPI 文档
 
-## 六、输出要求
+## 六、验证工作流（强制）
+
+每次修复完成后，必须执行以下验证步骤，**绝对禁止未经验证即汇报完成**：
+
+### 验证流程
+
+1. **语法检查**
+   - JS 文件：`node --check <file>`
+   - Python 文件：`python -c "import py_compile; py_compile.compile(...)"`
+
+2. **数据连通性验证（涉及外部 API 时必须）**
+   - 用 `curl` 或 `python -c "import httpx..."` 直接请求外部 API
+   - 确认返回状态码和数据内容
+   - 测试 direct + proxy 两种路径
+
+3. **运行相关测试**
+   - `python -m pytest tests/` 运行对应模块测试
+   - 确认全部通过，不忽略任何失败
+
+4. **日志验证（涉及后台 worker / 数据抓取时必须）**
+   - 检查 `runtime_dev/source_runtime/runtime/logs/` 下最新日志
+   - 确认有预期中的成功日志 / 错误日志
+   - 没有日志输出 = 可能根本没跑到
+
+5. **缓存/数据文件验证**
+   - 检查缓存文件是否更新（时间戳、内容）
+   - 确认数据字段不是全 null / 空
+
+### 验证清单模板
+
+```
+☐ 语法检查通过（JS + Python）
+☐ 外部 API 连通性测试通过
+☐ 相关 pytest 全部通过
+☐ 日志中有预期输出
+☐ 缓存/数据文件有有效内容
+```
+
+### 工作流集成
+
+每次修改完成后，**必须**执行：
+
+1. `node --check <每个改动的 JS 文件>`
+2. `python -c "import py_compile; py_compile.compile('<file>', doraise=True)"`
+3. `python -m pytest tests/ -q`（或相关测试模块）
+4. **全部通过后再汇报**，不得跳过验证步骤
+
+验证通过标志：
+```
+☐ ruff: All checks passed
+☐ pytest: X passed, 0 failed
+☐ compileall: all compiled
+☐ node --check: all passed
+```
+
+### 错误处理原则
+
+- 修复代码只是手段，**数据正确到达前端**才是目标
+- 如果外部 API 不可达，记录原因并告知用户，而非静默吞掉错误
+- 永远保留缓存降级路径，确保网络故障时不返回空白页
+
+## 七、提交策略
+
+- 每个功能域独立 commit，禁止混入运行时文件（.db, .log, cache）
+- 禁止直接提交 API Key 和 secret
+- Commit message 格式：`[domain] 简述`
+  - `[macro]` — 宏观数据、指标、评分
+  - `[frontend]` — 前端页面、JS、CSS
+  - `[network]` — 代理、数据源、API 接入
+  - `[config]` — 配置文件（catalog, yaml, json）
+  - `[test]` — 测试用例
+  - `[docs]` — 文档
+  - `[infra]` — 构建脚本、CI、工作流
+
+## 八、输出要求
 
 每次完成任务时：
 1. 说明修改了哪些文件

@@ -48,3 +48,5 @@ reports/*.json
 data/trading_system.db*
 data/*.db
 storage_manifest.json
+app/launcher/publish/
+app/launcher/obj/

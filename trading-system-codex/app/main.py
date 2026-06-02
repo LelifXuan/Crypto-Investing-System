@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
@@ -21,13 +22,15 @@ from app.services.bootstrap import seed_local_defaults, warm_local_market_data
 from app.services.network.http_client_factory import init_network
 from app.web.router import web_router
 
+logger = logging.getLogger(__name__)
+
 
 def _should_start_worker(name: str) -> bool:
     profile = settings.worker_profile.lower()
     if profile in {"none", "off", "disabled"}:
         return False
     if profile == "desktop_light":
-        enabled = {"indicator_monitor", "precompute"}
+        enabled = {"indicator_monitor", "precompute", "market_event_translation", "market_events_feed"}
         return name in enabled
     if profile == "desktop_full":
         enabled = {
@@ -107,18 +110,29 @@ async def lifespan(app: FastAPI):
                 ]
             if settings.local_bootstrap_warmup_all_instruments:
                 warmup_instrument_ids = [instrument.instrument_id for instrument in instruments]
-    if _should_start_worker("event_bus"):
-        await _load_worker("event_bus").start()
-    if _should_start_worker("market_stream"):
-        await _load_worker("market_stream").start()
-    if _should_start_worker("indicator_monitor"):
-        await _load_worker("indicator_monitor").start()
-    if _should_start_worker("market_events_feed"):
-        await _load_worker("market_events_feed").start()
-    if _should_start_worker("market_event_translation"):
-        await _load_worker("market_event_translation").start()
-    if _should_start_worker("precompute"):
-        await _load_worker("precompute").start()
+    worker_names = [
+        ("event_bus", "event_bus"),
+        ("market_stream", "market_stream"),
+        ("indicator_monitor", "indicator_monitor"),
+        ("market_events_feed", "market_events_feed"),
+        ("market_event_translation", "market_event_translation"),
+        ("precompute", "precompute"),
+    ]
+    for profile_key, worker_name in worker_names:
+        if _should_start_worker(profile_key):
+            try:
+                await _load_worker(profile_key).start()
+                logger.info("worker %s: started", worker_name)
+            except Exception:
+                logger.exception("worker %s: failed to start", worker_name)
+        else:
+            logger.info("worker %s: skipped (profile=%s)", worker_name, settings.worker_profile)
+    logger.info(
+        "startup complete: profile=%s workers=%d warmup=%s",
+        settings.worker_profile,
+        sum(1 for k, _ in worker_names if _should_start_worker(k)),
+        bool(warmup_instrument_ids),
+    )
     if settings.local_auto_bootstrap_enabled and warmup_instrument_ids:
 
         async def run_startup_warmup(instrument_ids: list[str]) -> None:

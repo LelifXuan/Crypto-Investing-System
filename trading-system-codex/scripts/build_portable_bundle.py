@@ -145,11 +145,6 @@ def main() -> int:
     shutil.copy2(PROJECT_ROOT / "start_portable.sh", PORTABLE_ROOT / "start_portable.sh")
     shutil.copy2(PROJECT_ROOT / "portable.env.example", PORTABLE_ROOT / "portable.env.example")
     shutil.copy2(PROJECT_ROOT / "README_PORTABLE.md", PORTABLE_ROOT / "README_PORTABLE.md")
-    portable_env = PROJECT_ROOT / ".env"
-    if portable_env.exists():
-        runtime_config = PORTABLE_ROOT / "runtime" / "config"
-        runtime_config.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(portable_env, runtime_config / "portable.env")
     shutil.copy2(RUNTIME_LOCK, PORTABLE_ROOT / RUNTIME_LOCK.name)
     shutil.copy2(PORTABLE_REQUIREMENTS, PORTABLE_ROOT / PORTABLE_REQUIREMENTS.name)
     if LAUNCHER_EXE.exists():

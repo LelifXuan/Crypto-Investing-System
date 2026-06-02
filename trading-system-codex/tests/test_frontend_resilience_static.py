@@ -112,11 +112,12 @@ console.log(JSON.stringify(samples));
 
 def test_analysis_uses_canonical_latest_mark_independent_of_timeframe() -> None:
     source = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
-    bundle_mark_index = source.index("let markPayload = bundle.mark || null;")
-    latest_mark_index = source.index("const latestMark = await api.getLatestMark")
-    candles_index = source.index("let allCandles = normalizeOhlcCandles")
-    assert bundle_mark_index < latest_mark_index < candles_index
-    assert "preferLive: true" in source[latest_mark_index : latest_mark_index + 260]
+    assert "let markPayload = latestMark?.mark_price != null ? latestMark : (bundle.mark || null);" in source
+    assert "getAnalysisBundle" in source
+    assert "getLatestMark" in source
+    assert "preferLive: true" in source
+    assert "Promise.all" in source
+    assert "let allCandles = normalizeOhlcCandles" in source
 
 
 def test_event_translation_refresh_is_real_queue_and_no_default_pending_chip() -> None:

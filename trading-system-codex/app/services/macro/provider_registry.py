@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.services.macro.indicator_key_aliases import canonical_provider_key
 from app.services.macro.providers.agushuju import AgushujuMacroProvider
 from app.services.macro.providers.alpha_vantage import AlphaVantageMacroProvider
 from app.services.macro.providers.bea import BeaMacroProvider
@@ -8,8 +9,8 @@ from app.services.macro.providers.china import ChinaMacroProvider
 from app.services.macro.providers.coinmarketcap import CoinMarketCapMacroProvider
 from app.services.macro.providers.fed import FedMacroProvider
 from app.services.macro.providers.fred import FredMacroProvider
-from app.services.macro.providers.ism import IsmMacroProvider
 from app.services.macro.providers.gateio_rwa import GateioRwaMacroProvider
+from app.services.macro.providers.ism import IsmMacroProvider
 from app.services.macro.providers.openexchangerates import OpenExchangeRatesMacroProvider
 from app.services.macro.providers.tiingo import TiingoMacroProvider
 from app.services.macro.providers.treasury import TreasuryMacroProvider
@@ -40,9 +41,12 @@ class MacroProviderRegistry:
         ]
 
     def resolve(self, *, source_provider: str, source_kind: str):
-        for provider in self._providers:
-            if provider.supports(source_provider, source_kind):
-                return provider
+        canonical = canonical_provider_key(source_provider)
+        aliases_to_try = [source_provider, canonical] if canonical != source_provider else [source_provider]
+        for sp in aliases_to_try:
+            for provider in self._providers:
+                if provider.supports(sp, source_kind):
+                    return provider
         return None
 
     def providers(self) -> list:

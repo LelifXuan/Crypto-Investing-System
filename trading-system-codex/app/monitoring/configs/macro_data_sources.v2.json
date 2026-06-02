@@ -112,6 +112,7 @@
         {"id": "sofr", "name_zh": "SOFR", "source": "fred", "series": "SOFR", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
         {"id": "us03m_yield", "name_zh": "美国3个月国债收益率", "source": "fred", "series": "DGS3MO", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
         {"id": "us02y_yield", "alias_old": "us_2y_yield", "name_zh": "美国2年期国债收益率", "source": "fred", "series": "DGS2", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
+        {"id": "us_5y_yield", "name_zh": "美国5年期国债收益率", "source": "fred", "series": "DGS5", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
         {"id": "us10y_yield", "alias_old": "us_10y_yield", "name_zh": "美国10年期国债收益率", "source": "fred", "series": "DGS10", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
         {"id": "us30y_yield", "name_zh": "美国30年期国债收益率", "source": "fred", "series": "DGS30", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
         {"id": "us10y_2y_spread", "alias_old": "us_10y_2y_spread", "name_zh": "10年-2年利差", "source": "derived", "formula": "us10y_yield - us02y_yield", "frequency": "daily", "unit": "pp", "priority": "must", "enabled": true},
@@ -133,7 +134,7 @@
         {"id": "ppi_yoy", "name_zh": "PPI 同比", "source": "fred", "series": "PPIACO", "frequency": "monthly", "unit": "%", "transform": "yoy", "priority": "should", "enabled": true},
         {"id": "breakeven_5y", "name_zh": "5年通胀预期", "source": "fred", "series": "T5YIE", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
         {"id": "breakeven_10y", "name_zh": "10年通胀预期", "source": "fred", "series": "T10YIE", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
-        {"id": "wti_oil", "alias_old": "wti_crude", "name_zh": "WTI 原油", "source": "fred", "series": "DCOILWTICO", "frequency": "daily", "unit": "USD/bbl", "transform": "level", "priority": "should", "enabled": true}
+        {"id": "wti_oil", "alias_old": "wti_crude", "name_zh": "WTI 原油", "source": "gateio_rwa", "symbol": "CL_USDT", "frequency": "daily", "unit": "USD/bbl", "transform": "level", "priority": "should", "enabled": true, "fallback_source": "fred", "fallback_series": "DCOILWTICO"}
       ]
     },
     {
@@ -179,7 +180,8 @@
         {"id": "dxy", "alias_old": "dollar_index", "name_zh": "美元指数代理", "source": "fred", "series": "DTWEXBGS", "frequency": "daily", "unit": "index", "transform": "level", "priority": "must", "enabled": true},
         {"id": "real_yield_10y", "name_zh": "10年实际利率", "source": "fred", "series": "DFII10", "frequency": "daily", "unit": "%", "transform": "level", "priority": "must", "enabled": true},
         {"id": "real_yield_5y", "name_zh": "5年实际利率", "source": "fred", "series": "DFII5", "frequency": "daily", "unit": "%", "transform": "level", "priority": "should", "enabled": true},
-        {"id": "gold", "name_zh": "黄金", "source": "fred", "series": "GOLDAMGBD229NLBM", "frequency": "daily", "unit": "usd_oz", "transform": "level", "priority": "should", "enabled": true, "fallback_source": "twelvedata"}
+        {"id": "gold", "name_zh": "黄金", "source": "fred", "series": "GOLDAMGBD229NLBM", "frequency": "daily", "unit": "usd_oz", "transform": "level", "priority": "should", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "usd_cny", "name_zh": "美元人民币", "source": "openexchangerates", "symbol": "CNY", "frequency": "daily", "unit": "CNY", "transform": "level", "priority": "should", "enabled": true, "fallback_source": "twelvedata", "fallback_symbol": "USD/CNY"}
       ]
     },
     {
@@ -187,9 +189,9 @@
       "name_zh": "跨资产确认",
       "weight": 0.075,
       "indicators": [
-        {"id": "qqq", "name_zh": "纳指100 ETF", "source": "tiingo", "symbol": "QQQ", "frequency": "daily", "unit": "usd", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
-        {"id": "spy", "name_zh": "标普500 ETF", "source": "tiingo", "symbol": "SPY", "frequency": "daily", "unit": "usd", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
-        {"id": "vix", "name_zh": "VIX 波动率指数", "source": "fred", "series": "VIXCLS", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true},
+        {"id": "qqq", "name_zh": "NAS100 纳斯达克100指数", "source": "gateio_rwa", "symbol": "NAS100_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "spy", "name_zh": "US500 标普500指数", "source": "gateio_rwa", "symbol": "SPX500_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "vix", "name_zh": "VIX 波动率指数", "source": "gateio_rwa", "symbol": "VIX_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "fred", "fallback_series": "VIXCLS"},
         {"id": "move_index", "name_zh": "MOVE 债券波动率", "source": "websearch_cache", "frequency": "daily", "unit": "index", "priority": "optional", "enabled": true, "is_scored": false},
         {"id": "hyg", "name_zh": "高收益债 ETF", "source": "tiingo", "symbol": "HYG", "frequency": "daily", "unit": "usd", "priority": "should", "enabled": true, "fallback_source": "twelvedata"},
         {"id": "btc_qqq_corr_20d", "name_zh": "BTC-QQQ 20日相关性", "source": "derived", "formula": "corr(gateio.BTC_USDT.close, qqq.close, 20)", "frequency": "daily", "unit": "corr", "priority": "must", "enabled": true},
