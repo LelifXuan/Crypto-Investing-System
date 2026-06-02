@@ -2,6 +2,27 @@
 
 Windows-first local crypto research and trading management app built with `FastAPI + SQLite + Gate.io`.
 
+## V1.5 Highlights
+
+V1.5 focuses on the **monitoring overview explainability loop**. The terminal
+summary is now produced as a three-row `decision_brief`:
+
+- `市场情况` (market situation)
+- `交易指引` (trading guidance)
+- `风险点 / 失效条件` (risk / invalidation)
+
+Each row carries an `evidence_strength` (0-1) computed from the new
+multi-period conflict matrix in `terminal_summary.decision_brief.source_alignment.matrix`.
+When evidence drops below `0.5` the row tone is demoted to `warning`
+and the summary is prefixed with an explicit uncertainty note.
+
+The decision_brief is persisted to `ComputedDatasetCache` after every
+`MonitoringDashboardService.refresh_bundle` so users can review
+historical decisions through `GET /monitoring/decision-brief/history`.
+
+See `docs/CHANGELOG.md` for the full V1.5 change set and
+`docs/RELEASE.md` for the V1.5 pre-release checklist.
+
 ## Source Of Truth
 
 - Main project directory: this repository root
