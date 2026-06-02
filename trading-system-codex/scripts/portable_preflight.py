@@ -12,10 +12,12 @@ sys.dont_write_bytecode = True
 os.environ.setdefault("APP_DISTRIBUTION_MODE", "portable")
 os.environ.setdefault("APP_BUNDLE_ROOT", str(Path(__file__).resolve().parents[1]))
 PROJECT_ROOT = Path(os.environ["APP_BUNDLE_ROOT"]).resolve()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 from app.core.paths import app_paths, bootstrap_runtime_environment  # noqa: E402
+from portable_modules import parse_requirements  # noqa: E402
 
 
 def _port_open(host: str, port: int) -> bool:
@@ -98,7 +100,16 @@ def main() -> int:
     if " " in str(app_paths.bundle_root):
         warnings.append("bundle path contains spaces; startup scripts must rely on quoted paths")
 
-    for module in ("uvicorn", "fastapi", "sqlalchemy", "pydantic", "jinja2", "httpx", "aiosqlite"):
+    requirements_path = PROJECT_ROOT / "requirements-portable.txt"
+    required_modules: list[str] = []
+    if requirements_path.exists():
+        try:
+            required_modules = parse_requirements(requirements_path)
+        except Exception as exc:  # pragma: no cover
+            errors.append(f"failed to parse requirements-portable.txt: {exc}")
+    else:
+        errors.append(f"requirements-portable.txt missing: {requirements_path}")
+    for module in required_modules:
         if find_spec(module) is None:
             errors.append(f"{module} is not installed in the embedded Python environment")
 
