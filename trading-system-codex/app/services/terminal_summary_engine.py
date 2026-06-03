@@ -770,22 +770,6 @@ class TechnicalSummaryAdapter:
         "adx_direction",
     }
 
-    def _summarize_legacy(
-        self, observations: Sequence[Mapping[str, Any]]
-    ) -> dict[str, ModuleScore]:
-        trend = [item for item in observations if _key(item) in self.TREND_KEYS]
-        momentum = [item for item in observations if _key(item) in self.MOMENTUM_KEYS]
-        volatility = [item for item in observations if _key(item) in self.VOLATILITY_KEYS]
-        return {
-            "technical_trend": self._module(
-                "technical_trend", trend, "趋势输入不足，等待 EMA/VWAP 数据刷新。"
-            ),
-            "momentum_volume": self._module(
-                "momentum_volume", momentum, "动量与成交输入不足，等待 RSI/MACD/OBV 数据刷新。"
-            ),
-            "volatility": self._volatility_module(volatility),
-        }
-
     def _module(
         self, key: str, items: Sequence[Mapping[str, Any]], fallback_reason: str
     ) -> ModuleScore:
@@ -1982,27 +1966,6 @@ def _apply_evidence_strength(row: dict[str, Any], strength: float) -> dict[str, 
     return row
 
 
-def _decision_describe_timeframes(timeframe_snapshots: Mapping[str, Any]) -> str:
-    if not timeframe_snapshots:
-        return ""
-    parts: list[str] = []
-    for timeframe, payload in timeframe_snapshots.items():
-        mapping = _decision_as_mapping(payload)
-        direction = _decision_direction(
-            _decision_first_present(
-                mapping, "bias", "direction", "trend", "final_direction", "state"
-            )
-        )
-        confidence = _decision_first_present(mapping, "confidence", "score")
-        if direction:
-            parts.append(f"{timeframe} 偏{_decision_zh_direction(direction)}")
-        elif confidence is not None:
-            parts.append(f"{timeframe} 评分 {confidence}")
-        else:
-            parts.append(f"{timeframe} 已有快照但方向未明")
-    return "多周期状态：" + "；".join(parts) + "。"
-
-
 # Ordered list of supported timeframes so the per-TF breakdown always reads
 # high → low (1w → 1d → 4h). Anything not in this list is appended in the
 # iteration order to keep the breakdown deterministic.
@@ -2444,29 +2407,6 @@ def _decision_format_futures_pressure(payload: Mapping[str, Any]) -> str:
     return ""
 
 
-def _decision_describe_strategy_levels(strategy: Mapping[str, Any]) -> str:
-    if not strategy:
-        return ""
-    levels = _decision_as_mapping(strategy.get("levels")) or strategy
-    entry = _decision_first_present(
-        levels, "entry", "entry_price", "entry_zone"
-    )
-    stop = _decision_first_present(
-        levels, "stop", "stop_loss", "invalid_price", "invalidation_price"
-    )
-    take_profit = _decision_first_present(
-        levels, "take_profit", "tp", "target", "targets"
-    )
-    parts: list[str] = []
-    if entry is not None:
-        parts.append(f"入场参考={_decision_text(entry)}")
-    if stop is not None:
-        parts.append(f"失效/止损={_decision_text(stop)}")
-    if take_profit is not None:
-        parts.append(f"止盈/目标={_decision_text(take_profit)}")
-    return "策略价位：" + "，".join(parts) + "。" if parts else ""
-
-
 def _decision_build_market_row(
     *,
     base_summary: Mapping[str, Any],
@@ -2599,31 +2539,6 @@ def _decision_build_mtf_breakdown_row(
         row["source_refs"], alignment.get("matrix") or [], {}
     )
     return _apply_evidence_strength(row, strength)
-
-
-def _decision_build_trading_row(
-    *,
-    base_summary: Mapping[str, Any],
-    decision: Mapping[str, Any],
-    final_decision: Mapping[str, Any],
-    alignment: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Dormant. T09 removed the ``trading_guidance`` row from the
-    decision brief because it re-rendered the strategy page in the
-    overview and violated the "summary layer, not recomputation"
-    principle. This function is kept for backward compatibility with
-    tests that import it directly; ``_build_decision_brief`` no longer
-    calls it.
-    """
-
-    return {
-        "key": "trading_guidance_removed_v1_5_2",
-        "title": "交易指引（已下线）",
-        "tone": "neutral",
-        "summary": "交易指引已迁移到 AI 策略页 / 监控总览不再重复呈现。",
-        "bullets": [],
-        "source_refs": ["terminal_summary.removed"],
-    }
 
 
 def _decision_build_key_risk_row(
@@ -2760,27 +2675,3 @@ def _decision_pick_critical_invalidation(
         return None
     candidates.sort(key=lambda pair: pair[0])
     return candidates[0][1]
-
-
-def _decision_build_risk_row(
-    *,
-    base_summary: Mapping[str, Any],
-    decision: Mapping[str, Any],
-    chip: Mapping[str, Any],
-    divergence: Mapping[str, Any],
-    structure: Mapping[str, Any],
-    alignment: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Dormant. T09 renamed the public row to ``key_risk``. Kept so any
-    external caller that imports the symbol still works, but the
-    overview no longer uses it.
-    """
-
-    return _decision_build_key_risk_row(
-        base_summary=base_summary,
-        decision=decision,
-        chip=chip,
-        divergence=divergence,
-        structure=structure,
-        alignment=alignment,
-    )
