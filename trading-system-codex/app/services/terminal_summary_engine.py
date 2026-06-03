@@ -1985,6 +1985,92 @@ _SOURCE_REF_TO_MATRIX_KEY: dict[str, str] = {
     "analysis.1M": "1w_trend",
 }
 
+
+# V1.5.5 ⑤: source-ref chips now carry a Chinese label and the
+# target page id so the frontend can render them as clickable
+# links via the V1.5.4 D1 SPA router instead of plain English
+# strings. The ``terminal_summary`` self-reference renders as a
+# no-op link (target the monitoring page itself).
+SOURCE_REF_META: dict[str, dict[str, str]] = {
+    "terminal_summary": {"label": "全局摘要", "page": "monitoring-overview"},
+    "alerts.chip_structure": {"label": "筹码结构", "page": "alert-center"},
+    "alerts.divergence_summary": {"label": "背离摘要", "page": "alert-center"},
+    "alerts.final_decision": {"label": "策略结论", "page": "ai-strategy"},
+    "strategy.decision": {"label": "策略决策", "page": "ai-strategy"},
+    "strategy.gates": {"label": "策略门控", "page": "ai-strategy"},
+    "strategy.futures_risk": {"label": "期货保证金", "page": "ai-strategy"},
+    "structure.snapshot": {"label": "形态结构", "page": "market-structure"},
+    "structure_bundle": {"label": "形态结构", "page": "market-structure"},
+    "analysis.1w": {"label": "1w 周线", "page": "market-analysis"},
+    "analysis.1d": {"label": "1d 日线", "page": "market-analysis"},
+    "analysis.4h": {"label": "4h 4小时", "page": "market-analysis"},
+    "analysis.30d": {"label": "30d 月度", "page": "market-analysis"},
+    "analysis.1M": {"label": "1M 月度", "page": "market-analysis"},
+}
+
+
+def _source_ref_meta(ref: str) -> dict[str, str] | None:
+    """Resolve a backend source-ref key to ``{label, page, key}``
+    for the frontend. Falls back to a stripped, no-link chip if
+    the key is unrecognised."""
+    if not isinstance(ref, str) or not ref:
+        return None
+    # missing:* is a sentinel for source_alignment.missing_sources.
+    # Surface as a '数据未刷新' chip pointing at the corresponding
+    # page so the user can click through to investigate.
+    if ref.startswith("missing:"):
+        inner = ref[len("missing:") :]
+        meta = SOURCE_REF_META.get(inner)
+        if meta is None:
+            # For bundle-level missing refs, route to the page that
+            # owns the bundle.
+            page = "monitoring-overview"
+            if "structure" in inner:
+                page = "market-structure"
+            elif "strategy" in inner:
+                page = "ai-strategy"
+            elif "analysis" in inner:
+                page = "market-analysis"
+            return {
+                "key": ref,
+                "label": "数据未刷新",
+                "page": page,
+                "is_missing": "true",
+            }
+        return {
+            "key": ref,
+            "label": f"{meta['label']}（未刷新）",
+            "page": meta["page"],
+            "is_missing": "true",
+        }
+    meta = SOURCE_REF_META.get(ref)
+    if meta is None:
+        # Last-resort: render the ref string as-is, no link.
+        return {"key": ref, "label": ref, "page": "", "is_missing": "false"}
+    return {
+        "key": ref,
+        "label": meta["label"],
+        "page": meta["page"],
+        "is_missing": "false",
+    }
+
+
+def _source_refs_meta(refs: Sequence[str]) -> list[dict[str, str]]:
+    """Batch version used by row builders. Drops None entries and
+    de-dupes by ``key`` so the same source never appears twice in
+    a row's chip strip."""
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    for ref in refs or []:
+        meta = _source_ref_meta(ref)
+        if meta is None:
+            continue
+        if meta["key"] in seen:
+            continue
+        seen.add(meta["key"])
+        out.append(meta)
+    return out
+
 EVIDENCE_STRENGTH_THRESHOLD = 0.5
 
 
@@ -2562,6 +2648,7 @@ def _decision_build_market_row(
         "summary": summary,
         "bullets": _decision_dedupe_text(bullets, limit=6),
         "source_refs": dedup_sources,
+        "source_refs_meta": _source_refs_meta(dedup_sources),
     }
     strength = _row_evidence_strength(
         dedup_sources, alignment.get("matrix") or [], base_summary
@@ -2606,6 +2693,7 @@ def _decision_build_mtf_breakdown_row(
         ),
         "bullets": [f"具体方向：{breakdown}。"],
         "source_refs": _decision_dedupe_text(sources, limit=8),
+        "source_refs_meta": _source_refs_meta(_decision_dedupe_text(sources, limit=8)),
     }
     strength = _row_evidence_strength(
         row["source_refs"], alignment.get("matrix") or [], {}
@@ -2713,6 +2801,7 @@ def _decision_build_key_risk_row(
         "summary": summary,
         "bullets": _decision_dedupe_text(bullets, limit=4),
         "source_refs": dedup_sources,
+        "source_refs_meta": _source_refs_meta(dedup_sources),
     }
     strength = _row_evidence_strength(
         dedup_sources, alignment.get("matrix") or [], base_summary

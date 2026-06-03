@@ -2245,6 +2245,23 @@ select {
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+
+a.status-chip {
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+a.status-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+a.status-chip:focus-visible {
+  outline: 2px solid rgba(94, 234, 212, 0.7);
+  outline-offset: 2px;
 }
 
 .alert-pill {

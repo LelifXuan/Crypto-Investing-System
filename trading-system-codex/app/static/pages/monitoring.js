@@ -724,6 +724,12 @@ function getTerminalDecisionRows(summary) {
     summary: String(row.summary || ""),
     bullets: Array.isArray(row.bullets) ? row.bullets : [],
     source_refs: Array.isArray(row.source_refs) ? row.source_refs : [],
+    // V1.5.5 ⑤: source_refs_meta carries the Chinese label and
+    // target page so the chip can be a clickable link instead of
+    // a raw English key. Older cached bundles that pre-date this
+    // field still have just the raw `source_refs` strings, so the
+    // renderer falls back gracefully below.
+    source_refs_meta: Array.isArray(row.source_refs_meta) ? row.source_refs_meta : [],
   }));
 }
 
@@ -733,10 +739,25 @@ function renderTerminalDecisionRow(row) {
   const toneClass = `terminal-brief-tone-${["bullish", "bearish", "warning", "neutral"].includes(tone) ? tone : "neutral"}`;
   const meta = signalMeta(row.tone || "neutral");
   const bullets = Array.isArray(row.bullets) ? row.bullets.filter(Boolean) : [];
-  const sources = Array.isArray(row.source_refs) ? row.source_refs.filter(Boolean) : [];
-  const sourceChips = sources.length
-    ? sources
-        .map((ref) => chip(String(ref), "chip-neutral"))
+  // V1.5.5 ⑤: render source_refs as <a> chips. The backend now
+  // supplies source_refs_meta with {label, page, is_missing} for
+  // each ref; the click handler delegates to the V1.5.4 D1 SPA
+  // router so the navigation stays in-process. Refs without a
+  // page (legacy or unknown keys) fall back to a non-clickable
+  // chip so the user still sees the provenance.
+  const refsMeta = Array.isArray(row.source_refs_meta) ? row.source_refs_meta : [];
+  const sourceChips = refsMeta.length
+    ? refsMeta
+        .map((item) => {
+          const label = escapeHtml(String(item.label || item.key || ""));
+          const isMissing = item.is_missing === "true";
+          const chipClass = isMissing ? "chip-warning" : "chip-neutral";
+          const targetPage = item.page;
+          if (!targetPage) {
+            return `<span class="status-chip ${chipClass}" data-source-ref="${escapeHtml(String(item.key || ""))}">${label}</span>`;
+          }
+          return `<a class="status-chip ${chipClass}" data-page-link="${escapeHtml(targetPage)}" data-source-ref="${escapeHtml(String(item.key || ""))}" href="#${escapeHtml(targetPage)}">${label}</a>`;
+        })
         .join("")
     : "";
   return `
