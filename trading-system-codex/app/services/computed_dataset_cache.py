@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -25,6 +26,19 @@ from app.services.cache_registry import (
 )
 
 UTC = timezone.utc
+
+
+# V1.5.4 C1: in-process cache for indicator series.
+# The full indicator series (~30 floats per indicator x 240 candles) is
+# requested by IndicatorMatrixService.get_matrix, the analysis bundle
+# builder, the snapshot builder and the divergence service. The DB-backed
+# ComputedDatasetCache returns the same data within one process but
+# still pays the JSON-decoder cost on every read. A tiny in-process
+# cache keyed on the cache_key string collapses concurrent and
+# sequential same-key reads into a single fetch.
+_INDICATOR_SERIES_CACHE: dict[str, dict] = {}
+_INDICATOR_SERIES_LOCKS: dict[str, asyncio.Lock] = {}
+_INDICATOR_SERIES_LOCKS_GUARD = asyncio.Lock()
 
 
 def _to_decimal_list(values: list) -> list[Decimal]:
@@ -155,29 +169,52 @@ class ComputedDatasetCacheService:
         cache_key = indicator_series_cache_key(
             instrument_id, timeframe, indicator_group, source_data_ts, CACHE_SOURCE_VERSION
         )
-        cached = await self.repository.get_computed_dataset_cache(cache_key)
-        if cached is not None and cached.payload_json and cached.cache_state in {"fresh", "ready"}:
-            return cached.payload_json
 
-        started = time.perf_counter()
-        payload = self._build_indicator_series(candles, indicator_group)
-        cost_ms = int((time.perf_counter() - started) * 1000)
-        await self.repository.upsert_computed_dataset_cache(
-            cache_key=cache_key,
-            dataset_type=f"indicator_series_{indicator_group}",
-            instrument_id=instrument_id,
-            timeframe=timeframe,
-            source_data_ts=source_data_ts,
-            payload_json=jsonable_encoder(payload),
-            cache_state="fresh",
-            source_version=CACHE_SOURCE_VERSION,
-            calculated_at=source_data_ts if source_data_ts else datetime.now(timezone.utc),
-            expires_at=expires_at_for_dataset(f"indicator_series_{indicator_group}"),
-            cost_ms=cost_ms,
-            meta_json={"points": len(candles)},
-        )
-        payload["_cache"] = {"cost_ms": cost_ms, "cache_key": cache_key}
-        return payload
+        # V1.5.4 C1: in-process cache layer.
+        # The cache_key already includes the candle timestamp, so a new
+        # candle auto-invalidates the in-process entry. We only share
+        # the result across concurrent reads in the same worker, not
+        # across processes - the DB layer is the source of truth.
+        if cache_key in _INDICATOR_SERIES_CACHE:
+            return _INDICATOR_SERIES_CACHE[cache_key]
+        async with _INDICATOR_SERIES_LOCKS_GUARD:
+            lock = _INDICATOR_SERIES_LOCKS.get(cache_key)
+            if lock is None:
+                lock = asyncio.Lock()
+                _INDICATOR_SERIES_LOCKS[cache_key] = lock
+        async with lock:
+            # Re-check after acquiring the lock.
+            if cache_key in _INDICATOR_SERIES_CACHE:
+                return _INDICATOR_SERIES_CACHE[cache_key]
+            cached = await self.repository.get_computed_dataset_cache(cache_key)
+            if (
+                cached is not None
+                and cached.payload_json
+                and cached.cache_state in {"fresh", "ready"}
+            ):
+                _INDICATOR_SERIES_CACHE[cache_key] = cached.payload_json
+                return cached.payload_json
+
+            started = time.perf_counter()
+            payload = self._build_indicator_series(candles, indicator_group)
+            cost_ms = int((time.perf_counter() - started) * 1000)
+            await self.repository.upsert_computed_dataset_cache(
+                cache_key=cache_key,
+                dataset_type=f"indicator_series_{indicator_group}",
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                source_data_ts=source_data_ts,
+                payload_json=jsonable_encoder(payload),
+                cache_state="fresh",
+                source_version=CACHE_SOURCE_VERSION,
+                calculated_at=source_data_ts if source_data_ts else datetime.now(timezone.utc),
+                expires_at=expires_at_for_dataset(f"indicator_series_{indicator_group}"),
+                cost_ms=cost_ms,
+                meta_json={"points": len(candles)},
+            )
+            payload["_cache"] = {"cost_ms": cost_ms, "cache_key": cache_key}
+            _INDICATOR_SERIES_CACHE[cache_key] = payload
+            return payload
 
     def _build_indicator_series(self, candles: list, indicator_group: str) -> dict:
         closes = _to_decimal_list([_field(item, "close") for item in candles])
