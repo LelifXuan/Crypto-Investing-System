@@ -16,6 +16,7 @@ const pageModules = {
 
 let activeController = null;
 let activePageId = null;
+let spaNavigationInFlight = false;
 
 function renderFatalPageError(title, detail, code) {
   const root = document.getElementById("page-root");
@@ -108,6 +109,90 @@ async function boot() {
   }
 }
 
+// V1.5.4 D1: progressive SPA routing.
+// Intercept clicks on [data-page-link] so that switching tabs does
+// NOT trigger a full page reload (which would re-download the
+// 116 KB stylesheet, the main.js module, and the page module).
+// The backend /<page>-page routes still work as deep-link fallbacks
+// for browser refresh, deep linking, and crawler indexing.
+const PAGE_TITLES = {
+  "macro-calendar": "宏观日历",
+  "market-events": "市场事件",
+  "monitoring-overview": "监控总览",
+  "market-structure": "形态结构",
+  "market-analysis": "技术指标",
+  "alert-center": "告警中心",
+  "knowledge-base": "知识百科",
+  "ashare-etf": "A股ETF",
+  "ai-strategy": "AI策略",
+};
+
+function ensureStylesheetForPage(pageId) {
+  if (pageId !== "ai-strategy") return;
+  const href = `/static/styles-v15.css${assetVersion}`;
+  const existing = document.querySelector(`link[rel="stylesheet"][href*="styles-v15"]`);
+  if (existing) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+function setDocumentTitleForPage(pageId) {
+  const title = PAGE_TITLES[pageId] || "Market Research Terminal";
+  const heading = document.querySelector(".shell-header h1");
+  if (heading) heading.textContent = title;
+  document.title = `${title} | Market Research Terminal`;
+  document.body.dataset.pageTitle = title;
+}
+
+function installSpaRouter() {
+  if (!window.history || !window.history.pushState) return;
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented) return;
+    if (event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("[data-page-link]");
+    if (!link) return;
+    const pageId = link.getAttribute("data-page-link");
+    if (!pageId || !pageModules[pageId]) return;
+    if (activePageId === pageId) {
+      event.preventDefault();
+      return;
+    }
+    if (spaNavigationInFlight) {
+      event.preventDefault();
+      return;
+    }
+    const href = link.getAttribute("href") || `/${pageId}-page`;
+    event.preventDefault();
+    spaNavigationInFlight = true;
+    window.history.pushState({ pageId, href }, "", href);
+    document.body.dataset.page = pageId;
+    ensureStylesheetForPage(pageId);
+    setDocumentTitleForPage(pageId);
+    boot().finally(() => {
+      spaNavigationInFlight = false;
+    });
+  });
+
+  window.addEventListener("popstate", (event) => {
+    const state = event.state;
+    const pageId = (state && state.pageId) || document.body.dataset.page;
+    if (!pageId || !pageModules[pageId]) return;
+    if (pageId === activePageId) return;
+    spaNavigationInFlight = true;
+    document.body.dataset.page = pageId;
+    ensureStylesheetForPage(pageId);
+    setDocumentTitleForPage(pageId);
+    boot().finally(() => {
+      spaNavigationInFlight = false;
+    });
+  });
+}
+
 document.addEventListener("visibilitychange", async () => {
   if (!activeController || !activePageId) return;
   if (document.hidden) {
@@ -123,4 +208,5 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
+installSpaRouter();
 void boot();
