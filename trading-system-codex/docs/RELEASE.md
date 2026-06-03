@@ -86,7 +86,8 @@ V1.5 在 V1.4.1 Portable 基础上新增监控总览页 `decision_brief`、
 
 ## V1.5.1 发布前验收清单（long/short reasoning 修复）
 
-V1.5.1 在 V1.5 基础上完成 long/short reasoning 审查的 7 项修复：
+V1.5.1 在 V1.5 基础上完成 long/short reasoning 审查的 7 项修复 + V1.5.2
+监控总览 4 项问题修复：
 
 - [P0] `normalize_direction_metrics(score, *, scale)` 强制显式声明 signed / legacy_0_100
   - [ ] 0 / +20 / -20 / +40 / -40 / +80 / +100 / -100 八个边界用例通过
@@ -119,18 +120,81 @@ V1.5.1 在 V1.5 基础上完成 long/short reasoning 审查的 7 项修复：
   - [ ] `get_bundle("eth-usdt-perp", "4h")` 返回的 bundle 是 eth/4h 而非 btc/1d
   - [ ] 空字符串入参仍 fallback 到 btc/1d 默认（API 层 `Query(default=...)` 行为不变）
 
+### V1.5.2 监控总览页修复（用户实地反馈）
+
+V1.5.2 在 V1.5.1 基础上修复 4 项监控总览页问题（用户用 playwright
+实地核查发现）：
+
+- [V1.5.2-T08] 结构模块从 "待确认" 占位升级到真实数据
+  - [ ] `MonitoringDashboardService._load_cached_structure_payload` 优先读
+    `structure_bundle_cache_key` 的结构页 cache
+  - [ ] fallback 读 `strategy_bundle.decision.structure_overall`
+  - [ ] 最终 fallback 用 `alerts_bundle.chip_structure`（带"证据不足（仅 K 线涨跌 proxy）" 标签）
+  - [ ] `terminal_summary_engine.StructureSummaryAdapter` 把结构 payload
+    翻译成 ModuleScore（regime/bias → score/impact/reason）
+  - [ ] `module_scores.structure.state` 不再永远是"待确认"——若 3 个 cache
+    全部为空才回到占位文案
+
+- [V1.5.2-T09] 总览页 row 重构成"汇总层"
+  - [ ] 删除 `trading_guidance` 行（不再重渲 strategy page 的 next_trigger /
+    gates / plan levels / no_trade_reasons / permission）
+  - [ ] 重命名 `risk_invalidation` → `key_risk`，只显示数据缺口 + 单条关键
+    失效条件（从 chip / structure / divergence 中选优先级最高的 1 条）
+  - [ ] 新增 `mtf_breakdown` 行——只在多周期方向冲突时出现，列出
+    "1w 偏多(score 70) / 1d 偏空(score 35) / 4h 偏空(score 28)"
+  - [ ] `market_situation` 的 headline 在多周期冲突时直接显示
+    "高周期与短周期方向冲突：<breakdown>。请按你的交易周期判断。"
+
+- [V1.5.2-T10] 期货保证金矛盾修复
+  - [ ] `_decision_should_show_futures_pressure(decision)` 只对 actionable
+    状态返回 True（*_TRIGGERED / *_BIAS / SETUP_DETECTED）
+  - [ ] 观测页 risk row 在 OBSERVE / NO_EDGE / WAIT_* / EVENT_WAIT /
+    RISK_OFF / INVALID_PLAN_LEVELS / 全部 terminal 状态下隐藏
+    期货保证金 bullet
+  - [ ] 策略页的 GateDiagnostic 行为不变——用户仍能在 strategy page
+    看到仓位建议
+
+- [V1.5.2-T11] 真正调用 refresh
+  - [ ] `MonitoringDashboardService.get_bundle` 在 `allow_refresh=True`
+    且 cache 缺失 / stale / error / updating / 实质为空时真正调用
+    `refresh_bundle`，不再只 log "refresh is needed"
+  - [ ] refresh 失败时 fallback 到 stale cache（带 warning log）
+
+- [V1.5.2-T08 follow-up] primary_sources 真实反映数据来源
+  - [ ] `source_alignment.primary_sources` 不再硬编码 `alerts_bundle` /
+    `strategy_bundle` / `structure_bundle`
+  - [ ] `alerts_bundle` 仅在 chip 或 divergence 非空时入 primary
+  - [ ] `strategy_bundle` 仅在 strategy_decision 非空时入 primary
+  - [ ] `structure_bundle` 仅在 `structure.source == "structure_bundle"`
+    （即非 fallback 路径）时入 primary，否则落 missing_sources
+
 ### V1.5.1 验证命令
 
 - [ ] `python -m ruff check .` All checks passed
 - [ ] `python -m compileall -q app tests scripts` 0 error
 - [ ] `python -c "import app.main"` 成功
 - [ ] `python -m pytest -q tests/test_direction_score_scale.py tests/test_chip_scale_contract.py tests/test_terminal_trigger_format.py tests/test_terminal_gate_format.py tests/test_snapshot_feature_sources.py tests/test_snapshot_lower_tf.py tests/test_futures_risk.py tests/test_monitoring_dashboard_respects_caller.py` 全绿
-- [ ] `python -m pytest -q` 全量 422 passed / 5 skipped / 0 failed
+- [ ] `python -m pytest -q` 全量 492 passed / 5 skipped / 0 failed
 - [ ] `python scripts/cross_check_and_retry.py` 9/9 PASS（沿用 V1.5 入口）
 - [ ] `node --check app/static/**/*.js` 0 error（监控总览页 JS 未改）
+
+### V1.5.2 实地核查命令（playwright / webfetch）
+
+- [ ] `GET /api/v1/monitoring/dashboard?instrument_id=btc-usdt-perp&timeframe=1d&force=true`
+  - [ ] `module_scores.structure.state` ∈ {low_confidence, 待确认, 趋势结构,
+    区间结构, 结构切换, 形态待确认}（不再永远是 待确认）
+  - [ ] `decision_brief.rows[*].key` ⊆ {market_situation, mtf_breakdown, key_risk}
+    且不含 `trading_guidance` / `risk_invalidation`
+  - [ ] 全文不出现 "30.8" / "减半仓位" / "one-ATR" / "合约保证金压力" 字符串
+  - [ ] 全文不出现 "策略状态：OBSERVE" + "建议减半仓位" 同时存在
+  - [ ] 出现 "证据不足" / "proxy" 标签（仅当 structure pipeline 未刷新时）
 
 ### 已知限制
 
 - `chip_structure.direction_score` 仍是 K 线涨跌 proxy，完整 microstructure (OI / CVD / orderbook) 留待后续 V1.5.x 重写。
 - 监控总览页不重算方向，所有方向分均来自 strategy_bundle / alerts / final_decision 三个上游。
-- `MarketRepository` 在测试中通过 fake 注入；snapshot 真实环境仍走 `get_page_snapshot_cache`，DB schema 未变。
+- 当 structure / strategy bundle 都没有 cache 时，V1.5.2-T08 fallback 用
+  alerts.chip_structure 占位，标 "证据不足（仅 K 线涨跌 proxy）"；
+  用户应理解为"结构页 pipeline 未跑出快照，暂用筹码页代理"。
+- `MarketRepository` 在测试中通过 fake 注入；snapshot 真实环境仍走
+  `get_page_snapshot_cache`，DB schema 未变。
