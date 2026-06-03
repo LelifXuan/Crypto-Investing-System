@@ -16,8 +16,9 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from app.core.paths import app_paths, bootstrap_runtime_environment  # noqa: E402
 from portable_modules import parse_requirements  # noqa: E402
+
+from app.core.paths import app_paths, bootstrap_runtime_environment  # noqa: E402
 
 
 def _port_open(host: str, port: int) -> bool:

@@ -19,10 +19,6 @@ def _run_parse_requirements(requirements_text: str) -> list[str]:
     the subprocess cannot accidentally fall back to a different file.
     """
 
-    import argparse
-    import json
-    import sys as _sys
-    import tempfile
 
     input_path = PROJECT_ROOT / "dist" / ".test_requirements_input.txt"
     input_path.parent.mkdir(parents=True, exist_ok=True)
