@@ -79,11 +79,31 @@ class MonitoringDashboardService:
             or status in {"missing", "stale", "error", "updating"}
             or self._is_effectively_empty(payload)
         ):
+            # T11 audit fix: the previous code path logged that a refresh
+            # was needed but never actually called refresh_bundle, so the
+            # caller was stuck with the stale payload. We now invoke the
+            # refresh synchronously and rebuild the bundle from the fresh
+            # cache. The lock guard prevents infinite recursion (refresh
+            # itself does not flip the caller's allow_refresh back to
+            # True for this code path because we only re-enter the
+            # read-only get_bundle on subsequent calls).
             logger.info(
-                "monitoring dashboard refresh is needed for %s/%s; returning cached shell with is_stale=true",
+                "monitoring dashboard refresh triggered for %s/%s (status=%s)",
                 instrument_id,
                 timeframe,
+                status,
             )
+            try:
+                fresh = await self.refresh_bundle(instrument_id, timeframe)
+                return fresh
+            except Exception as exc:
+                logger.warning(
+                    "monitoring dashboard refresh failed for %s/%s: %s; "
+                    "falling back to stale cache",
+                    instrument_id,
+                    timeframe,
+                    exc,
+                )
             macro_overview = payload.get("macro_overview")
         else:
             macro_overview = payload.get("macro_overview")
