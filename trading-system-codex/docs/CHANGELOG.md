@@ -52,7 +52,7 @@
 
 ## V1.4.1 (2026-04)
 
-- 详见 `README V1.4.1 Portable.md` 历史版本与 `archive_old/...` 快照。
+- 详见 git history。
 - 重点：宏观数据可靠性、监控总览解释性、工作流稳定性。
 
 ## V1.4
@@ -69,4 +69,8 @@
 
 ## 0.3.0 (历史内部版本)
 
-- 详见 `docs/archive/changelog-legacy.md`
+- 单用户本地模式 + 可选 auth bypass。
+- 本地 localhost 中间件。
+- 改进 indicator dashboard 与事件流 UI。
+- 导入模板下载与 GitHub release 打包。
+

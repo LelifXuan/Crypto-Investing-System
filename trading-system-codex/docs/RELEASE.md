@@ -49,7 +49,7 @@ python scripts/tasks.py portable-preflight
 ## 不应进入发布包的内容
 
 - `runtime_dev/`
-- `archive_old/`
+- `docs/archive/`（V1.5.x 已清理；该目录在源码树中已不存在）
 - `TradingSystemPortable/` 本地镜像
 - `.env`、secret、key、pem
 - SQLite 数据库、日志、缓存、pytest/ruff 缓存
