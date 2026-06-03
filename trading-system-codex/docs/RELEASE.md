@@ -286,6 +286,74 @@ V1.5.3 在 V1.5.2 基础上完成两件事：
 - 全部 D 组（SPA / ETag / DecisionPipeline / ServiceWorker）— V1.5.4
   范围。
 
+## V1.5.4 发布前验收清单（结构性优化）
+
+V1.5.4 在 V1.5.3 基础上完成 5 项数据管道重构 + 1 项前端 SPA 路由：
+
+### 数据管道
+
+- [C1] `ComputedDatasetCacheService.get_or_build_indicator_series`
+  加 in-process cache（key 复用 `indicator_series_cache_key`，
+  已含 candle ts 自动失效）。同进程并发读去重，1-2 指标构建。
+- [C3] 新增 `MarketRepository.list_latest_observations_by_key`，
+  用 SQL window function 让 DB 一次返回每键 1 行，替换
+  `list_indicator_observations(limit=5000) + Python dedupe`。
+  监控冷读 -40-120 ms。
+- [C5] 监控 dashboard 路径把 Pydantic `MonitoringDashboardRead`
+  验证结果存到 `SharedQueryCache`，key 包含 `data_ts`。
+  60s 内同 `(inst, tf, data_ts)` 命中缓存免验证。
+- [C7] 新增 `MarketRepository.list_candles_for_instruments`，
+  1 次 SQL 取 5 个 cross-asset 币的最近 2 根 K 线，替换
+  5 次 `list_candles` 串行循环。
+- [C12] `upsert_computed_dataset_cache` 改用 dialect-native
+  `INSERT ... ON CONFLICT (cache_key) DO UPDATE`（Postgres
+  / SQLite 各走对应 dialect），1 RTT 替换 select-then-upsert 2 RTT。
+
+### 前端
+
+- [C11] `monitoring.js` 加 `applyMonitoringDiff()`，首次构建
+  stable shell 5 容器并缓存引用，refresh 只换 leaf innerHTML，
+  不再全树重渲。30-60 ms / refresh。
+- [D1] `main.js` 加 progressive SPA router。点击
+  `[data-page-link]` 拦截 + pushState + 重跑 boot()，
+  避免 116 KB styles.css + main.js 重新下载。
+  后端 `/<page>-page` 路由仍工作作为 deep-link 回退。
+  Cmd/Ctrl/Shift/Alt+click 不拦截。
+
+### V1.5.4 验证命令
+
+- [ ] `python -m ruff check .` All checks passed
+- [ ] `python -m compileall -q app tests scripts` 0 error
+- [ ] `python -c "import app.main"` 成功
+- [ ] `python -m pytest -q` 全量 **493 passed / 5 skipped / 0 failed**
+- [ ] `node --check app/static/**/*.js` 0 error
+
+### V1.5.4 实地核查（webfetch + playwright）
+
+- [ ] `curl -s http://127.0.0.1:8002/api/v1/monitoring/dashboard?instrument_id=btc-usdt-perp&timeframe=1d | jq '.terminal_summary.decision_brief.rows[].key'`
+  第二次调用应该 < 50ms（hit C5 缓存）
+- [ ] `curl -I http://127.0.0.1:8002/static/main.js`
+  `Cache-Control: public, max-age=3600, must-revalidate`
+- [ ] playwright: 连续点击 5 个 tab，每个 tab 切换 < 100ms
+  （SPA 路由命中 main.js 已加载，跳过 HTML re-parse）
+
+### 已知限制 / 延后到 V1.5.5
+
+- C4 (cache key 命名空间) — 风险低、收益低，留待下次 SQL 重构
+  一起做。
+- C6 (minify JS+CSS) — 需要引入 esbuild + lightningcss 作为
+  build step；当前静态资源已被 B1 缓存头优化，短期内
+  minify 的收益 < 100KB。
+- C8 (alerts 状态切换) — 已在 V1.5.3 B12 落地。
+- C9 (structure SVG 持久化) — 需要重写 structure.js 重渲染逻辑，
+  触及面广，留待后续。
+- C10 (analysis chart.update 复用) — 同上，触及面广。
+- D2 (ETag / 304) — 等 ServiceWorker / 反代层统一做。
+- D3 (DecisionPipeline 类型化) — 大型重构，留 V1.5.5 重做。
+- D6 (ServiceWorker 离线) — 等 SPA 路由稳定后做。
+- A13 (snapshot flat-feature 字段) — 需要 strategy_generator
+  逐字段验证，留 V1.5.5。
+
 ### 已知限制
 
 - `chip_structure.direction_score` 仍是 K 线涨跌 proxy，完整 microstructure (OI / CVD / orderbook) 留待后续 V1.5.x 重写。
