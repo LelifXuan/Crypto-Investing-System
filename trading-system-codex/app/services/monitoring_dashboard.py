@@ -587,20 +587,49 @@ class MonitoringDashboardService:
         if cache is not None:
             payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
             if payload:
-                return {
-                    "score": payload.get("score") or payload.get("bias_score"),
-                    "state": payload.get("state") or payload.get("regime"),
-                    "label": payload.get("label") or payload.get("regime_label"),
-                    "reason": payload.get("reason")
-                    or payload.get("summary")
-                    or payload.get("regime_label"),
-                    "watch_points": list(payload.get("watch_points") or []),
-                    "confidence": payload.get("confidence"),
-                    "regime": payload.get("regime"),
-                    "bias": payload.get("bias") or payload.get("overall_bias"),
-                    "mode": payload.get("mode") or payload.get("suggested_action"),
-                    "source": "structure_bundle",
-                }
+                # V1.5.5 bug fix: the cached structure payload is a
+                # StructureTabBundleRead whose overall judgement lives
+                # at payload.snapshot.overall, not at the top level.
+                # The previous code read payload.get("score") which
+                # always returned None, silently falling through to
+                # the chip_structure proxy and producing the
+                # "structure page is bearish, overview is neutral"
+                # contradiction.
+                snapshot = payload.get("snapshot") or {}
+                overall = snapshot.get("overall") if isinstance(snapshot, Mapping) else None
+                if isinstance(overall, Mapping) and overall:
+                    return {
+                        "score": overall.get("overall_score") or overall.get("score"),
+                        "state": overall.get("regime") or overall.get("mode"),
+                        "label": overall.get("suggested_action") or overall.get("regime"),
+                        "reason": overall.get("risk")
+                        or overall.get("meaning")
+                        or overall.get("suggested_action")
+                        or overall.get("mode"),
+                        "watch_points": list(overall.get("primary_drivers") or []),
+                        "confidence": overall.get("confidence"),
+                        "regime": overall.get("regime"),
+                        "bias": overall.get("overall_bias"),
+                        "mode": overall.get("suggested_action") or overall.get("mode"),
+                        "invalidation": overall.get("invalidation"),
+                        "source": "structure_bundle",
+                    }
+                # Snapshot top-level fallbacks for older cached bundles
+                # that predate the StructureTabBundleRead migration.
+                if payload.get("regime") or payload.get("overall_bias"):
+                    return {
+                        "score": payload.get("score") or payload.get("overall_score"),
+                        "state": payload.get("regime"),
+                        "label": payload.get("regime_label") or payload.get("regime"),
+                        "reason": payload.get("summary") or payload.get("regime_label"),
+                        "watch_points": list(payload.get("watch_points") or []),
+                        "confidence": payload.get("confidence"),
+                        "regime": payload.get("regime"),
+                        "bias": payload.get("overall_bias") or payload.get("bias"),
+                        "mode": payload.get("suggested_action") or payload.get("mode"),
+                        "invalidation": payload.get("invalidation"),
+                        "source": "structure_bundle",
+                    }
         # Fallback: the strategy bundle's structure_overall. The snapshot
         # builder already does the same fallback, so the overview stays in
         # sync with what the strategy page is showing.
@@ -647,11 +676,18 @@ class MonitoringDashboardService:
                     f"{evidence_label}（{evidence_quality}）"
                 ),
                 "watch_points": list(chip.get("invalidation_conditions") or [])[:3],
-                "confidence": chip.get("confidence_score"),
+                # V1.5.5 bug fix: force the chip proxy into
+                # low_confidence so the structure module never asserts
+                # a real signal when the proxy is in use. Without this
+                # the structure module can show "弱偏空" on the
+                # monitoring page while the structure page shows
+                # something completely different.
+                "confidence": 0.2,
                 "regime": regime,
                 "bias": chip.get("direction"),
                 "mode": None,
                 "source": "alerts.chip_structure",
+                "is_proxy": True,
             }
         return {}
 

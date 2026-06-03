@@ -263,7 +263,17 @@ class TerminalSummaryEngine:
         elif macro_loose and not bearish_trend:
             regime = "多头修复"
         else:
-            regime = "中性震荡"
+            # V1.5.5 bug fix: the catch-all "中性震荡" hid the
+            # sub-direction implied by global_score. The user
+            # explicitly asked: is this 偏多震荡 or 偏空震荡?
+            # We use the same bias threshold the existing bias
+            # variable uses so the two stay consistent.
+            if global_score >= 55:
+                regime = "偏多震荡"
+            elif global_score <= 45:
+                regime = "偏空震荡"
+            else:
+                regime = "中性震荡"
 
         bias = "偏多" if global_score >= 58 else "偏空" if global_score <= 42 else "中性"
         confidence = int(round(min(88, max(35, abs(global_score - 50) * 1.6 + 50))))
@@ -635,9 +645,17 @@ class StructureSummaryAdapter:
         "bullish": "bullish",
         "long": "bullish",
         "up": "bullish",
+        "weak_bullish": "mild_bullish",
+        "mild_bullish": "mild_bullish",
+        "slightly_bullish": "mild_bullish",
         "bearish": "bearish",
         "short": "bearish",
         "down": "bearish",
+        "weak_bearish": "mild_bearish",
+        "mild_bearish": "mild_bearish",
+        "slightly_bearish": "mild_bearish",
+        "uncertain": "warning",
+        "no_clear_structure": "neutral",
         "neutral": "neutral",
     }
 
@@ -651,6 +669,26 @@ class StructureSummaryAdapter:
                 "结构形态输入不足，等待关键支撑、阻力和形态确认。",
                 [],
                 0.35,
+            )
+        # V1.5.5 bug fix: if the loader fell back to the chip_structure
+        # proxy because the structure_bundle cache is missing, the
+        # payload carries is_proxy=True. Treat the result as
+        # low_confidence so the structure module never claims a real
+        # signal that the structure page would also show.
+        is_proxy = bool(structure.get("is_proxy"))
+        if is_proxy:
+            proxy_reason = structure.get("reason") or (
+                "结构页 pipeline 未跑出快照，暂用筹码页代理；"
+                "该模块不计入方向结论。"
+            )
+            return ModuleScore(
+                "structure",
+                50.0,
+                "结构待刷新",
+                "neutral",
+                str(proxy_reason),
+                [],
+                0.2,
             )
         regime = str(
             structure.get("regime")
@@ -680,16 +718,24 @@ class StructureSummaryAdapter:
             impact = self._BIAS_TO_IMPACT.get(bias, impact_default)
         else:
             impact = impact_default
-        if bias == "bullish" or bias == "long":
+        if bias in ("bullish", "long"):
             score = max(base_score, 60.0)
-        elif bias == "bearish" or bias == "short":
+        elif bias in ("weak_bullish", "mild_bullish", "slightly_bullish"):
+            score = max(base_score, 55.0)
+        elif bias in ("bearish", "short"):
             score = min(base_score, 40.0)
+        elif bias in ("weak_bearish", "mild_bearish", "slightly_bearish"):
+            score = min(base_score, 45.0)
         else:
             score = base_score
         if impact == "bullish":
             score = max(score, 55.0)
+        elif impact == "mild_bullish":
+            score = max(score, 52.0)
         elif impact == "bearish":
             score = min(score, 45.0)
+        elif impact == "mild_bearish":
+            score = min(score, 48.0)
         reason = str(
             structure.get("reason")
             or structure.get("summary")
