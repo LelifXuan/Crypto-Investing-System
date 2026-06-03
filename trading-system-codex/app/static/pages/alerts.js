@@ -720,15 +720,34 @@ export async function renderAlerts() {
     const alertEventId = container?.dataset.alertEventId;
     const nextStatus = button.dataset.nextStatus;
     if (!alertEventId || !nextStatus) return;
+    const originalLabel = button.textContent;
     button.disabled = true;
     button.textContent = "处理中";
     try {
       await api.updateAlertEventStatus(alertEventId, nextStatus);
-      await load();
+      // Surgical row update: flip the state chip and re-render the
+      // action cell to reflect the new state. Avoids refetching the
+      // whole bundle (~50-200 KB) and rebuilding the table just to
+      // change one cell.
+      const row = container.closest("tr");
+      const stateCell = row?.querySelector(".alert-col-state");
+      if (stateCell) {
+        stateCell.innerHTML = stateChip(nextStatus);
+      }
+      const actionsCell = row?.querySelector(".alert-col-actions");
+      if (actionsCell) {
+        actionsCell.innerHTML = actionButtons({ status: nextStatus, alert_event_id: alertEventId });
+      }
     } catch (error) {
       console.error("alerts:update-status:error", error);
       button.disabled = false;
       button.textContent = "失败";
+      window.setTimeout(() => {
+        if (button.isConnected) {
+          button.disabled = false;
+          button.textContent = originalLabel;
+        }
+      }, 1500);
     }
   });
 
