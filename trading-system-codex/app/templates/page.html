@@ -40,7 +40,9 @@
 
   <main id="page-root"></main>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  {% if page_id == "market-analysis" %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  {% endif %}
   <script>window.__ASSET_VERSION__ = "{{ asset_version }}";</script>
   <script type="module" src="/static/main.js?v={{ asset_version }}"></script>
 </body>

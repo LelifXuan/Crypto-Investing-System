@@ -193,7 +193,11 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
     async def static_cache_control(request, call_next):
         response = await call_next(request)
         if request.url.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+            # The ?v=<mtime> query string already changes when a file's
+            # mtime changes, so a long max-age is safe. The browser
+            # revalidates with If-Modified-Since after the max-age and
+            # gets 304 if the file is unchanged.
+            response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
         return response
 
     app.mount("/static", StaticFiles(directory=str(app_paths.static_dir)), name="static")
