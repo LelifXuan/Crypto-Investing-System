@@ -275,7 +275,14 @@ class TerminalSummaryEngine:
             else:
                 regime = "中性震荡"
 
-        bias = "偏多" if global_score >= 58 else "偏空" if global_score <= 42 else "中性"
+        if global_score >= 58:
+            bias = "偏多"
+        elif global_score <= 42 or regime in {"偏空震荡", "弱势震荡", "弱势下行", "空头加速"}:
+            bias = "偏空"
+        elif regime in {"偏多震荡", "温和偏多", "强趋势偏多", "多头修复"}:
+            bias = "偏多"
+        else:
+            bias = "中性"
         confidence = int(round(min(88, max(35, abs(global_score - 50) * 1.6 + 50))))
         if bearish_trend and macro_tight:
             confidence = min(90, confidence + 6)
@@ -392,8 +399,8 @@ class TerminalSummaryEngine:
 
         if bearish_trend:
             headline = (
-                f"{label}维持偏空结构{close_text}，价格仍未完成方向修复。"
-                "摘要按 BTC 日线趋势连续性评估，而不是按孤立指标投票。"
+                f"{label}仍处于偏空震荡{close_text}，价格低于关键均线和 VWAP 压制区。"
+                "追空质量取决于反弹失败或前低跌破确认。"
             )
             conflict = (
                 f"趋势端为{trend.state}，动量端为{momentum.state}，波动端为{volatility.state}。"
@@ -712,6 +719,8 @@ class StructureSummaryAdapter:
             if bias_score is None:
                 bias_score = _num(structure.get("bullish_score"))
             base_score = bias_score if bias_score is not None else 50.0
+        if -1.0 <= base_score <= 1.0:
+            base_score = 50.0 + base_score * 50.0
         if not 0 <= base_score <= 100:
             base_score = max(0.0, min(100.0, base_score))
         state_default, impact_default = self._REGIME_TO_STATE.get(
@@ -1027,7 +1036,14 @@ class TechnicalSummaryAdapter:
 
         if not evidence:
             return None
-        score = _avg(scores)
+        bearish_count = sum(1 for item in evidence if item.impact in {"bearish", "mild_bearish"})
+        bullish_count = sum(1 for item in evidence if item.impact in {"bullish", "mild_bullish"})
+        if bearish_count and not bullish_count:
+            score = min(scores)
+        elif bullish_count and not bearish_count:
+            score = max(scores)
+        else:
+            score = _avg(scores)
         reason = "；".join(item.reason for item in evidence[:2])
         return ModuleScore(
             "technical_trend",
@@ -1044,26 +1060,44 @@ class TechnicalSummaryAdapter:
         vwap50 = snapshot.get("vwap_50")
         vwap100 = snapshot.get("vwap_100")
         spread = snapshot.get("vwap_spread_pct")
+        refs = [float(value) for value in (vwap50, vwap100) if _is_number(value)]
+        if _is_number(close) and refs:
+            close_f = float(close)
+            avg_vwap = sum(refs) / len(refs)
+            deviation = (close_f - avg_vwap) / max(close_f, 1e-9) * 100
+            if deviation <= -1.5:
+                return (
+                    34,
+                    "VWAP压制",
+                    "mild_bearish",
+                    "VWAP压制：价格位于主要 VWAP 下方，成交均价结构形成压制。",
+                )
+            if deviation >= 1.5:
+                return (
+                    66,
+                    "VWAP支撑",
+                    "mild_bullish",
+                    "VWAP支撑：价格位于主要 VWAP 上方，成交均价结构形成支撑。",
+                )
+            return 50, "VWAP附近", "neutral", "价格接近主要 VWAP，方向优势不明显。"
         if _is_number(spread):
             spread_f = float(spread)
             if spread_f <= -0.5:
-                return 36, "VWAP压制", "mild_bearish", "VWAP 价差偏空，成交均价结构压制价格。"
+                return (
+                    46,
+                    "VWAP结构偏弱",
+                    "neutral",
+                    "VWAP50 低于 VWAP100，成交均价结构偏弱，但不单独决定价格方向。",
+                )
             if spread_f >= 0.5:
-                return 64, "VWAP支撑", "mild_bullish", "VWAP 价差偏多，成交均价结构支撑价格。"
-            return 50, "VWAP附近", "neutral", "价格接近 VWAP 区域，方向优势不明显。"
-        if not _is_number(close):
-            return None
-        refs = [float(value) for value in (vwap50, vwap100) if _is_number(value)]
-        if not refs:
-            return None
-        close_f = float(close)
-        avg_vwap = sum(refs) / len(refs)
-        deviation = (close_f - avg_vwap) / max(close_f, 1e-9) * 100
-        if deviation <= -1.5:
-            return 34, "VWAP压制", "mild_bearish", "价格位于主要 VWAP 下方，成交均价结构形成压制。"
-        if deviation >= 1.5:
-            return 66, "VWAP支撑", "mild_bullish", "价格位于主要 VWAP 上方，成交均价结构形成支撑。"
-        return 50, "VWAP附近", "neutral", "价格接近主要 VWAP，方向优势不明显。"
+                return (
+                    54,
+                    "VWAP结构偏强",
+                    "neutral",
+                    "VWAP50 高于 VWAP100，成交均价结构偏强，但不单独决定价格方向。",
+                )
+            return 50, "VWAP附近", "neutral", "VWAP50 与 VWAP100 接近，方向优势不明显。"
+        return None
 
     def _momentum_module(self, snapshot: Mapping[str, Any]) -> ModuleScore | None:
         evidence: list[SummaryEvidence] = []

@@ -7,6 +7,7 @@ from sqlalchemy import asc, delete, desc, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.db.models.instrument import Instrument
 from app.db.models.market import (
@@ -1086,9 +1087,10 @@ class MarketRepository:
             stmt = stmt.where(IndicatorObservation.instrument_id == instrument_id)
         stmt = stmt.order_by(key, desc(ts))
         sub = stmt.subquery()
-        outer = select(sub).where(sub.c.rn <= limit_per_key)
+        observation_alias = aliased(IndicatorObservation, sub)
+        outer = select(observation_alias).where(sub.c.rn <= limit_per_key)
         result = await self.session.execute(outer)
-        return [row[0] for row in result.all()]
+        return list(result.scalars().all())
 
     async def latest_observation(
         self,

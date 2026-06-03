@@ -71,6 +71,7 @@ def _normalise_name(raw: str) -> str | None:
     # lowercased, hyphen-to-underscore form, but a few packages
     # import under a different name than the distribution name.
     canonical = {
+        "pyjwt": "jwt",
         "pyyaml": "yaml",
         "python-dotenv": "dotenv",
         "python-multipart": "multipart",

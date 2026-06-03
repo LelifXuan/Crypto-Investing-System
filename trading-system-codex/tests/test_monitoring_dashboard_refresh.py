@@ -1,5 +1,4 @@
-"""Acceptance tests for T11: actually refresh when allow_refresh=True
-and the cache is stale.
+"""Acceptance tests for monitoring dashboard cache refresh behavior.
 
 The audit found that ``get_bundle`` logged a "refresh is needed"
 message but never actually called ``refresh_bundle``, so the caller
@@ -7,11 +6,10 @@ was stuck with the stale payload. The user observed this live: the
 JSON returned ``status: "stale"``, ``cache_state: "stale"`` and
 ``refreshed: false`` even when the API caller asked for a refresh.
 
-The fix: when ``allow_refresh`` is True and the cached bundle is
-missing / stale / error / updating / effectively empty, ``get_bundle``
-now calls ``refresh_bundle`` and returns the fresh result. When the
-refresh itself fails (DB outage, etc.) the function falls back to
-the cached payload so the user still gets a snapshot.
+Current contract: when ``allow_refresh`` is True and the cached bundle is
+missing / error / updating / effectively empty, ``get_bundle`` calls
+``refresh_bundle``. A stale but displayable payload is returned
+immediately so the first screen does not block on a cold refresh.
 """
 
 from __future__ import annotations
@@ -39,8 +37,8 @@ def _fresh_cache(payload: dict, cache_state: str = "fresh"):
     )
 
 
-def _stale_cache():
-    return _fresh_cache({}, cache_state="stale")
+def _stale_cache(payload: dict | None = None):
+    return _fresh_cache(payload or {}, cache_state="stale")
 
 
 class _Repo:
@@ -97,7 +95,7 @@ def _monitoring_key() -> str:
     return monitoring_dashboard_cache_key("btc-usdt-perp", "1d")
 
 
-def test_get_bundle_with_stale_cache_and_allow_refresh_calls_refresh() -> None:
+def test_get_bundle_with_empty_stale_cache_and_allow_refresh_calls_refresh() -> None:
     repo = _Repo(
         initial={_monitoring_key(): _stale_cache()}
     )
@@ -114,6 +112,47 @@ def test_get_bundle_with_stale_cache_and_allow_refresh_calls_refresh() -> None:
     # original "stale".
     assert result.cache_state == "fresh"
     assert result.refreshed is True
+
+
+def test_get_bundle_with_displayable_stale_cache_returns_immediately() -> None:
+    payload = {
+        "macro_overview": {
+            "total_score": 45,
+            "score_band": "温和偏紧",
+            "growth_score": 50,
+            "inflation_score": 40,
+            "policy_score": 45,
+            "liquidity_score": 50,
+            "regime_summary": "宏观环境温和偏紧。",
+            "regime_label_cn": "温和偏紧",
+            "regime_key": "mild_tightening",
+        },
+        "technical_observations": [
+            {
+                "observation_id": "test:ema_20",
+                "indicator_key": "ema_20",
+                "category": "technical",
+                "instrument_id": "btc-usdt-perp",
+                "timeframe": "1d",
+                "observation_ts": "2099-01-01T00:00:00Z",
+                "value_num": 100,
+                "value_json": {},
+                "source_provider": "test",
+                "is_preliminary": False,
+                "quality_score": 95,
+            },
+        ],
+    }
+    repo = _Repo(initial={_monitoring_key(): _stale_cache(payload)})
+    service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
+
+    result = asyncio.run(service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True))
+
+    assert not repo.writes
+    assert result.cache_state == "stale"
+    assert result.refreshed is False
+    assert result.technical_indicator_count == 1
+    assert result.status_message
 
 
 def test_get_bundle_with_fresh_cache_skips_refresh() -> None:
@@ -166,6 +205,47 @@ def test_get_bundle_with_stale_cache_and_no_allow_refresh_returns_stale() -> Non
     # The user gets the stale snapshot with the warning message.
     assert result.cache_state == "stale"
     assert result.status_message
+
+
+def test_get_bundle_reports_final_technical_indicator_count() -> None:
+    payload = {
+        "macro_overview": None,
+        "technical_observations": [
+            {
+                "observation_id": "test:ema_20",
+                "indicator_key": "ema_20",
+                "category": "technical",
+                "instrument_id": "btc-usdt-perp",
+                "timeframe": "1d",
+                "observation_ts": "2099-01-01T00:00:00Z",
+                "value_num": 100,
+                "value_json": {},
+                "source_provider": "test",
+                "is_preliminary": False,
+                "quality_score": 95,
+            },
+            {
+                "observation_id": "test:rsi_14",
+                "indicator_key": "rsi_14",
+                "category": "technical",
+                "instrument_id": "btc-usdt-perp",
+                "timeframe": "1d",
+                "observation_ts": "2099-01-01T00:00:00Z",
+                "value_num": 24,
+                "value_json": {},
+                "source_provider": "test",
+                "is_preliminary": False,
+                "quality_score": 95,
+            },
+        ],
+    }
+    repo = _Repo(initial={_monitoring_key(): _fresh_cache(payload, cache_state="fresh")})
+    service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
+
+    result = asyncio.run(service.get_bundle("btc-usdt-perp", "1d", allow_refresh=False))
+
+    assert result.technical_indicator_count == 2
+    assert result.technical_indicator_count == len(result.technical_observations)
 
 
 def test_get_bundle_falls_back_to_stale_when_refresh_fails() -> None:

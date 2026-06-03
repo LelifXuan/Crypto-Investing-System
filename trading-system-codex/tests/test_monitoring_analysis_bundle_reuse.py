@@ -57,6 +57,16 @@ class FakeAnalysisBundleService:
         raise AssertionError("fresh analysis bundle should not refresh")
 
 
+class DailyOldAnalysisBundleService(FakeAnalysisBundleService):
+    async def get_bundle(self, instrument_id, timeframe, view_window):
+        payload = await super().get_bundle(instrument_id, timeframe, view_window)
+        payload.candles = [
+            SimpleNamespace(ts_open=datetime(2026, 5, 25, tzinfo=UTC), close=105),
+            SimpleNamespace(ts_open=datetime(2026, 5, 26, 0, tzinfo=UTC), close=100),
+        ]
+        return payload
+
+
 @pytest.mark.asyncio
 async def test_monitoring_builds_technical_observations_from_analysis_bundle(monkeypatch) -> None:
     monkeypatch.setattr(monitoring_dashboard, "AnalysisBundleService", FakeAnalysisBundleService)
@@ -133,17 +143,86 @@ def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
         assert token not in content
 
 
-def test_monitoring_technical_observations_drop_items_older_than_18h() -> None:
+def test_monitoring_technical_observations_use_timeframe_aware_freshness() -> None:
     now = datetime(2026, 5, 27, 12, tzinfo=UTC)
-    fresh = {
+    daily = {
         "indicator_key": "ema_20",
-        "observation_ts": datetime(2026, 5, 26, 19, tzinfo=UTC).isoformat(),
+        "timeframe": "1d",
+        "observation_ts": datetime(2026, 5, 26, 0, tzinfo=UTC).isoformat(),
     }
-    stale = {
+    hourly_stale = {
         "indicator_key": "rsi_14",
-        "observation_ts": datetime(2026, 5, 26, 17, 59, tzinfo=UTC).isoformat(),
+        "timeframe": "1h",
+        "observation_ts": datetime(2026, 5, 27, 8, 30, tzinfo=UTC).isoformat(),
     }
+    missing_ts = {"indicator_key": "macd_hist", "timeframe": "1d"}
 
-    result = MonitoringDashboardService._fresh_technical_observations([fresh, stale], now)
+    result = MonitoringDashboardService._fresh_technical_observations(
+        [daily, hourly_stale, missing_ts],
+        now,
+    )
 
-    assert result == [fresh]
+    assert result == [daily, missing_ts]
+
+
+def test_monitoring_frontend_trusts_backend_technical_observations() -> None:
+    content = Path("app/static/pages/monitoring.js").read_text(encoding="utf-8")
+
+    assert "TECH_OBSERVATION_MAX_AGE_MS" not in content
+    assert "isFreshTechnicalObservation" not in content
+    assert ".filter(isFreshTechnicalObservation)" not in content
+
+
+def test_monitoring_frontend_restores_left_macro_summary_right_technical_layout() -> None:
+    content = Path("app/static/pages/monitoring.js").read_text(encoding="utf-8")
+    css = Path("app/static/styles.css").read_text(encoding="utf-8")
+
+    render_block = content.split("function renderDashboard", 1)[1].split(
+        "const MONITORING_SECTION_IDS",
+        1,
+    )[0]
+    shell_block = content.split("root.innerHTML = `", 1)[1].split("`;", 1)[0]
+    for block in (render_block, shell_block):
+        left = block.split('class="monitoring-left-stack"', 1)[1].split(
+            'class="monitoring-right-stack"',
+            1,
+        )[0]
+        right = block.split('class="monitoring-right-stack"', 1)[1]
+        assert "renderMacroPanel" in left or "monitoring-macro-panel" in left
+        assert "renderTerminalSummary" in left or "monitoring-terminal-summary" in left
+        assert "renderTechnicalPanel" in right or "monitoring-technical-panel" in right
+
+    assert '"terminal terminal"' not in css
+    assert '"macro technical"' not in css
+    assert "monitoring-technical-stack" not in css
+
+
+def test_monitoring_dashboard_api_defaults_to_btc_daily() -> None:
+    content = Path("app/api/v1/endpoints/monitoring.py").read_text(encoding="utf-8")
+
+    assert 'instrument_id: str = Query(default="btc-usdt-perp")' in content
+    assert 'timeframe: str = Query(default="1d")' in content
+    dashboard_block = content.split("async def get_monitoring_dashboard", 1)[1].split(
+        "@router.post",
+        1,
+    )[0]
+    assert "allow_refresh=True" in dashboard_block
+
+
+@pytest.mark.asyncio
+async def test_monitoring_daily_analysis_bundle_allows_36h_candle(monkeypatch) -> None:
+    monkeypatch.setattr(
+        monitoring_dashboard,
+        "AnalysisBundleService",
+        DailyOldAnalysisBundleService,
+    )
+    service = MonitoringDashboardService(repository=object())
+
+    items = await service._technical_observations_from_analysis_bundle(
+        "btc-usdt-perp",
+        "1d",
+        datetime(2026, 5, 27, 12, tzinfo=UTC),
+    )
+
+    assert items
+    assert {item["indicator_key"] for item in items} >= {"ema_20", "rsi_14"}

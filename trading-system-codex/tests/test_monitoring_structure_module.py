@@ -87,6 +87,60 @@ def test_load_structure_payload_prefers_structure_bundle_cache() -> None:
     assert out["watch_points"] == ["跌破前低"]
 
 
+def test_load_structure_payload_reads_structure_page_geometry_cache() -> None:
+    """The structure page writes include_geometry=true bundles. The
+    monitoring summary should read that cache before falling back to
+    chip_structure proxies.
+    """
+    cache_payload = {
+        "snapshot": {
+            "overall": {
+                "overall_bias": "bearish",
+                "overall_score": -0.26,
+                "overall_confidence": 0.89,
+                "regime": "balance",
+                "meaning": "结构快照基于多系统融合分析生成。",
+                "suggested_action": "可考虑反弹做空，注意控制仓位。",
+                "opposing_factors": [
+                    "双顶形态得到确认。",
+                    "仍需跌破 VAL 才能确认下行扩展。",
+                ],
+                "text_decision": {
+                    "headline": "价格位于区间内部，综合结构略偏空",
+                    "message": (
+                        "价格仍在形态内部运行，偏空结论需要向下收盘跌破"
+                        "或反抽失败后才能增强。"
+                    ),
+                },
+            }
+        }
+    }
+    repo = _Repo(
+        snapshot_by_key={
+            structure_bundle_cache_key(
+                instrument_id="btc-usdt-perp",
+                timeframe="1d",
+                include_geometry=True,
+                candles_limit=180,
+            ): cache_payload
+        }
+    )
+    service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
+
+    out = asyncio.run(
+        service._load_cached_structure_payload(  # noqa: SLF001
+            instrument_id="btc-usdt-perp", timeframe="1d"
+        )
+    )
+
+    assert out["bias"] == "bearish"
+    assert out["score"] == -0.26
+    assert out["source"] == "structure_bundle"
+    assert "形态内部运行" in out["reason"]
+    assert out["watch_points"] == ["双顶形态得到确认。", "仍需跌破 VAL 才能确认下行扩展。"]
+    assert any(":True:" in key for key in repo.requests)
+
+
 def test_load_structure_payload_falls_back_to_strategy_overall() -> None:
     """When the structure page cache is missing, use the strategy bundle's
     structure_overall block so the overview still reflects the strategy page.
@@ -225,6 +279,22 @@ def test_structure_adapter_clamps_out_of_range_score() -> None:
         {"regime": "trend", "bias": "bullish", "score": 250}
     )
     assert 0 <= score.score <= 100
+
+
+def test_structure_adapter_normalizes_signed_structure_score() -> None:
+    score = StructureSummaryAdapter().summarize(
+        {
+            "regime": "balance",
+            "bias": "bearish",
+            "score": -0.26,
+            "reason": "价格仍在形态内部运行，偏空结论需要确认。",
+            "confidence": 0.89,
+        }
+    )
+
+    assert 35 <= score.score <= 40
+    assert score.state == "区间结构"
+    assert score.impact == "bearish"
 
 
 def test_terminal_engine_module_scores_structure_reflects_real_data() -> None:

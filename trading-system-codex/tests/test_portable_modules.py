@@ -78,11 +78,13 @@ def test_parse_requirements_canonicalises_known_aliases() -> None:
     result = _run_parse_requirements(
         """
         PyYAML==6.0.2
+        PyJWT==2.10.1
         python-dotenv==1.1.1
         python-multipart==0.0.20
+        typing-extensions==4.15.0
         """
     )
-    assert result == ["dotenv", "multipart", "yaml"]
+    assert result == ["dotenv", "jwt", "multipart", "typing_extensions", "yaml"]
 
 
 def test_parse_requirements_skips_comments_and_blanks() -> None:
@@ -133,5 +135,6 @@ def test_parse_requirements_matches_actual_requirements_file() -> None:
     assert "uvicorn" in result
     assert "sqlalchemy" in result
     assert "yaml" in result  # PyYAML alias
+    assert "jwt" in result  # PyJWT alias
     assert "dotenv" in result  # python-dotenv alias
     assert "multipart" in result  # python-multipart alias

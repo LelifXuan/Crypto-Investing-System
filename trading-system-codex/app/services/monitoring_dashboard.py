@@ -43,7 +43,13 @@ logger = logging.getLogger(__name__)
 MONITORING_STALE_MAX_AGE = timedelta(days=1)
 MONITORING_TECH_INSTRUMENT_ID = "btc-usdt-perp"
 MONITORING_TECH_TIMEFRAME = "1d"
-MONITORING_TECH_MAX_AGE = timedelta(hours=18)
+MONITORING_TECH_MAX_AGE = timedelta(hours=48)
+MONITORING_TECH_MAX_AGE_BY_TIMEFRAME = {
+    "1h": timedelta(hours=3),
+    "4h": timedelta(hours=12),
+    "1d": timedelta(hours=48),
+    "1w": timedelta(days=10),
+}
 MONITORING_SUMMARY_TIMEFRAMES = ("4h", "1d", "1w")
 MONITORING_PRIMARY_TIMEFRAME = "1d"
 
@@ -76,11 +82,14 @@ class MonitoringDashboardService:
             payload.get("technical_observations", []),
             now,
         )
-        if allow_refresh and (
+        displayable_cache = cache is not None and not self._is_effectively_empty(payload)
+        needs_refresh = (
             cache is None
-            or status in {"missing", "stale", "error", "updating"}
-            or self._is_effectively_empty(payload)
-        ):
+            or status in {"missing", "error", "updating"}
+            or (status == "stale" and not displayable_cache)
+            or not displayable_cache
+        )
+        if allow_refresh and needs_refresh:
             # T11 audit fix: the previous code path logged that a refresh
             # was needed but never actually called refresh_bundle, so the
             # caller was stuck with the stale payload. We now invoke the
@@ -149,6 +158,7 @@ class MonitoringDashboardService:
             "macro_overview": macro_overview,
             "terminal_summary": terminal_summary,
             "technical_observations": technical_observations,
+            "technical_indicator_count": len(technical_observations),
             "alert_events": self._filter_monitoring_alert_events(
                 payload.get("alert_events", [])
             ),
@@ -186,9 +196,10 @@ class MonitoringDashboardService:
             if response_dict.get("data_ts") is not None
             else "missing"
         )
+        technical_count = len(response_dict.get("technical_observations") or [])
         key = (
             f"monitoring_dashboard_validated:v1:"
-            f"{instrument_id}:{timeframe}:{data_ts}:{cache_state}"
+            f"{instrument_id}:{timeframe}:{data_ts}:{cache_state}:tech={technical_count}"
         )
         ttl = 60
 
@@ -287,6 +298,7 @@ class MonitoringDashboardService:
             "terminal_summary": terminal_summary,
             "structure": structure_payload,
             "technical_observations": technical_observations,
+            "technical_indicator_count": len(technical_observations),
             "alert_events": alert_events,
             "cross_asset": cross_asset,
             "source_status": source_status,
@@ -364,12 +376,13 @@ class MonitoringDashboardService:
         observation_ts = latest_candle.ts_open if latest_candle else now
         if observation_ts.tzinfo is None:
             observation_ts = observation_ts.replace(tzinfo=UTC)
-        if now - observation_ts > MONITORING_TECH_MAX_AGE:
+        max_age = self._technical_max_age(timeframe)
+        if now - observation_ts > max_age:
             logger.info(
                 "monitoring technical snapshot ignored because %s/%s is older than %s hours",
                 instrument_id,
                 timeframe,
-                int(MONITORING_TECH_MAX_AGE.total_seconds() // 3600),
+                int(max_age.total_seconds() // 3600),
             )
             return []
         close = self._to_float(getattr(latest_candle, "close", None))
@@ -483,10 +496,18 @@ class MonitoringDashboardService:
                 continue
             ts = cls._parse_ts(item.get("observation_ts") or item.get("updated_at"))
             if ts is None:
+                item.setdefault("freshness_label", "unknown")
+                fresh.append(item)
                 continue
-            if now - ts <= MONITORING_TECH_MAX_AGE:
+            max_age = cls._technical_max_age(str(item.get("timeframe") or MONITORING_TECH_TIMEFRAME))
+            if now - ts <= max_age:
                 fresh.append(item)
         return fresh
+
+    @staticmethod
+    def _technical_max_age(timeframe: str | None) -> timedelta:
+        key = str(timeframe or MONITORING_TECH_TIMEFRAME).strip().lower()
+        return MONITORING_TECH_MAX_AGE_BY_TIMEFRAME.get(key, MONITORING_TECH_MAX_AGE)
 
     @classmethod
     def _filter_monitoring_alert_events(cls, items: Any) -> list[dict[str, Any]]:
@@ -572,18 +593,26 @@ class MonitoringDashboardService:
         not run yet).
         """
 
-        try:
-            cache = await self.repository.get_page_snapshot_cache(
-                structure_bundle_cache_key(
+        cache = None
+        cache_keys: list[str] = []
+        for include_geometry in (True, False):
+            for candles_limit in (220, 180):
+                key = structure_bundle_cache_key(
                     instrument_id=instrument_id,
                     timeframe=timeframe,
-                    include_geometry=False,
-                    candles_limit=220,
+                    include_geometry=include_geometry,
+                    candles_limit=candles_limit,
                 )
-            )
-        except Exception as exc:
-            logger.debug("structure bundle cache read failed: %s", exc)
-            cache = None
+                if key not in cache_keys:
+                    cache_keys.append(key)
+        for cache_key in cache_keys:
+            try:
+                cache = await self.repository.get_page_snapshot_cache(cache_key)
+            except Exception as exc:
+                logger.debug("structure bundle cache read failed: %s", exc)
+                cache = None
+            if cache is not None:
+                break
         if cache is not None:
             payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
             if payload:
@@ -598,15 +627,23 @@ class MonitoringDashboardService:
                 snapshot = payload.get("snapshot") or {}
                 overall = snapshot.get("overall") if isinstance(snapshot, Mapping) else None
                 if isinstance(overall, Mapping) and overall:
+                    text_decision = overall.get("text_decision")
+                    if not isinstance(text_decision, Mapping):
+                        text_decision = {}
+                    watch_points = list(overall.get("primary_drivers") or [])
+                    if not watch_points:
+                        watch_points = list(overall.get("opposing_factors") or [])[:4]
                     return {
                         "score": overall.get("overall_score") or overall.get("score"),
                         "state": overall.get("regime") or overall.get("mode"),
                         "label": overall.get("suggested_action") or overall.get("regime"),
-                        "reason": overall.get("risk")
+                        "reason": text_decision.get("message")
+                        or text_decision.get("headline")
+                        or overall.get("risk")
                         or overall.get("meaning")
                         or overall.get("suggested_action")
                         or overall.get("mode"),
-                        "watch_points": list(overall.get("primary_drivers") or []),
+                        "watch_points": watch_points,
                         "confidence": overall.get("confidence"),
                         "regime": overall.get("regime"),
                         "bias": overall.get("overall_bias"),

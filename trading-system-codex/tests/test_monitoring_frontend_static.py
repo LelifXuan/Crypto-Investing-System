@@ -98,3 +98,80 @@ def test_monitoring_js_renders_three_rows_via_terminal_brief_wrapper() -> None:
     assert "terminal-summary-brief" in block
     assert "getTerminalDecisionRows" in block
     assert "renderTerminalDecisionRow" in block
+
+
+def test_monitoring_terminal_summary_localizes_module_vote_chips() -> None:
+    content = _read(MONITORING_JS)
+    start = content.find("function renderTerminalSummary")
+    end = content.find("\nfunction getTerminalDecisionRows", start)
+    block = content[start:end]
+
+    assert "impactLabel(" in block
+    assert 'readableText(item.impact, "neutral")' not in block
+    assert ">neutral<" not in block
+    assert ">mild_bearish<" not in block
+    assert ">low_confidence<" not in block
+    assert ">pending<" not in block
+
+
+def test_monitoring_source_refs_use_page_routes_not_hash_links() -> None:
+    content = _read(MONITORING_JS)
+    start = content.find("function renderTerminalDecisionRow")
+    end = content.find("\nfunction renderMacroIndicatorCard", start)
+    block = content[start:end]
+
+    assert "sourcePageHref(" in block
+    assert 'href="#${escapeHtml(targetPage)}"' not in block
+    assert "item.is_missing" in block
+    assert "return \"\"" in block
+
+
+def test_monitoring_load_dashboard_renders_dashboard_before_macro_enhancement() -> None:
+    content = _read(MONITORING_JS)
+    start = content.find("async function loadDashboard")
+    end = content.find("\nexport async function renderMonitoring", start)
+    block = content[start:end]
+
+    assert "Promise.all" not in block
+    assert "const macroPromise" in block
+    assert "applyMonitoringDiff(bundle)" in block
+    assert "macroPromise.then" in block
+    assert "mergeMacroIntoBundle(lastRenderedBundle, macro)" in block
+    assert "lastRenderedBundle = enhancedBundle" in block
+    assert "rememberMonitoringBundle(enhancedBundle, instrumentId, timeframe)" in block
+
+
+def test_monitoring_macro_enhancement_replaces_stale_dashboard_macro() -> None:
+    content = _read(MONITORING_JS)
+    start = content.find("function mergeMacroIntoBundle")
+    end = content.find("\nfunction readStoredMonitoringBundle", start)
+    block = content[start:end]
+
+    assert "macro_overview: macro" in block
+    assert "bundle || {}" in block
+    assert "!bundle?.macro_overview" not in block
+
+
+def test_monitoring_load_dashboard_preserves_rendered_page_on_abort_or_failure() -> None:
+    content = _read(MONITORING_JS)
+    start = content.find("async function loadDashboard")
+    end = content.find("\nexport async function renderMonitoring", start)
+    block = content[start:end]
+
+    assert "let lastRenderedBundle" in content
+    assert 'setRoot(renderShellFallback("正在读取监控快照"))' not in block
+    assert 'setRoot(renderShellFallback("监控快照读取失败' not in block
+    assert "hasRenderedMonitoringShell()" in block
+    assert "showMonitoringBanner(" in block
+
+
+def test_monitoring_load_dashboard_can_seed_shell_from_recent_browser_snapshot() -> None:
+    content = _read(MONITORING_JS)
+    start = content.find("async function loadDashboard")
+    end = content.find("\nexport async function renderMonitoring", start)
+    block = content[start:end]
+
+    assert "MONITORING_SNAPSHOT_STORAGE_KEY" in content
+    assert "readStoredMonitoringBundle(instrumentId, timeframe)" in block
+    assert "applyMonitoringDiff(storedBundle)" in block
+    assert "rememberMonitoringBundle(bundle, instrumentId, timeframe)" in block

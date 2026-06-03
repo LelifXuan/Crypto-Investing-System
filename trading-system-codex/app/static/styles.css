@@ -5539,31 +5539,19 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
 
 .monitoring-snapshot-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas:
-    "terminal terminal"
-    "macro technical";
+  grid-template-columns: minmax(460px, 0.95fr) minmax(360px, 1.05fr);
   grid-auto-rows: auto;
   gap: 18px;
   align-items: start;
 }
 
 .monitoring-left-stack {
-  grid-area: terminal;
   display: grid;
   gap: 18px;
   align-items: start;
 }
 
 .monitoring-right-stack {
-  grid-area: macro;
-  display: grid;
-  gap: 18px;
-  align-items: start;
-}
-
-.monitoring-technical-stack {
-  grid-area: technical;
   display: grid;
   gap: 18px;
   align-items: start;
@@ -5819,7 +5807,7 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
 
 .terminal-summary-votes {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -6134,10 +6122,6 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
 
 @media (max-width: 1100px) {
   .monitoring-snapshot-grid {
-    grid-template-areas:
-      "terminal"
-      "macro"
-      "technical";
     grid-template-columns: 1fr;
   }
 }
@@ -6155,11 +6139,17 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
 @media (max-width: 720px) {
   .monitoring-topbar-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .monitoring-topbar .button.compact,
   .monitoring-topbar-item.wide {
     grid-column: span 2;
+  }
+
+  .monitoring-topbar-item {
+    min-height: 58px;
+    padding: 10px 12px;
   }
 
   .macro-layer-strip {
@@ -6240,9 +6230,18 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
 @media (max-width: 520px) {
   .monitoring-topbar-grid,
   .technical-chip-grid,
-  .macro-indicator-grid,
-  .terminal-summary-votes {
+  .macro-indicator-grid {
     grid-template-columns: 1fr;
+  }
+
+  .terminal-summary-votes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .terminal-summary-vote {
+    min-height: 92px;
+    padding: 10px;
   }
 
   .monitoring-topbar .button.compact,

@@ -61,7 +61,7 @@ if errorlevel 1 (
 echo Starting local server at http://127.0.0.1:%APP_PORT%
 echo Keep this window open while using the app.
 echo.
-"%APP_PYTHON_EXE%" -m uvicorn app.main:app --host 127.0.0.1 --port %APP_PORT% >>"%APP_CONSOLE_LOG%" 2>&1
+"%APP_PYTHON_EXE%" "%~dp0scripts\portable_server.py" >>"%APP_CONSOLE_LOG%" 2>&1
 echo server exited. See log: %APP_CONSOLE_LOG%
 type "%APP_CONSOLE_LOG%"
 goto fail

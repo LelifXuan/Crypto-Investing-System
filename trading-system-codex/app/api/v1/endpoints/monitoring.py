@@ -176,19 +176,19 @@ async def list_indicator_observations(
 @router.get("/monitoring/dashboard", response_model=MonitoringDashboardRead)
 async def get_monitoring_dashboard(
     instrument_id: str = Query(default="btc-usdt-perp"),
-    timeframe: str = Query(default="1h"),
+    timeframe: str = Query(default="1d"),
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(
-        instrument_id, timeframe, allow_refresh=False
+        instrument_id, timeframe, allow_refresh=True
     )
 
 
 @router.post("/monitoring/dashboard/refresh", response_model=MonitoringDashboardRead)
 async def refresh_monitoring_dashboard(
     instrument_id: str = Query(default="btc-usdt-perp"),
-    timeframe: str = Query(default="1h"),
+    timeframe: str = Query(default="1d"),
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):

@@ -166,6 +166,8 @@ def dump_portable_excludes(target: Path = PORTABLE_EXCLUDES_JSON) -> Path:
     payload: dict[str, Any] = {
         "schema_version": "portable-excludes-v1",
         "generated_at": datetime.now(UTC).isoformat(),
+        "excluded_any_dirs": sorted(EXCLUDED_ANY_DIRS),
+        "excluded_top_level_dirs": sorted(EXCLUDED_TOP_LEVEL_DIRS),
         "excluded_dirs": sorted(EXCLUDED_DIRS),
         "excluded_files": sorted(EXCLUDED_FILES),
         "excluded_suffixes": sorted(EXCLUDED_SUFFIXES),

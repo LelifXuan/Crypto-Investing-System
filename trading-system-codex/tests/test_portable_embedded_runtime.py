@@ -19,6 +19,7 @@ def test_start_portable_uses_only_embedded_python():
     script = (ROOT / "start_portable.bat").read_text(encoding="utf-8")
     assert r"runtime_env\python\python.exe" in script
     assert "APP_PYTHON_EXE" in script
+    assert r"scripts\portable_server.py" in script
     assert "where python" not in script
     assert "python -m uvicorn" not in script
 
@@ -28,7 +29,21 @@ def test_preflight_requires_embedded_python_and_lockfile():
     assert "portable_runtime.lock.json" in source
     assert "app_paths.embedded_python_dir" in source
     assert "relative_to(embedded_dir)" in source
+    assert "sys.path.insert(0, str(PROJECT_ROOT))" in source
     assert "portable preflight must be run with bundled embedded Python" in source
+
+
+def test_portable_server_bootstraps_bundle_root():
+    source = (ROOT / "scripts" / "portable_server.py").read_text(encoding="utf-8")
+    assert "APP_BUNDLE_ROOT" in source
+    assert "sys.path.insert(0, str(BUNDLE_ROOT))" in source
+    assert 'uvicorn.run("app.main:app"' in source
+
+
+def test_tasks_portable_preflight_runs_inside_bundle_root():
+    source = (ROOT / "scripts" / "tasks.py").read_text(encoding="utf-8")
+    assert "cwd=portable_root" in source
+    assert '[str(embedded_python), "scripts/portable_preflight.py"]' in source
 
 
 def test_portable_builder_emits_embedded_runtime_manifest():

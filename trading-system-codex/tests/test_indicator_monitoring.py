@@ -69,6 +69,29 @@ async def test_sync_macro_creates_observations(monitoring_db, monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_latest_by_key_returns_observation_models(monitoring_db, monkeypatch) -> None:
+    async with db_manager.session() as session:
+        service = IndicatorMonitoringService(MarketRepository(session))
+        await service.seed_defaults()
+
+        async def fake_fred_latest(symbol: str):
+            values = {"DFF": "5.25", "DGS2": "4.60", "DGS10": "4.10"}
+            return service._mid_month_release(2026, 4, 1), Decimal(values[symbol])
+
+        monkeypatch.setattr(service, "_fred_latest", fake_fred_latest)
+        await service.sync_macro()
+
+        latest = await MarketRepository(session).list_latest_observations_by_key(
+            category="macro",
+            limit_per_key=1,
+        )
+
+    assert latest
+    assert all(hasattr(item, "indicator_key") for item in latest)
+    assert any(item.indicator_key == "us_dff" for item in latest)
+
+
+@pytest.mark.asyncio
 async def test_derivatives_contract_uses_policy_instrument_mapping(monitoring_db) -> None:
     async with db_manager.session() as session:
         repo = MarketRepository(session)

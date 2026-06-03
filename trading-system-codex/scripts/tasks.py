@@ -86,10 +86,15 @@ def run_step(args: list[str]) -> None:
         raise SystemExit(completed.returncode)
 
 
-def run_step_with_env(args: list[str], extra_env: dict[str, str]) -> None:
+def run_step_with_env(
+    args: list[str],
+    extra_env: dict[str, str],
+    *,
+    cwd: Path = PROJECT_ROOT,
+) -> None:
     env = os.environ.copy()
     env.update(extra_env)
-    completed = subprocess.run(args, cwd=PROJECT_ROOT, env=env)
+    completed = subprocess.run(args, cwd=cwd, env=env)
     if completed.returncode != 0:
         raise SystemExit(completed.returncode)
 
@@ -189,6 +194,7 @@ def run_portable_preflight() -> None:
     run_step_with_env(
         [str(embedded_python), "scripts/portable_preflight.py"],
         {"APP_DISTRIBUTION_MODE": "portable", "APP_BUNDLE_ROOT": str(portable_root)},
+        cwd=portable_root,
     )
 
 

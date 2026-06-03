@@ -37,7 +37,6 @@ from release_common import (  # noqa: E402
     PROJECT_ROOT,
     dump_portable_excludes,
     load_portable_excludes,
-    PORTABLE_EXCLUDES_JSON,
 )
 
 REQUIRED_ROOT_FILES = [
@@ -155,12 +154,16 @@ def _load_excludes() -> dict[str, set[str]]:
     source of truth; we ensure the file exists before reading.
     """
 
-    if not PORTABLE_EXCLUDES_JSON.exists():
-        dump_portable_excludes()
+    dump_portable_excludes()
     payload = load_portable_excludes()
+    any_dirs = set(payload.get("excluded_any_dirs") or [])
+    top_level_dirs = set(payload.get("excluded_top_level_dirs") or [])
+    if not any_dirs and not top_level_dirs:
+        any_dirs = set(payload.get("excluded_dirs", []))
     return {
         "exact": set(payload.get("excluded_files", [])),
-        "parts": set(payload.get("excluded_dirs", [])),
+        "parts": any_dirs,
+        "top_level_dirs": top_level_dirs,
         "suffixes": set(payload.get("excluded_suffixes", [])),
     }
 
@@ -552,7 +555,12 @@ class Auditor:
         for package in required_packages:
             package_path = f"runtime_env/python/Lib/site-packages/{package}/__init__.py"
             alt_prefix = f"runtime_env/python/Lib/site-packages/{package}/"
-            present = package_path in names or any(name.startswith(alt_prefix) for name in names)
+            module_file = f"runtime_env/python/Lib/site-packages/{package}.py"
+            present = (
+                package_path in names
+                or module_file in names
+                or any(name.startswith(alt_prefix) for name in names)
+            )
             package_presence[package] = present
             if not present:
                 self.add(
@@ -606,12 +614,19 @@ class Auditor:
         excludes = _load_excludes()
         exact = excludes["exact"]
         parts_forbidden = excludes["parts"]
+        top_level_forbidden = excludes["top_level_dirs"]
         suffixes_forbidden = excludes["suffixes"]
         forbidden: list[str] = []
         for name in self.reader.list_files():
             norm = name.replace("\\", "/").lstrip("/")
+            if norm.startswith("runtime_env/"):
+                continue
             parts = set(norm.split("/"))
+            top_level = norm.split("/", 1)[0] if norm else ""
             if norm in exact:
+                forbidden.append(norm)
+                continue
+            if top_level in top_level_forbidden:
                 forbidden.append(norm)
                 continue
             if parts.intersection(parts_forbidden):

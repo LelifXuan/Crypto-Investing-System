@@ -1,0 +1,104 @@
+{
+  "regime": "中性震荡",
+  "bias": "中性",
+  "confidence": 52,
+  "headline": "模块间一致性不足，价格方向等待关键均线或结构边界确认。",
+  "structure_module": {
+    "state": "趋势结构",
+    "impact": "mild_bearish",
+    "score": 45.0
+  },
+  "decision_brief_rows": [
+    {
+      "key": "market_situation",
+      "title": "市场情况",
+      "summary": "证据强度 0%，结论置信度有限。高周期与短周期方向冲突（1w 偏多(score 60) / 1d 偏空(score 35) / 4h 偏空(score 28)），按你的交易周期判断。",
+      "bullets": [
+        "多周期状态：1w 偏多(score 60) / 1d 偏空(score 35) / 4h 偏空(score 28)。",
+        "筹码结构提示：方向偏空。"
+      ],
+      "source_refs_meta": [
+        {
+          "key": "terminal_summary",
+          "label": "全局摘要",
+          "page": "monitoring-overview",
+          "is_missing": "false"
+        },
+        {
+          "key": "analysis.1w",
+          "label": "1w 周线",
+          "page": "market-analysis",
+          "is_missing": "false"
+        },
+        {
+          "key": "analysis.1d",
+          "label": "1d 日线",
+          "page": "market-analysis",
+          "is_missing": "false"
+        },
+        {
+          "key": "analysis.4h",
+          "label": "4h 4小时",
+          "page": "market-analysis",
+          "is_missing": "false"
+        },
+        {
+          "key": "alerts.chip_structure",
+          "label": "筹码结构",
+          "page": "alert-center",
+          "is_missing": "false"
+        }
+      ]
+    },
+    {
+      "key": "mtf_breakdown",
+      "title": "多周期方向",
+      "summary": "证据强度 28%，结论置信度有限。高周期与短周期方向冲突：1w 偏多(score 60) / 1d 偏空(score 35) / 4h 偏空(score 28)。短线交易以 1h/4h 为准，中长线以 1d/1w 为准。",
+      "bullets": [
+        "具体方向：1w 偏多(score 60) / 1d 偏空(score 35) / 4h 偏空(score 28)。"
+      ],
+      "source_refs_meta": [
+        {
+          "key": "terminal_summary",
+          "label": "全局摘要",
+          "page": "monitoring-overview",
+          "is_missing": "false"
+        },
+        {
+          "key": "analysis.1w",
+          "label": "1w 周线",
+          "page": "market-analysis",
+          "is_missing": "false"
+        },
+        {
+          "key": "analysis.1d",
+          "label": "1d 日线",
+          "page": "market-analysis",
+          "is_missing": "false"
+        },
+        {
+          "key": "analysis.4h",
+          "label": "4h 4小时",
+          "page": "market-analysis",
+          "is_missing": "false"
+        }
+      ]
+    },
+    {
+      "key": "key_risk",
+      "title": "关键失效",
+      "summary": "证据强度 0%，结论置信度有限。关键失效条件：价格重新回到关键区间内部。",
+      "bullets": [
+        "价格重新回到关键区间内部。"
+      ],
+      "source_refs_meta": [
+        {
+          "key": "alerts.chip_structure",
+          "label": "筹码结构",
+          "page": "alert-center",
+          "is_missing": "false"
+        }
+      ]
+    }
+  ]
+}

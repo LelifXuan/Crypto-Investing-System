@@ -237,6 +237,63 @@ def test_terminal_summary_uses_btc_daily_context_after_sharp_drop() -> None:
     assert summary["module_scores"]["technical_trend"]["score"] < 42
 
 
+def test_terminal_summary_vwap_spread_does_not_override_price_below_vwap() -> None:
+    summary = TerminalSummaryEngine().build(
+        macro_overview={
+            "total_score": 50,
+            "score_band": "宏观中性",
+            "data_completeness": {"effective_count": 0, "total_count": 41},
+        },
+        technical_observations=[
+            {"indicator_key": "ema_20", "value_num": 74072, "value_json": {"close": 67063}},
+            {"indicator_key": "ema_50", "value_num": 75294, "value_json": {"close": 67063}},
+            {"indicator_key": "ema_200", "value_num": 80577, "value_json": {"close": 67063}},
+            {"indicator_key": "vwap_50", "value_num": 76817, "value_json": {"close": 67063}},
+            {"indicator_key": "vwap_100", "value_num": 72507, "value_json": {"close": 67063}},
+            {"indicator_key": "vwap_spread_pct", "value_num": 5.94, "value_json": {"close": 67063}},
+            {"indicator_key": "rsi_14", "value_num": 23.15},
+            {"indicator_key": "macd_hist", "value_num": -1031},
+            {"indicator_key": "adx_14", "value_num": 33.5},
+            {"indicator_key": "plus_di", "value_num": 7.9},
+            {"indicator_key": "minus_di", "value_num": 41.4},
+        ],
+    )
+
+    trend = summary["module_scores"]["technical_trend"]
+    assert trend["score"] < 42
+    assert trend["impact"] in {"bearish", "mild_bearish"}
+    assert summary["regime"] in {"偏空震荡", "弱势震荡", "弱势下行", "空头加速"}
+    assert summary["bias"] == "偏空"
+    assert "VWAP压制" in trend["reason"]
+
+
+def test_terminal_summary_bearish_daily_headline_is_business_facing() -> None:
+    summary = TerminalSummaryEngine().build(
+        macro_overview={
+            "total_score": 43,
+            "score_band": "温和偏紧",
+            "data_completeness": {"effective_count": 37, "total_count": 41},
+        },
+        technical_observations=[
+            {"indicator_key": "ema_20", "value_num": 74072, "value_json": {"close": 66899}},
+            {"indicator_key": "ema_50", "value_num": 75294, "value_json": {"close": 66899}},
+            {"indicator_key": "ema_200", "value_num": 80577, "value_json": {"close": 66899}},
+            {"indicator_key": "vwap_50", "value_num": 76817, "value_json": {"close": 66899}},
+            {"indicator_key": "vwap_100", "value_num": 72507, "value_json": {"close": 66899}},
+            {"indicator_key": "rsi_14", "value_num": 23.15},
+            {"indicator_key": "macd_hist", "value_num": -1031},
+            {"indicator_key": "adx_14", "value_num": 33.5},
+            {"indicator_key": "plus_di", "value_num": 7.9},
+            {"indicator_key": "minus_di", "value_num": 41.4},
+        ],
+    )
+
+    assert "孤立指标投票" not in summary["headline"]
+    assert "趋势连续性评估" not in summary["headline"]
+    assert "反弹" in summary["headline"]
+    assert "VWAP" in summary["headline"]
+
+
 # ---------------------------------------------------------------------------
 # decision_brief tests (V1.5)
 # ---------------------------------------------------------------------------
