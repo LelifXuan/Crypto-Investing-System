@@ -852,10 +852,12 @@ function renderDashboard(data) {
     <section class="monitoring-surface monitoring-summary-surface">
       <div class="monitoring-snapshot-grid">
         <div class="monitoring-left-stack">
-          ${renderMacroPanel(data, macro)}
           ${renderTerminalSummary(data)}
         </div>
         <div class="monitoring-right-stack">
+          ${renderMacroPanel(data, macro)}
+        </div>
+        <div class="monitoring-technical-stack">
           ${renderTechnicalPanel(data)}
         </div>
       </div>
@@ -892,10 +894,12 @@ function applyMonitoringDiff(data, options = {}) {
       <section class="monitoring-surface monitoring-summary-surface">
         <div class="monitoring-snapshot-grid">
           <div class="monitoring-left-stack">
-            <div id="monitoring-macro-panel"></div>
             <div id="monitoring-terminal-summary"></div>
           </div>
           <div class="monitoring-right-stack">
+            <div id="monitoring-macro-panel"></div>
+          </div>
+          <div class="monitoring-technical-stack">
             <div id="monitoring-technical-panel"></div>
           </div>
         </div>
