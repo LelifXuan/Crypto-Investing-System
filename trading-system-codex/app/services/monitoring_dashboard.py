@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Mapping
@@ -109,20 +110,30 @@ class MonitoringDashboardService:
             macro_overview = payload.get("macro_overview")
         if isinstance(macro_overview, dict) and macro_overview.get("status") == "unavailable":
             macro_overview = None
-        alerts_bundle = await self._load_cached_alerts_bundle(instrument_id, timeframe)
-        strategy_bundle = await self._load_cached_strategy_bundle(instrument_id, timeframe)
-        timeframe_snapshots = await self._load_cached_analysis_timeframes(instrument_id)
         # T08: prefer the in-payload structure (written by refresh_bundle)
         # but fall back to a direct structure_bundle cache load when the
         # caller is reading a stale snapshot that pre-dates this change.
-        structure_payload = payload.get("structure") or {}
-        if not structure_payload:
-            structure_payload = await self._load_cached_structure_payload(
+        payload_structure = payload.get("structure") or {}
+        structure_task = (
+            asyncio.sleep(0, result={})
+            if payload_structure
+            else self._load_cached_structure_payload(
                 instrument_id,
                 timeframe,
-                strategy_bundle=strategy_bundle,
-                alerts_bundle=alerts_bundle,
+                strategy_bundle=None,
+                alerts_bundle=None,
             )
+        )
+        alerts_bundle, strategy_bundle, timeframe_snapshots, structure_payload = (
+            await asyncio.gather(
+                self._load_cached_alerts_bundle(instrument_id, timeframe),
+                self._load_cached_strategy_bundle(instrument_id, timeframe),
+                self._load_cached_analysis_timeframes(instrument_id),
+                structure_task,
+            )
+        )
+        if payload_structure:
+            structure_payload = payload_structure
         terminal_summary = self._terminal_summary_payload(
             macro_overview,
             technical_observations,
@@ -645,27 +656,36 @@ class MonitoringDashboardService:
         computation. Empty when the cache is missing.
         """
 
-        snapshots: dict[str, dict[str, Any]] = {}
-        for timeframe in MONITORING_SUMMARY_TIMEFRAMES:
+        async def _one(timeframe: str) -> tuple[str, dict[str, Any]] | None:
             try:
                 cache = await self.repository.get_page_snapshot_cache(
                     analysis_cache_key(instrument_id, timeframe, 240)
                 )
             except Exception as exc:
                 logger.debug("analysis cache read failed for %s/%s: %s", instrument_id, timeframe, exc)
-                continue
+                return None
             if cache is None:
-                continue
+                return None
             payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
             trend = ((payload.get("module_scores") or {}).get("technical_trend")) or {}
             impact = str(trend.get("impact") or "")
             score = trend.get("score")
-            snapshots[timeframe] = {
+            return timeframe, {
                 "bias": impact or trend.get("state") or "neutral",
                 "score": score,
                 "confidence": trend.get("confidence"),
                 "regime": trend.get("state"),
             }
+
+        results = await asyncio.gather(
+            *(_one(tf) for tf in MONITORING_SUMMARY_TIMEFRAMES)
+        )
+        snapshots: dict[str, dict[str, Any]] = {}
+        for item in results:
+            if item is None:
+                continue
+            tf, value = item
+            snapshots[tf] = value
         return snapshots
 
     async def _persist_decision_brief_snapshot(

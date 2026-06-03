@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from app.cache.shared_query_cache import shared_query_cache
 from app.repositories.market_repository import MarketRepository
 from app.services.chip_structure import ChipStructureService
 from app.services.macro_overview import MacroOverviewService
@@ -70,7 +71,23 @@ class FinalDecisionService:
 
     async def _chip_payload(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
         try:
-            return await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
+            from app.core.config import settings
+
+            cache_key = (
+                f"alerts_bundle:chip_payload:v1:"
+                f"{instrument_id}:{timeframe}"
+            )
+            ttl = settings.shared_query_cache_seconds
+
+            async def producer() -> dict[str, Any]:
+                return await ChipStructureService(
+                    self.repository
+                ).analyze(instrument_id, timeframe)
+
+            cached = await shared_query_cache.get_or_set(
+                cache_key, ttl, producer
+            )
+            return dict(cached) if isinstance(cached, dict) else cached
         except Exception as exc:
             return {
                 "instrument_id": instrument_id,

@@ -4,6 +4,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
+from app.cache.shared_query_cache import shared_query_cache
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import (
     AlertEventRead,
@@ -201,9 +202,24 @@ class AlertsBundleService:
 
     async def _chip_payload(self, instrument_id: str, timeframe: str) -> dict:
         try:
+            from app.core.config import settings
             from app.services.chip_structure import ChipStructureService
 
-            return await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
+            cache_key = (
+                f"alerts_bundle:chip_payload:v1:"
+                f"{instrument_id}:{timeframe}"
+            )
+            ttl = settings.shared_query_cache_seconds
+
+            async def producer() -> dict:
+                return await ChipStructureService(
+                    self.repository
+                ).analyze(instrument_id, timeframe)
+
+            cached = await shared_query_cache.get_or_set(
+                cache_key, ttl, producer
+            )
+            return dict(cached) if isinstance(cached, dict) else cached
         except Exception as exc:
             logger.warning("chip payload fetch failed: %s", exc)
             return {
