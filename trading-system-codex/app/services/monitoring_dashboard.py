@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
+from app.cache.shared_query_cache import shared_query_cache
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import (
     AlertEventRead,
@@ -142,30 +143,63 @@ class MonitoringDashboardService:
             timeframe_snapshots=timeframe_snapshots,
             structure=structure_payload,
         )
-        return MonitoringDashboardRead.model_validate(
-            {
-                "instrument_id": instrument_id,
-                "timeframe": timeframe,
-                "macro_overview": macro_overview,
-                "terminal_summary": terminal_summary,
-                "technical_observations": technical_observations,
-                "alert_events": self._filter_monitoring_alert_events(
-                    payload.get("alert_events", [])
-                ),
-                "cross_asset": payload.get("cross_asset", []),
-                "source_status": self._normalize_source_status(payload.get("source_status", {})),
-                "status": "ready" if status == "fresh" else status,
-                "cache_state": status,
-                "snapshot_at": cache.snapshot_at if cache else None,
-                "data_ts": cache.data_ts if cache else None,
-                "source_updated_at": cache.source_updated_at if cache else None,
-                "expires_at": cache.expires_at if cache else None,
-                "source_version": cache.source_version if cache else CACHE_SOURCE_VERSION,
-                "cost_ms": cache.cost_ms if cache else None,
-                "refreshed": False,
-                "status_message": bundle_status_message(status),
-            }
+        response_dict = {
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "macro_overview": macro_overview,
+            "terminal_summary": terminal_summary,
+            "technical_observations": technical_observations,
+            "alert_events": self._filter_monitoring_alert_events(
+                payload.get("alert_events", [])
+            ),
+            "cross_asset": payload.get("cross_asset", []),
+            "source_status": self._normalize_source_status(payload.get("source_status", {})),
+            "status": "ready" if status == "fresh" else status,
+            "cache_state": status,
+            "snapshot_at": cache.snapshot_at if cache else None,
+            "data_ts": cache.data_ts if cache else None,
+            "source_updated_at": cache.source_updated_at if cache else None,
+            "expires_at": cache.expires_at if cache else None,
+            "source_version": cache.source_version if cache else CACHE_SOURCE_VERSION,
+            "cost_ms": cache.cost_ms if cache else None,
+            "refreshed": False,
+            "status_message": bundle_status_message(status),
+        }
+        return await self._validate_monitoring_dashboard(
+            instrument_id, timeframe, response_dict, status
         )
+
+    async def _validate_monitoring_dashboard(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        response_dict: dict[str, Any],
+        cache_state: str,
+    ) -> MonitoringDashboardRead:
+        """V1.5.4 C5: cache the validated ``MonitoringDashboardRead`` so
+        the Pydantic round-trip only runs when the source data_ts
+        changes. Concurrent monitoring reads in the same worker
+        collapse into a single validation pass.
+        """
+        data_ts = (
+            response_dict.get("data_ts").isoformat()
+            if response_dict.get("data_ts") is not None
+            else "missing"
+        )
+        key = (
+            f"monitoring_dashboard_validated:v1:"
+            f"{instrument_id}:{timeframe}:{data_ts}:{cache_state}"
+        )
+        ttl = 60
+
+        async def producer() -> MonitoringDashboardRead:
+            return MonitoringDashboardRead.model_validate(response_dict)
+
+        # The deepcopy inside shared_query_cache.get_or_set preserves
+        # the pydantic model type, so the cache hit returns a fully
+        # validated MonitoringDashboardRead that FastAPI can serialise
+        # directly without paying Pydantic again.
+        return await shared_query_cache.get_or_set(key, ttl, producer)
 
     async def refresh_bundle(self, instrument_id: str, timeframe: str) -> MonitoringDashboardRead:
         instrument_id = instrument_id or MONITORING_TECH_INSTRUMENT_ID
