@@ -189,6 +189,103 @@ V1.5.2 在 V1.5.1 基础上修复 4 项监控总览页问题（用户用 playwri
   - [ ] 全文不出现 "策略状态：OBSERVE" + "建议减半仓位" 同时存在
   - [ ] 出现 "证据不足" / "proxy" 标签（仅当 structure pipeline 未刷新时）
 
+## V1.5.3 发布前验收清单（清理 + 快赢优化）
+
+V1.5.3 在 V1.5.2 基础上完成两件事：
+
+1. 删除 V1.5.1 / V1.5.2 遗留的死代码、未读字段、未用的 endpoint。
+2. 应用 V1.5.3 审计中"快赢"级别的性能修复（B1, B2, B5, B6, B10-B12），
+   不涉及结构性重构（V1.5.4 范围）。
+
+### V1.5.3 改动一览
+
+**Group A — 死代码删除**
+
+- [P0] `terminal_summary_engine.py` 删 5 个 dormant / unreachable 助手
+  - `_summarize_legacy` (line 773) — `summarize()` 早已走 snapshot 路径
+  - `_decision_describe_timeframes` (line 1985) — 被 `_decision_format_mtf_breakdown` 取代
+  - `_decision_describe_strategy_levels` (line 2447) — 决策摘要不再 surface 价位
+  - `_decision_build_trading_row` dormant shim (line 2604)
+  - `_decision_build_risk_row` dormant shim (line 2765)
+- [P0] 删 2 个 dead endpoint + 对应 JS helper
+  - `GET /alerts/chip-structure` + `api.getChipStructure`
+  - `GET /strategy/iteration-proposals` + `api.getStrategyIterationProposals`
+- [P0] 删 3 个未读 schema 字段 + 1 个未用 alias + 1 个未用 helper 参数
+  - `MonitoringDashboardRead.technical_source / technical_indicator_count / onchain_observations`
+  - `StrategyV15DecisionRead / StrategyV15BundleRead` alias
+  - `build_bundle` alias (= `build_bundle_uncached`)
+  - `_terminal_summary_payload(_cached, ...)` 的 `_cached` 参数（永远不被使用）
+- [P0] 删 monitoring.js dead fallback + `formatValue` 死函数
+  - `getTerminalDecisionRows` 的 3 行 synthetic fallback
+  - `function formatValue(value, digits)` (line 259)
+
+**Group B — 快赢性能修复**
+
+- [B1] `app/main.py:196` — `/static/*` 静态资源缓存头从
+  `no-store, max-age=0, must-revalidate` 改为
+  `public, max-age=3600, must-revalidate`。
+  配合已存在的 `?v=<mtime>` query string，浏览器在 1 小时内
+  命中 304 而非重新下载 styles.css (116 KB) + 各 page JS。
+- [B2] `monitoring_dashboard.py:112-125` — `get_bundle` 的 4 个
+  独立 cache 读改为 `asyncio.gather`；`_load_cached_analysis_timeframes`
+  内部 3-TF 循环（4h/1d/1w）也 gather。
+- [B5] `alerts_bundle.py:202` + `final_decision.py:71` — chip payload
+  走 `SharedQueryCache`（key=`alerts_bundle:chip_payload:v1:{inst}:{tf}`,
+  TTL=settings.shared_query_cache_seconds）。原本两次 chip.analyze
+  现在 60 秒内复用同一份结果。
+- [B6] `templates/page.html:43` — Chart.js CDN 标签包
+  `{% if page_id == "market-analysis" %}` 并加 `defer`。
+  8/9 页不再下载 200 KB Chart.js。
+- [B10] `static/pages/strategy.js` — 删除 review refresh 的
+  `setTimeout(100ms)` listener 绑定，改为 attachEvents() 内的
+  document 级 event delegation。`data-strategy-review-refresh`
+  在每次 `renderReviewPanel()` 重建后不会重复绑定。
+- [B11] `static/pages/analysis.js` — `scheduleBundleRetry` 加
+  `MAX_BUNDLE_RETRY=3` 上限。3 次失败后渲染 "后台暂未就绪"
+  警告并停止重试，避免无限轮询。
+- [B12] `static/pages/alerts.js:716-743` — 状态切换 PATCH 后只
+  更新本行的 state + actions 两个 cell，不再 refetch 整 bundle。
+
+### V1.5.3 验证命令
+
+- [ ] `python -m ruff check .` All checks passed
+- [ ] `python -m compileall -q app tests scripts` 0 error
+- [ ] `python -c "import app.main"` 成功
+- [ ] `python -m pytest -q` 全量 **493 passed / 5 skipped / 0 failed**
+- [ ] `node --check app/static/**/*.js` 0 error
+
+### V1.5.3 实地核查命令（curl）
+
+- [ ] `curl -I http://127.0.0.1:8002/static/styles.css`
+  - [ ] 响应头 `Cache-Control: public, max-age=3600, must-revalidate`
+- [ ] `curl -I http://127.0.0.1:8002/monitoring-page`
+  - [ ] 响应 body 不含 `https://cdn.jsdelivr.net/npm/chart.js`
+    （只在 analysis 页加载）
+- [ ] `curl http://127.0.0.1:8002/api/v1/monitoring/dashboard?instrument_id=btc-usdt-perp&timeframe=1d | jq '.terminal_summary.decision_brief.rows[].key'`
+  - [ ] 仍是 V1.5.2 三行（market_situation / mtf_breakdown / key_risk），
+    没有 V1.5.3 删除的字段（technical_source / technical_indicator_count
+    / onchain_observations）
+
+### 已知限制 / 延后到 V1.5.4
+
+- B7（懒加载 `core/knowledge.js`）— 6 个 page 都用 `knowledgeTooltip`，
+  全改 async 会污染 6 个调用点；留到 V1.5.4 统一处理
+  FeatureComputationCache 一起做。
+- B3（`_load_cached_structure_payload` 单次请求内复用）— 在 B2 重构后
+  `get_bundle` 已经只在 payload 缺失结构时才调用一次，所以 B3 实质上
+  已被 B2 取代。
+- B4（`_decision_format_mtf_breakdown` 去重）— 经实测这个函数在
+  market_row 和 mtf_breakdown_row 各被调用一次，输入相同输出相同，
+  但函数本身只是 small-dict filter，CPU 开销 < 1ms，refactor 不划算。
+- B9（`renderDashboard` 算 6 个 helper map 一次）— 同上，单次 render
+  内 helper map 的 cost < 1ms，且当前各子 renderer 已经是纯函数
+  调用，传递 helper map 需要改所有 renderXxx 签名，触及面广。
+- A13（snapshot 20+ 个 flat-feature 字段清理）— 需要逐字段验证
+  `strategy_generator` 是否真不读，预期放 V1.5.4 C 阶段与
+  `FeatureComputationCache` 一起重做字段建模。
+- 全部 D 组（SPA / ETag / DecisionPipeline / ServiceWorker）— V1.5.4
+  范围。
+
 ### 已知限制
 
 - `chip_structure.direction_score` 仍是 K 线涨跌 proxy，完整 microstructure (OI / CVD / orderbook) 留待后续 V1.5.x 重写。
