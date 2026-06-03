@@ -2317,6 +2317,47 @@ def _decision_format_gates(
     return bullets, has_block, has_warning
 
 
+def _decision_should_show_futures_pressure(decision: Mapping[str, Any]) -> bool:
+    """T10: only surface the futures margin pressure on the overview
+    when the strategy has an actionable plan.
+
+    The audit found that the overview was rendering
+    ``合约保证金压力=block: long 侧 one-ATR 影响 80%，合约开仓被拒绝``
+    while the strategy state was ``OBSERVE`` (no plan, no position).
+    That is contradictory: there is no position to size. The overview
+    is a summary layer, so the futures pressure only makes sense for
+    states where a position is being entered or considered:
+
+    * ``*_TRIGGERED`` states — a real entry is happening
+    * ``LONG_BIAS`` / ``SHORT_BIAS`` — biased but not yet triggered
+    * ``SETUP_DETECTED`` — setup just detected, may become triggered
+
+    All other states (OBSERVE, NO_EDGE, CONFLICTED_NO_TRADE,
+    EVENT_WAIT, RISK_OFF, WAIT_*, INVALID_PLAN_LEVELS, and the
+    terminal TP*/STOP*/EXPIRED/INVALIDATED/MOVE_MISSED states) hide
+    the pressure. The strategy page still surfaces the same gate
+    directly, so the user keeps the signal — it just does not leak
+    into the overview as advice for a position that does not exist.
+    """
+
+    if not isinstance(decision, Mapping) or not decision:
+        return False
+    state = str(decision.get("strategy_state") or "").upper()
+    if not state:
+        return False
+    actionable = {
+        "LONG_TRIGGERED",
+        "SHORT_TRIGGERED",
+        "TREND_FOLLOW_TRIGGERED",
+        "BREAKOUT_TRIGGERED",
+        "BREAKDOWN_TRIGGERED",
+        "LONG_BIAS",
+        "SHORT_BIAS",
+        "SETUP_DETECTED",
+    }
+    return state in actionable
+
+
 def _decision_extract_futures_pressure(decision: Mapping[str, Any]) -> dict[str, Any] | None:
     """Pull the active side's futures margin pressure from the decision bundle.
 

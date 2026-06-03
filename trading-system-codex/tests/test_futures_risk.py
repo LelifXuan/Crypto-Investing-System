@@ -317,13 +317,19 @@ def test_terminal_format_futures_pressure_ok_returns_empty() -> None:
 
 
 def test_decision_brief_surfaces_futures_pressure_in_risk_row() -> None:
-    """Integration: a block-level futures risk appears in the risk row."""
+    """T10: futures pressure is shown on the overview only when the
+    strategy is actually entering a position. ``LONG_TRIGGERED`` is
+    actionable, so the block-level pressure surfaces in the key_risk
+    row. ``WAIT_TRIGGER`` and ``OBSERVE`` are gated out (covered by
+    the test_decision_brief_hides_futures_pressure_when_observe
+    test below).
+    """
     engine = TerminalSummaryEngine()
     decision = {
-        "strategy_state": "WAIT_TRIGGER",
+        "strategy_state": "LONG_TRIGGERED",
         "strategy_bias": "long",
-        "strategy_permission": "conditional",
-        "next_trigger": "等待 4H 突破",
+        "strategy_permission": "allow",
+        "next_trigger": "已触发，按计划执行",
         "primary_strategy": {},
         "gates": [],
         "futures_risk": {
@@ -349,10 +355,52 @@ def test_decision_brief_surfaces_futures_pressure_in_risk_row() -> None:
         timeframe_snapshots={},
         structure={},
     )
-    risk_row = next(row for row in brief["rows"] if row["key"] == "risk_invalidation")
+    risk_row = next(row for row in brief["rows"] if row["key"] == "key_risk")
     text = "\n".join(risk_row["bullets"])
     assert "合约保证金压力" in text
     assert "block" in text
+
+
+def test_decision_brief_hides_futures_pressure_when_observe() -> None:
+    """T10: when the strategy is OBSERVE, the overview does NOT
+    surface the futures pressure. The user observed this contradiction
+    in the live page (OBSERVE state + 建议减半仓位); the gate closes
+    that loophole.
+    """
+    engine = TerminalSummaryEngine()
+    decision = {
+        "strategy_state": "OBSERVE",
+        "strategy_bias": "neutral",
+        "strategy_permission": "observe_only",
+        "next_trigger": "等待更清晰信号",
+        "primary_strategy": {},
+        "gates": [],
+        "futures_risk": {
+            "long": {
+                "futures_margin_pressure": "downsize",
+                "one_atr_margin_impact_pct": 30.8,
+                "leverage": 10.0,
+                "stop_margin_impact_pct": 40.0,
+                "liquidation_buffer_pct": 6.0,
+            },
+            "short": {
+                "futures_margin_pressure": "ok",
+                "one_atr_margin_impact_pct": 5.0,
+            },
+        },
+    }
+    brief = engine._build_decision_brief(  # noqa: SLF001
+        base_summary={"watch_points": []},
+        alerts_bundle={},
+        strategy_bundle=decision,
+        timeframe_snapshots={},
+        structure={},
+    )
+    risk_row = next(row for row in brief["rows"] if row["key"] == "key_risk")
+    text = "\n".join(risk_row["bullets"])
+    assert "合约保证金压力" not in text
+    assert "减半仓位" not in text
+    assert "30.8" not in text
 
 
 class _DummyScores:
