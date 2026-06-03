@@ -339,12 +339,17 @@ class TerminalSummaryEngine:
             )
         if regime == "多头修复":
             return (
-                "当前判定为多头修复阶段。宏观或动量条件改善，但价格结构尚未完成强趋势确认。",
+                "宏观或动量条件改善，但价格结构尚未完成强趋势确认。",
                 "修复信号已经出现，趋势端仍需要 EMA、VWAP 与成交确认。",
                 "不急于追多，优先观察 EMA20、EMA50 与 VWAP50 的收复情况。",
             )
+        # V1.5.5 ③: catch-all headline was 3 clauses / 30 chars.
+        # User asked for a 3-sentence storyboard, not a paragraph.
+        # Headline collapsed to 1 sentence; conflict + implication
+        # stay as-is because they are still useful detail (they
+        # flow into the decision_brief row, not the headline).
         return (
-            "当前维持中性震荡结构。多空模块分歧明显，价格方向尚未完成确认。",
+            "模块间一致性不足，价格方向等待关键均线或结构边界确认。",
             "宏观、技术、动量或波动之间缺少一致性，信号质量不足。",
             "降低方向性预设，等待关键均线、VWAP 或结构边界给出确认。",
         )
@@ -1534,8 +1539,29 @@ def _decision_first_present(mapping: Mapping[str, Any], *keys: str) -> Any:
 def _decision_text(value: Any, fallback: str = "") -> str:
     if value is None:
         return fallback
-    if isinstance(value, (dict, list, tuple)):
-        return str(value)
+    if isinstance(value, Mapping):
+        # V1.5.5 ④: callers were getting Python's repr leak
+        # ('{"text": "...", "source": "..."}') because we used
+        # str(dict) on a chip invalidation item. If the dict
+        # carries a 'text' / 'message' / 'label' / 'reason' key
+        # we surface that; otherwise the dict is non-textual and
+        # the fallback applies.
+        for key in ("text", "message", "label", "reason", "summary"):
+            inner = value.get(key)
+            if isinstance(inner, str) and inner.strip():
+                return inner.strip()
+        return fallback
+    if isinstance(value, (list, tuple)):
+        # Try to coerce a single-element list to its text, then
+        # fall back to joining the textual elements.
+        if len(value) == 1:
+            return _decision_text(value[0], fallback)
+        parts = [
+            str(item).strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ]
+        return "；".join(parts) if parts else fallback
     text = str(value).strip()
     return text if text else fallback
 
@@ -2505,26 +2531,26 @@ def _decision_build_market_row(
 
     consistency = alignment.get("consistency") or "degraded"
     has_mtf_conflict = _decision_mtf_has_conflict(timeframe_snapshots)
+    # V1.5.5 ③: summary is a single sentence. Regime already shows
+    # on the head chip, so the body no longer restates
+    # '当前为{regime}'. The conflict / degraded / aligned paths
+    # surface only the *new* information.
     if has_mtf_conflict:
         summary = (
-            f"高周期与短周期方向冲突：{mtf_breakdown}。"
-            "请按你的交易周期判断。"
+            f"高周期与短周期方向冲突（{mtf_breakdown}），按你的交易周期判断。"
         )
         tone = "warning"
     elif consistency == "conflict":
-        summary = (
-            f"当前为{regime}，但跨页面证据存在冲突，方向结论需要等待确认。"
-        )
+        summary = "跨页面证据存在冲突，方向结论等待确认。"
         tone = "warning"
     elif consistency == "degraded":
         summary = (
-            f"当前维持{regime}判断，置信度 {confidence}，但部分页面证据缺失。"
+            f"维持{regime}判断，部分页面证据缺失，置信度 {confidence}。"
         )
         tone = "warning"
     else:
         summary = (
-            f"当前维持{regime}，方向偏{_decision_zh_direction(bias)}，"
-            f"置信度 {confidence}。"
+            f"维持{regime}判断，置信度 {confidence}。"
         )
         tone = bias
 
@@ -2600,24 +2626,35 @@ def _decision_build_key_risk_row(
 
     The previous risk row enumerated every chip / divergence / structure
     risk and re-rendered the strategy gates, violating the
-    "summary layer, not recomputation" principle. The new row carries
-    only the highest-signal items:
+    "summary layer, not recomputation" principle. V1.5.5 ④ drops
+    the data-gap bullets (those are internal data-quality
+    observations, not user-facing risks) and only surfaces:
 
-    * data gaps from ``source_alignment.missing_sources``
-    * the most critical invalidation condition across chip / structure
-    * (gated) the futures margin pressure verdict — T10 hides it when
-      the strategy has no actionable plan.
+    * the single most critical invalidation condition across chip /
+      structure / divergence (T09 audit)
+    * (gated) the futures margin pressure verdict — T10 hides it
+      when the strategy has no actionable plan
 
-    The row is renamed ``key_risk`` so the frontend can no longer rely
-    on the old ``risk_invalidation`` key.
+    The data gaps remain visible to the user via the
+    ``source_refs`` chip strip (which is a system signal the user
+    can act on by clicking through to the missing page), but they
+    are not promoted into the bullet list.
+
+    The row is renamed ``key_risk`` so the frontend can no longer
+    rely on the old ``risk_invalidation`` key.
     """
 
     bullets: list[str] = []
     sources: list[str] = []
 
-    for missing in alignment.get("missing_sources") or []:
-        bullets.append(f"数据缺口：{missing} 缺失或未刷新。")
-        sources.append(f"missing:{missing}")
+    # V1.5.5 ④: missing_sources used to be rendered as
+    # "数据缺口：{x} 缺失或未刷新。" bullets, but the user is
+    # right that data gaps are an internal data-quality report
+    # and not a market risk. The chips/structure divergence is
+    # the actual risk the user needs to see.
+    sources.extend(
+        f"missing:{missing}" for missing in alignment.get("missing_sources") or []
+    )
 
     # Pick the single most critical invalidation condition across all
     # sources. The audit complained that the old row listed every chip
@@ -2629,8 +2666,15 @@ def _decision_build_key_risk_row(
         structure=structure,
     )
     if critical:
-        bullets.append(f"关键失效：{critical}")
-        sources.append(critical.get("source") or "structure.snapshot")
+        # ④: critical is now {text, source} after the fix in
+        # _decision_pick_critical_invalidation. Render the text
+        # directly, no "关键失效：" prefix, no dict repr leak.
+        text = critical.get("text") if isinstance(critical, Mapping) else critical
+        if text:
+            bullets.append(str(text))
+        sources.append(
+            critical.get("source") if isinstance(critical, Mapping) else "structure.snapshot"
+        )
 
     # T10: surface the futures margin pressure verdict only when the
     # active strategy is actually entering a position. The function
@@ -2655,18 +2699,11 @@ def _decision_build_key_risk_row(
         )
         sources.append("terminal_summary")
 
-    consistency = alignment.get("consistency") or "degraded"
-    missing = alignment.get("missing_sources") or []
-    if consistency == "aligned" and not missing:
-        summary = (
-            "当前主要关注关键价位、筹码区和动量背离是否反向确认；"
-            "一旦触发即降低或撤销原判断。"
-        )
-    else:
-        summary = (
-            "当前判断的主要风险来自数据缺口、跨周期冲突、"
-            "筹码/背离反向确认以及策略 gates 未通过。"
-        )
+    # V1.5.5 ④: the row is now a single sentence that leads with
+    # the topmost invalidation so the user knows what to watch.
+    summary = "若发生以下任一情况则当前判断失效："
+    if bullets:
+        summary = f"关键失效条件：{bullets[0]}"
 
     dedup_sources = _decision_dedupe_text(sources, limit=8)
     row = {

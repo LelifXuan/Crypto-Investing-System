@@ -228,8 +228,13 @@ def test_build_decision_brief_omits_trading_guidance() -> None:
     assert "等待 4H 突破" not in joined
 
 
-def test_build_decision_brief_key_risk_only_shows_data_gaps_and_critical() -> None:
-    """The key_risk row carries data gaps + 1 critical invalidation only."""
+def test_build_decision_brief_key_risk_only_shows_critical() -> None:
+    """V1.5.5 ④: the key_risk row carries only the single most
+    critical invalidation. Data gaps used to be bullets; they
+    now flow through source_refs only (so the user can click
+    through to the missing page) instead of leaking the
+    internal data-quality report into the risk body.
+    """
     summary = TerminalSummaryEngine().build(
         alerts_bundle={},  # no chip / divergence
         strategy_bundle={
@@ -253,8 +258,8 @@ def test_build_decision_brief_key_risk_only_shows_data_gaps_and_critical() -> No
     # Only the first critical invalidation is shown
     assert "前低" in joined
     assert "第二个条件不应出现" not in joined
-    # Data gaps from source_alignment are surfaced
-    assert "数据缺口" in joined
+    # V1.5.5 ④: data gaps are no longer rendered as bullets.
+    assert "数据缺口" not in joined
 
 
 def test_build_decision_brief_omits_mtf_breakdown_when_aligned() -> None:
