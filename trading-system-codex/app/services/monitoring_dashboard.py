@@ -19,15 +19,16 @@ from app.services.cache_registry import (
     CACHE_SOURCE_VERSION,
     alerts_bundle_cache_key,
     analysis_cache_key,
-    cache_status,
-    expires_at_for_dataset,
+    expires_at_for_page,
     monitoring_decision_brief_cache_key,
     strategy_bundle_cache_key,
+    structure_bundle_cache_key,
 )
 from app.services.indicator_monitoring import IndicatorMonitoringService
 from app.services.page_snapshot_cache import (
     bundle_status_message,
-    expires_at_for_page,
+    cache_status,
+    expires_at_for_dataset,
     monitoring_dashboard_cache_key,
 )
 from app.services.technical_signal_classifier import classify_signals
@@ -91,6 +92,14 @@ class MonitoringDashboardService:
         alerts_bundle = await self._load_cached_alerts_bundle(instrument_id, timeframe)
         strategy_bundle = await self._load_cached_strategy_bundle(instrument_id, timeframe)
         timeframe_snapshots = await self._load_cached_analysis_timeframes(instrument_id)
+        # T08: prefer the in-payload structure (written by refresh_bundle)
+        # but fall back to a direct structure_bundle cache load when the
+        # caller is reading a stale snapshot that pre-dates this change.
+        structure_payload = payload.get("structure") or {}
+        if not structure_payload:
+            structure_payload = await self._load_cached_structure_payload(
+                instrument_id, timeframe, strategy_bundle=strategy_bundle
+            )
         terminal_summary = self._terminal_summary_payload(
             payload.get("terminal_summary"),
             macro_overview,
@@ -98,7 +107,7 @@ class MonitoringDashboardService:
             alerts_bundle=alerts_bundle,
             strategy_bundle=strategy_bundle,
             timeframe_snapshots=timeframe_snapshots,
-            structure=payload.get("structure") or {},
+            structure=structure_payload,
         )
         return MonitoringDashboardRead.model_validate(
             {
@@ -182,6 +191,11 @@ class MonitoringDashboardService:
         alerts_bundle = await self._load_cached_alerts_bundle(instrument_id, timeframe)
         strategy_bundle = await self._load_cached_strategy_bundle(instrument_id, timeframe)
         timeframe_snapshots = await self._load_cached_analysis_timeframes(instrument_id)
+        # T08: load the real structure module so the terminal summary's
+        # structure row does not permanently render the 待确认 fallback.
+        structure_payload = await self._load_cached_structure_payload(
+            instrument_id, timeframe, strategy_bundle=strategy_bundle
+        )
         terminal_summary = self._terminal_summary_payload(
             None,
             macro_overview,
@@ -189,7 +203,7 @@ class MonitoringDashboardService:
             alerts_bundle=alerts_bundle,
             strategy_bundle=strategy_bundle,
             timeframe_snapshots=timeframe_snapshots,
-            structure={},
+            structure=structure_payload,
         )
         await self._persist_decision_brief_snapshot(
             instrument_id=instrument_id,
@@ -205,6 +219,7 @@ class MonitoringDashboardService:
         payload = {
             "macro_overview": macro_overview,
             "terminal_summary": terminal_summary,
+            "structure": structure_payload,
             "technical_observations": technical_observations,
             "technical_source": (
                 "analysis_bundle" if technical_from_analysis else "indicator_observations"
@@ -474,6 +489,75 @@ class MonitoringDashboardService:
             return {}
         payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
         return dict(payload)
+
+    async def _load_cached_structure_payload(
+        self, instrument_id: str, timeframe: str, strategy_bundle: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """T08: surface the real structure module to the terminal summary.
+
+        The audit found that the monitoring overview's structure module
+        always rendered ``待确认`` because the cached monitoring payload
+        never wrote a ``structure`` key. The terminal summary engine then
+        read ``payload.get("structure") or {}`` and the ``_optional_module``
+        wrapper fell back to the placeholder. This loader reads the actual
+        structure page cache (``structure_bundle_cache_key``) and falls back
+        to the strategy bundle's ``structure_overall`` when the page cache
+        is missing. The returned dict matches the shape the
+        ``StructureSummaryAdapter`` (in terminal_summary_engine) and the
+        legacy ``_optional_module`` wrapper both understand.
+        """
+
+        try:
+            cache = await self.repository.get_page_snapshot_cache(
+                structure_bundle_cache_key(
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    include_geometry=False,
+                    candles_limit=220,
+                )
+            )
+        except Exception as exc:
+            logger.debug("structure bundle cache read failed: %s", exc)
+            cache = None
+        if cache is not None:
+            payload = cache.payload_json if isinstance(cache.payload_json, dict) else {}
+            if payload:
+                return {
+                    "score": payload.get("score") or payload.get("bias_score"),
+                    "state": payload.get("state") or payload.get("regime"),
+                    "label": payload.get("label") or payload.get("regime_label"),
+                    "reason": payload.get("reason")
+                    or payload.get("summary")
+                    or payload.get("regime_label"),
+                    "watch_points": list(payload.get("watch_points") or []),
+                    "confidence": payload.get("confidence"),
+                    "regime": payload.get("regime"),
+                    "bias": payload.get("bias") or payload.get("overall_bias"),
+                    "mode": payload.get("mode") or payload.get("suggested_action"),
+                    "source": "structure_bundle",
+                }
+        # Fallback: the strategy bundle's structure_overall. The snapshot
+        # builder already does the same fallback, so the overview stays in
+        # sync with what the strategy page is showing.
+        strategy = strategy_bundle or {}
+        decision = strategy.get("decision") or strategy if isinstance(strategy, Mapping) else {}
+        overall = decision.get("structure_overall") if isinstance(decision, Mapping) else None
+        if isinstance(overall, Mapping) and overall:
+            return {
+                "score": overall.get("bias_score") or overall.get("bullish_score"),
+                "state": overall.get("regime"),
+                "label": overall.get("regime_label_cn") or overall.get("regime"),
+                "reason": overall.get("summary")
+                or overall.get("suggested_action")
+                or overall.get("mode"),
+                "watch_points": list(overall.get("watch_points") or []),
+                "confidence": overall.get("confidence"),
+                "regime": overall.get("regime"),
+                "bias": overall.get("bias") or overall.get("overall_bias"),
+                "mode": overall.get("mode") or overall.get("suggested_action"),
+                "source": "strategy.structure_overall",
+            }
+        return {}
 
     async def _load_cached_strategy_bundle(
         self, instrument_id: str, timeframe: str

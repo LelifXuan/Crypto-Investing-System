@@ -82,12 +82,10 @@ class TerminalSummaryEngine:
         modules = {
             **technical,
             "macro": MacroSummaryAdapter().summarize(macro_overview or {}),
-            "structure": self._optional_module(
-                "structure",
-                structure,
-                fallback_state="待确认",
-                fallback_reason="结构形态输入不足，等待关键支撑、阻力和形态确认。",
-            ),
+            # T08: structure now flows through StructureSummaryAdapter so the
+            # monitoring overview reflects the real structure_bundle state
+            # instead of permanently rendering "待确认".
+            "structure": StructureSummaryAdapter().summarize(structure),
             "event_risk": self._optional_module(
                 "event_risk",
                 event_risk,
@@ -601,6 +599,148 @@ class MacroSummaryAdapter:
             },
         )
         return ModuleScore("macro", score, state, impact, reason, [evidence], max(0.25, confidence))
+
+
+class StructureSummaryAdapter:
+    """Translate the structure page / strategy.structure_overall into a ModuleScore.
+
+    T08 audit fix: the audit found that the monitoring overview's structure
+    module always rendered ``待确认`` because the monitoring payload never
+    carried a ``structure`` key. This adapter consumes the
+    ``structure_bundle`` page cache (or the ``strategy.structure_overall``
+    fallback) and emits a ModuleScore that matches the rest of the
+    engine's modules. The score, state and impact are derived from the
+    structure regime and bias; the reason is the suggested action the
+    structure page recommends.
+    """
+
+    _REGIME_TO_STATE: dict[str, tuple[str, str]] = {
+        "trend": ("趋势结构", "neutral"),
+        "trending": ("趋势结构", "neutral"),
+        "balance": ("区间结构", "neutral"),
+        "range": ("区间结构", "neutral"),
+        "ranging": ("区间结构", "neutral"),
+        "transition": ("结构切换", "warning"),
+        "shock": ("结构冲击", "warning"),
+        "accumulation_proxy": ("积累倾向", "mild_bullish"),
+        "accumulation_confirmed": ("积累确认", "bullish"),
+        "distribution_proxy": ("派发倾向", "mild_bearish"),
+        "distribution_confirmed": ("派发确认", "bearish"),
+    }
+
+    _BIAS_TO_IMPACT: dict[str, str] = {
+        "bullish": "bullish",
+        "long": "bullish",
+        "up": "bullish",
+        "bearish": "bearish",
+        "short": "bearish",
+        "down": "bearish",
+        "neutral": "neutral",
+    }
+
+    def summarize(self, structure: Mapping[str, Any] | None) -> ModuleScore:
+        if not structure:
+            return ModuleScore(
+                "structure",
+                50.0,
+                "待确认",
+                "neutral",
+                "结构形态输入不足，等待关键支撑、阻力和形态确认。",
+                [],
+                0.35,
+            )
+        regime = str(
+            structure.get("regime")
+            or structure.get("state")
+            or ""
+        ).lower()
+        bias = str(
+            structure.get("bias")
+            or structure.get("overall_bias")
+            or structure.get("direction")
+            or ""
+        ).lower()
+        base_score = _num(structure.get("score"))
+        if base_score is None:
+            bias_score = _num(structure.get("bias_score"))
+            if bias_score is None:
+                bias_score = _num(structure.get("bullish_score"))
+            base_score = bias_score if bias_score is not None else 50.0
+        if not 0 <= base_score <= 100:
+            base_score = max(0.0, min(100.0, base_score))
+        state_default, impact_default = self._REGIME_TO_STATE.get(
+            regime, (structure.get("state") or "形态待确认", "neutral")
+        )
+        if regime and regime not in self._REGIME_TO_STATE and structure.get("state"):
+            state_default = str(structure.get("state"))
+        if bias:
+            impact = self._BIAS_TO_IMPACT.get(bias, impact_default)
+        else:
+            impact = impact_default
+        if bias == "bullish" or bias == "long":
+            score = max(base_score, 60.0)
+        elif bias == "bearish" or bias == "short":
+            score = min(base_score, 40.0)
+        else:
+            score = base_score
+        if impact == "bullish":
+            score = max(score, 55.0)
+        elif impact == "bearish":
+            score = min(score, 45.0)
+        reason = str(
+            structure.get("reason")
+            or structure.get("summary")
+            or structure.get("suggested_action")
+            or structure.get("mode")
+            or ""
+        )
+        if not reason:
+            if regime in {"trend", "trending"}:
+                reason = "趋势结构形成，方向由趋势模板权重决定。"
+            elif regime in {"balance", "range", "ranging"}:
+                reason = "区间结构，方向需等待区间边界突破或失效。"
+            elif regime in {"transition", "shock"}:
+                reason = "结构切换窗口，方向不明确，等待新结构定型。"
+            else:
+                reason = "结构形态输入不足，等待关键支撑、阻力和形态确认。"
+        watch_points = list(structure.get("watch_points") or [])
+        if not watch_points:
+            if regime in {"trend", "trending"}:
+                watch_points = ["结构边界是否守住", "趋势模板权重是否变化"]
+            elif regime in {"balance", "range", "ranging"}:
+                watch_points = ["区间边界是否被突破", "突破是否伴随成交放大"]
+            elif regime in {"transition", "shock"}:
+                watch_points = ["新结构方向是否明确", "切换期间是否出现假突破"]
+            else:
+                watch_points = ["关键支撑阻力是否被测试", "结构边界是否给出方向"]
+        evidence = SummaryEvidence(
+            "structure_bundle",
+            "structure",
+            float(score),
+            state_default,
+            str(structure.get("label") or state_default),
+            impact,
+            reason,
+            watch_points,
+            {
+                "regime": regime,
+                "bias": bias,
+                "source": structure.get("source") or "structure_bundle",
+            },
+        )
+        confidence = _bounded_confidence(
+            structure.get("confidence"),
+            0.7 if regime in self._REGIME_TO_STATE else 0.4,
+        )
+        return ModuleScore(
+            "structure",
+            float(score),
+            state_default,
+            impact,
+            reason,
+            [evidence],
+            confidence,
+        )
 
 
 class TechnicalSummaryAdapter:
