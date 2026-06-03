@@ -124,7 +124,6 @@ class MonitoringDashboardService:
                 alerts_bundle=alerts_bundle,
             )
         terminal_summary = self._terminal_summary_payload(
-            payload.get("terminal_summary"),
             macro_overview,
             technical_observations,
             alerts_bundle=alerts_bundle,
@@ -139,9 +138,6 @@ class MonitoringDashboardService:
                 "macro_overview": macro_overview,
                 "terminal_summary": terminal_summary,
                 "technical_observations": technical_observations,
-                "technical_source": payload.get("technical_source"),
-                "technical_indicator_count": len(technical_observations),
-                "onchain_observations": [],
                 "alert_events": self._filter_monitoring_alert_events(
                     payload.get("alert_events", [])
                 ),
@@ -223,7 +219,6 @@ class MonitoringDashboardService:
             alerts_bundle=alerts_bundle,
         )
         terminal_summary = self._terminal_summary_payload(
-            None,
             macro_overview,
             technical_observations,
             alerts_bundle=alerts_bundle,
@@ -247,11 +242,6 @@ class MonitoringDashboardService:
             "terminal_summary": terminal_summary,
             "structure": structure_payload,
             "technical_observations": technical_observations,
-            "technical_source": (
-                "analysis_bundle" if technical_from_analysis else "indicator_observations"
-            ),
-            "technical_indicator_count": len(technical_observations),
-            "onchain_observations": [],
             "alert_events": alert_events,
             "cross_asset": cross_asset,
             "source_status": source_status,
@@ -476,7 +466,6 @@ class MonitoringDashboardService:
 
     @staticmethod
     def _terminal_summary_payload(
-        _cached: Any,
         macro_overview: dict[str, Any] | None,
         technical_observations: list[dict[str, Any]],
         *,

@@ -592,9 +592,6 @@ class MonitoringDashboardRead(BundleMetaRead):
     macro_overview: MacroOverviewResponse | None = None
     terminal_summary: dict[str, Any] | None = None
     technical_observations: list[IndicatorObservationRead] = Field(default_factory=list)
-    technical_source: str | None = None
-    technical_indicator_count: int = 0
-    onchain_observations: list[IndicatorObservationRead] = Field(default_factory=list)
     alert_events: list[AlertEventRead] = Field(default_factory=list)
     cross_asset: list[dict] = Field(default_factory=list)
     source_status: dict[str, dict[str, Any]] = Field(default_factory=dict)

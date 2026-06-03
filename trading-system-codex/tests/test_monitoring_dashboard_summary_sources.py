@@ -101,7 +101,6 @@ async def test_dashboard_forwards_alerts_and_strategy_into_terminal_summary() ->
     )
 
     summary = service._terminal_summary_payload(  # noqa: SLF001
-        None,
         {"total_score": 45, "score_band": "温和偏紧"},
         [],
         alerts_bundle=alerts_bundle,
@@ -162,7 +161,6 @@ async def test_dashboard_marks_degraded_when_alerts_and_strategy_missing() -> No
     )
 
     summary = service._terminal_summary_payload(  # noqa: SLF001
-        None,
         None,
         [],
         alerts_bundle=alerts,

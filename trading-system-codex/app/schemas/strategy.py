@@ -144,7 +144,3 @@ class StrategyReviewRead(BaseModel):
     confidence_buckets: dict[str, Any] = Field(default_factory=dict)
     latest_signals: list[dict[str, Any]] = Field(default_factory=list)
     latest_decisions: list[dict[str, Any]] = Field(default_factory=list)
-
-
-StrategyV15DecisionRead = StrategyDecisionRead
-StrategyV15BundleRead = StrategyBundleRead

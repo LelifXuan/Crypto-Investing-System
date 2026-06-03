@@ -237,10 +237,6 @@ class StrategySignalService:
             "dependency_state": snapshot.get("dependency_state", {}),
         }
 
-    # Backward-compatible name for callers that still explicitly need a rebuild.
-    async def build_bundle(self, instrument_id: str, timeframe: str) -> dict:
-        return await self.build_bundle_uncached(instrument_id, timeframe)
-
     async def enqueue_refresh(self, instrument_id: str, timeframe: str, *, reason: str) -> dict:
         from app.services.precompute import precompute_service
 

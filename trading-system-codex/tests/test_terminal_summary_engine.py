@@ -135,7 +135,6 @@ def test_monitoring_dashboard_schema_accepts_terminal_summary() -> None:
 def test_monitoring_service_builds_terminal_summary_from_partial_payload() -> None:
     summary = MonitoringDashboardService._terminal_summary_payload(
         None,
-        None,
         [{"indicator_key": "ema_20", "signal_state": "bearish", "value_num": 100}],
     )
 
@@ -181,11 +180,7 @@ def test_terminal_summary_detects_ema_bullish_stack_from_snapshot() -> None:
 
 
 def test_terminal_summary_rebuild_ignores_cached_neutral_payload() -> None:
-    cached = {
-        "module_scores": {"technical_trend": {"score": 50, "state": "中性", "impact": "neutral"}}
-    }
     summary = MonitoringDashboardService._terminal_summary_payload(
-        cached,
         {"total_score": 43, "data_completeness": {"effective_count": 37, "total_count": 41}},
         [
             {"indicator_key": "ema_20", "value_num": 95, "value_json": {"close": 90}},
