@@ -7,15 +7,12 @@ MONITORING_JS = REPO / "app" / "static" / "pages" / "monitoring.js"
 STYLES_CSS = REPO / "app" / "static" / "styles.css"
 
 REQUIRED_DECISION_LABELS = (
-    "市场情况",
-    "交易指引",
-    "风险点 / 失效条件",
+    "市场观察",
 )
 
 OLD_PRIMARY_LABELS = (
-    "主要矛盾",
-    "策略含义",
-    "观察条件",
+    "交易指引",
+    "风险点 / 失效条件",
 )
 
 
@@ -74,10 +71,11 @@ def test_monitoring_css_has_terminal_brief_classes() -> None:
         assert cls in content, f"Missing CSS class: {cls}"
 
 
-def test_monitoring_js_fallback_renders_when_decision_brief_missing() -> None:
-    """When the backend has not yet emitted decision_brief the UI must
-    still render a three-row fallback. Verify getTerminalDecisionRows is
-    invoked both with the brief path and a fallback path.
+def test_monitoring_js_handles_decision_brief_only() -> None:
+    """V1.5.2 row set is sourced exclusively from the backend
+    decision_brief.rows payload; no synthetic fallback rows are
+    rendered for missing fields. The function only normalises the
+    shape returned by the backend.
     """
 
     content = _read(MONITORING_JS)
@@ -86,7 +84,10 @@ def test_monitoring_js_fallback_renders_when_decision_brief_missing() -> None:
     end = content.find("\nfunction ", fn_idx + 1)
     block = content[fn_idx:end] if end > 0 else content[fn_idx:]
     assert "decision_brief" in block
-    assert "fallback" in block or "summary.headline" in block or "summary.bias" in block
+    assert "trading_guidance" not in block
+    assert "risk_invalidation" not in block
+    assert "summary.headline" not in block
+    assert "summary.bias" not in block
 
 
 def test_monitoring_js_renders_three_rows_via_terminal_brief_wrapper() -> None:

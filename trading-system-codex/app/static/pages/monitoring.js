@@ -256,11 +256,6 @@ function sourceMeta(status) {
   return { label, className };
 }
 
-function formatValue(value, digits = 2) {
-  if (numeric(value) !== null) return formatNumber(value, digits);
-  return readableText(value);
-}
-
 function normalizeUnit(unit) {
   return String(unit || "")
     .trim()
@@ -712,53 +707,14 @@ function getTerminalDecisionRows(summary) {
   if (!summary || typeof summary !== "object") return [];
   const brief = summary.decision_brief || {};
   const rows = Array.isArray(brief.rows) ? brief.rows : [];
-  if (rows.length) {
-    return rows.map((row) => ({
-      key: String(row.key || ""),
-      title: String(row.title || "市场观察"),
-      tone: String(row.tone || "neutral"),
-      summary: String(row.summary || ""),
-      bullets: Array.isArray(row.bullets) ? row.bullets : [],
-      source_refs: Array.isArray(row.source_refs) ? row.source_refs : [],
-    }));
-  }
-  const watchPoints = Array.isArray(summary.watch_points) ? summary.watch_points : [];
-  const bullish = Array.isArray(summary.bullish_reversal_conditions)
-    ? summary.bullish_reversal_conditions
-    : [];
-  const bearish = Array.isArray(summary.bearish_continuation_conditions)
-    ? summary.bearish_continuation_conditions
-    : [];
-  const bias = readableText(summary.bias, "中性");
-  return [
-    {
-      key: "market_situation",
-      title: "市场情况",
-      tone: bias,
-      summary: readableText(summary.headline, "全局摘要正在等待关键输入。"),
-      bullets: [readableText(summary.main_conflict, "模块之间尚未形成明确一致性。")],
-      source_refs: ["terminal_summary"],
-    },
-    {
-      key: "trading_guidance",
-      title: "交易指引",
-      tone: bias,
-      summary: readableText(
-        summary.strategy_implication,
-        "等待关键条件确认后再评估策略触发质量。",
-      ),
-      bullets: watchPoints.slice(0, 3),
-      source_refs: ["terminal_summary"],
-    },
-    {
-      key: "risk_invalidation",
-      title: "风险点 / 失效条件",
-      tone: "warning",
-      summary: "若关键均线、VWAP、结构边界或告警中心证据反向确认，则当前判断失效。",
-      bullets: [...bullish.slice(0, 2), ...bearish.slice(0, 2)],
-      source_refs: ["terminal_summary"],
-    },
-  ];
+  return rows.map((row) => ({
+    key: String(row.key || ""),
+    title: String(row.title || "市场观察"),
+    tone: String(row.tone || "neutral"),
+    summary: String(row.summary || ""),
+    bullets: Array.isArray(row.bullets) ? row.bullets : [],
+    source_refs: Array.isArray(row.source_refs) ? row.source_refs : [],
+  }));
 }
 
 function renderTerminalDecisionRow(row) {
