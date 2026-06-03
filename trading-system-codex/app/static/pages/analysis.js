@@ -805,12 +805,14 @@ function heroTemplate() {
 let isMounted = false;
 let markTimer = null;
 let bundleRetryTimer = null;
+let bundleRetryCount = 0;
 let abortController = null;
 let timeframeSelectEl = null;
 let windowSelectEl = null;
 
 const analysisCache = new Map();
 const MAX_ANALYSIS_CACHE = 8;
+const MAX_BUNDLE_RETRY = 3;
 
 function clearBundleRetry() {
   if (bundleRetryTimer) {
@@ -819,8 +821,18 @@ function clearBundleRetry() {
   }
 }
 
+function resetBundleRetry() {
+  bundleRetryCount = 0;
+  clearBundleRetry();
+}
+
 function scheduleBundleRetry() {
   clearBundleRetry();
+  if (bundleRetryCount >= MAX_BUNDLE_RETRY) {
+    renderAnalysisStatus("后台暂未就绪，请稍后手动刷新。", "warning");
+    return;
+  }
+  bundleRetryCount += 1;
   bundleRetryTimer = window.setTimeout(() => {
     loadAll(true).catch((error) => console.warn("analysis:bundle-retry:error", error));
   }, 4000);
@@ -854,6 +866,7 @@ function renderChartBatch(defs) {
 
 async function loadAll(force = false) {
   clearBundleRetry();
+  resetBundleRetry();
   const profile = getWindowProfile(appState.selectedTimeframe, appState.selectedViewWindow);
   const requestLimit = Math.min(profile.calcBars, 1000);
   const fetchKey = `${appState.selectedInstrumentId}:${appState.selectedTimeframe}`;

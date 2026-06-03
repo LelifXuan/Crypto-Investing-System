@@ -495,7 +495,7 @@ function renderReviewPanel(review) {
             <p class="eyebrow">REVIEW</p>
             <h3>信号历史与复盘</h3>
           </div>
-          <button class="button-link" id="strategy-review-refresh">更新复盘</button>
+          <button class="button-link" data-strategy-review-refresh>更新复盘</button>
         </div>
         <div class="strategy-inline-metrics">
           ${[
@@ -547,18 +547,6 @@ async function loadReview() {
     const review = await api.getStrategyReview(appState.selectedInstrumentId, appState.selectedTimeframe);
     const el = document.getElementById("strategy-review");
     if (el) el.innerHTML = renderReviewPanel(review);
-    setTimeout(() => {
-      const btn = document.getElementById("strategy-review-refresh");
-      if (btn) {
-        btn.addEventListener("click", async () => {
-          btn.disabled = true;
-          btn.textContent = "更新中";
-          await loadReview();
-          btn.disabled = false;
-          btn.textContent = "更新复盘";
-        });
-      }
-    }, 100);
   } catch (e) {
     console.warn("strategy:review:error", e);
   }
@@ -664,6 +652,29 @@ function attachEvents() {
       );
     } finally {
       button.disabled = false;
+    }
+  });
+  // Event delegation for the review refresh button: the button DOM node
+  // is rebuilt every time renderReviewPanel() runs, so attaching the
+  // listener inside loadReview() (the previous racy setTimeout pattern)
+  // could double-fire on rapid clicks. Catching the click at the
+  // document level avoids that.
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("[data-strategy-review-refresh]")) {
+      const btn = target.closest("[data-strategy-review-refresh]");
+      if (btn instanceof HTMLButtonElement) {
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = "更新中";
+        loadReview().finally(() => {
+          if (btn.isConnected) {
+            btn.disabled = false;
+            btn.textContent = original || "更新复盘";
+          }
+        });
+      }
     }
   });
 }
