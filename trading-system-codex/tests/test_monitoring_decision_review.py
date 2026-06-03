@@ -39,8 +39,7 @@ def _make_cache(
         "source_alignment": {"consistency": consistency},
         "rows": [
             {"key": "market_situation", "title": "市场情况"},
-            {"key": "trading_guidance", "title": "交易指引"},
-            {"key": "risk_invalidation", "title": "风险点 / 失效条件"},
+            {"key": "key_risk", "title": "关键失效"},
         ],
     }
     return ComputedDatasetCache(
@@ -110,7 +109,9 @@ async def test_review_returns_recent_briefs_in_descending_order() -> None:
         assert briefs[2]["consistency"] == "aligned"
         for entry in briefs:
             assert entry["decision_brief"]["version"] == "monitoring_decision_brief_v1"
-            assert len(entry["decision_brief"]["rows"]) == 3
+            assert len(entry["decision_brief"]["rows"]) == 2
+            row_keys = {row["key"] for row in entry["decision_brief"]["rows"]}
+            assert row_keys == {"market_situation", "key_risk"}
     finally:
         await engine.dispose()
 
@@ -202,8 +203,7 @@ async def test_review_serializes_decision_brief_to_json() -> None:
                 },
                 "rows": [
                     {"key": "market_situation", "tone": "warning", "summary": "降级"},
-                    {"key": "trading_guidance", "tone": "warning", "summary": "等待"},
-                    {"key": "risk_invalidation", "tone": "warning", "summary": "数据缺口"},
+                    {"key": "key_risk", "tone": "warning", "summary": "数据缺口"},
                 ],
             },
         )
