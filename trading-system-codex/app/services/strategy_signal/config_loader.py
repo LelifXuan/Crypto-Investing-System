@@ -140,11 +140,6 @@ def load_strategy_signal_config() -> dict[str, Any]:
         / "monitoring"
         / "configs"
         / "market_strategy_signal_config_v16.json",
-        app_paths.repo_root
-        / "app"
-        / "monitoring"
-        / "configs"
-        / "market_strategy_signal_config_v15.json",
     ]
     for path in candidates:
         if not path.exists():
