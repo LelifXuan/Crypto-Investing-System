@@ -679,8 +679,18 @@ function renderTerminalSummary(data) {
     .join("");
   const confidence = numeric(summary.confidence) !== null ? formatNumber(summary.confidence, 0) : DASH;
   const regime = readableText(summary.regime, "中性震荡");
+  // V1.5.5 ②: the regime already carries the sub-direction
+  // (偏多震荡 / 偏空震荡 / 中性震荡). Drop the separate bias chip
+  // so the user gets one unambiguous answer to "is this
+  // 偏多震荡 or 偏空震荡?". Confidence goes into a single
+  // combined chip for readability.
   const bias = readableText(summary.bias, "中性");
-  const regimeMeta = signalMeta(bias);
+  const regimeTone = ["偏多震荡", "强趋势偏多", "温和偏多", "多头修复"].includes(regime)
+    ? "bullish"
+    : ["偏空震荡", "弱势震荡", "空头加速", "弱势下行", "高波动风险"].includes(regime)
+    ? "bearish"
+    : "neutral";
+  const regimeMeta = signalMeta(regimeTone);
   const decisionRows = getTerminalDecisionRows(summary);
   return `
     <article class="terminal-summary-card">
@@ -691,7 +701,7 @@ function renderTerminalSummary(data) {
         </div>
         <div class="terminal-summary-badges">
           ${chip(regime, regimeMeta.className)}
-          ${chip(`${bias} · ${confidence}`, regimeMeta.className)}
+          <span class="terminal-summary-confidence" title="置信度">${escapeHtml(confidence)}</span>
         </div>
       </div>
       <p class="terminal-summary-headline">${escapeHtml(readableText(summary.headline, "全局摘要正在等待关键输入。"))}</p>
