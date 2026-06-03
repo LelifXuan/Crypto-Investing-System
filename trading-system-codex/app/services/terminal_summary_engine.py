@@ -1610,12 +1610,33 @@ def _decision_source_alignment(
     else:
         alignment["missing_sources"].append("alerts_bundle")
 
-    if strategy_decision and isinstance(strategy_decision, Mapping) and strategy_decision:
+    # strategy_bundle is only "primary" when the decision actually
+    # came from a non-empty strategy bundle. The T11 follow-up made
+    # sure the chip fallback does not silently inflate the primary
+    # list with names whose top-level keys are missing.
+    if (
+        strategy_decision
+        and isinstance(strategy_decision, Mapping)
+        and strategy_decision
+    ):
         alignment["primary_sources"].append("strategy_bundle")
     else:
         alignment["missing_sources"].append("strategy_bundle")
 
-    if structure and isinstance(structure, Mapping) and structure:
+    # structure_bundle is only "primary" when the structure payload
+    # actually came from the structure page cache. Fallback payloads
+    # (strategy.structure_overall, alerts.chip_structure) carry a
+    # ``source`` field that names the real source — those are still
+    # listed under missing_sources so the user sees the structure
+    # pipeline gap, but the chip / strategy fallbacks are surfaced
+    # in the module score and the market_situation bullets so the
+    # user is not left with the 待确认 placeholder.
+    structure_source = (
+        structure.get("source")
+        if isinstance(structure, Mapping)
+        else None
+    )
+    if structure and isinstance(structure, Mapping) and structure_source == "structure_bundle":
         alignment["primary_sources"].append("structure_bundle")
     else:
         alignment["missing_sources"].append("structure_bundle")
