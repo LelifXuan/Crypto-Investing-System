@@ -992,33 +992,37 @@ class MonitoringDashboardService:
             "qqqx-usdt-perp": "纳斯达克100",
             "slvon-usdt-perp": "白银",
         }
+        # V1.5.4 C7: pull the latest 2 candles for all 5 instruments in
+        # a single SQL query, instead of 5 sequential round-trips.
+        try:
+            grouped = await self.repository.list_candles_for_instruments(
+                list(tokens.keys()),
+                timeframe="1d",
+                per_instrument_limit=2,
+            )
+        except Exception:
+            grouped = {}
         results = []
         for instrument_id, label in tokens.items():
-            try:
-                candles = await self.repository.list_candles(
-                    instrument_id=instrument_id,
-                    timeframe="1d",
-                    limit=2,
-                )
-                if candles:
-                    latest = candles[-1]
-                    prev = candles[-2] if len(candles) > 1 else None
-                    change_pct = (
-                        (float(latest.close) - float(prev.close)) / float(prev.close) * 100
-                        if prev and prev.close
-                        else None
-                    )
-                    results.append(
-                        {
-                            "instrument_id": instrument_id,
-                            "label": label,
-                            "price": float(latest.close),
-                            "change_pct": round(change_pct, 2) if change_pct is not None else None,
-                            "ts": latest.ts_open.isoformat(),
-                        }
-                    )
-            except Exception:
-                pass
+            candles = grouped.get(instrument_id) or []
+            if not candles:
+                continue
+            latest = candles[-1]
+            prev = candles[-2] if len(candles) > 1 else None
+            change_pct = (
+                (float(latest.close) - float(prev.close)) / float(prev.close) * 100
+                if prev and prev.close
+                else None
+            )
+            results.append(
+                {
+                    "instrument_id": instrument_id,
+                    "label": label,
+                    "price": float(latest.close),
+                    "change_pct": round(change_pct, 2) if change_pct is not None else None,
+                    "ts": latest.ts_open.isoformat(),
+                }
+            )
         return results
 
     async def _data_source_status(self) -> dict[str, dict[str, Any]]:

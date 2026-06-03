@@ -210,6 +210,40 @@ class MarketRepository:
         )
         return list(reversed(result.scalars().all()))
 
+    async def list_candles_for_instruments(
+        self,
+        instrument_ids: list[str],
+        timeframe: str,
+        per_instrument_limit: int = 2,
+    ) -> dict[str, list[MarketCandle]]:
+        """Fetch the latest ``per_instrument_limit`` candles for each
+        instrument in a single query. Returns a dict keyed by
+        instrument_id. Used by the cross-asset snapshot path so the
+        monitoring overview pays 1 round-trip instead of N.
+        """
+        if not instrument_ids:
+            return {}
+        ts = MarketCandle.ts_open
+        inst = MarketCandle.instrument_id
+        rn = func.row_number().over(
+            partition_by=inst,
+            order_by=desc(ts),
+        ).label("rn")
+        stmt = select(MarketCandle, rn).where(
+            MarketCandle.instrument_id.in_(instrument_ids),
+            MarketCandle.timeframe == timeframe,
+        )
+        sub = stmt.subquery()
+        outer = select(sub).where(sub.c.rn <= per_instrument_limit)
+        result = await self.session.execute(outer)
+        out: dict[str, list[MarketCandle]] = {key: [] for key in instrument_ids}
+        for row in result.all():
+            candle = row[0]
+            out.setdefault(candle.instrument_id, []).append(candle)
+        for key in out:
+            out[key].sort(key=lambda c: c.ts_open)
+        return out
+
     async def list_candles_filtered(
         self,
         instrument_id: str,
@@ -344,51 +378,63 @@ class MarketRepository:
         error_message: str | None = None,
         meta_json: dict | None = None,
     ) -> ComputedDatasetCache:
-        from sqlalchemy.exc import IntegrityError
+        # V1.5.4 C12: single-roundtrip upsert via dialect-native
+        # INSERT ... ON CONFLICT DO UPDATE. The previous code did a
+        # SELECT first, then an INSERT or UPDATE; this collapses both
+        # into one statement and saves one round-trip per upsert.
+        # We pin dialect via the engine's dialect name so SQLite tests
+        # and Postgres production both go through the same path.
         encoded_payload = jsonable_encoder(payload_json)
         encoded_meta = jsonable_encoder(meta_json or {})
-        model = ComputedDatasetCache(
-            cache_key=cache_key,
-            dataset_type=dataset_type,
-            instrument_id=instrument_id,
-            timeframe=timeframe,
-            source_data_ts=source_data_ts,
-            source_hash=source_hash,
-            payload_json=encoded_payload,
-            cache_state=cache_state,
-            source_version=source_version,
-            calculated_at=calculated_at,
-            expires_at=expires_at,
-            cost_ms=cost_ms,
-            error_message=error_message,
-            meta_json=encoded_meta,
+        values = {
+            "cache_key": cache_key,
+            "dataset_type": dataset_type,
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "source_data_ts": source_data_ts,
+            "source_hash": source_hash,
+            "payload_json": encoded_payload,
+            "cache_state": cache_state,
+            "source_version": source_version,
+            "calculated_at": calculated_at,
+            "expires_at": expires_at,
+            "cost_ms": cost_ms,
+            "error_message": error_message,
+            "meta_json": encoded_meta,
+        }
+        dialect_name = self.session.bind.dialect.name if self.session.bind else "sqlite"
+        insert_stmt = (
+            postgresql_insert(ComputedDatasetCache)
+            if dialect_name == "postgresql"
+            else sqlite_insert(ComputedDatasetCache)
+        ).values(**values)
+        # Do not touch the unique cache_key on update; the conflict
+        # target is the only thing that should remain stable.
+        update_cols = {
+            col: getattr(insert_stmt.excluded, col)
+            for col in (
+                "dataset_type",
+                "instrument_id",
+                "timeframe",
+                "source_data_ts",
+                "source_hash",
+                "payload_json",
+                "cache_state",
+                "source_version",
+                "calculated_at",
+                "expires_at",
+                "cost_ms",
+                "error_message",
+                "meta_json",
+            )
+        }
+        upsert = insert_stmt.on_conflict_do_update(
+            index_elements=["cache_key"],
+            set_=update_cols,
         )
-        existing = await self.get_computed_dataset_cache(cache_key)
-        if existing is None:
-            try:
-                self.session.add(model)
-                await self.session.flush()
-                return model
-            except IntegrityError:
-                await self.session.rollback()
-                existing = await self.get_computed_dataset_cache(cache_key)
-                if existing is None:
-                    raise
-        existing.dataset_type = dataset_type
-        existing.instrument_id = instrument_id
-        existing.timeframe = timeframe
-        existing.source_data_ts = source_data_ts
-        existing.source_hash = source_hash
-        existing.payload_json = encoded_payload
-        existing.cache_state = cache_state
-        existing.source_version = source_version
-        existing.calculated_at = calculated_at
-        existing.expires_at = expires_at
-        existing.cost_ms = cost_ms
-        existing.error_message = error_message
-        existing.meta_json = encoded_meta
+        await self.session.execute(upsert)
         await self.session.flush()
-        return existing
+        return await self.get_computed_dataset_cache(cache_key)
 
     async def delete_expired_computed_dataset_cache(
         self, now: datetime | None = None, limit: int = 500
@@ -1004,6 +1050,45 @@ class MarketRepository:
         stmt = stmt.order_by(desc(IndicatorObservation.observation_ts)).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_latest_observations_by_key(
+        self,
+        *,
+        category: str | None = None,
+        timeframe: str | None = None,
+        instrument_id: str | None = None,
+        limit_per_key: int = 1,
+    ) -> list[IndicatorObservation]:
+        """Return the latest ``limit_per_key`` observations per
+        ``indicator_key`` (optionally filtered by category / timeframe /
+        instrument_id). Uses a window function so the database returns
+        at most ``N * K`` rows where N = limit_per_key and K = number
+        of distinct indicator_key values.
+
+        Replaces the previous pattern of ``list_indicator_observations(
+        category=X, limit=5000)`` followed by a Python-side
+        ``latest_by_key`` dedupe that walked every row.
+        """
+        from sqlalchemy import func
+
+        ts = IndicatorObservation.observation_ts
+        key = IndicatorObservation.indicator_key
+        rn_col = func.row_number().over(
+            partition_by=key,
+            order_by=desc(ts),
+        ).label("rn")
+        stmt = select(IndicatorObservation, rn_col)
+        if category:
+            stmt = stmt.where(IndicatorObservation.category == category)
+        if timeframe:
+            stmt = stmt.where(IndicatorObservation.timeframe == timeframe)
+        if instrument_id:
+            stmt = stmt.where(IndicatorObservation.instrument_id == instrument_id)
+        stmt = stmt.order_by(key, desc(ts))
+        sub = stmt.subquery()
+        outer = select(sub).where(sub.c.rn <= limit_per_key)
+        result = await self.session.execute(outer)
+        return [row[0] for row in result.all()]
 
     async def latest_observation(
         self,

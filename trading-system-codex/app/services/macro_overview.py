@@ -291,9 +291,14 @@ class MacroOverviewService:
 
     async def build_overview(self, *, now: datetime | None = None) -> MacroOverviewResponse:
         now = now or datetime.now(UTC)
-        observations = await self.repository.list_indicator_observations(
+        # V1.5.4 C3: pull only the latest observation per indicator_key
+        # at the database level. The previous pattern of
+        # list_indicator_observations(limit=5000) walked every macro
+        # row then deduped in Python; the new path returns N rows
+        # for N indicator_keys.
+        observations = await self.repository.list_latest_observations_by_key(
             category="macro",
-            limit=5000,
+            limit_per_key=1,
         )
         definitions = {
             item.indicator_key: item
