@@ -165,19 +165,19 @@ class TerminalSummaryEngine:
     ) -> dict[str, Any]:
         """Build the monitoring overview decision brief.
 
-        Returns a payload with ``version``, ``source_alignment`` and ``rows``
-        (exactly three rows: market_situation, trading_guidance, risk_invalidation).
-        Pure aggregation logic - no I/O, no network, no database. All inputs
-        are loose mappings so the function can tolerate partially available
-        cache payloads. Missing inputs are surfaced through
-        ``source_alignment.missing_sources`` instead of being silently
-        treated as neutral evidence.
+        T09 audit fix: the rows are now ``market_situation`` (rich
+        headline with per-TF breakdown), ``mtf_breakdown`` (per-TF
+        bullets when timeframes disagree), and ``key_risk`` (top 1-2
+        critical invalidation conditions + data gaps). The previous
+        ``trading_guidance`` row re-rendered the strategy page and the
+        ``risk_invalidation`` row enumerated every chip / divergence /
+        structure risk. Both violated the "summary layer, not
+        recomputation" principle and have been removed.
         """
 
         decision = _decision_extract_strategy(strategy_bundle)
         chip = _decision_as_mapping(alerts_bundle.get("chip_structure"))
         divergence = _decision_as_mapping(alerts_bundle.get("divergence_summary"))
-        final_decision = _decision_as_mapping(alerts_bundle.get("final_decision"))
 
         alignment = _decision_source_alignment(
             base_summary=base_summary,
@@ -195,25 +195,28 @@ class TerminalSummaryEngine:
             timeframe_snapshots=timeframe_snapshots,
             alignment=alignment,
         )
-        trading_row = _decision_build_trading_row(
-            base_summary=base_summary,
-            decision=decision,
-            final_decision=final_decision,
+        rows: list[dict[str, Any]] = [market_row]
+        mtf_row = _decision_build_mtf_breakdown_row(
+            timeframe_snapshots=timeframe_snapshots,
             alignment=alignment,
         )
-        risk_row = _decision_build_risk_row(
-            base_summary=base_summary,
-            decision=decision,
-            chip=chip,
-            divergence=divergence,
-            structure=structure,
-            alignment=alignment,
+        if mtf_row is not None:
+            rows.append(mtf_row)
+        rows.append(
+            _decision_build_key_risk_row(
+                base_summary=base_summary,
+                decision=decision,
+                chip=chip,
+                divergence=divergence,
+                structure=structure,
+                alignment=alignment,
+            )
         )
 
         return {
             "version": "monitoring_decision_brief_v1",
             "source_alignment": alignment,
-            "rows": [market_row, trading_row, risk_row],
+            "rows": rows,
         }
 
     def _weighted_score(self, modules: Mapping[str, ModuleScore]) -> float:
@@ -1973,6 +1976,94 @@ def _decision_describe_timeframes(timeframe_snapshots: Mapping[str, Any]) -> str
     return "多周期状态：" + "；".join(parts) + "。"
 
 
+# Ordered list of supported timeframes so the per-TF breakdown always reads
+# high → low (1w → 1d → 4h). Anything not in this list is appended in the
+# iteration order to keep the breakdown deterministic.
+_TF_DISPLAY_ORDER: tuple[str, ...] = ("1w", "1d", "4h", "1h", "15m")
+
+
+def _decision_format_mtf_breakdown(
+    timeframe_snapshots: Mapping[str, Any],
+    *,
+    include_scores: bool = True,
+) -> str:
+    """T09: per-TF breakdown with score labels, sorted high→low.
+
+    Replaces the old "4h/1d/1w 多周期方向不一致..." single-line. The user
+    wants to see exactly which TFs are bullish and which are bearish so
+    they can decide based on their own trading horizon. Example output:
+    ``1w 偏多(score 62) / 1d 偏空(score 35) / 4h 偏空(score 28)``.
+    Falls back to a coarser ``1w 偏多 / 1d 偏空 / 4h 偏空`` when scores are
+    missing, and to a single dash when no snapshot is present.
+    """
+
+    if not timeframe_snapshots:
+        return ""
+
+    items: list[tuple[str, str, str | None]] = []
+    seen: set[str] = set()
+    for tf in _TF_DISPLAY_ORDER:
+        if tf in timeframe_snapshots:
+            seen.add(tf)
+            mapping = _decision_as_mapping(timeframe_snapshots.get(tf))
+            direction = _decision_direction(
+                _decision_first_present(
+                    mapping, "bias", "direction", "trend", "final_direction", "state"
+                )
+            )
+            if direction:
+                score = _decision_first_present(mapping, "score", "confidence")
+                items.append((tf, _decision_zh_direction(direction), score))
+            else:
+                items.append((tf, "方向未明", _decision_first_present(mapping, "score")))
+    for tf in timeframe_snapshots:
+        if tf in seen:
+            continue
+        mapping = _decision_as_mapping(timeframe_snapshots.get(tf))
+        direction = _decision_direction(
+            _decision_first_present(
+                mapping, "bias", "direction", "trend", "final_direction", "state"
+            )
+        )
+        if direction:
+            items.append((tf, _decision_zh_direction(direction), None))
+        else:
+            items.append((tf, "方向未明", None))
+
+    if not items:
+        return ""
+    parts: list[str] = []
+    for tf, label, score in items:
+        if include_scores and score is not None:
+            try:
+                score_str = f"score {int(round(float(score)))}"
+            except (TypeError, ValueError):
+                score_str = f"score {score}"
+            parts.append(f"{tf} 偏{label}({score_str})")
+        else:
+            parts.append(f"{tf} 偏{label}")
+    return " / ".join(parts)
+
+
+def _decision_mtf_has_conflict(
+    timeframe_snapshots: Mapping[str, Any],
+) -> bool:
+    """Return True when the per-TF directions are not unanimous."""
+    if not timeframe_snapshots:
+        return False
+    directions: set[str] = set()
+    for payload in timeframe_snapshots.values():
+        mapping = _decision_as_mapping(payload)
+        direction = _decision_direction(
+            _decision_first_present(
+                mapping, "bias", "direction", "trend", "final_direction", "state"
+            )
+        )
+        if direction:
+            directions.add(direction)
+    return len(directions) > 1
+
+
 def _decision_describe_chip(chip: Mapping[str, Any]) -> str:
     if not chip:
         return ""
@@ -2316,20 +2407,28 @@ def _decision_build_market_row(
     timeframe_snapshots: Mapping[str, Any],
     alignment: Mapping[str, Any],
 ) -> dict[str, Any]:
+    """T09: market_situation row carries the per-TF breakdown in the headline.
+
+    The audit found that the previous headline was a single
+    abstract sentence (``当前维持中性震荡结构。多空模块分歧明显...``)
+    that hid the per-TF disagreement. When the timeframes conflict we
+    now render the actual breakdown so the user can decide based on
+    their own trading horizon. The chips and divergence bullets stay
+    inline because they are aggregations, not re-computations.
+    """
+
     regime = _decision_text(base_summary.get("regime"), "中性震荡")
     bias = _decision_direction(base_summary.get("bias")) or "neutral"
     confidence = _decision_text(base_summary.get("confidence"), "--")
-    headline = _decision_text(
-        base_summary.get("headline"),
-        "关键输入不足，等待宏观、技术与结构数据刷新。",
+    mtf_breakdown = _decision_format_mtf_breakdown(
+        timeframe_snapshots, include_scores=True
     )
 
-    bullets: list[str] = [headline]
+    bullets: list[str] = []
     sources: list[str] = ["terminal_summary"]
 
-    tf_comment = _decision_describe_timeframes(timeframe_snapshots)
-    if tf_comment:
-        bullets.append(tf_comment)
+    if mtf_breakdown:
+        bullets.append("多周期状态：" + mtf_breakdown + "。")
         sources.extend(f"analysis.{tf}" for tf in timeframe_snapshots.keys())
 
     chip_comment = _decision_describe_chip(chip)
@@ -2342,8 +2441,23 @@ def _decision_build_market_row(
         bullets.append(div_comment)
         sources.append("alerts.divergence_summary")
 
+    if not bullets:
+        bullets.append(
+            _decision_text(
+                base_summary.get("headline"),
+                "关键输入不足，等待宏观、技术与结构数据刷新。",
+            )
+        )
+
     consistency = alignment.get("consistency") or "degraded"
-    if consistency == "conflict":
+    has_mtf_conflict = _decision_mtf_has_conflict(timeframe_snapshots)
+    if has_mtf_conflict:
+        summary = (
+            f"高周期与短周期方向冲突：{mtf_breakdown}。"
+            "请按你的交易周期判断。"
+        )
+        tone = "warning"
+    elif consistency == "conflict":
         summary = (
             f"当前为{regime}，但跨页面证据存在冲突，方向结论需要等待确认。"
         )
@@ -2375,6 +2489,50 @@ def _decision_build_market_row(
     return _apply_evidence_strength(row, strength)
 
 
+def _decision_build_mtf_breakdown_row(
+    *,
+    timeframe_snapshots: Mapping[str, Any],
+    alignment: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """T09: dedicated row showing the per-TF breakdown in conflict cases.
+
+    The user explicitly asked: "大小周期的多空矛盾可以直接写清楚出来，
+    让用户根据自己的交易周期去思考" — so we surface the actual
+    high→low per-TF list in its own row whenever the directions
+    disagree. When the TFs are aligned, the row is omitted (the
+    market_situation summary already says so). When no TF data is
+    available, the row is also omitted so we never fabricate.
+    """
+
+    if not timeframe_snapshots:
+        return None
+    if not _decision_mtf_has_conflict(timeframe_snapshots):
+        return None
+    breakdown = _decision_format_mtf_breakdown(
+        timeframe_snapshots, include_scores=True
+    )
+    if not breakdown:
+        return None
+    sources = ["terminal_summary"] + [
+        f"analysis.{tf}" for tf in timeframe_snapshots.keys()
+    ]
+    row = {
+        "key": "mtf_breakdown",
+        "title": "多周期方向",
+        "tone": "warning",
+        "summary": (
+            f"高周期与短周期方向冲突：{breakdown}。"
+            "短线交易以 1h/4h 为准，中长线以 1d/1w 为准。"
+        ),
+        "bullets": [f"具体方向：{breakdown}。"],
+        "source_refs": _decision_dedupe_text(sources, limit=8),
+    }
+    strength = _row_evidence_strength(
+        row["source_refs"], alignment.get("matrix") or [], {}
+    )
+    return _apply_evidence_strength(row, strength)
+
+
 def _decision_build_trading_row(
     *,
     base_summary: Mapping[str, Any],
@@ -2382,114 +2540,25 @@ def _decision_build_trading_row(
     final_decision: Mapping[str, Any],
     alignment: Mapping[str, Any],
 ) -> dict[str, Any]:
-    sources: list[str] = ["terminal_summary"]
-    bullets: list[str] = []
+    """Dormant. T09 removed the ``trading_guidance`` row from the
+    decision brief because it re-rendered the strategy page in the
+    overview and violated the "summary layer, not recomputation"
+    principle. This function is kept for backward compatibility with
+    tests that import it directly; ``_build_decision_brief`` no longer
+    calls it.
+    """
 
-    permission = _decision_first_present(
-        decision, "strategy_permission", "permission", "permission_label"
-    )
-    state = _decision_first_present(
-        decision, "strategy_state", "strategy_state_label", "state"
-    )
-    next_trigger = decision.get("next_trigger")
-    primary_strategy = _decision_as_mapping(decision.get("primary_strategy"))
-    no_trade_reasons = _decision_as_list(decision.get("no_trade_reasons"))
-    raw_gates = decision.get("gates")
-    gate_bullets, gates_block, gates_warn = _decision_format_gates(raw_gates, limit=3)
-    if gate_bullets:
-        joined = "；".join(gate_bullets)
-        prefix = "执行前必须通过的策略门槛：" if gates_block else "策略门槛状态："
-        bullets.append(prefix + joined + "。")
-
-    if decision:
-        sources.append("strategy.decision")
-        if state:
-            bullets.append(f"策略状态：{_decision_text(state)}。")
-        if permission:
-            bullets.append(f"交易准入：{_decision_text(permission)}。")
-        trigger_text = _decision_format_trigger(next_trigger)
-        if trigger_text:
-            bullets.append(trigger_text)
-        level_text = _decision_describe_strategy_levels(primary_strategy)
-        if level_text:
-            bullets.append(level_text)
-        if no_trade_reasons:
-            joined = "；".join(_decision_text(item) for item in no_trade_reasons[:3])
-            bullets.append("当前限制：" + joined + "。")
-    else:
-        bullets.append(
-            _decision_text(
-                base_summary.get("strategy_implication"),
-                "策略 bundle 缺失，先等待关键条件确认，不直接追单。",
-            )
-        )
-
-    final_action = _decision_first_present(
-        final_decision, "action", "action_label", "decision", "state"
-    )
-    if final_action:
-        bullets.append(f"告警中心 final decision：{_decision_text(final_action)}。")
-        sources.append("alerts.final_decision")
-
-    consistency = alignment.get("consistency") or "degraded"
-    if gates_block:
-        summary = (
-            "策略存在未通过的门槛，优先观察或等待解除；"
-            "执行必须等待所有 block 级别门槛全部解除。"
-        )
-        tone = "warning"
-    elif gates_warn and consistency != "conflict":
-        summary = (
-            "策略门槛以警示为主，准入仍以 AI 策略页为准；"
-            "若警示项升级为 block，须立即降级或撤销。"
-        )
-        tone = "warning"
-    elif consistency == "conflict":
-        summary = (
-            "跨页面方向冲突，当前交易指引降级为等待确认；"
-            "只有当策略 gates 与关键价位同时确认后才允许执行。"
-        )
-        tone = "warning"
-    elif no_trade_reasons:
-        summary = (
-            "当前存在不交易原因，优先观察；"
-            "若触发条件未满足，不建议主动开仓。"
-        )
-        tone = "warning"
-    elif permission:
-        summary = (
-            f"以 AI 策略页准入为主：{_decision_text(permission)}；"
-            "执行必须等待触发器和风控条件同时满足。"
-        )
-        tone = (
-            _decision_direction(
-                _decision_first_present(decision, "strategy_bias", "bias")
-            )
-            or "neutral"
-        )
-    else:
-        summary = _decision_text(
-            base_summary.get("strategy_implication"),
-            "等待关键条件确认后再评估策略触发质量。",
-        )
-        tone = _decision_direction(base_summary.get("bias")) or "neutral"
-
-    dedup_sources = _decision_dedupe_text(sources, limit=8)
-    row = {
-        "key": "trading_guidance",
-        "title": "交易指引",
-        "tone": tone,
-        "summary": summary,
-        "bullets": _decision_dedupe_text(bullets, limit=6),
-        "source_refs": dedup_sources,
+    return {
+        "key": "trading_guidance_removed_v1_5_2",
+        "title": "交易指引（已下线）",
+        "tone": "neutral",
+        "summary": "交易指引已迁移到 AI 策略页 / 监控总览不再重复呈现。",
+        "bullets": [],
+        "source_refs": ["terminal_summary.removed"],
     }
-    strength = _row_evidence_strength(
-        dedup_sources, alignment.get("matrix") or [], base_summary
-    )
-    return _apply_evidence_strength(row, strength)
 
 
-def _decision_build_risk_row(
+def _decision_build_key_risk_row(
     *,
     base_summary: Mapping[str, Any],
     decision: Mapping[str, Any],
@@ -2498,72 +2567,57 @@ def _decision_build_risk_row(
     structure: Mapping[str, Any],
     alignment: Mapping[str, Any],
 ) -> dict[str, Any]:
+    """T09: renamed from ``_decision_build_risk_row``.
+
+    The previous risk row enumerated every chip / divergence / structure
+    risk and re-rendered the strategy gates, violating the
+    "summary layer, not recomputation" principle. The new row carries
+    only the highest-signal items:
+
+    * data gaps from ``source_alignment.missing_sources``
+    * the most critical invalidation condition across chip / structure
+    * (gated) the futures margin pressure verdict — T10 hides it when
+      the strategy has no actionable plan.
+
+    The row is renamed ``key_risk`` so the frontend can no longer rely
+    on the old ``risk_invalidation`` key.
+    """
+
     bullets: list[str] = []
     sources: list[str] = []
 
-    for conflict in alignment.get("conflicts") or []:
-        bullets.append(conflict)
     for missing in alignment.get("missing_sources") or []:
-        bullets.append(f"数据缺口：{missing} 缺失或未刷新，当前摘要需要降级处理。")
+        bullets.append(f"数据缺口：{missing} 缺失或未刷新。")
+        sources.append(f"missing:{missing}")
 
-    raw_blocking_gates = _decision_first_present(
-        decision, "blocking_gates", "blocked_gates", "gates"
+    # Pick the single most critical invalidation condition across all
+    # sources. The audit complained that the old row listed every chip
+    # risk note; here we surface one representative line per source
+    # so the user has something actionable without a wall of text.
+    critical = _decision_pick_critical_invalidation(
+        chip=chip,
+        divergence=divergence,
+        structure=structure,
     )
-    risk_gate_bullets, risk_gates_block, _ = _decision_format_gates(
-        raw_blocking_gates, limit=4
-    )
-    if risk_gate_bullets:
-        prefix = "未通过的策略门槛：" if risk_gates_block else "策略门槛状态："
-        bullets.append(prefix + "；".join(risk_gate_bullets) + "。")
-        sources.append("strategy.gates")
+    if critical:
+        bullets.append(f"关键失效：{critical}")
+        sources.append(critical.get("source") or "structure.snapshot")
 
-    no_trade_reasons = _decision_as_list(decision.get("no_trade_reasons"))
-    if no_trade_reasons:
-        joined = "；".join(_decision_text(item) for item in no_trade_reasons[:4])
-        bullets.append("不交易原因：" + joined + "。")
-        sources.append("strategy.decision")
-
-    chip_risks = _decision_collect_named_items(
-        chip, ("risk_points", "risk_notes", "invalidation_conditions", "warnings")
-    )
-    if chip_risks:
-        for item in chip_risks[:4]:
-            bullets.append(_decision_text(item))
-        sources.append("alerts.chip_structure")
-
-    div_risks = _decision_collect_named_items(
-        divergence, ("risk_points", "warnings", "invalidation_conditions", "signals")
-    )
-    if div_risks:
-        for item in div_risks[:3]:
-            bullets.append(_decision_text(item))
-        sources.append("alerts.divergence_summary")
-
-    structure_risks = _decision_collect_named_items(
-        structure,
-        ("invalidation_conditions", "risk_points", "watch_points", "invalidation"),
-    )
-    if structure_risks:
-        for item in structure_risks[:3]:
-            bullets.append(_decision_text(item))
-        sources.append("structure.snapshot")
-
-    # T06: surface the futures margin pressure verdict (when the decision
-    # bundle carries a snapshot) as a first-class risk row. The risk
-    # row only shows it when the pressure is non-ok, since pass cases add
-    # noise to the user's mental model.
+    # T10: surface the futures margin pressure verdict only when the
+    # active strategy is actually entering a position. The function
+    # returns False for OBSERVE / NO_EDGE / WAIT_* / EVENT_WAIT /
+    # RISK_OFF / INVALID_PLAN_LEVELS / terminal states, so the
+    # "OBSERVE + 建议减半仓位" contradiction is no longer rendered.
     futures_pressure = _decision_extract_futures_pressure(decision)
-    if futures_pressure and futures_pressure.get("level") not in {None, "ok"}:
+    if (
+        futures_pressure
+        and futures_pressure.get("level") not in {None, "ok"}
+        and _decision_should_show_futures_pressure(decision)
+    ):
         pressure_line = _decision_format_futures_pressure(futures_pressure)
         if pressure_line:
             bullets.append(pressure_line)
             sources.append("strategy.futures_risk")
-
-    fallback_watch = _decision_as_list(base_summary.get("watch_points"))
-    if not bullets and fallback_watch:
-        for item in fallback_watch[:4]:
-            bullets.append(_decision_text(item))
-        sources.append("terminal_summary.watch_points")
 
     if not bullets:
         bullets.append(
@@ -2587,14 +2641,78 @@ def _decision_build_risk_row(
 
     dedup_sources = _decision_dedupe_text(sources, limit=8)
     row = {
-        "key": "risk_invalidation",
-        "title": "风险点 / 失效条件",
+        "key": "key_risk",
+        "title": "关键失效",
         "tone": "warning",
         "summary": summary,
-        "bullets": _decision_dedupe_text(bullets, limit=6),
+        "bullets": _decision_dedupe_text(bullets, limit=4),
         "source_refs": dedup_sources,
     }
     strength = _row_evidence_strength(
         dedup_sources, alignment.get("matrix") or [], base_summary
     )
     return _apply_evidence_strength(row, strength)
+
+
+def _decision_pick_critical_invalidation(
+    *,
+    chip: Mapping[str, Any],
+    divergence: Mapping[str, Any],
+    structure: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Pick a single highest-signal invalidation condition.
+
+    The previous code enumerated every chip / divergence / structure
+    risk note. The audit asked for a single critical line so the
+    overview stays concise. We prefer the chip's first
+    ``invalidation_conditions`` entry (it is the most concrete
+    price-level condition), then fall back to structure, then
+    divergence.
+    """
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for source, payload in (
+        ("alerts.chip_structure", chip),
+        ("structure.snapshot", structure),
+        ("alerts.divergence_summary", divergence),
+    ):
+        if not isinstance(payload, Mapping) or not payload:
+            continue
+        items = _decision_collect_named_items(
+            payload,
+            ("invalidation_conditions", "invalidation", "watch_points", "risk_points"),
+        )
+        for item in items[:1]:
+            text = _decision_text(item)
+            if not text:
+                continue
+            priority = 0 if "alerts.chip_structure" in source else 1
+            candidates.append((priority, {"text": text, "source": source}))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda pair: pair[0])
+    return candidates[0][1]
+
+
+def _decision_build_risk_row(
+    *,
+    base_summary: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    chip: Mapping[str, Any],
+    divergence: Mapping[str, Any],
+    structure: Mapping[str, Any],
+    alignment: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Dormant. T09 renamed the public row to ``key_risk``. Kept so any
+    external caller that imports the symbol still works, but the
+    overview no longer uses it.
+    """
+
+    return _decision_build_key_risk_row(
+        base_summary=base_summary,
+        decision=decision,
+        chip=chip,
+        divergence=divergence,
+        structure=structure,
+        alignment=alignment,
+    )

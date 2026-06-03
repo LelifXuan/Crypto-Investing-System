@@ -163,7 +163,13 @@ def _brief_with_gates(strategy_bundle: dict) -> dict:
 
 
 def test_decision_brief_risk_row_contains_block_gates() -> None:
-    """End-to-end: block-level gates must surface in the risk row."""
+    """T09: the overview does NOT re-render the strategy gates. The
+    strategy page still owns the ``未通过的策略门槛`` rendering; the
+    overview's key_risk row is reserved for the most critical
+    invalidation condition. The test asserts the new contract: the
+    overview shows data gaps + critical invalidation + (gated)
+    futures pressure — never the full gate list.
+    """
 
     brief = _brief_with_gates(
         {
@@ -195,24 +201,36 @@ def test_decision_brief_risk_row_contains_block_gates() -> None:
     )
 
     risk_row = next(
-        row for row in brief["rows"] if row.get("key") == "risk_invalidation"
+        row for row in brief["rows"] if row.get("key") == "key_risk"
     )
+    assert risk_row["tone"] == "warning"
     bullets_text = "\n".join(risk_row["bullets"])
-    assert "未通过的策略门槛" in bullets_text
-    assert "spread too wide" in bullets_text
+    # The overview no longer re-renders the strategy gates; the user
+    # follows the source_refs to the strategy page for that detail.
+    assert "未通过的策略门槛" not in bullets_text
+    assert "spread too wide" not in bullets_text
+    assert "FUNDING" not in bullets_text
 
-    trading_row = next(
-        row for row in brief["rows"] if row.get("key") == "trading_guidance"
-    )
-    trading_text = "\n".join(trading_row["bullets"])
-    assert "执行前必须通过的策略门槛" in trading_text or "策略门槛状态" in trading_text
+    # T09: the trading_guidance row is gone; the strategy page owns
+    # the gate / next_trigger rendering. The overview only surfaces
+    # the critical invalidation in key_risk.
+    trading_keys = [row.get("key") for row in brief["rows"]]
+    assert "trading_guidance" not in trading_keys
+    assert "risk_invalidation" not in trading_keys
+    assert "key_risk" in trading_keys
 
 
 def test_decision_brief_trading_row_downgrades_tone_on_block() -> None:
+    """T09: when the strategy is OBSERVE, the key_risk row does not
+    surface the futures margin pressure even though the snapshot has
+    a block-level futures risk. The strategy page still owns that
+    signal via its own gates rendering. The overview stays a summary
+    layer, not a recomputation.
+    """
     brief = _brief_with_gates(
         {
-            "strategy_state": "WAIT_TRIGGER",
-            "strategy_state_label": "等待触发",
+            "strategy_state": "OBSERVE",
+            "strategy_state_label": "观察",
             "strategy_bias": "long",
             "strategy_bias_label": "偏多",
             "strategy_permission": "conditional",
@@ -227,7 +245,9 @@ def test_decision_brief_trading_row_downgrades_tone_on_block() -> None:
             ],
         }
     )
-    trading_row = next(
-        row for row in brief["rows"] if row.get("key") == "trading_guidance"
-    )
-    assert trading_row["tone"] == "warning"
+    # OBSERVE means no actionable plan. The trading_guidance row is
+    # gone; the key_risk row is the only place risks surface.
+    keys = [row.get("key") for row in brief["rows"]]
+    assert "trading_guidance" not in keys
+    key_risk = next(row for row in brief["rows"] if row.get("key") == "key_risk")
+    assert key_risk["tone"] == "warning"

@@ -247,7 +247,13 @@ def test_terminal_summary_uses_btc_daily_context_after_sharp_drop() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_decision_brief_has_exactly_three_required_rows() -> None:
+def test_decision_brief_has_required_rows() -> None:
+    """T09: market_situation is always present; mtf_breakdown is present
+    only when timeframes disagree; key_risk is always present. The old
+    trading_guidance + risk_invalidation pair has been removed because
+    the overview is supposed to be a summary layer, not a re-render of
+    the strategy page.
+    """
     summary = TerminalSummaryEngine().build(
         alerts_bundle={
             "chip_structure": {"direction": "bearish", "state": "pressure"},
@@ -269,16 +275,49 @@ def test_decision_brief_has_exactly_three_required_rows() -> None:
 
     brief = summary["decision_brief"]
     assert brief["version"] == "monitoring_decision_brief_v1"
-    assert [row["key"] for row in brief["rows"]] == [
-        "market_situation",
-        "trading_guidance",
-        "risk_invalidation",
-    ]
-    assert [row["title"] for row in brief["rows"]] == [
-        "市场情况",
-        "交易指引",
-        "风险点 / 失效条件",
-    ]
+    keys = [row["key"] for row in brief["rows"]]
+    assert keys[0] == "market_situation"
+    assert "key_risk" in keys
+    # trading_guidance is gone; risk_invalidation is renamed.
+    assert "trading_guidance" not in keys
+    assert "risk_invalidation" not in keys
+    # The conflict (4h neutral vs 1d/1w bearish) is not unanimous, so the
+    # mtf_breakdown row should appear.
+    assert "mtf_breakdown" in keys
+
+
+def test_decision_brief_omits_mtf_breakdown_when_aligned() -> None:
+    summary = TerminalSummaryEngine().build(
+        alerts_bundle={
+            "chip_structure": {"direction": "bullish"},
+            "divergence_summary": {"overall": {"tone": "bullish"}},
+        },
+        strategy_bundle={
+            "decision": {
+                "strategy_state": "ready",
+                "strategy_bias": "bullish",
+            }
+        },
+        timeframe_snapshots={
+            "4h": {"bias": "bullish"},
+            "1d": {"bias": "bullish"},
+            "1w": {"bias": "bullish"},
+        },
+    )
+    keys = [row["key"] for row in summary["decision_brief"]["rows"]]
+    assert keys == ["market_situation", "key_risk"]
+
+
+def test_decision_brief_omits_mtf_breakdown_when_no_data() -> None:
+    summary = TerminalSummaryEngine().build(
+        alerts_bundle={
+            "chip_structure": {"direction": "bearish"},
+        },
+    )
+    keys = [row["key"] for row in summary["decision_brief"]["rows"]]
+    assert "mtf_breakdown" not in keys
+    assert "market_situation" in keys
+    assert "key_risk" in keys
 
 
 def test_decision_brief_preserves_legacy_fields() -> None:
@@ -313,6 +352,9 @@ def test_decision_brief_marks_degraded_when_alerts_missing() -> None:
 
 
 def test_decision_brief_detects_cross_source_conflict() -> None:
+    """T09: cross-source conflict surfaces in source_alignment and in the
+    market_situation summary / mtf_breakdown row.
+    """
     summary = TerminalSummaryEngine().build(
         alerts_bundle={
             "chip_structure": {"direction": "bearish", "state": "pressure"},
@@ -334,14 +376,26 @@ def test_decision_brief_detects_cross_source_conflict() -> None:
     alignment = summary["decision_brief"]["source_alignment"]
     assert alignment["consistency"] == "conflict"
     assert any("方向证据冲突" in item for item in alignment["conflicts"])
-    assert any("4h/1d/1w" in item for item in alignment["conflicts"])
     rows_by_key = {row["key"]: row for row in summary["decision_brief"]["rows"]}
-    trading = rows_by_key["trading_guidance"]
-    assert trading["tone"] == "warning"
-    assert "等待确认" in trading["summary"] or "冲突" in trading["summary"]
+    market = rows_by_key["market_situation"]
+    assert market["tone"] == "warning"
+    assert "方向冲突" in market["summary"]
+    # The 4h/1d/1w line in source_alignment.conflicts is still emitted
+    # so the matrix / history endpoint can read it.
+    assert any("4h/1d/1w" in item for item in alignment["conflicts"])
+    # The mtf_breakdown row carries the per-TF list.
+    mtf = rows_by_key["mtf_breakdown"]
+    joined = " ".join([mtf["summary"], *mtf["bullets"]])
+    assert "1w" in joined
+    assert "1d" in joined
+    assert "4h" in joined
 
 
-def test_decision_brief_includes_strategy_gates_and_no_trade_reasons() -> None:
+def test_decision_brief_no_longer_renders_strategy_gates() -> None:
+    """T09: the overview is a summary layer; the strategy page owns the
+    gates, the no_trade_reasons, the next_trigger and the plan levels.
+    None of those should appear in the overview rows.
+    """
     summary = TerminalSummaryEngine().build(
         alerts_bundle={"chip_structure": {"direction": "bearish"}},
         strategy_bundle={
@@ -351,22 +405,26 @@ def test_decision_brief_includes_strategy_gates_and_no_trade_reasons() -> None:
                 "strategy_bias": "bearish",
                 "gates": ["OI 不足", "流动性不足"],
                 "no_trade_reasons": ["合约准入未通过"],
+                "next_trigger": "等待 4H 突破",
             }
         },
         timeframe_snapshots={"4h": {"bias": "bearish"}, "1d": {"bias": "bearish"}},
     )
-    rows_by_key = {row["key"]: row for row in summary["decision_brief"]["rows"]}
-    trading = rows_by_key["trading_guidance"]
-    joined = " ".join(trading["bullets"])
-    assert "策略状态" in joined
-    assert "禁止追单" in joined
-    assert "OI 不足" in joined or "合约准入" in joined
-    risk = rows_by_key["risk_invalidation"]
-    risk_joined = " ".join(risk["bullets"])
-    assert "策略门槛" in risk_joined or "不交易原因" in risk_joined
-    market = rows_by_key["market_situation"]
+    joined_all = " ".join(
+        row["summary"] + " " + " ".join(row["bullets"])
+        for row in summary["decision_brief"]["rows"]
+    )
+    # The strategy page owns these — they must NOT leak into the overview.
+    assert "OI 不足" not in joined_all
+    assert "合约准入" not in joined_all
+    assert "等待 4H 突破" not in joined_all
+    assert "禁止追单" not in joined_all
+    # The market_situation row still cites the chip source.
+    market = next(
+        row for row in summary["decision_brief"]["rows"]
+        if row["key"] == "market_situation"
+    )
     assert "alerts.chip_structure" in market["source_refs"]
-    assert "strategy.decision" in trading["source_refs"]
 
 
 def test_decision_brief_does_not_use_unconditional_trade_language() -> None:
@@ -506,7 +564,7 @@ def test_decision_brief_rows_carry_evidence_strength() -> None:
     for row in summary["decision_brief"]["rows"]:
         assert "evidence_strength" in row
         assert 0.0 <= row["evidence_strength"] <= 1.0
-    risk = next(r for r in summary["decision_brief"]["rows"] if r["key"] == "risk_invalidation")
+    risk = next(r for r in summary["decision_brief"]["rows"] if r["key"] == "key_risk")
     assert risk["tone"] == "warning"
     assert risk["evidence_strength"] == 0.0
 
@@ -516,10 +574,10 @@ def test_decision_brief_demotes_tone_when_evidence_strength_low() -> None:
     for row in summary["decision_brief"]["rows"]:
         # Without any optional inputs every source is missing so the row's
         # evidence_strength collapses to 0.0 and the tone must demote to
-        # warning. Risk row is always warning.
+        # warning. Key risk row is always warning.
         assert row["evidence_strength"] == 0.0
         assert row["tone"] == "warning"
-        if row["key"] != "risk_invalidation":
+        if row["key"] != "key_risk":
             # Summary is prefixed with an explicit uncertainty note.
             assert "证据强度" in row["summary"]
             assert "置信度有限" in row["summary"]
@@ -551,8 +609,8 @@ def test_decision_brief_partial_evidence_keeps_directional_tone() -> None:
     for row in summary["decision_brief"]["rows"]:
         # All real sources are well above 0.5 so the row's evidence_strength
         # must not be 0 and the demotion prefix must not be applied to the
-        # summary (the risk row is always warning regardless).
-        if row["key"] != "risk_invalidation":
+        # summary (the key_risk row is always warning regardless).
+        if row["key"] != "key_risk":
             assert row["evidence_strength"] >= 0.5, row
             assert "证据强度" not in row["summary"], row
         else:

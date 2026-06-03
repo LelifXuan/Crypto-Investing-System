@@ -120,8 +120,15 @@ async def test_dashboard_forwards_alerts_and_strategy_into_terminal_summary() ->
     assert "alerts.chip_structure" in market["source_refs"]
     assert "alerts.divergence_summary" in market["source_refs"]
     assert any("analysis.4h" in ref for ref in market["source_refs"])
-    trading = next(row for row in brief["rows"] if row["key"] == "trading_guidance")
-    assert "strategy.decision" in trading["source_refs"]
+    # T09: the trading_guidance row is gone. The overview is a summary
+    # layer and does not re-render the strategy page. The strategy page
+    # still owns the strategy.decision references; the overview's
+    # market_situation row cites the chip / divergence / analysis
+    # sources that the strategy page also depends on, so callers can
+    # navigate from the overview to the strategy page by following the
+    # source chips.
+    assert "trading_guidance" not in {row["key"] for row in brief["rows"]}
+    assert "key_risk" in {row["key"] for row in brief["rows"]}
 
 
 @pytest.mark.asyncio
