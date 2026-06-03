@@ -128,6 +128,40 @@ def test_load_structure_payload_returns_empty_when_no_source() -> None:
     assert out == {}
 
 
+def test_load_structure_payload_falls_back_to_chip_structure() -> None:
+    """When both the structure page cache and the strategy bundle are
+    empty, derive a structure-shaped payload from the alerts bundle's
+    chip_structure so the monitoring overview's structure module does
+    not permanently render the 待确认 placeholder.
+    """
+    repo = _Repo(snapshot_by_key={})
+    service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
+    alerts_bundle = {
+        "chip_structure": {
+            "regime": "low_confidence",
+            "direction": "bearish",
+            "direction_label": "偏空",
+            "confidence_score": 0.35,
+            "evidence_quality": "proxy_only",
+            "evidence_quality_label": "证据不足（仅 K 线涨跌 proxy）",
+            "invalidation_conditions": ["若价格重新回到关键区间内部。"],
+        }
+    }
+    out = asyncio.run(
+        service._load_cached_structure_payload(  # noqa: SLF001
+            instrument_id="btc-usdt-perp",
+            timeframe="1d",
+            strategy_bundle={},
+            alerts_bundle=alerts_bundle,
+        )
+    )
+    assert out["regime"] == "low_confidence"
+    assert out["bias"] == "bearish"
+    assert out["source"] == "alerts.chip_structure"
+    assert "证据不足" in out["reason"]
+    assert out["watch_points"] == ["若价格重新回到关键区间内部。"]
+
+
 def test_load_structure_payload_handles_repository_exception() -> None:
     class _RepoError:
         async def get_page_snapshot_cache(self, cache_key: str):

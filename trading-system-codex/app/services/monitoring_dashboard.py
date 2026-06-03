@@ -118,7 +118,10 @@ class MonitoringDashboardService:
         structure_payload = payload.get("structure") or {}
         if not structure_payload:
             structure_payload = await self._load_cached_structure_payload(
-                instrument_id, timeframe, strategy_bundle=strategy_bundle
+                instrument_id,
+                timeframe,
+                strategy_bundle=strategy_bundle,
+                alerts_bundle=alerts_bundle,
             )
         terminal_summary = self._terminal_summary_payload(
             payload.get("terminal_summary"),
@@ -214,7 +217,10 @@ class MonitoringDashboardService:
         # T08: load the real structure module so the terminal summary's
         # structure row does not permanently render the 待确认 fallback.
         structure_payload = await self._load_cached_structure_payload(
-            instrument_id, timeframe, strategy_bundle=strategy_bundle
+            instrument_id,
+            timeframe,
+            strategy_bundle=strategy_bundle,
+            alerts_bundle=alerts_bundle,
         )
         terminal_summary = self._terminal_summary_payload(
             None,
@@ -511,7 +517,11 @@ class MonitoringDashboardService:
         return dict(payload)
 
     async def _load_cached_structure_payload(
-        self, instrument_id: str, timeframe: str, strategy_bundle: Mapping[str, Any] | None = None
+        self,
+        instrument_id: str,
+        timeframe: str,
+        strategy_bundle: Mapping[str, Any] | None = None,
+        alerts_bundle: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """T08: surface the real structure module to the terminal summary.
 
@@ -522,9 +532,10 @@ class MonitoringDashboardService:
         wrapper fell back to the placeholder. This loader reads the actual
         structure page cache (``structure_bundle_cache_key``) and falls back
         to the strategy bundle's ``structure_overall`` when the page cache
-        is missing. The returned dict matches the shape the
-        ``StructureSummaryAdapter`` (in terminal_summary_engine) and the
-        legacy ``_optional_module`` wrapper both understand.
+        is missing. As a last resort it derives a structure-shaped payload
+        from the alerts bundle's ``chip_structure`` (the only field the
+        monitoring cache may actually have when the structure pipeline has
+        not run yet).
         """
 
         try:
@@ -576,6 +587,37 @@ class MonitoringDashboardService:
                 "bias": overall.get("bias") or overall.get("overall_bias"),
                 "mode": overall.get("mode") or overall.get("suggested_action"),
                 "source": "strategy.structure_overall",
+            }
+        # Last-resort fallback: the alerts bundle's chip_structure. The
+        # chip page is the only structure-shaped payload the monitoring
+        # cache actually carries on a fresh install (the structure
+        # pipeline may not have produced a snapshot yet). This keeps the
+        # module_scores.structure row honest — it surfaces the only
+        # structure data the system has, with a clear "proxy" label, so
+        # the user no longer sees the permanent 待确认 placeholder.
+        chip = (
+            alerts_bundle.get("chip_structure")
+            if isinstance(alerts_bundle, Mapping)
+            else None
+        )
+        if isinstance(chip, Mapping) and chip:
+            regime = str(chip.get("regime") or chip.get("state") or "low_confidence")
+            evidence_quality = str(chip.get("evidence_quality") or "proxy_only")
+            evidence_label = chip.get("evidence_quality_label") or "证据不足（仅 K 线涨跌 proxy）"
+            return {
+                "score": None,
+                "state": regime,
+                "label": chip.get("direction_label") or regime,
+                "reason": (
+                    f"结构详情暂未刷新，已用筹码页的 {regime} 作为占位；"
+                    f"{evidence_label}（{evidence_quality}）"
+                ),
+                "watch_points": list(chip.get("invalidation_conditions") or [])[:3],
+                "confidence": chip.get("confidence_score"),
+                "regime": regime,
+                "bias": chip.get("direction"),
+                "mode": None,
+                "source": "alerts.chip_structure",
             }
         return {}
 

@@ -1599,17 +1599,23 @@ def _decision_source_alignment(
     else:
         alignment["missing_sources"].append("analysis_bundle.4h_1d_1w")
 
-    if chip or divergence:
+    # T11 follow-up: the primary_sources / missing_sources lists used to
+    # claim "alerts_bundle" and "strategy_bundle" even when those were
+    # never loaded as top-level keys. Gate the primary claim on the
+    # actual presence of a meaningful payload (chip OR divergence for
+    # alerts; non-empty decision block for strategy).
+    has_alerts_payload = bool(chip) or bool(divergence)
+    if has_alerts_payload:
         alignment["primary_sources"].append("alerts_bundle")
     else:
         alignment["missing_sources"].append("alerts_bundle")
 
-    if strategy_decision:
+    if strategy_decision and isinstance(strategy_decision, Mapping) and strategy_decision:
         alignment["primary_sources"].append("strategy_bundle")
     else:
         alignment["missing_sources"].append("strategy_bundle")
 
-    if structure:
+    if structure and isinstance(structure, Mapping) and structure:
         alignment["primary_sources"].append("structure_bundle")
     else:
         alignment["missing_sources"].append("structure_bundle")
