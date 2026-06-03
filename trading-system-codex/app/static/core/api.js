@@ -350,12 +350,6 @@ export const api = {
       ttl: 20,
     });
   },
-  getChipStructure(instrumentId, timeframe) {
-    return requestJson("/alerts/chip-structure", {
-      params: { instrument_id: instrumentId, timeframe },
-      ttl: 20,
-    });
-  },
   getAlertsBundle(instrumentId, timeframe, options = {}) {
     return requestJson("/alerts/bundle", {
       params: {
@@ -483,17 +477,6 @@ export const api = {
   },
   getStrategyReview(instrumentId, timeframe, options = {}) {
     return requestJson("/strategy/review", {
-      params: {
-        instrument_id: instrumentId,
-        timeframe: timeframe === "1M" ? "30d" : timeframe,
-      },
-      ttl: 20,
-      signal: options.signal,
-      retry: 1,
-    });
-  },
-  getStrategyIterationProposals(instrumentId, timeframe, options = {}) {
-    return requestJson("/strategy/iteration-proposals", {
       params: {
         instrument_id: instrumentId,
         timeframe: timeframe === "1M" ? "30d" : timeframe,

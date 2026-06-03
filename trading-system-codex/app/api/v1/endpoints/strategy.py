@@ -15,7 +15,6 @@ from app.schemas.strategy import (
     StrategySnapshotSaveRead,
 )
 from app.services.precompute import precompute_service
-from app.services.strategy_signal.iteration_engine import IterationEngine
 from app.services.strategy_signal.review_engine import ReviewEngine
 from app.services.strategy_signal.service import StrategySignalService, StrategySignalUnavailable
 
@@ -123,19 +122,6 @@ async def get_strategy_review(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await ReviewEngine(MarketRepository(session)).build_review(
-        _instrument(instrument_id) if instrument_id else None,
-        _timeframe(timeframe) if timeframe else None,
-    )
-
-
-@router.get("/iteration-proposals")
-async def get_strategy_iteration_proposals(
-    instrument_id: str | None = Query(default=None),
-    timeframe: str | None = Query(default=None),
-    session: AsyncSession = Depends(get_db_session),
-    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
-):
-    return await IterationEngine(MarketRepository(session)).list_proposals(
         _instrument(instrument_id) if instrument_id else None,
         _timeframe(timeframe) if timeframe else None,
     )

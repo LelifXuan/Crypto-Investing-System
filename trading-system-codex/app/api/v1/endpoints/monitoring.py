@@ -16,7 +16,6 @@ from app.schemas.market import (
     AlertEventStatusUpdate,
     AlertRuleRead,
     AlertsBundleRead,
-    ChipStructureRead,
     DivergenceSummaryRead,
     IndicatorDefinitionRead,
     IndicatorObservationRead,
@@ -355,34 +354,6 @@ async def get_divergence_summary(
         indicator_matrix=indicator_matrix,
     )
     return DivergenceSummaryRead.model_validate(payload)
-
-
-@alerts_router.get("/chip-structure", response_model=ChipStructureRead)
-async def get_chip_structure(
-    instrument_id: str = Query(default="btc-usdt-perp"),
-    timeframe: str = Query(default="1h"),
-    session: AsyncSession = Depends(get_db_session),
-    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
-):
-    repository = MarketRepository(session)
-    # Use the latest candle of the requested timeframe (not 1h) so the cache
-    # key reflects the actual data source the chip analysis will use.
-    latest_candles = await repository.list_candles(
-        instrument_id=instrument_id, timeframe=timeframe, limit=1
-    )
-    latest_candle_ts = latest_candles[-1].ts_open.isoformat() if latest_candles else "missing"
-    cache_key = f"monitoring:chip_structure:v3:{instrument_id}:{timeframe}:{latest_candle_ts}"
-
-    async def producer() -> dict:
-        from app.services.chip_structure import ChipStructureService
-
-        payload = await ChipStructureService(repository).analyze(instrument_id, timeframe)
-        return ChipStructureRead.model_validate(payload).model_dump(mode="json")
-
-    cached = await shared_query_cache.get_or_set(
-        cache_key, settings.shared_query_cache_seconds, producer
-    )
-    return ChipStructureRead.model_validate(cached)
 
 
 @alerts_router.get("/bundle", response_model=AlertsBundleRead)
