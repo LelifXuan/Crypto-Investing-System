@@ -38,10 +38,19 @@ function renderFatalPageError(title, detail, code) {
 }
 
 function normalizeController(result) {
+  // V1.5.x: function-typed exports (legacy pattern, e.g. the
+  // knowledge page still returns the bare render function)
+  // used to map `unmount` to `result()` which called the render
+  // function AGAIN on every SPA tab switch. That re-rendered the
+  // old page's DOM right before the new page mounted, which
+  // surfaced as a 100-200 ms visible jank on every navigation.
+  // Now unmount is a no-op for function-typed exports; pages
+  // that need real teardown must export the controller-object
+  // shape below.
   if (typeof result === "function") {
     return {
       mount: async () => {},
-      unmount: async () => result(),
+      unmount: async () => {},
       pause: async () => {},
       resume: async () => {},
     };

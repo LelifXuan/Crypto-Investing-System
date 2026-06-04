@@ -215,6 +215,10 @@ function openTermCard(card) {
 function focusHashTarget() {
   const rawHash = decodeURIComponent(window.location.hash || "").replace(/^#/, "");
   if (!rawHash) return;
+  // If the target card is not in the DOM (filter hid it), clear
+  // the filter so the card becomes visible. Without this, related-
+  // term clicks from a filtered view silently do nothing.
+  if (!ensureTargetVisible(rawHash)) return;
   const card = document.getElementById(rawHash);
   if (!card) return;
   openTermCard(card);
@@ -224,6 +228,41 @@ function focusHashTarget() {
     card.classList.add("knowledge-highlight");
     window.setTimeout(() => card.classList.remove("knowledge-highlight"), 1800);
   });
+}
+
+// V1.5.x: ensure the URL hash resolves to a visible card. If the
+// active filter (page / section / family / level / search) hides
+// the target term, reset all filters so the term becomes visible
+// again. Without this, navigating from a filtered view to a
+// related-term anchor silently does nothing because the card is
+// not in the DOM.
+function ensureTargetVisible(hashId) {
+  if (!hashId) return false;
+  if (document.getElementById(hashId)) return true;
+  let mutated = false;
+  if (state.query) { state.query = ""; mutated = true; }
+  if (state.page !== "all") { state.page = "all"; mutated = true; }
+  if (state.section !== "all") { state.section = "all"; mutated = true; }
+  if (state.family !== "all") { state.family = "all"; mutated = true; }
+  if (state.level !== "all") { state.level = "all"; mutated = true; }
+  if (mutated) {
+    updateKnowledgeContent();
+    syncFilterControls();
+  }
+  return Boolean(document.getElementById(hashId));
+}
+
+function syncFilterControls() {
+  const search = document.getElementById("knowledge-search");
+  if (search) search.value = state.query;
+  const page = document.getElementById("knowledge-page-filter");
+  if (page) page.value = state.page;
+  const section = document.getElementById("knowledge-section-filter");
+  if (section) section.value = state.section;
+  const family = document.getElementById("knowledge-family-filter");
+  if (family) family.value = state.family;
+  const level = document.getElementById("knowledge-level-filter");
+  if (level) level.value = state.level;
 }
 
 function renderKnowledgeLayout() {
@@ -338,8 +377,17 @@ export async function renderKnowledge() {
   if (!isMounted) {
     renderKnowledgeLayout();
     isMounted = true;
+    // First mount: install the hashchange listener exactly once.
+    window.addEventListener("hashchange", focusHashTarget);
   } else {
     updateKnowledgeContent();
   }
-  window.addEventListener("hashchange", focusHashTarget);
+  // Honor the URL hash on every render (both first mount and
+  // subsequent update renders). Previously only the first mount
+  // path called focusHashTarget, so navigating back to the
+  // knowledge page from another SPA tab with a #term hash in
+  // the URL silently did nothing.
+  if (window.location.hash) {
+    window.requestAnimationFrame(() => focusHashTarget());
+  }
 }
