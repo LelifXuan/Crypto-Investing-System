@@ -105,7 +105,11 @@ function updateKnowledgeContent() {
 
   const contentEl = document.querySelector(".knowledge-sections");
   if (contentEl) {
-    contentEl.innerHTML = sections.length
+    // V1.5.x: requestAnimationFrame so a synchronous 80+ term
+    // re-render does not block the input/change event that
+    // triggered it. The user can keep typing or changing
+    // filters without feeling the page freeze.
+    const html = sections.length
       ? sections.map((section) => `
         <article class="card knowledge-section-card" id="section-${escapeHtml(section.id)}">
           <div class="section-head">
@@ -122,6 +126,15 @@ function updateKnowledgeContent() {
         </article>
       `).join("")
       : '<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽分区、家族、等级过滤。</p></section>';
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        contentEl.innerHTML = html;
+        bindToggleButtons();
+      });
+    } else {
+      contentEl.innerHTML = html;
+      bindToggleButtons();
+    }
   }
 
   const familyEl = document.getElementById("knowledge-family-filter");
@@ -134,8 +147,6 @@ function updateKnowledgeContent() {
       familyEl.value = currentValue;
     }
   }
-
-  bindToggleButtons();
 }
 
 function renderTags(values, className = "status-chip chip-neutral") {
