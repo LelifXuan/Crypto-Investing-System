@@ -498,7 +498,18 @@ const structureItems = [
     family: "regime",
     summary: "把市场环境压缩成趋势、平衡或过渡，决定策略权重。",
     how_to_use: "Trend 适合顺势等回踩，Balance 适合等边界，Transition 应降低仓位并等待方向重新确认。",
-    page_refs: ["market-structure", "alert-center"],
+    useful_when: [
+      "趋势市（连续 HH/HL，ADX > 25）：仓位正常，等 4h/1d EMA 回踩不破做顺势；止损 1.5×ATR，盈亏比至少 1:2。",
+      "平衡市（价格在区间内换手，ADX < 20）：不做追单，等价格到区间边界看拒绝或接受；突破后 1-2 根 K 线若快速回到区间，优先当作假突破减仓。",
+      "过渡市（HH/HL 与 LH/LL 频繁切换，EMA 纠缠）：把合约仓位降到 25% 以下，只做最干净的 1d 收盘确认信号；其他全部走观察。",
+      "事件前（重大宏观事件 < 24 小时）：无论当前 regime，都先降仓到 1/3；事件落地后等 1-2 小时让结构定型再恢复。",
+    ],
+    risk_note: [
+      "把过渡市当趋势市：HH/HL 看似连续，但 HL 抬高幅度递减 + ADX 反而下行 → 实际是动量耗尽，趋势随时反转。",
+      "把区间突破当趋势起涨：未伴随成交量放大的突破常见于假突破，6 根 K 线内回到区间应认错出场。",
+    ],
+    page_refs: ["market-structure", "alert-center", "monitoring-overview"],
+    related_terms: ["ADX 平均趋向指数", "Market Structure / 市场结构", "BOS / Break of Structure 与 CHOCH / Change of Character"],
     tags: ["structure"],
   }),
 ];
