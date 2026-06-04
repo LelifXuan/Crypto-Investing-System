@@ -5465,6 +5465,39 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
   min-height: 96px;
 }
 
+/* V1.5.x: SPA router skeleton for top-nav click. The skeleton
+   is setRoot-ed immediately on click, then the actual page
+   replaces it on the next animation frame. The shimmer
+   animation lasts ~1.4s so the placeholder looks alive even
+   if the actual render takes longer than one frame on slow
+   connections. */
+@keyframes nav-skeleton-shimmer {
+  0%   { background-position: 0% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.nav-skeleton-card .nav-skeleton-grid {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+}
+
+.nav-skeleton-row {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: nav-skeleton-shimmer 1.4s linear infinite;
+}
+
+.nav-skeleton-row-wide { width: 65%; }
+.nav-skeleton-row-short { width: 35%; }
+
 .monitoring-topbar-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1.35fr) repeat(5, minmax(126px, 1fr)) minmax(132px, 0.72fr);

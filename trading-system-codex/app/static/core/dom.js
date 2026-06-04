@@ -62,6 +62,37 @@ export function setRoot(content) {
   return root;
 }
 
+// V1.5.x: SPA router skeleton. Used as the immediate content
+// for #page-root when the user clicks a top-nav link, so the
+// browser paints a clean "正在准备 X" placeholder within the
+// same frame as the click. The actual page module's render
+// function runs in the next animation frame via the SPA router's
+// rAF deferral, then setRoot's again with the real content.
+// Without this, the click event handler synchronously walks
+// through the new page's setRoot (which is 50-300 ms of synchronous
+// innerHTML) before the browser can paint anything.
+export function renderNavSkeleton(title) {
+  const safeTitle = escapeHtml(title || "页面");
+  return `
+    <section class="card monitoring-surface nav-skeleton-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">正在跳转</p>
+          <h2>${safeTitle}</h2>
+          <p class="section-summary">页面数据准备中，可稍候或手动刷新。</p>
+        </div>
+        <div class="knowledge-section-count">加载中</div>
+      </div>
+      <div class="nav-skeleton-grid">
+        <div class="nav-skeleton-row nav-skeleton-row-wide"></div>
+        <div class="nav-skeleton-row"></div>
+        <div class="nav-skeleton-row"></div>
+        <div class="nav-skeleton-row nav-skeleton-row-short"></div>
+      </div>
+    </section>
+  `;
+}
+
 export function cardTitle(eyebrow, title, description = "") {
   return `
     <div class="section-head">

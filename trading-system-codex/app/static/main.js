@@ -1,3 +1,5 @@
+import { setRoot, renderNavSkeleton } from "./core/dom.js";
+
 const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
 const loadPageModule = (path) => import(`${path}${assetVersion}`);
 
@@ -182,8 +184,17 @@ function installSpaRouter() {
     document.body.dataset.page = pageId;
     ensureStylesheetForPage(pageId);
     setDocumentTitleForPage(pageId);
-    boot().finally(() => {
-      spaNavigationInFlight = false;
+    // V1.5.x: paint a skeleton placeholder immediately so the
+    // user sees an instant "正在跳转" state instead of the
+    // previous page staying frozen for 50-300 ms. Then defer
+    // the heavy boot() to the next animation frame so the
+    // browser has a chance to paint the skeleton before the
+    // new page's setRoot(innerHTML=...) blocks the main thread.
+    setRoot(renderNavSkeleton(PAGE_TITLES[pageId] || ""));
+    window.requestAnimationFrame(() => {
+      boot().finally(() => {
+        spaNavigationInFlight = false;
+      });
     });
   });
 
