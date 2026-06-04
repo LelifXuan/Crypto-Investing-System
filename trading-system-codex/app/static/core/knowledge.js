@@ -64,7 +64,15 @@ const technicalItems = [
     summary: "周期决定一根 K 线覆盖的时间，也决定信号用途。",
     definition: "低周期更接近执行噪声，高周期更接近方向背景。1h 常用于入场触发，4h 常用于结构确认，1d/1w 更适合判断主趋势和风险背景。",
     how_to_use: "高周期决定能不能做，低周期决定怎么做。若 1d 偏空而 1h 偏多，低周期反弹不应自动升级为合约多头。",
+    useful_when: [
+      "开仓前先确认 1d/1w 主趋势方向，再用 4h/1h 找入场触发：BTC 当前 1d EMA 多头排列 + 4h 回踩 EMA20 不破 → 找 1h 收盘重新站回做多。",
+      "跨周期冲突时降低合约仓位：1d 偏空 + 4h 反弹到 EMA20 附近 → 4h 反弹不应直接升级为多头计划，应等 4h 收盘跌破或 1d 收复再决策。",
+      "短线噪声过滤：1h 在阻力位反复穿刺影线不破 → 切到 15m 看是否完成 5 根连续收阴/收阳，否则视为假突破。",
+      "周期放大减少止损：1h 入场 0.5% 止损可以，放到 4h 同位置则要 1-1.5% 止损，ATR 自动放大 2-3 倍。",
+    ],
+    risk_note: "低周期信号必须经高周期过滤。直接用 15m 信号开 50x 合约，但 1d/4h 都没有任何结构确认，是最常见的爆仓路径。",
     page_refs: ["market-analysis", "market-structure", "alert-center"],
+    related_terms: ["EMA 指数移动平均线 / Exponential Moving Average", "ATR 平均真实波幅", "Risk-Reward Ratio / 风险收益比"],
     tags: ["timeframe"],
   }),
   term("sma", "SMA 简单移动平均线", {
@@ -321,7 +329,19 @@ const structureItems = [
     summary: "用摆动高低点序列判断趋势延续或转弱。",
     definition: "连续 HH/HL 表示买方能不断推高并守住回撤，连续 LH/LL 表示卖方压低反弹并继续打低。",
     how_to_use: "不要只看最后一个点，要看高低点序列是否连续、突破是否收盘确认、回撤是否守住关键 swing。",
-    page_refs: ["market-structure"],
+    useful_when: [
+      "判断趋势质量：连续 3 个 HH/HL + 每次 HL 抬高幅度类似 → 趋势健康；HH 抬高但 HL 不再抬高 → 动能减弱，仓位减半。",
+      "找止损位：多头入场后止损放在最近 HL 下方 1×ATR，不要放在最近一根 K 线低点；空头同理放在最近 LH 上方 1×ATR。",
+      "判断方向失效：4h 出现连续 2 个 LH 抬高失败 + LL 跌破前低 → 至少 30 分钟内不再做多，改为反弹到阻力做空或观望。",
+      "1d 周期出现连续 3 个 HH 但 HL 持平 → 趋势末端，动量耗尽，止盈分批上提，止损收紧到最近 HL。",
+    ],
+    risk_note: [
+      "只看单根 K 线高低点：单根长上影线穿过阻力后收回，不等于 HH 失效；必须看收盘和后续结构。",
+      "把 LH / LL 弄反：连续下跌中，HL 应该比前一个 HL 低，LL 应该比前一个 LL 低。任何反向都视为结构警告。",
+      "低周期结构与高周期方向冲突：1h 显示多头结构但 1d 偏空 → 1h 多头结构更可能是反弹，不应独立开多单。",
+    ],
+    page_refs: ["market-structure", "market-analysis"],
+    related_terms: ["BOS / Break of Structure 与 CHOCH / Change of Character", "Liquidity Sweep / 流动性扫单", "Timeframe / 周期"],
     tags: ["structure", "core"],
   }),
   term("swing_high_low", "Swing High / Swing Low / 摆动高低点", {
@@ -353,9 +373,20 @@ const structureItems = [
     family: "swing",
     summary: "BOS 偏趋势延续，CHOCH 偏角色切换预警。",
     how_to_use: "BOS 需要收盘突破、回踩不破和量能确认；CHOCH 需要看到原趋势关键位失守，并且反抽无法重新收回。",
+    useful_when: [
+      "顺势 BOS（最常见入场）：4h 多头结构中，1h 收盘突破最近 LH + 4h EMA20 同步站上 → 顺势做多，止损 4h 最近 HL 下方 1×ATR。",
+      "反转 CHOCH（高胜率转折）：4h 空头结构中，1h 收盘突破最近 HH + 1d 主趋势偏多 + 4h 收复 BOS 后回踩不破 → 反转做多，止损 1h swing 下方 1.5×ATR。",
+      "失败 BOS（顺势出场信号）：1h 突破 4h 阻力但 4h 收盘未确认 + 1h 收盘跌破突破位 → 突破失败，2/3 仓出场，剩余 1/3 走 trailing stop。",
+    ],
+    risk_note: [
+      "单根 K 线突破就当 BOS：插针突破后 1 根 K 线就收回 → 假突破。必须等收盘确认 + 至少 1 根 K 线回踩不破。",
+      "CHOCH 误判：低位反弹突破前期结构 + 1d 主趋势仍是空头 → 这是反弹不是 CHOCH，做多要等 1d 主趋势确认或降低杠杆。",
+    ],
     page_refs: ["market-structure", "alert-center"],
+    related_terms: ["Market Structure / 市场结构", "Retest / 回踩确认", "Breakout / 突破", "Timeframe / 周期"],
     tags: ["structure", "core"],
   }),
+
   term("support_resistance", "Support / Resistance / 支撑与阻力", {
     aliases: ["Support", "Resistance"],
     family: "levels",
@@ -369,17 +400,39 @@ const structureItems = [
     family: "levels",
     summary: "回踩确认用于验证突破后市场是否接受新价格区。",
     how_to_use: "突破后回踩不破关键位，且成交量没有异常衰竭，才更适合顺势执行。",
+    useful_when: [
+      "突破后回踩不破（最常见顺势入场）：4h 突破前高 + 4h 收盘 + 1h 回踩前高不破 + 1h 收盘重新站上 → 顺势做多，止损前高下方 1×ATR。",
+      "突破后回踩破位（出场信号）：1h 突破 4h 阻力 + 1h 收盘跌破突破位 + 4h 收盘未确认 → 突破失败，2/3 仓出场。",
+      "回踩深度控制：趋势强时回踩仅 0.382-0.5×突破幅度，趋势弱时可能 0.618-0.786。超过 0.786 大概率是趋势反转不是回踩。",
+    ],
+    risk_note: [
+      "突破后没等回踩就追：突破瞬间追单风险大，等 1-2 根 K 线回踩不破再进胜率显著提高。",
+      "回踩过深视为反转：BTC 1d 突破后回踩 > 786 突破幅度 = 突破失败概率 > 60%，应主动止损。",
+    ],
     page_refs: ["market-structure", "alert-center"],
+    related_terms: ["Breakout / 突破", "Support / Resistance / 支撑与阻力", "BOS / Break of Structure 与 CHOCH / Change of Character"],
     tags: ["structure"],
   }),
+
   term("liquidity_sweep", "Liquidity Sweep / 流动性扫单", {
     aliases: ["Sweep", "扫流动性"],
     family: "levels",
     summary: "价格刺穿明显高低点后快速收回，常代表扫止损或诱导成交。",
     how_to_use: "扫高后收回区间偏假突破风险，扫低后收回区间偏假跌破修复；必须用收盘和后续结构确认。",
+    useful_when: [
+      "扫低反转（高胜率做多）：1d 跌破前低 1% 内 + 1d 收盘站回前低 + 1h OBV 不再新低 + 1h 收回 → 反转做多，止损扫低最低点下方 1×ATR。",
+      "扫高失败（顺势做空）：1d 突破前高后 1d 收盘跌破前高 + 1h 跌破 BOS 起点 → 顺势做空，止损扫高高点上方 1×ATR。",
+      "扫描强弱盘区：1d 多次扫同一低点（同一价位 3+ 次测试）→ 卖方在该位置反复吸收，下一次扫低反转的概率提高。",
+    ],
+    risk_note: [
+      "单根影线扫低就猜反转：长下影线单独出现不构成扫低反转，需要 1-2 根 K 线收盘确认收回。",
+      "扫低后立即追多：若没有后续 4h 收盘确认 + 4h OBV 抬升，扫低可能继续延伸。",
+    ],
     page_refs: ["market-structure", "alert-center"],
+    related_terms: ["Support / Resistance / 支撑与阻力", "Breakout / 突破", "Market Structure / 市场结构"],
     tags: ["structure", "risk"],
   }),
+
   term("range_consolidation", "Range / Consolidation / 区间整理", {
     aliases: ["Range", "Consolidation"],
     family: "regime",
@@ -402,10 +455,21 @@ const structureItems = [
     summary: "按价格分布成交量，用来识别 POC、VAH、VAL 和成本迁移。",
     definition: "POC 是成交最密集价格，VAH/VAL 是覆盖主要成交量的价值区上下沿。价格在价值区内代表市场仍接受该区间，离开价值区并得到确认才更像结构迁移。",
     how_to_use: "POC 上移代表市场公平价格抬高，POC 下移代表成本重心下移。价格突破 VAH 后回踩不回区间，偏多头接受；突破后回到区间，说明接受度不足。",
-    risk_note: "样本太短或流动性太低会让 POC 跳动很大，不要把 POC 当固定支撑阻力。",
+    useful_when: [
+      "找支撑阻力：4h POC 价位（成交最密集）比传统 pivot 更准；BTC 1d POC 在 65k → 65k 是强支撑。",
+      "判断趋势质量：趋势中 POC 持续上移 = 成本抬高，多头健康；POC 持平或下移 = 动能减弱，可能进入震荡。",
+      "突破回踩入场：4h 价格突破 VAH + 4h 收盘 + 1h 回踩不破 VAH → 顺势做多，止损 POC 下方 1×ATR。",
+      "价值区回归（震荡市）：价格在 VAL 和 VAH 之间反复 → 接近 VAL 不应追空，接近 VAH 不应追多，等边界拒绝或接受。",
+    ],
+    risk_note: [
+      "短时间窗口 POC 跳动大：1h POC 受单根 K 线影响大，1d 或 1w POC 更稳定。不要用 1h POC 做核心止损位。",
+      "流动性差时 POC 失真：BTC 周末或小币种 POC 跳动大，1d POC 也只能用 1-2 天。",
+    ],
     page_refs: ["market-structure", "alert-center"],
+    related_terms: ["Support / Resistance / 支撑与阻力", "Breakout / 突破", "Retest / 回踩确认"],
     tags: ["profile"],
   }),
+
   term("regime", "Regime / 市场状态", {
     aliases: ["trend", "balance", "transition"],
     family: "regime",
@@ -424,10 +488,20 @@ const alertItems = [
     summary: "方向信号必须经过状态置信、执行触发、风险门控和仓位许可，才变成交易。",
     definition: "本系统把分析结论拆成五步：方向证据说明市场偏多或偏空；状态置信说明证据是否够完整；盘口执行质量说明能不能以合理成本成交；交易触发说明入场条件是否已经发生；风险与仓位门控决定是否允许现货或合约参与。",
     how_to_use: "看到偏多不等于能开多合约，看到状态置信高也不等于胜率高。只有方向、置信、执行、风险、证据质量和高周期一致性同时达标，合约仓位才允许非零。",
-    page_refs: ["alert-center", "risk"],
-    related_terms: ["Confidence Label / 置信标签", "Execution Label / 执行标签", "Risk Label / 风险标签"],
+    useful_when: [
+      "看到 监控总览 说 \"方向偏多\"，下一步直接看 告警中心：若 signal_to_trade_pipeline 状态 = \"observe_only\" 或 \"wait_confirmation\" → 合约仓位 = 0，只观察。",
+      "真正可入场的场景是：方向偏多 + 状态置信 ≥ medium + 执行质量 ≥ medium + 风险 = normal + 1d 主趋势一致 + 4h 入场触发完成。这 5 项任意一项不达标，仓位上限自动减半。",
+      "状态置信 = low 时，最常见的三个原因（证据缺失 / 数据滞后 / 跨页面冲突）需要先在 监控总览 看 source_alignment 补齐再回来。",
+    ],
+    risk_note: [
+      "把方向偏多当入场理由：方向只是第一道过滤，剩下四道过滤（置信 / 执行 / 风险 / 触发）任何一道不通过都不能开仓。",
+      "状态置信 = high 但入场触发未完成：常见于 EMA 多头排列 + ADX 25 但价格还没回踩 4h EMA20 → 等触发，不应该 \"我看到方向了所以先进半仓\"。",
+    ],
+    page_refs: ["alert-center", "risk", "monitoring-overview"],
+    related_terms: ["Confidence Label / 置信标签", "Execution Label / 执行标签", "Risk Label / 风险标签", "Entry Trigger / 入场触发"],
     tags: ["decision", "core"],
   }),
+
   term("chip_structure", "Chip Structure / 筹码结构", {
     aliases: ["accumulation", "distribution", "proxy", "confirmed"],
     family: "chip",
@@ -474,9 +548,22 @@ const alertItems = [
     family: "execution",
     summary: "入场触发是从观察信号进入执行信号的最后一步。",
     how_to_use: "常见触发包括回踩不破、收盘重新站回关键位、突破后接受、背离后的结构失效。没有触发时，合约仓位必须保持 0。",
+    useful_when: [
+      "回踩不破触发（最常见）：4h 收盘回踩 EMA20 后，下一根 1h 收盘重新站回 → 立即可入；但要等收盘确认，不可以 \"影线长就进\"。",
+      "突破后接受触发：1d 收盘突破前高 + 4h 在突破位上方停留 1-2 根 K 线 + 成交量放大 1.5x → 突破有效，回踩不破前高做多。",
+      "背离后结构失效触发：4h 底背离 + 价格跌破前低 → 等 4h 收盘重新站回前低 + RSI 同步抬高 → 反转信号确认，可以试仓。",
+      "1h 收盘反向确认：1h 在支撑位反复穿刺但每次收盘都站回 + 第 3-4 次穿刺时长缩短 → 卖压耗尽，可做多。",
+    ],
+    risk_note: [
+      "影线触发：长下影线不代表有承接，必须等收盘站回才算。",
+      "突破后没回踩就追：突破后立刻追单风险大，等 1-2 根 K 线回踩不破再进。",
+      "1h 周期触发但 1d 偏空：1h 反弹再好看也只是反弹，触发完整也不应升级为多单。",
+    ],
     page_refs: ["alert-center", "risk"],
+    related_terms: ["Retest / 回踩确认", "Breakout / 突破", "Market Structure / 市场结构"],
     tags: ["execution"],
   }),
+
   term("observe_only", "Observe Only / 仅观察", {
     family: "execution",
     summary: "仅观察表示信号有信息价值，但不允许新增风险敞口。",
@@ -565,16 +652,42 @@ const alertItems = [
     family: "risk",
     summary: "止损是交易假设失效的位置，不是随意亏损额度。",
     how_to_use: "止损应放在结构失效点外侧，并结合 ATR/NATR 调整距离。太近容易被噪声扫掉，太远会放大单笔风险。",
+    useful_when: [
+      "结构止损（最优先）：多头止损放在最近 HL 下方 1×ATR；空头止损放在最近 LH 上方 1×ATR。结构止损比固定百分比更合理。",
+      "ATR 倍数止损（适合突破入场）：突破入场止损 = 突破位 ± 1.5×ATR，避免 1-1.2×ATR 太近被扫。趋势中可放宽到 2-2.5×ATR。",
+      "百分比止损（仅做最后兜底）：账户资金的 1-2% 是单笔最大亏损锚，不是 \"入场价 - 2%\"。先算 \"我愿意亏多少\" 再算 \"止损放哪\"。",
+      "时间止损：超过计划持仓时长 2 倍仍未触发预期走势 → 主动减仓，避免资金被无效占用。",
+    ],
+    risk_note: [
+      "固定百分比止损：BTC 在 1d ATR 3% 时用 1% 止损 = 容易被 1 根 K 线扫掉。",
+      "把止损当目标：\"反正有止损，仓位大点\" → 1 次扫损亏掉正常 5 次盈利。",
+      "没有时间止损的死扛：方向判断错误后 3 天硬扛浮亏 10%，单笔风险放大到原本计划的 3-5 倍。",
+    ],
     page_refs: ["risk", "alert-center"],
+    related_terms: ["ATR 平均真实波幅", "Position Sizing / 仓位 sizing", "Risk-Reward Ratio / 风险收益比", "Liquidation / Liquidation Distance / 强平距离"],
     tags: ["risk"],
   }),
+
   term("take_profit", "Take Profit / 止盈", {
     family: "risk",
     summary: "止盈用于在目标区或风险收益下降时锁定收益。",
     how_to_use: "可结合 VAH/VAL、前高前低、ATR 倍数或 trailing stop，而不是固定百分比机械退出。",
+    useful_when: [
+      "分批止盈（最推荐）：入场后先在 1R（=止损距离）平 1/3 仓锁本，2R 平第二仓，剩余 1/3 走 trailing stop。这样既不会错过大行情，也不会一笔回吐。",
+      "结构止盈：多头在前期 VAH/VAL 或前高前低附近 + RSI 顶背离 → 主动减仓；剩余 1/3 用 trailing stop（最近 4h swing low 下方 1×ATR）。",
+      "ATR 倍数止盈：BTC 在 1d ATR 3% 时，趋势中至少 2-3×ATR 才有意义（约 6-9%），1×ATR 的小目标不值得动。",
+      "时间止盈：若入场后 2 个时间窗（4h 入场 → 8h 后）未走出 1R 距离，说明判断不成立，主动减仓观望。",
+    ],
+    risk_note: [
+      "1 个固定目标位（如 +5%）：BTC 强趋势中能走 +20%，固定 +5% 错过后续 15%。",
+      "不舍得止盈：\"已经涨了 10% 再等等\" → 浮盈 10% 回到 0% 是常见剧本。",
+      "全部一次性平仓在最高点：1d 的最高点通常事后才看到，分批 + trailing 才是现实解。",
+    ],
     page_refs: ["risk"],
+    related_terms: ["Volume Profile / 成交量轮廓", "ATR 平均真实波幅", "Risk-Reward Ratio / 风险收益比"],
     tags: ["risk"],
   }),
+
   term("position_sizing", "Position Sizing / 仓位 sizing", {
     aliases: ["Risk per Trade", "Max Leverage", "Exposure", "Concentration Risk"],
     family: "risk",
@@ -588,9 +701,22 @@ const alertItems = [
     family: "risk",
     summary: "强平距离衡量价格离强制平仓还有多远。",
     how_to_use: "高波动或滑点环境下，即使方向正确，过近的强平距离也会让合约仓位不合格。",
+    useful_when: [
+      "强平距离 < 止损距离 1.5×：开仓时必须先算 \"强平价 vs 止损价\"。BTC 20x 杠杆下强平距离仅 5%，稍微波动就归零。",
+      "建议最小强平距离：日内 4h 入场至少留 4-5% 强平距离（10-15x 杠杆），1d 入场至少 8-10%（5-10x 杠杆）。",
+      "高波动期（NATR > 4% 或重要事件前 2 小时）强平距离要放大 1.5-2×，否则即使方向对也容易被瞬时插针扫掉。",
+      "强平距离 + 流动性联合检查：强平价附近订单簿稀薄（< 50k USD）→ 真实强平价可能比显示更近。",
+    ],
+    risk_note: [
+      "高杠杆 + 小强平距离：BTC 20x 杠杆、强平距离 5% + 1d 真实波动 3% → 单根 1d K 线就可能爆仓。",
+      "跨所强平价不显示：Gate.io / Binance / Bybit 强平价算法不同，跨所对冲时需要分别核对。",
+      "资金费率结算放大风险：8 小时一次的结算瞬间（funding 0.1%）吃 0.3% / 天，强平距离 5% + 高 funding → 3 天自然亏损 1%，实际安全空间被压缩。",
+    ],
     page_refs: ["risk", "alert-center"],
+    related_terms: ["Funding Rate / 资金费率", "ATR 平均真实波幅", "Position Sizing / 仓位 sizing", "Stop Loss / 止损"],
     tags: ["risk"],
   }),
+
   term("invalidation_level", "Invalidation Level / 失效位", {
     family: "risk",
     summary: "失效位是交易假设被证明错误的位置。",
@@ -603,9 +729,22 @@ const alertItems = [
     family: "risk",
     summary: "风险收益比比较潜在收益和计划亏损。",
     how_to_use: "高胜率但盈亏比太差，长期可能仍不划算；低胜率策略必须有更高盈亏比补偿。",
+    useful_when: [
+      "入场前必做：算出 \"止损距离\" 和 \"目标距离\"，RR ≥ 1:2 才考虑入场。BTC 1h 入场 0.5% 止损，目标至少 1% 才算合格。",
+      "RR < 1:1.5 直接放弃：BTC 1d ATR 3% 时，结构止损已经 4-5%，目标至少 6-8% 才有 1:1.5。",
+      "胜率补偿：RR 1:1.5 + 胜率 ≥ 60% 才长期正期望；RR 1:2.5 胜率 45% 也正期望。",
+      "复盘实际 RR：每笔交易后记录 \"实际止损\" 和 \"实际止盈\"，每月看实际 RR 分布。理论 RR 1:3 但实际常 1:1.5 → 多数交易被噪声扫止损。",
+    ],
+    risk_note: [
+      "RR 只看理论不看实际：理论上 1:3 但实际 1:1.5 → 高胜率幻觉。每月看实际 RR 分布。",
+      "目标设太远撑不到：BTC 突破 1d 阻力，目标放在前高上方 5% 但中间有 4h EMA + 阻力 → 实际走到 2% 就被扫回，RR 实际 1:0.4。",
+      "低 RR 配高杠杆放大风险：RR 1:1 + 20x 杠杆 = 一次扫损亏 20%，两次亏 40%。",
+    ],
     page_refs: ["risk"],
+    related_terms: ["Stop Loss / 止损", "Take Profit / 止盈", "Position Sizing / 仓位 sizing"],
     tags: ["risk"],
   }),
+
 ];
 
 const macroItems = [
@@ -639,18 +778,40 @@ const macroItems = [
     family: "fx",
     summary: "DXY 衡量美元相对一篮子主要货币的强弱。",
     how_to_use: "DXY 上升常代表美元流动性收紧或避险需求增强，对 BTC 等风险资产不利；DXY 下行通常改善全球美元流动性背景。",
-    risk_note: "DXY 权重偏欧元，不能完整代表所有美元流动性环境。",
+    useful_when: [
+      "DXY 周线跌破 200 周均线 + RSI 周线 < 40 → 美元弱势周期开始，BTC / 风险资产 3-6 个月窗口偏多。",
+      "DXY 日线突破前高 + EUR/USD 跌破 1.05 + 10Y-2Y 利差走阔 → 美元强势，BTC 反弹做空为主，USDT/USD 折价扩大。",
+      "DXY 与 BTC 反向相关度检查：60 日滚动相关性 > -0.5 时，DXY 是 BTC 入场/出场的高权重过滤；相关性接近 0 时，DXY 信号失效。",
+    ],
+    risk_note: [
+      "DXY 权重偏欧元（57.6%），不能完整代表所有美元流动性环境。亚洲时段 DXY 走平时检查 USD/JPY 是否同步走强。",
+      "DXY 单日反转 ≠ 趋势：DXY 经常在关键位假突破后反转，需看 1w 收盘是否确认。",
+    ],
     page_refs: ["monitoring-overview", "market-events"],
+    related_terms: ["Risk-On / Risk-Off / 风险偏好", "US10Y / 美国10年期国债收益率", "Financial Conditions / 金融条件"],
     tags: ["macro", "fx"],
   }),
+
   term("us10y", "US10Y / 美国10年期国债收益率", {
     aliases: ["US 10Y", "10Y Treasury"],
     family: "rates",
     summary: "US10Y 是长期无风险利率和贴现率的重要代理。",
     how_to_use: "US10Y 上行会提高风险资产估值折现压力；若由增长强推动，影响可能较温和，若由通胀或期限溢价推动，风险资产压力更大。",
+    useful_when: [
+      "US10Y 4 周内上行 > 30bp：标普/BTC 估值压力加大，BTC ETF 资金可能转负。突破入场需 1d 收盘 + 1.5×成交量确认，否则视为假突破。",
+      "US10Y 下行 + 实际收益率同步下行（Real Yield < 1.5%）：黄金 / BTC 估值环境改善，加密突破有效性提高，可恢复 1:2.5 风险收益比入场。",
+      "US10Y 与 2Y 利差快速收窄（曲线陡峭化）+ 股票创新高：常见 \"软着陆\" 交易窗口，Risk-On 资产偏多。",
+      "US10Y 与 DXY 同向上行：避险 + 紧缩双重压力 → 加密反弹阻力强，应降低仓位 + 加快止盈。",
+    ],
+    risk_note: [
+      "用 US10Y 单变量判断风险资产方向：US10Y 4% 时 BTC 既可能 -30% 也可能 +50%，必须叠加 DXY / 实际收益率 / 信用利差。",
+      "名义 vs 实际收益率混淆：通胀预期下行时，名义 US10Y 可能上行但实际收益率下行 → 风险资产未必跌。",
+    ],
     page_refs: ["monitoring-overview", "macro-calendar"],
+    related_terms: ["US2Y / 美国2年期国债收益率", "Real Yield / 实际收益率", "DXY / US Dollar Index / 美元指数", "10Y-2Y Spread / 10年-2年利差"],
     tags: ["macro", "rates"],
   }),
+
   term("us2y", "US2Y / 美国2年期国债收益率", {
     aliases: ["US 2Y"],
     family: "rates",
@@ -671,9 +832,20 @@ const macroItems = [
     family: "rates",
     summary: "实际收益率约等于名义收益率扣除通胀预期。",
     how_to_use: "实际收益率上升通常压制黄金、BTC 等无现金流资产；下降则改善流动性和估值环境。",
+    useful_when: [
+      "实际收益率（10Y TIPS）周线 < 0%：黄金 / BTC 估值环境改善，加密突破可提高杠杆至 1.5× 正常水平。",
+      "实际收益率从 -1% 反弹到 +0.5%：黄金 / BTC 估值压力上升，杠杆应降低 30-50%，突破入场需更严格确认。",
+      "实际收益率快速上行 + DXY 同步走强：Risk-Off 强信号，crypto 应降仓 + 加快止盈。",
+    ],
+    risk_note: [
+      "TIPS 隐含的实际收益率受流动性影响，极端值（> 2% 或 < -1.5%）可能反映技术因素而非真实预期。",
+      "实际收益率 + 美元流动性综合判断：只看实际收益率而忽略 TGA / RRP 变化，会误读流动性方向。",
+    ],
     page_refs: ["monitoring-overview"],
+    related_terms: ["US10Y / 美国10年期国债收益率", "DXY / US Dollar Index / 美元指数", "Financial Conditions / 金融条件", "TGA / Treasury General Account / 美国财政部现金账户"],
     tags: ["macro", "rates"],
   }),
+
   term("vix", "VIX / 波动率指数", {
     family: "risk",
     summary: "VIX 衡量美股隐含波动率和风险厌恶程度。",
@@ -692,9 +864,20 @@ const macroItems = [
     family: "liquidity",
     summary: "金融条件综合利率、信用、股市和美元等变量。",
     how_to_use: "金融条件收紧时，技术突破需要更高质量的成交量和结构确认。",
+    useful_when: [
+      "Goldman / Bloomberg 金融条件指数周线收紧 > 0.5σ：标普/BTC 突破入场需要 1d 收盘 + 1.5× 成交量 + 4h EMA 不破，缺一不可。",
+      "金融条件放松 + 实际收益率下行 + DXY 弱 + 信用利差收窄：最友好 Risk-On 背景，BTC 突破可恢复 1:2.5 风险收益比 + 正常杠杆。",
+      "金融条件指数连续 4 周收紧：通常对应 USD 走强 + 风险资产回调；应降低加密杠杆 30-50%，加快止盈到 1.5R。",
+    ],
+    risk_note: [
+      "只看单一变量：实际收益率下行 + DXY 走强可能同时存在（避险情绪强），金融条件指数已反映，但单独看 DXY 会误判。",
+      "金融条件变化 vs 资产价格反应有时差：条件放松 2-3 周后风险资产才开始涨，仅看金融条件会过早入场。",
+    ],
     page_refs: ["monitoring-overview"],
+    related_terms: ["DXY / US Dollar Index / 美元指数", "US10Y / 美国10年期国债收益率", "Real Yield / 实际收益率", "HY OAS / 高收益债利差"],
     tags: ["macro", "liquidity"],
   }),
+
   term("tga", "TGA / Treasury General Account / 美国财政部现金账户", {
     family: "liquidity",
     summary: "TGA 变化会影响银行体系准备金和市场流动性。",
@@ -734,9 +917,21 @@ const macroItems = [
     family: "risk",
     summary: "Risk-On 表示资金愿意承担风险，Risk-Off 表示资金转向防御。",
     how_to_use: "加密突破若发生在 Risk-Off 背景下，需要更严格的成交量和结构确认。",
+    useful_when: [
+      "Risk-Off 判定（任意 3 项）：DXY 周涨幅 > 1% + US10Y 当周新高 + VIX 当周涨 > 20% + HY OAS 扩大 → 进入 Risk-Off 背景。",
+      "Risk-Off 期间如何做加密：BTC 仍可能涨（独立流动性驱动），但应 (a) 降低杠杆 50%，(b) 止盈加快到 1.5R，(c) 突破入场需 1d 收盘确认 + 成交量 > 1.5×20d 均量。",
+      "Risk-Off 期间放空风险资产：US10Y 同步上行 + DXY 强 + VIX 突破 25 → 标普/BTC 反弹阻力更强，可做反弹到 EMA20 阻力做空，但仓位不超过 1/3。",
+      "Risk-On 回归信号：VIX 从 25+ 回落到 20 以下 + US10Y 走平 + 信用利差收窄 → 加密突破有效性提高，可恢复 1:2.5 风险收益比入场。",
+    ],
+    risk_note: [
+      "BTC 跟美股同跌 1-2 天 ≠ 长期 Risk-Off：流动性事件（季度末、ETF 资金调仓）也会短期同步，需看 5 天以上趋势才确认。",
+      "Risk-Off 期间追多加密：BTC 流动性强但仍是高 beta 资产，纳指跌 5% 期间 BTC 平均跌 8-12%，杠杆追多常见 -30% 回撤。",
+    ],
     page_refs: ["monitoring-overview", "market-events", "alert-center"],
+    related_terms: ["DXY / US Dollar Index / 美元指数", "US10Y / 美国10年期国债收益率", "VIX / 波动率指数", "HY OAS / 高收益债利差"],
     tags: ["macro", "risk"],
   }),
+
   term("gold", "Gold / 黄金", {
     family: "cross_asset",
     summary: "黄金用于观察实际利率、美元和避险需求。",
