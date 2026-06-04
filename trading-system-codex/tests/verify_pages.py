@@ -28,12 +28,11 @@ import sys
 import time
 from pathlib import Path
 
-from playwright.sync_api import (
-    ConsoleMessage,
-    Error as PlaywrightError,
-    Page,
-    sync_playwright,
-)
+# ruff: noqa: I001
+from playwright.sync_api import ConsoleMessage
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import Page
+from playwright.sync_api import sync_playwright
 
 # ----- 仓库根 + 截图目录 -----
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -103,7 +102,7 @@ def attach_collectors(page: Page, collectors: dict) -> None:
     page.on("response", on_response)
 
 
-def wait_for_real_content(page: Page, page_id: str, timeout_ms: int = 10_000) -> tuple[bool, float, str]:
+def wait_for_real_content(page: Page, page_id: str, timeout_ms: int = 10_000):
     """返回 (success, duration_ms, state)"""
     real_selectors = REAL_CONTENT_SELECTORS.get(page_id, [".card", "section"])
     deadline = time.monotonic() + (timeout_ms / 1000.0)
@@ -179,20 +178,41 @@ def verify_spa_switch(page: Page, page_ids: list[str]) -> list[dict]:
     # 等第一个页面真的渲染出来(横栏 link 才能点)
     ok, _, _ = wait_for_real_content(page, first, timeout_ms=10_000)
     if not ok:
-        return [{"page_id": first, "ok": False, "duration_ms": 0.0, "state": "first-page-never-rendered"}]
+        rows = [
+            {
+                "page_id": first,
+                "ok": False,
+                "duration_ms": 0.0,
+                "state": "first-page-never-rendered",
+            }
+        ]
+        return rows
     rows = []
     for pid in page_ids:
         try:
             sel = f'[data-page-link="{pid}"]'
             page.wait_for_selector(sel, state="visible", timeout=5_000)
         except Exception as e:
-            rows.append({"page_id": pid, "ok": False, "duration_ms": 0.0, "state": f"link-missing:{e}"})
+            rows.append(
+                {
+                    "page_id": pid,
+                    "ok": False,
+                    "duration_ms": 0.0,
+                    "state": f"link-missing:{e}",
+                }
+            )
             continue
-        start = time.monotonic()
         try:
             page.click(sel)
         except Exception as e:
-            rows.append({"page_id": pid, "ok": False, "duration_ms": 0.0, "state": f"click-failed:{e}"})
+            rows.append(
+                {
+                    "page_id": pid,
+                    "ok": False,
+                    "duration_ms": 0.0,
+                    "state": f"click-failed:{e}",
+                }
+            )
             continue
         ok, dur, state = wait_for_real_content(page, pid, timeout_ms=5_000)
         rows.append(
@@ -251,10 +271,12 @@ def main(argv: list[str]) -> int:
                 ctx = browser.new_context(viewport={"width": 1366, "height": 900})
                 page = ctx.new_page()
                 r = verify_one_page(page, pid, PAGE_ROUTES[pid], args.baseline)
-                tag = "OK" if r["content_ok"] and not r["console_errors"] and not r["pageerrors"] else "FAIL"
+                ok = r["content_ok"] and not r["console_errors"] and not r["pageerrors"]
+                tag = "OK" if ok else "FAIL"
                 print(
                     f"{tag}  dur={r['duration_ms']}ms state={r['state']} "
-                    f"console_errs={len(r['console_errors'])} pageerrors={len(r['pageerrors'])}"
+                    f"console_errs={len(r['console_errors'])} "
+                    f"pageerrors={len(r['pageerrors'])}"
                 )
                 report["per_page"].append(r)
                 ctx.close()
@@ -265,15 +287,25 @@ def main(argv: list[str]) -> int:
             page = ctx.new_page()
             report["spa_switches"] = verify_spa_switch(page, page_ids)
             for r in report["spa_switches"]:
-                tag = "OK" if r["ok"] and r["duration_ms"] < 3000.0 else "WARN" if r["ok"] else "FAIL"
-                print(f"  [{tag}] {r['page_id']:<22} dur={r['duration_ms']:>7.1f}ms state={r['state']}")
+                if r["ok"] and r["duration_ms"] < 3000.0:
+                    tag = "OK"
+                elif r["ok"]:
+                    tag = "WARN"
+                else:
+                    tag = "FAIL"
+                pname = r["page_id"]
+                dur = r["duration_ms"]
+                state = r["state"]
+                print(f"  [{tag}] {pname:<22} dur={dur:>7.1f}ms state={state}")
             ctx.close()
 
         browser.close()
 
     # 汇总
     pp_fail = sum(
-        1 for r in report["per_page"] if not r["content_ok"] or r["console_errors"] or r["pageerrors"]
+        1
+        for r in report["per_page"]
+        if not r["content_ok"] or r["console_errors"] or r["pageerrors"]
     )
     sp_fail = sum(1 for r in report["spa_switches"] if not r["ok"])
     sp_slow = sum(1 for r in report["spa_switches"] if r["ok"] and r["duration_ms"] >= 3000.0)
