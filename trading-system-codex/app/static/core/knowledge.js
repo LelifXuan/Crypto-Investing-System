@@ -180,6 +180,11 @@ const technicalItems = [
     risk_note: "MACD 在横盘区间会反复交叉，容易产生噪音。横盘里更看重区间边界和成交量确认。",
     page_refs: ["market-analysis", "alert-center"],
     tags: ["momentum", "core"],
+    useful_when: [
+      "Histogram 由负转正 + 0 轴上方柱开始抬升：动能从空头修复到多头占优，4h 收盘站上 EMA20 → 顺势做多。",
+      "Histogram 由正转负 + 0 轴下方柱开始下扩：多头动能衰退，4h 收盘跌破 EMA20 → 顺势做空。",
+      "MACD 线与 Signal 金叉 + 4h 收盘确认：金叉/死叉滞后但确认趋势转向。",
+    ],
   }),
   term("bollinger_bands", "BOLL 布林带 / Bollinger Bands", {
     aliases: ["BOLL", "BBANDS", "Percent B", "%B", "Bollinger Bandwidth"],
@@ -264,6 +269,10 @@ const technicalItems = [
     risk_note: "震荡中 KDJ 很敏感，趋势中又容易长期钝化，必须配合结构位置。",
     page_refs: ["market-analysis", "alert-center"],
     tags: ["momentum"],
+    useful_when: [
+      "J 值上穿 K/D：短线反弹动量增强，但仅适合 1h 入场触发，不能直接当 1d 方向依据。",
+      "J < 0 且 K/D 在 20 以下钝化 5+ 根 K 线：短线超卖但不代表反转，需要 4h 收盘确认。",
+    ],
   }),
   term("cci", "CCI 顺势指标 / Commodity Channel Index", {
     aliases: ["CCI20"],
@@ -272,6 +281,15 @@ const technicalItems = [
     how_to_use: "CCI 上穿 100 说明价格进入强势偏离区，下破 -100 说明弱势偏离。趋势中可用来确认加速，震荡中更适合等待极端后的回归。",
     page_refs: ["market-analysis", "alert-center"],
     tags: ["momentum"],
+    useful_when: [
+      "CCI 上穿 +100 + 4h 收盘站上 4h EMA20：顺势动能确认，突破入场可提高至 1:2 风险收益比。",
+      "CCI 下穿 -100 + 4h 跌破 4h EMA20：顺势动能确认，止损最近 HL/LH 即可。",
+      "CCI 在 ±100 之间反复：震荡市，信号权重降低。",
+    ],
+    risk_note: [
+      "CCI 极端值当反转：BTC 强势趋势中 CCI 可长期 > +150，这不代表顶部。",
+      "震荡市 CCI 失效：价格在区间内时 CCI 反复穿越 ±100 产生大量噪音。",
+    ],
   }),
   term("obv", "OBV 能量潮", {
     aliases: ["On-Balance Volume"],
@@ -311,6 +329,11 @@ const technicalItems = [
     risk_note: "背离可以持续很久。强趋势里早期背离经常只是动能放缓，不等于趋势立即反转。",
     page_refs: ["alert-center", "market-analysis"],
     tags: ["alert", "risk"],
+    useful_when: [
+      "顶背离（价格新高 + RSI/MACD/OBV 不新高）+ 1h 收盘跌破 1h BOS 起点 → 顺势做空，止损最近 HH 1×ATR。",
+      "底背离（价格新低 + 动能不新低）+ 4h 收盘站回前低 + 4h OBV 抬升 → 反转做多，止损最近 LL 1×ATR。",
+      "多指标同时背离（RSI + MACD + OBV 三个不同步）：比单指标背离更强。",
+    ],
   }),
   term("breakout", "Breakout / 突破", {
     aliases: ["False Breakout", "假突破", "突破"],
@@ -510,6 +533,16 @@ const alertItems = [
     how_to_use: "缺少 CVD、OI、深度、滑点或资金费率时，只能作为观察信号，不能当成完整确认。吸筹确认需要价格承接、主动买盘改善、杠杆没有异常拥挤和执行环境可用。",
     page_refs: ["alert-center"],
     tags: ["chip", "core"],
+    useful_when: [
+      "筹码结构 = accumulation_confirmed + 价格回踩不破 + 1h OBV 抬升：低吸确认，4h 顺势做多。",
+      "筹码结构 = distribution_confirmed + 价格突破前高但 1h OBV 不抬升：派发中，突破是陷阱，止损突破高点上方 1×ATR。",
+      "筹码结构 = low_confidence：仅作观察，不作入场依据，告警中心应显示 \"结构待刷新\"。",
+      "筹码结构 = confirmed + 资金费率 0.1% + OI 周涨 > 5%：杠杆多头拥挤，突破有效但应降低杠杆。",
+    ],
+    risk_note: [
+      "把 low_confidence 当真实信号：链上 / OI / CVD 任一缺失时结论不完整，告警中心应明示 \"证据不足\"。",
+      "筹码结构与价格结构矛盾：价格 1d 突破但筹码 distribution_confirmed → 突破可能是高位派发。",
+    ],
   }),
   term("evidence_quality", "Evidence Quality / 证据质量", {
     aliases: ["proxy_only", "partially_confirmed", "confirmed"],
@@ -518,6 +551,15 @@ const alertItems = [
     how_to_use: "证据不足时适合观察，部分确认时适合小仓验证，完整确认后才进入正常仓位评估。",
     page_refs: ["alert-center", "risk"],
     tags: ["decision"],
+    useful_when: [
+      "proxy_only：CVD / OI / 资金费率 / 链上数据全部缺失，筹码结构基于 K 线代理。结论是方向参考，不是入场依据。",
+      "partially_confirmed：3 项证据中至少 2 项可用 → 1R 风险试仓，止损 1×ATR。",
+      "confirmed：3 项以上证据（CV + OI + 资金费率 / 链上）一致 → 正常仓位入场。",
+    ],
+    risk_note: [
+      "把 proxy_only 当 confirmed：缺少 CVD/OI/链上时，代理逻辑只能识别 K 线行为，不代表真实买卖盘结构。",
+      "告警中心已显示证据不足，但策略页仍按 confirmed 给出方向：两页状态不一致时优先以证据质量页为准。",
+    ],
   }),
   term("confidence_label", "Confidence Label / 置信标签", {
     aliases: ["state confidence", "状态置信"],
@@ -852,6 +894,15 @@ const macroItems = [
     how_to_use: "VIX 快速上升时，加密市场突破更需要额外确认，杠杆应降级。",
     page_refs: ["monitoring-overview", "market-events"],
     tags: ["macro", "risk"],
+    useful_when: [
+      "VIX > 30 持续 5+ 天：加密突破入场需要 1d 收盘 + 1.5× 成交量 + 4h EMA 不破，缺一不可。",
+      "VIX < 15：风险偏好强，crypto 突破可恢复 1:2.5 风险收益比 + 正常杠杆。",
+      "VIX 突破前高 + 当日 > 30% 涨幅：黑天鹅事件，立即降仓到 1/3，等事件落地 + 1-2 小时结构定型再恢复。",
+    ],
+    risk_note: [
+      "VIX 低位追多：VIX < 12 通常意味着市场过度自满，标的已透支 → 此时追多容易遇到突然 VIX spike。",
+      "VIX 单独判断方向：VIX 是波动率 / 风险偏好指标，不是方向指标。高 VIX 时方向可能继续向下，但 VIX 自身不告诉你方向。",
+    ],
   }),
   term("hy_oas", "HY OAS / 高收益债利差", {
     family: "credit",
@@ -859,6 +910,15 @@ const macroItems = [
     how_to_use: "利差扩大说明信用风险上升，通常不利于高 beta 风险资产。",
     page_refs: ["monitoring-overview"],
     tags: ["macro", "credit"],
+    useful_when: [
+      "HY OAS 周扩大 > 30bp：信用风险上升，crypto 突破入场降级（标普/BTC 等高 beta 资产承压）。",
+      "HY OAS 持续收窄 + 股票创新高：信用环境改善，crypto 风险偏好增强。",
+      "HY OAS 突破前高 + 2 周内扩大 > 50bp：信用危机早期信号，立即降仓到 1/3。",
+    ],
+    risk_note: [
+      "HY OAS 单日变化大（> 10bp）常见：需看 4 周趋势确认，单日噪音大。",
+      "HY OAS 与股票同步：HY OAS 走阔时股票可能仍涨（流动性主导），但 2-3 周后会跟随下跌。",
+    ],
   }),
   term("financial_conditions", "Financial Conditions / 金融条件", {
     family: "liquidity",
@@ -884,6 +944,15 @@ const macroItems = [
     how_to_use: "TGA 快速上升可能吸走流动性，快速下降可能释放流动性。",
     page_refs: ["monitoring-overview"],
     tags: ["macro", "liquidity"],
+    useful_when: [
+      "TGA 周变化 > $50B（上升）：从银行体系抽走流动性，风险资产承压。crypto 突破入场降级处理。",
+      "TGA 周变化 > $50B（下降）：向银行体系释放流动性，crypto 流动性背景改善。",
+      "TGA 维持稳定：流动性中性，对 crypto 影响小，看其他金融条件指标。",
+    ],
+    risk_note: [
+      "TGA 与 RRP 同时上升：双重吸流动性，crypto 承压比单一指标更强。",
+      "TGA 季节性变化：季度末、4 月报税季 TGA 上升是常规，需看 4-8 周趋势才确认。",
+    ],
   }),
   term("on_rrp", "ON RRP / 隔夜逆回购", {
     family: "liquidity",
@@ -891,6 +960,15 @@ const macroItems = [
     how_to_use: "ON RRP 下降可能释放资金进入其他短端资产，但需要结合准备金和 TGA 判断。",
     page_refs: ["monitoring-overview"],
     tags: ["macro", "liquidity"],
+    useful_when: [
+      "ON RRP 从 > $500B 持续下降到 < $200B：资金从美联储短端工具流出，流入其他短端资产 → 流动性改善。",
+      "ON RRP 维持 > $500B：货币市场资金仍停放在美联储，crypto 流动性背景偏紧。",
+      "ON RRP + TGA 同步下降：双重流动性释放，crypto 估值环境改善。",
+    ],
+    risk_note: [
+      "ON RRP 接近 0 时信号失效：ON RRP 是地板缓冲，0 附近无法继续下降。",
+      "ON RRP 变化与 RRP 工具使用：2021 年改革后 ON RRP 实际意义在变，看 TGA + 准备金 综合判断。",
+    ],
   }),
   term("ism_pmi", "ISM PMI / 采购经理人指数", {
     family: "growth",
