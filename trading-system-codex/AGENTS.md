@@ -118,6 +118,10 @@
    - 检查缓存文件是否更新（时间戳、内容）
    - 确认数据字段不是全 null / 空
 
+6. **实例检查（涉及架构 / 工作流 / 推理模块时必须）**
+   - 见下方 §六.1「实例检查门禁」一节。
+   - 适用条件见 §六.2「按改动类别分级的测试要求」。
+
 ### 验证清单模板
 
 ```
@@ -126,6 +130,7 @@
 ☐ 相关 pytest 全部通过
 ☐ 日志中有预期输出
 ☐ 缓存/数据文件有有效内容
+☐ 实例检查通过（仅架构/工作流/推理改动）
 ```
 
 ### 工作流集成
@@ -135,7 +140,61 @@
 1. `node --check <每个改动的 JS 文件>`
 2. `python -c "import py_compile; py_compile.compile('<file>', doraise=True)"`
 3. `python -m pytest tests/ -q`（或相关测试模块）
-4. **全部通过后再汇报**，不得跳过验证步骤
+4. **架构/工作流/推理改动**:额外跑 `python tests/verify_pages.py --pages <受影响>`
+5. **全部通过后再汇报**，不得跳过验证步骤
+
+### 六.1 实例检查门禁
+
+**为什么需要**:JS 模块顶层 `import()` 解析、CDN 资源加载、动态 ESM 依赖、`window.Chart` 这类全局变量时序 —— 这些都是 `node --check` 和 `pytest` 都看不到的坑。V1.5.x 期间发生的两次重大回归都是这个原因:
+- SPA 路由切页时 `analysis.js` 顶层撞到 `Chart is not defined`
+- 知识百科 5 个跳转 bug(unmount 反向 render、hashchange 监听器泄漏、isMounted 错位、过滤后相关术语点击无效、80+ 词条同步 innerHTML 阻塞主线程)
+
+**怎么做**:
+
+```
+# 起后端(必须),在另一终端
+uvicorn app.main:app --port 8002
+
+# 跑实例检查
+python tests/verify_pages.py                        # 全 9 页(冷启动 + SPA 切换)
+python tests/verify_pages.py --pages monitoring-overview,market-analysis  # 精准测
+python tests/verify_pages.py --skip-spa             # 只测冷启动
+python tests/verify_pages.py --baseline             # 把当前截图入库为基准
+```
+
+脚本会做 4 件事:
+1. **冷启动**:用独立 Chromium context 打开每个 page,等真内容出现 (`<real-content-selector>` 之一)
+2. **SPA 切换**:同一会话内点完 9 个横栏 link,记录点击 → 真内容出现 的耗时
+3. **错误收集**:`console.error` + `pageerror` + 任何 `>=400` HTTP 响应,任一非零都标 FAIL
+4. **截图存档**:`tests/screenshots/<page>.png`,baseline 模式写到 `tests/screenshots/baseline/`
+
+阈值:冷启动真内容出现 < 10s;SPA 切换真内容出现 < 3s(冷加载 100+KB JS 模块在 headless 容器内的合理上限;已缓存的 page module 实测 60-100ms)。
+
+### 六.2 按改动类别分级的测试要求
+
+| 改动类别 | 例子 | 静态检查 (ruff/pytest/node --check) | 实例检查 (verify_pages.py) |
+|---|---|:---:|:---:|
+| **小文本** | 中文标点、错别字、注释、doc string、CHANGELOG 措辞、README 文案 | ✓ | ✗ |
+| **CSS 样式** | 颜色、间距、阴影、hover/focus 微调 | ✓ | ✗ |
+| **后端业务逻辑** | 领域规则、计算公式、repository 改动 | ✓ | ✗ (单测覆盖) |
+| **架构** | SPA 路由、模块加载、静态资源加载顺序、入口函数签名、controller 对象形态、模板结构 | ✓ | **✓ (必)** |
+| **工作流** | 重试/轮询、防重入 token、状态机、事件流、SPA 切换、刷新按钮、abort controller | ✓ | **✓ (必)** |
+| **推理模块** | `terminal_summary_engine`、`monitoring_dashboard`、`strategy_signal`、`alerts_bundle`、知识百科 catalog | ✓ | **✓ (必)** + 实地数据流过 |
+
+**作用域(scope)选择规则** —— 不跑全 9 页,只跑真正会受影响的:
+- 改了 `main.js` / `core/*.js` / `templates/page.html` → 跑全 9 页(共享依赖)
+- 改了某一个 `pages/<name>.js` → 只跑 `--pages <name>` + 它跳过去的目的地
+- 改了 `terminal_summary_engine` / 推理 service → 跑 monitoring + alerts + strategy(消费方)
+- 小文本 / CSS → 不需要跑
+
+### 六.3 错误教训(典型反面教材)
+
+| 教训 | 现象 | 根因 | 后续防范 |
+|---|---|---|---|
+| `analysis.js` 切换崩溃 | `ReferenceError: Chart is not defined` | 模板 `<script defer>` 加载 Chart.js,但 `import()` 不等待;另外 `node --check` 看不见 `window.Chart` | `loadScriptOnce()` 在 `boot()` 内 `await`,且 `verify_pages.py` 跑 analysis 必现 |
+| 知识百科 5 bug | unmount 反向 render、hashchange 泄漏、isMounted 错位、过滤后点击无效、80+ 词条同步阻塞 | 知识百科是「架构」级页面但只跑了 `node --check` | 知识百科改动 = 架构,必须实例检查 |
+| 横栏点击 lag 100-300ms | click handler 同步 walk boot() 阻塞主线程 | 没有骨架占位,`node --check` 完全无法发现 | 实测耗时,verify_pages.py 的 SPA 切换测试 |
+| template `<script defer>` 阻塞 DCL | headless 验证时 market-analysis 30s 都拿不到 HTML | Chart.js 远程 CDN 慢时 `defer` 仍阻塞 DOMContentLoaded | 模板不引用外部 CDN,统一走 main.js 的 `loadScriptOnce` |
 
 验证通过标志：
 ```
