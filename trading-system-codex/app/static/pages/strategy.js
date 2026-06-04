@@ -17,6 +17,7 @@ let lastBundle = null;
 let activeController = null;
 let requestToken = 0;
 let pollTimer = null;
+let detachEvents = null;
 
 const STATE_CONFIG = {
   NO_EDGE: { label: "多空不明", tone: "chip-neutral", hint: "多空分差不足，等待更清晰的结构与触发。" },
@@ -659,7 +660,7 @@ function attachEvents() {
   // listener inside loadReview() (the previous racy setTimeout pattern)
   // could double-fire on rapid clicks. Catching the click at the
   // document level avoids that.
-  document.addEventListener("click", (event) => {
+  const reviewRefreshHandler = (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (target.closest("[data-strategy-review-refresh]")) {
@@ -676,7 +677,9 @@ function attachEvents() {
         });
       }
     }
-  });
+  };
+  document.addEventListener("click", reviewRefreshHandler);
+  return () => document.removeEventListener("click", reviewRefreshHandler);
 }
 
 export async function renderStrategy() {
@@ -684,19 +687,34 @@ export async function renderStrategy() {
 
   if (!isMounted) {
     renderShell();
-    attachEvents();
+    detachEvents = attachEvents();
     isMounted = true;
   } else {
     syncStrategyControls();
   }
 
-  await loadStrategy();
-  await loadReview();
+  const loadPromise = Promise.all([
+    loadStrategy(),
+    loadReview(),
+  ]).catch((error) => {
+    if (isMounted) console.error("strategy:initial-load:error", error);
+  });
 
-  return () => {
-    if (pollTimer) window.clearTimeout(pollTimer);
-    activeController?.abort();
-    isMounted = false;
+  return {
+    async unmount() {
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      activeController?.abort();
+      activeController = null;
+      detachEvents?.();
+      detachEvents = null;
+      isMounted = false;
+    },
+    async pause() {},
+    async resume() {},
+    ready: loadPromise,
   };
 }
 

@@ -281,5 +281,15 @@ export async function renderMarketEvents() {
     }
   });
 
-  await load();
+  const loadPromise = load().catch((error) => {
+    console.error("market-events:initial-load:error", error);
+  });
+  return {
+    async unmount() {
+      stopTranslationPolling();
+      void loadPromise.catch(() => null);
+    },
+    async pause() {},
+    async resume() {},
+  };
 }

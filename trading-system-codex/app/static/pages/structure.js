@@ -1215,10 +1215,15 @@ export async function renderStructure() {
     }
   }
 
-  await loadData();
+  const loadPromise = loadData().catch((error) => {
+    if (!disposed) console.error("structure:initial-load:error", error);
+  });
 
   return () => {
     disposed = true;
+    activeController?.abort();
+    activeController = null;
     detachEvents?.();
+    void loadPromise.catch(() => null);
   };
 }

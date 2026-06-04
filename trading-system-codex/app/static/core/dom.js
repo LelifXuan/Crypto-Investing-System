@@ -58,6 +58,7 @@ export function escapeHtml(value) {
 
 export function setRoot(content) {
   const root = byId("page-root");
+  delete root._monitoringSections;
   root.innerHTML = content;
   return root;
 }

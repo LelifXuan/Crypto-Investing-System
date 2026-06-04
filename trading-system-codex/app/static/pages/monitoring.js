@@ -525,7 +525,10 @@ function renderShellFallback(message) {
 
 function hasRenderedMonitoringShell() {
   const root = document.getElementById("page-root");
-  return Boolean(root?._monitoringSections);
+  return Boolean(
+    root?._monitoringSections?.topbar?.isConnected &&
+    root.querySelector("#monitoring-topbar"),
+  );
 }
 
 function showMonitoringBanner(message, tone = "warning") {
@@ -980,7 +983,7 @@ function applyMonitoringDiff(data, options = {}) {
     setRoot(renderDashboard(data));
     return;
   }
-  if (!root._monitoringSections) {
+  if (!hasRenderedMonitoringShell()) {
     root.innerHTML = `
       <div id="monitoring-topbar"></div>
       <section class="monitoring-surface monitoring-summary-surface">
@@ -1159,5 +1162,16 @@ async function loadDashboard() {
 }
 
 export async function renderMonitoring() {
-  await loadDashboard();
+  const loadPromise = loadDashboard().catch((error) => {
+    console.error("monitoring:load:error", error);
+  });
+  return {
+    async unmount() {
+      activeController?.abort();
+      activeController = null;
+      void loadPromise.catch(() => null);
+    },
+    async pause() {},
+    async resume() {},
+  };
 }

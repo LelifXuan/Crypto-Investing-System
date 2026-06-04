@@ -173,8 +173,18 @@ async function loadQuotes({ force = false } = {}) {
 export async function renderAshareEtf() {
   setRoot(`<section id="etf-overview"></section><section class="etf-page-grid" id="etf-groups"></section>`);
   renderEtfPayload({ groups: [] }, "正在读取 A股ETF 行情");
-  await loadQuotes();
-  return { unmount: async () => activeController?.abort() };
+  const loadPromise = loadQuotes().catch((error) => {
+    console.error("ashare-etf:initial-load:error", error);
+  });
+  return {
+    async unmount() {
+      activeController?.abort();
+      activeController = null;
+      void loadPromise.catch(() => null);
+    },
+    async pause() {},
+    async resume() {},
+  };
 }
 
 export const renderPage = renderAshareEtf;
