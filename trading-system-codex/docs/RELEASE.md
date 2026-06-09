@@ -437,3 +437,114 @@ V1.5.5 在 V1.5.4 基础上修复用户实地核查监控总览页时提出的
   用户应理解为"结构页 pipeline 未跑出快照，暂用筹码页代理"。
 - `MarketRepository` 在测试中通过 fake 注入；snapshot 真实环境仍走
   `get_page_snapshot_cache`，DB schema 未变。
+
+## V1.5.6 宏观口径异常修复
+
+### 触发背景
+
+监控总览"宏观指标明细"页发现 4 项口径异常 + 1 项 0% 显示：
+
+| key | 显示值 | 真实口径 | 根因 |
+|---|---|---|---|
+| `cpi_mom` | 332.41% | 应为 +0.3% MoM | FRED `CPIAUCSL` 指数原值入库，`transform: mom_pct` 未应用 |
+| `core_cpi_mom` | 335.42% | 应为 +0.4% MoM | 同上，`CPILFESL` 指数原值 |
+| `pce_yoy` | 130.9% | 应为 +3.8% YoY | FRED `PCEPI` 指数原值入库，`transform: yoy_pct` 未应用 |
+| `core_pce_yoy` | 129.63% | 应为 +3.3% YoY | 同上，`PCEPILFE` 指数原值 |
+| `unemployment_rate` | 0% | 应为 4.x% 或 — | 真实 DB 无 0 行；UI 防御已就位 |
+
+### 数据流图
+
+```
+┌──────────────────┐
+│ macro_indicator_ │  transform: "yoy_pct" | "mom_pct"
+│   api_map.v1     │  sources: [{source: fred, symbol: PCEPI}, ...]
+└────────┬─────────┘
+         │ _load_layers
+         ▼
+┌──────────────────┐
+│ MacroIndicatorSpec │  + transform, + series_symbol
+└────────┬─────────┘
+         │ build_overview
+         ▼
+┌──────────────────────────┐
+│ _indicator_read          │  当 spec.indicator_key in
+│                          │  TRANSFORM_AFFECTED_KEYS (4 keys)
+│                          │  且 status == "ok" 时：
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│ provider.fetch_history   │  拉 14 点（5 年）月度观测
+│  (fred / bls)            │  失败 → 静默回退原 value_num
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│ transforms.compute_*_pct │  yoy: latest/base - 1
+│                          │  mom: latest/prev - 1
+│                          │  缺数据 / 0 base → None
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│ MacroOverviewIndicatorRead│
+│  .value_num = computed   │  unit 强制 "%"
+│  .transform_applied = …  │  status_reason 保留
+│  .transform_source = …   │
+└──────────────────────────┘
+```
+
+### 修复点
+
+| Commit | 内容 |
+|---|---|
+| C1 | `app/services/macro/transforms.py` + 20 单测 |
+| C2 | `MacroProvider.fetch_history` 协议 + FRED/BLS 实现 + 7 单测 |
+| C3 | `MacroOverviewService._indicator_read` 派发 transform + 6 集成测试 |
+| C4 | 三层 0% 防御（数据 + 服务 + UI） + 14 + 1 测试 |
+| C5 | `scripts/stale_macro_observations.py` 一次性脚本 + 5 测试 |
+| C6 | `scripts/audit_macro_transforms.py` + 文档 + 5 测试 |
+
+### 关键决策
+
+- **白名单而非自动启用**：`TRANSFORM_AFFECTED_KEYS` 固定为 4 个 key；
+  未来新增 transform-only key 必须显式加入白名单，避免"transform 字段
+  写了但没真实现"导致的静默错误。
+- **失败回退而非失败报错**：provider fetch_history 异常 / transforms 返回
+  None / 数据不足时，service 静默保留原 `value_num`。这样：
+  - 网络抖动时用户看到的是上次有效的值，而不是全部空白
+  - audit 脚本（独立路径）仍能发现异常
+- **三层 0% 防御**而非单点：data layer ETL bug、service 直读 DB、UI
+  渲染 — 任一层独立足够阻止 0% 渲染到用户屏幕。
+
+### 部署步骤
+
+```powershell
+# 1. 拉代码
+git pull
+
+# 2. 跑门禁
+python scripts/tasks.py check
+
+# 3. 一次性 stale 标记（清理历史脏数据）
+python scripts/stale_macro_observations.py --yes
+
+# 4. 验证修复生效
+python scripts/audit_macro_transforms.py
+
+# 5. 重启后端
+# 双击 start_source.bat
+```
+
+### 便携包同步（8000 端口用户）
+
+本修复仅在源码模式（8002）验证。便携包需要：
+
+```powershell
+# 1. 重新构建便携包
+python scripts/tasks.py build-portable
+
+# 2. 在便携包内也跑一次 stale 标记
+cd <portable_root>
+python scripts/stale_macro_observations.py --yes
+```

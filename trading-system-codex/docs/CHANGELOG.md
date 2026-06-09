@@ -1,5 +1,44 @@
 # Changelog
 
+## V1.5.6 (2026-06-09)
+
+监控总览"宏观指标明细"页 4 项口径异常 + 1 项 0% 防御。
+
+### 新增
+
+- `app/services/macro/transforms.py` — 纯函数 `compute_yoy_pct / compute_mom_pct`。
+  缺数据返回 `None` 不抛异常，caller 优雅回退。
+- `MacroProvider.fetch_history` 协议 — FRED/BLS 现支持拉 14 点历史窗口，
+  失败回退到原 `fetch_latest` 路径，向后兼容。
+- `scripts/audit_macro_transforms.py` — 扫描所有声明 transform 的 key，
+  实时拉 14 点算同比/环比，超出 (-20, 50) / (-5, 5) sanity band 即失败退出。
+- `scripts/stale_macro_observations.py` — 一次性脚本，对 4 个 TRANSFORM_AFFECTED_KEYS
+  的历史脏数据（value > 50 视为指数值）打 `stale_index_value` 标记。
+
+### 修复
+
+- 4 个口径异常：US CPI 环比 332.41% / US Core CPI 环比 335.42% /
+  US PCE 同比 130.9% / US Core PCE 同比 129.63% 现正确显示为约 +0.3% MoM
+  / +3.3-3.8% YoY。
+- 美国失业率 0% 防御：数据层（fallback_resolver）+ 服务层
+  （macro_overview）+ UI 层（monitoring.js INVALID_TEXT_VALUES +
+  missing-reason 映射）三层独立防御。
+
+### 测试
+
+- `tests/test_macro_transforms.py` — 20 个纯函数单测
+- `tests/test_provider_history.py` — 7 个 provider 单测
+- `tests/test_macro_overview_transforms.py` — 6 个集成测试
+- `tests/test_unemployment_zero_defense.py` — 14 个三层防御测试
+- `tests/test_stale_macro_observations.py` — 5 个脚本测试
+- `tests/test_audit_macro_transforms.py` — 5 个审计脚本测试
+- 1 个 `test_frontend_resilience_static.py` 静态检查 suspect_zero 渲染
+
+### 已知限制
+
+- 仅在源码模式（`start_source.bat` 8002 端口）验证通过。
+  便携包（8000）需手动跑 `python scripts/tasks.py build-portable` 同步代码。
+
 ## V1.5 (2026-06-02)
 
 监控总览页解释闭环升级。
