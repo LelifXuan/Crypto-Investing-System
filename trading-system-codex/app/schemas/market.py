@@ -444,6 +444,25 @@ class ChipStructureRead(BaseModel):
     generated_at: datetime
 
 
+class TechnicalRiskDivergenceRead(BaseModel):
+    status: str = "none"
+    evidence_level: str = "technical_proxy"
+    direction: str = "neutral"
+    score: float = 0.0
+    confidence: float = 0.0
+    leaders: list[str] = Field(default_factory=list)
+    strategy_effect: str = "none"
+    recommended_action: str = "observe"
+    summary: str = "未发现有效背离风险。"
+    confirmation: str | None = None
+    invalidation: str | None = None
+    risk_reasons: list[str] = Field(default_factory=list)
+
+
+class TechnicalRiskBundleRead(BaseModel):
+    divergence: TechnicalRiskDivergenceRead | None = None
+
+
 class RiskEvaluationRequest(BaseModel):
     instrument_id: str
     timeframe: str = "1h"
@@ -491,6 +510,8 @@ class MacroOverviewIndicatorRead(BaseModel):
     consensus_value_num: Decimal | None = None
     previous_value_num: Decimal | None = None
     surprise_num: Decimal | None = None
+    transform_applied: str | None = None
+    transform_source: str | None = None
 
 
 class MacroOverviewEventRead(BaseModel):
@@ -581,6 +602,7 @@ class AlertsBundleRead(BundleMetaRead):
     timeframe: str
     chip_structure: ChipStructureRead | None = None
     divergence_summary: DivergenceSummaryRead | None = None
+    technical_risk: TechnicalRiskBundleRead | None = None
     alert_events: list[AlertEventRead] = Field(default_factory=list)
     final_decision: dict = Field(default_factory=dict)
     contract_snapshot: dict = Field(default_factory=dict)

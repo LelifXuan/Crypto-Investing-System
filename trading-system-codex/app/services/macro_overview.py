@@ -14,8 +14,10 @@ from app.schemas.market import (
     MacroOverviewLayerRead,
     MacroOverviewResponse,
 )
+from app.services.macro import transforms
 from app.services.macro.fallback_resolver import fallback_for_indicator
 from app.services.macro.indicator_key_aliases import canonical_macro_key
+from app.services.macro.provider_registry import MacroProviderRegistry
 
 UTC = timezone.utc
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "monitoring" / "configs"
@@ -60,6 +62,8 @@ class MacroIndicatorSpec:
     display_label: str | None = None
     aliases: tuple[str, ...] = ()
     source_provider: str | None = None
+    transform: str | None = None
+    series_symbol: str | None = None
 
 
 @dataclass(frozen=True)
@@ -103,7 +107,7 @@ DISPLAY_CODE_BY_INDICATOR = {
     "pce_yoy": "US PCE",
     "core_pce_yoy": "US Core PCE",
     "nfp": "US NFP",
-    "real_yield_5y": "DFII5",
+    "real_yield_5y": "US 5Y TIPS",
     "wti_oil": "WTI",
     "brent_oil": "Brent",
     "vix": "VIX",
@@ -152,6 +156,12 @@ UNIT_BY_INDICATOR = {
     "usd_cny": "CNY",
 }
 FORCE_UNIT_BY_INDICATOR = {"reverse_repo"}
+CANONICAL_LABEL_OVERRIDES = {
+    "real_yield_5y": (
+        "美国5年期通胀保值国债收益率",
+        "5年期 TIPS 实际利率，用于观察黄金的短中期机会成本。",
+    ),
+}
 
 CLEAN_INDICATOR_LABELS = {
     "effr": ("美国有效联邦基金利率", "美联储政策利率的实际成交水平。"),
@@ -273,12 +283,25 @@ TRADFI_LABEL_OVERRIDES = {
     "usd_cny": ("美元兑人民币", "美元兑人民币用于观察人民币与美元流动性压力。"),
 }
 
+# Keys whose configured ``transform`` is applied automatically when the
+# underlying provider can supply history. The list is intentionally
+# narrow so future transform-only keys must be added here explicitly
+# after their series mapping has been verified.
+TRANSFORM_AFFECTED_KEYS = frozenset(
+    {
+        "cpi_mom",
+        "core_cpi_mom",
+        "pce_yoy",
+        "core_pce_yoy",
+    }
+)
+
 FALLBACK_LAYERS = (
     ("rates_policy", ("effr", "us02y_yield", "us10y_yield", "us10y_2y_spread")),
     ("inflation", ("cpi_yoy", "core_cpi_yoy", "breakeven_10y", "wti_oil")),
     ("growth_labor", ("nfp", "unemployment_rate", "ism_manufacturing", "ism_services")),
     ("liquidity_credit", ("hy_spread", "reverse_repo", "financial_conditions")),
-    ("cross_asset_confirmation", ("dxy", "gold", "vix", "real_yield_10y")),
+    ("cross_asset_confirmation", ("dxy", "gold", "vix", "real_yield_5y", "real_yield_10y")),
     ("event_window", ("fomc_event_window",)),
 )
 
@@ -286,8 +309,13 @@ FALLBACK_LAYERS = (
 class MacroOverviewService:
     """Build a macro overview while keeping missing data out of scores."""
 
-    def __init__(self, repository: MarketRepository) -> None:
+    def __init__(
+        self,
+        repository: MarketRepository,
+        provider_registry: MacroProviderRegistry | None = None,
+    ) -> None:
         self.repository = repository
+        self.provider_registry = provider_registry or MacroProviderRegistry()
 
     async def build_overview(self, *, now: datetime | None = None) -> MacroOverviewResponse:
         now = now or datetime.now(UTC)
@@ -310,10 +338,11 @@ class MacroOverviewService:
         layers: list[MacroOverviewLayerRead] = []
         layer_scores: dict[str, int] = {}
         for layer in self._load_layers():
-            indicators = [
-                self._indicator_read(layer, spec, latest_by_key, definitions)
-                for spec in layer.indicators
-            ]
+            indicators: list[MacroOverviewIndicatorRead] = []
+            for spec in layer.indicators:
+                indicators.append(
+                    await self._indicator_read(layer, spec, latest_by_key, definitions)
+                )
             scored = [item for item in indicators if item.is_scored]
             score = (
                 round(sum(_score_indicator(item) for item in scored) / len(scored))
@@ -408,6 +437,13 @@ class MacroOverviewService:
                 if sources and isinstance(sources[0], dict)
                 else None
             )
+            series_symbol = None
+            if sources and isinstance(sources[0], dict):
+                series_symbol = (
+                    sources[0].get("symbol")
+                    or sources[0].get("series")
+                )
+            transform_value = item.get("transform")
             grouped.setdefault(layer_key, []).append(
                 MacroIndicatorSpec(
                     indicator_key=key,
@@ -420,6 +456,8 @@ class MacroOverviewService:
                     display_label=display_label,
                     aliases=ALIASES.get(key, ()),
                     source_provider=provider,
+                    transform=transform_value if isinstance(transform_value, str) else None,
+                    series_symbol=series_symbol,
                 )
             )
 
@@ -444,7 +482,7 @@ class MacroOverviewService:
             )
         return tuple(layers) if layers else _fallback_layer_specs()
 
-    def _indicator_read(
+    async def _indicator_read(
         self,
         layer: MacroLayerSpec,
         spec: MacroIndicatorSpec,
@@ -478,13 +516,40 @@ class MacroOverviewService:
         tooltip = getattr(definition, "display_name", None) or spec.tooltip
         obs_ts = getattr(obs, "observation_ts", None)
         status_reason = _status_reason(status)
+        unit = _unit_for_indicator(spec.indicator_key, spec.unit)
+        transform_applied: str | None = None
+        transform_source: str | None = None
+
+        if (
+            spec.indicator_key in TRANSFORM_AFFECTED_KEYS
+            and spec.transform in {"mom_pct", "yoy_pct"}
+            and spec.series_symbol
+            and spec.source_provider
+        ):
+            computed_value, transform_source = await self._apply_transform(
+                spec, status, value
+            )
+            if computed_value is not None:
+                value = computed_value
+                unit = "%"
+                transform_applied = spec.transform
+                is_scored = _is_scored_indicator(
+                    spec.indicator_key,
+                    status,
+                    signal_state,
+                    value,
+                    text_value,
+                    fallback.get("is_scored"),
+                )
+                if is_scored:
+                    block_reason = None
 
         return MacroOverviewIndicatorRead(
             indicator_key=spec.indicator_key,
             label=spec.label,
             display_code=spec.display_code,
             display_label=spec.display_label or spec.label,
-            unit=_unit_for_indicator(spec.indicator_key, spec.unit),
+            unit=unit,
             tooltip=tooltip,
             region="global",
             source_provider=getattr(obs, "source_provider", None) or spec.source_provider,
@@ -505,7 +570,50 @@ class MacroOverviewService:
                 is_scored,
                 obs_ts,
             ),
+            transform_applied=transform_applied,
+            transform_source=transform_source,
         )
+
+    async def _apply_transform(
+        self,
+        spec: MacroIndicatorSpec,
+        status: str,
+        value: Any,
+    ) -> tuple[Any | None, str | None]:
+        """Run the configured transform on a fresh history window.
+
+        Returns ``(new_value, source_ref)`` on success. Returns
+        ``(None, None)`` on any failure so the caller keeps the original
+        value (backward compatibility).
+        """
+        if status not in {"ok", "live"} or value is None:
+            return None, None
+        provider = self.provider_registry.resolve(
+            source_provider=spec.source_provider, source_kind="raw_series"
+        )
+        if provider is None or not hasattr(provider, "fetch_history"):
+            return None, None
+        try:
+            history = await provider.fetch_history(
+                spec.series_symbol, lookback_points=14
+            )
+        except Exception:
+            return None, None
+        points = [
+            (point.observation_ts, point.value)
+            for point in history
+            if point.observation_ts is not None
+        ]
+        if spec.transform == "yoy_pct":
+            result = transforms.compute_yoy_pct(points)
+        elif spec.transform == "mom_pct":
+            result = transforms.compute_mom_pct(points)
+        else:
+            return None, None
+        if result is None:
+            return None, None
+        computed_value, _latest_ts = result
+        return float(computed_value), f"{spec.series_symbol}_{spec.transform}"
 
     def _indicator_from_fallback(
         self,
@@ -602,6 +710,8 @@ def _fallback_layer_specs() -> tuple[MacroLayerSpec, ...]:
 
 
 def _indicator_label(key: str) -> tuple[str, str]:
+    if key in CANONICAL_LABEL_OVERRIDES:
+        return CANONICAL_LABEL_OVERRIDES[key]
     if key in TRADFI_LABEL_OVERRIDES:
         return TRADFI_LABEL_OVERRIDES[key]
     if key in CLEAN_INDICATOR_LABELS:
@@ -616,6 +726,8 @@ def _display_fields(key: str, label: str) -> tuple[str | None, str]:
     code = DISPLAY_CODE_BY_INDICATOR.get(key)
     if not code:
         return None, label
+    if key == "real_yield_5y":
+        return code, label
     if label.upper().startswith(code.upper()):
         return code, label
     return code, f"{code} {label}"
