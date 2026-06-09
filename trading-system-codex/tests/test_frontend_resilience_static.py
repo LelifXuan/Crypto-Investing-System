@@ -127,3 +127,72 @@ def test_event_translation_refresh_is_real_queue_and_no_default_pending_chip() -
     assert "refreshMarketEventTranslations" in frontend
     assert "pending_count" in backend
     assert "enqueue_event_ids" in backend
+
+
+def test_ashare_etf_page_is_compact_execution_workbench() -> None:
+    source = (ROOT / "app/static/pages/ashare_etf.js").read_text(encoding="utf-8")
+    assert "ashare.etf.dca.rebalance.v1" in source
+    assert "planEtfRebalance" in source
+    assert "etf-execution-bar" in source
+    assert "etf-quote-deck" in source
+    assert "etf-top-deck" in source
+    assert "etf-mini-card" in source
+    assert "is-featured" in source
+    assert "etf-dense-table" in source
+    assert "etf-combined-table" in source
+    assert "持仓与执行" in source
+    assert "turnover_amount" in source
+    assert "trade_count" in source
+    assert "换手金额" in source
+    assert "交易笔数" in source
+    assert "etf-locked-price" in source
+    assert "priceSourceLabel" in source
+    assert "captureFocusedField" in source
+    assert "restoreFocusedField" in source
+    assert "targetWeight" in source
+    assert "data-field=\"currentPrice\"" not in source
+    assert "行情读取中" not in source
+    assert "手动输入现价" not in source
+    assert "${escapeHtml(item.symbol)} · ${escapeHtml(item.bucket)}" not in source
+    assert "etf-quote-card" not in source
+    assert "etf-instruction-card" not in source
+    assert "renderInstructionTable" not in source
+    assert "${rows.length} 项" not in source
+    assert "renderQuoteBackground" not in source
+    assert "本次为" not in source
+    assert "目标权重按策略配置锁定" not in source
+    assert "不追求精确到每一分钱" not in source
+
+
+def test_ashare_etf_combined_table_uses_requested_execution_column_order() -> None:
+    source = (ROOT / "app/static/pages/ashare_etf.js").read_text(encoding="utf-8")
+    expected = (
+        "<th>操作</th>\n"
+        "              <th>指令份额</th>\n"
+        "              <th>预计金额</th>\n"
+        "              <th>当前权重</th>\n"
+        "              <th>目标权重</th>\n"
+        "              <th>执行后偏离</th>"
+    )
+    assert expected in source
+
+
+def test_ashare_etf_page_has_clean_user_visible_chinese() -> None:
+    source = (ROOT / "app/static/pages/ashare_etf.js").read_text(encoding="utf-8")
+    forbidden = ["锛", "鐜", "杩", "鏆", "待确认", "pending"]
+    for token in forbidden:
+        assert token not in source
+
+
+def test_monitoring_macro_suspect_zero_is_hidden_from_grid() -> None:
+    """Layer 3 defense: a macro card with status='suspect_zero' must be
+    filtered out of the visible grid by ``validMacroIndicator`` and
+    shown via the missing list instead. The status is also added to
+    ``INVALID_TEXT_VALUES`` so ``macroDisplayValue`` falls back to DASH
+    rather than rendering a literal 0%."""
+    source = (ROOT / "app/static/pages/monitoring.js").read_text(encoding="utf-8")
+    assert "suspect_zero" in source
+    # the constant INVALID_TEXT_VALUES set must contain suspect_zero
+    assert '"suspect_zero"' in source or "'suspect_zero'" in source
+    # the status label map must explain the reason to the user
+    assert "数据待发布（口径异常）" in source or "数据待发布" in source

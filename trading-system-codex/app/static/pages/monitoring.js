@@ -31,6 +31,7 @@ const INVALID_TEXT_VALUES = new Set([
   "none",
   "null",
   "nan",
+  "suspect_zero",
   "unavailable_placeholder",
 ]);
 
@@ -146,6 +147,7 @@ const MISSING_REASON_LABELS = {
   placeholder: "仅占位",
   pending: "同步未运行或缓存未命中",
   pending_release: "等待数据发布",
+  suspect_zero: "数据待发布（口径异常）",
   missing: "同步未运行或缓存未命中",
   no_data: "同步未运行或缓存未命中",
 };
@@ -319,7 +321,7 @@ function validMacroIndicator(item) {
     || (rawText && !INVALID_TEXT_VALUES.has(rawText));
   if (!hasIndicatorValue) return false;
   const status = normalizeKey(item?.status);
-  if (["source_error", "unavailable", "unavailable_placeholder", "placeholder", "missing"].includes(status)) {
+  if (["source_error", "unavailable", "unavailable_placeholder", "placeholder", "missing", "suspect_zero"].includes(status)) {
     return false;
   }
   return true;
@@ -486,7 +488,6 @@ const SOURCE_PAGE_HREFS = {
   "monitoring-overview": "/monitoring-page",
   "market-analysis": "/indicators-page",
   "market-structure": "/structure-page",
-  "alert-center": "/alerts-page",
   "macro-calendar": "/macro-calendar-page",
   "market-events": "/market-events-page",
   "ai-strategy": "/strategy-page",

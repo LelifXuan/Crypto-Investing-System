@@ -511,6 +511,23 @@ class MacroOverviewService:
             text_value,
             fallback.get("is_scored"),
         )
+        # Defense in depth: even if ETL already wrote 0% to the DB for an
+        # indicator whose valid domain excludes zero, surface a
+        # ``suspect_zero`` status so the UI never renders a misleading
+        # literal 0% on unemployment-style indicators.
+        if (
+            spec.indicator_key in TRANSFORM_AFFECTED_KEYS
+            or spec.indicator_key.startswith("unemployment")
+        ):
+            obs_unit = (
+                getattr(obs, "unit", None)
+                or _unit_for_indicator(spec.indicator_key, spec.unit)
+            )
+            if _looks_like_unemployment_zero(spec.indicator_key, value, obs_unit):
+                status = "suspect_zero"
+                is_scored = False
+                block_reason = "value=0 落在失业率无效域。"
+                value = None
         block_reason = None if is_scored else _score_block_reason(status, fallback)
         definition = definitions.get(getattr(obs, "indicator_key", spec.indicator_key))
         tooltip = getattr(definition, "display_name", None) or spec.tooltip
@@ -866,6 +883,35 @@ def _is_scored_indicator(
     return indicator_key in SCORABLE_TEXT_INDICATORS and normalized_text in {
         "active", "inactive", "pre_event", "post_event", "live_event",
     }
+
+
+UNEMPLOYMENT_LIKE_KEYS = frozenset({"unemployment_rate", "us_unemployment_rate"})
+PERCENT_UNIT_HINTS = frozenset({"%", "percent"})
+
+
+def _looks_like_unemployment_zero(
+    indicator_key: str, value: Any, unit: Any
+) -> bool:
+    """Service-layer check that flags a literal 0 on unemployment-like
+    indicators even when the data layer defense did not fire (e.g. the
+    observation came straight from the repository without going through
+    ``fallback_resolver``)."""
+    if indicator_key not in UNEMPLOYMENT_LIKE_KEYS:
+        return False
+    normalized_unit = str(unit or "").strip().lower()
+    if normalized_unit not in PERCENT_UNIT_HINTS:
+        return False
+    if value is None:
+        return False
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {"none", "null", "nan"}:
+            return False
+        try:
+            return float(stripped) == 0
+        except (TypeError, ValueError):
+            return False
+    return value == 0 or value == 0.0
 
 
 def _score_block_reason(status: str, fallback: dict[str, Any]) -> str:
