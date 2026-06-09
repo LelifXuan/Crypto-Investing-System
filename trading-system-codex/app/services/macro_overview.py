@@ -293,6 +293,7 @@ TRANSFORM_AFFECTED_KEYS = frozenset(
         "core_cpi_mom",
         "pce_yoy",
         "core_pce_yoy",
+        "average_hourly_earnings_yoy",
     }
 )
 

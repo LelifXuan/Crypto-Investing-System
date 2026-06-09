@@ -150,9 +150,15 @@ async def test_audit_identifies_auto_applied_keys(monkeypatch, audit_db) -> None
         await script.audit(allow_network=False, json_output=True)
     payload = json.loads(buffer.getvalue())
     by_key = {r["key"]: r for r in payload["results"]}
-    for key in ("cpi_mom", "core_cpi_mom", "pce_yoy", "core_pce_yoy"):
+    for key in (
+        "cpi_mom",
+        "core_cpi_mom",
+        "pce_yoy",
+        "core_pce_yoy",
+        "average_hourly_earnings_yoy",
+    ):
         assert by_key[key]["auto_applied"] is True
-    for key in ("cpi_yoy", "core_cpi_yoy", "average_hourly_earnings_yoy"):
+    for key in ("cpi_yoy", "core_cpi_yoy"):
         assert by_key[key]["auto_applied"] is False
 
 

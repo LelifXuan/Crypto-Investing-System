@@ -305,7 +305,15 @@ function macroUnitSuffix(unit) {
 
 function macroDisplayValue(item) {
   const rawText = cleanText(item?.value_text, "");
-  const rawNum = numeric(item?.value_num);
+  // value_num may be null/undefined/"" when the DB has no numeric
+  // observation yet (e.g. BLS only publishes monthly). Treat those as
+  // "no numeric" and fall through to the text / DASH branch.
+  // ``numeric(null)`` returns 0 because ``Number(null) === 0``, so we
+  // explicitly gate on the raw value first.
+  const rawValue = item?.value_num;
+  const rawNum = (rawValue === null || rawValue === undefined || rawValue === "")
+    ? null
+    : numeric(rawValue);
   const unit = cleanText(item?.unit, "").trim();
   if (rawNum !== null) {
     const value = formatNumber(rawNum, 2);
@@ -317,7 +325,13 @@ function macroDisplayValue(item) {
 
 function validMacroIndicator(item) {
   const rawText = normalizeKey(item?.value_text);
-  const hasIndicatorValue = numeric(item?.value_num) !== null
+  const rawValue = item?.value_num;
+  // Same null/empty guard as ``macroDisplayValue``: literal null or
+  // empty string means "no observation yet" and must not be coerced
+  // to 0 by ``Number(null)``.
+  const hasNumeric = (rawValue !== null && rawValue !== undefined && rawValue !== "")
+    && numeric(rawValue) !== null;
+  const hasIndicatorValue = hasNumeric
     || (rawText && !INVALID_TEXT_VALUES.has(rawText));
   if (!hasIndicatorValue) return false;
   const status = normalizeKey(item?.status);

@@ -330,7 +330,13 @@ async def test_unemployment_rate_row_missing_uses_placeholder(
 
 
 def test_transform_affected_keys_constant() -> None:
-    """Lock the 4-key whitelist so future drift is intentional."""
+    """Lock the whitelist so future drift is intentional."""
     assert TRANSFORM_AFFECTED_KEYS == frozenset(
-        {"cpi_mom", "core_cpi_mom", "pce_yoy", "core_pce_yoy"}
+        {
+            "cpi_mom",
+            "core_cpi_mom",
+            "pce_yoy",
+            "core_pce_yoy",
+            "average_hourly_earnings_yoy",
+        }
     )
