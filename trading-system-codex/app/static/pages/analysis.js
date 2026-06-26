@@ -18,6 +18,7 @@ let candleDataset;
 let destroyChartsForPage;
 let lineDataset;
 let renderChart;
+let sanitizeChartSeries;
 let scheduleIdlePrecompute;
 
 async function ensureDeps() {
@@ -46,7 +47,14 @@ async function ensureDeps() {
     statusBanner,
     statusChip,
   } = domModule);
-  ({ barDataset, candleDataset, destroyChartsForPage, lineDataset, renderChart } = chartModule);
+  ({
+    barDataset,
+    candleDataset,
+    destroyChartsForPage,
+    lineDataset,
+    renderChart,
+    sanitizeChartSeries,
+  } = chartModule);
   ({ scheduleIdlePrecompute } = precomputeModule);
 }
 
@@ -66,6 +74,12 @@ function minCandlesFor(timeframe) {
 
 function toNumber(value) {
   return Number(value ?? 0);
+}
+
+function finiteInputNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function ema(values, period) {
@@ -534,12 +548,14 @@ function vwapInterpretation(close, vwap50, vwap100, slope10, spreadPct) {
 
 
 function useSeries(values, fallback, expectedLength) {
-  return Array.isArray(values) && values.length === expectedLength ? values.map((item) => (item === null ? null : Number(item))) : fallback;
+  return Array.isArray(values) && values.length === expectedLength
+    ? sanitizeChartSeries(values)
+    : fallback;
 }
 
 function useSeriesOrBuild(values, buildFallback, expectedLength) {
   if (Array.isArray(values) && values.length === expectedLength) {
-    return values.map((item) => (item === null ? null : Number(item)));
+    return sanitizeChartSeries(values);
   }
   return buildFallback();
 }
@@ -556,24 +572,24 @@ function calcAnalysis(candles, bundle = null) {
     const vegas = ema(closes, 144);
     return {
       closes, volumes,
-      ema12: core.ema_12.map(Number), ema30: core.ema_30.map(Number),
-      ema60: core.ema_60.map(Number), ema120: core.ema_120.map(Number),
+      ema12: sanitizeChartSeries(core.ema_12), ema30: sanitizeChartSeries(core.ema_30),
+      ema60: sanitizeChartSeries(core.ema_60), ema120: sanitizeChartSeries(core.ema_120),
       vegasFastLow: vegas, vegasFastHigh: ema(closes, 169),
       vegasSlowLow: ema(closes, 576), vegasSlowHigh: ema(closes, 676),
-      rsiValues: core.rsi_14.map(Number),
-      macdValues: { line: core.macd_line.map(Number), signal: core.macd_signal.map(Number), hist: core.macd_hist.map(Number) },
-      atrValues: core.atr_14.map(Number),
-      adxValues: { adxValues: secondary.adx_14.map(Number), plusDi: secondary.plus_di?.map(Number) || [], minusDi: secondary.minus_di?.map(Number) || [] },
-      boll: { upper: secondary.bbands_upper?.map(Number) || [], middle: secondary.bbands_middle?.map(Number) || [], lower: secondary.bbands_lower?.map(Number) || [], width: secondary.bbands_width?.map(Number) || [], percentB: secondary.percent_b?.map(Number) || [] },
-      obvValues: secondary.obv?.map(Number) || [],
-      kdjValues: { k: secondary.kdj_k?.map(Number) || [], d: secondary.kdj_d?.map(Number) || [], j: secondary.kdj_j?.map(Number) || [] },
-      cciValues: secondary.cci_20?.map(Number) || [],
-      natrValues: core.natr_14?.map(Number) || [],
+      rsiValues: sanitizeChartSeries(core.rsi_14),
+      macdValues: { line: sanitizeChartSeries(core.macd_line), signal: sanitizeChartSeries(core.macd_signal), hist: sanitizeChartSeries(core.macd_hist) },
+      atrValues: sanitizeChartSeries(core.atr_14),
+      adxValues: { adxValues: sanitizeChartSeries(secondary.adx_14), plusDi: sanitizeChartSeries(secondary.plus_di), minusDi: sanitizeChartSeries(secondary.minus_di) },
+      boll: { upper: sanitizeChartSeries(secondary.bbands_upper), middle: sanitizeChartSeries(secondary.bbands_middle), lower: sanitizeChartSeries(secondary.bbands_lower), width: sanitizeChartSeries(secondary.bbands_width), percentB: sanitizeChartSeries(secondary.percent_b) },
+      obvValues: sanitizeChartSeries(secondary.obv),
+      kdjValues: { k: sanitizeChartSeries(secondary.kdj_k), d: sanitizeChartSeries(secondary.kdj_d), j: sanitizeChartSeries(secondary.kdj_j) },
+      cciValues: sanitizeChartSeries(secondary.cci_20),
+      natrValues: sanitizeChartSeries(core.natr_14),
       vwapValues: {
-        vwap50: secondary.vwap_50?.map(Number) || vwap(highs, lows, closes, volumes, 50),
-        vwap100: secondary.vwap_100?.map(Number) || vwap(highs, lows, closes, volumes, 100),
-        spreadPct: secondary.vwap_spread_pct?.map(Number) || [],
-        slope10: secondary.vwap_slope_10?.map(Number) || [],
+        vwap50: secondary.vwap_50 ? sanitizeChartSeries(secondary.vwap_50) : vwap(highs, lows, closes, volumes, 50),
+        vwap100: secondary.vwap_100 ? sanitizeChartSeries(secondary.vwap_100) : vwap(highs, lows, closes, volumes, 100),
+        spreadPct: sanitizeChartSeries(secondary.vwap_spread_pct),
+        slope10: sanitizeChartSeries(secondary.vwap_slope_10),
       },
     };
   }
@@ -719,10 +735,10 @@ function sliceAnalysisForDisplay(analysis, limit) {
 function normalizeOhlcCandles(candles) {
   return candles.map((item) => ({
     ...item,
-    open: Number(item.open),
-    high: Number(item.high),
-    low: Number(item.low),
-    close: Number(item.close),
+    open: finiteInputNumber(item.open),
+    high: finiteInputNumber(item.high),
+    low: finiteInputNumber(item.low),
+    close: finiteInputNumber(item.close),
   })).filter((item) => [item.open, item.high, item.low, item.close].every(Number.isFinite));
 }
 
@@ -894,9 +910,9 @@ function renderChartBatch(defs, token = activeRenderToken) {
       renderChart(key, canvas, config);
     }
     idx = end;
-    if (idx < defs.length) requestAnimationFrame(step);
+    if (idx < defs.length) window.setTimeout(step, 0);
   };
-  requestAnimationFrame(step);
+  window.setTimeout(step, 0);
 }
 
 async function loadAll(force = false, token = activeRenderToken) {
@@ -917,18 +933,12 @@ async function loadAll(force = false, token = activeRenderToken) {
   try {
     abortController?.abort();
     abortController = new AbortController();
-    const [bundle, latestMark] = await Promise.all([
-      api.getAnalysisBundle(
-        appState.selectedInstrumentId,
-        appState.selectedTimeframe,
-        appState.selectedViewWindow,
-        { force, signal: abortController.signal },
-      ),
-      api.getLatestMark(appState.selectedInstrumentId, {
-        preferLive: true,
-        signal: abortController.signal,
-      }).catch((err) => { console.warn("analysis:latest-mark:cache-fallback", err); return null; }),
-    ]);
+    const bundle = await api.getAnalysisBundle(
+      appState.selectedInstrumentId,
+      appState.selectedTimeframe,
+      appState.selectedViewWindow,
+      { force, signal: abortController.signal },
+    );
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
       await scheduleIdlePrecompute({
@@ -941,7 +951,8 @@ async function loadAll(force = false, token = activeRenderToken) {
       });
     }
     let candlesPayload = { candles: bundle.candles || [] };
-    let markPayload = latestMark?.mark_price != null ? latestMark : (bundle.mark || null);
+    let markPayload = bundle.mark || null;
+    void enhanceLatestMark(token, { preferLive: force });
     let allCandles = normalizeOhlcCandles(candlesPayload.candles || []);
     const shouldAutoFetch = allCandles.length < minCandles && !autoFetchKeys.has(fetchKey);
     if (force || shouldAutoFetch) {
@@ -949,24 +960,16 @@ async function loadAll(force = false, token = activeRenderToken) {
       liveFetched = true;
       renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading");
       setRefreshBusy(true, "拉取中");
-      const [livePayload, liveMark] = await Promise.all([
-        api.getCandles(
-          appState.selectedInstrumentId,
-          appState.selectedTimeframe,
-          requestLimit,
-          { preferLive: true, force: true, signal: abortController.signal },
-        ),
-        api.getLatestMark(appState.selectedInstrumentId, {
-          preferLive: true,
-          force: true,
-          signal: abortController.signal,
-        }).catch((err) => { console.warn("analysis:mark-refresh:error", err); return null; }),
-      ]);
+      const livePayload = await api.getCandles(
+        appState.selectedInstrumentId,
+        appState.selectedTimeframe,
+        requestLimit,
+        { preferLive: true, force: true, signal: abortController.signal },
+      );
       if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
       allCandles = normalizeOhlcCandles(livePayload.candles || []);
       invalidateCache("/marketdata/candles");
       candlesPayload = livePayload;
-      if (liveMark?.mark_price != null) markPayload = liveMark;
       renderAnalysisStatus("正在计算指标", "loading");
       setRefreshBusy(true, "计算中");
       try {
@@ -1114,6 +1117,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     renderChartBatch([
       ["analysis-price", document.getElementById("analysis-price-chart"), {
         type: "line",
+        axisProfile: "price",
         data: {
           labels,
           datasets: [
@@ -1128,6 +1132,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       }],
       ["analysis-vegas", document.getElementById("analysis-vegas-chart"), {
         type: "line",
+        axisProfile: "price",
         data: {
           labels,
           datasets: [
@@ -1146,6 +1151,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       }],
       ["analysis-boll", document.getElementById("analysis-boll-chart"), {
         type: "line",
+        axisProfile: "price",
         data: {
           labels,
           datasets: [
@@ -1184,14 +1190,17 @@ async function loadAll(force = false, token = activeRenderToken) {
       }],
       ["analysis-rsi", document.getElementById("analysis-rsi-chart"), {
         type: "line",
+        axisProfile: "oscillator",
         data: { labels, datasets: [lineDataset("RSI", analysis.rsiValues, "#c35a1d", { borderWidth: 2.25 })] },
       }],
       ["analysis-volume", document.getElementById("analysis-volume-chart"), {
         type: "bar",
+        axisProfile: "volume",
         data: { labels, datasets: [barDataset("成交量", analysis.volumes, "rgba(183,121,31,0.72)")] },
       }],
       ["analysis-macd", document.getElementById("analysis-macd-chart"), {
         type: "bar",
+        axisProfile: "centeredZero",
         data: {
           labels,
           datasets: [
@@ -1233,19 +1242,34 @@ async function loadAll(force = false, token = activeRenderToken) {
   }
 }
 
+async function enhanceLatestMark(token = activeRenderToken, { preferLive = false } = {}) {
+  if (!isRunActive(token)) return null;
+  try {
+    const markPayload = await api.getLatestMark(appState.selectedInstrumentId, {
+      preferLive,
+      force: preferLive,
+      signal: abortController?.signal,
+      timeoutMs: preferLive ? 5000 : 1500,
+    });
+    if (!markPayload || !isRunActive(token)) return null;
+    const price = document.getElementById("analysis-mark-price");
+    const updated = document.getElementById("analysis-mark-updated");
+    const next = document.getElementById("analysis-mark-next");
+    if (price) price.textContent = formatNumber(markPayload.mark_price);
+    if (updated) updated.textContent = formatDateTime(markPayload.ts_event);
+    if (next) next.textContent = preferLive ? "5 分钟自动刷新" : "最近可用报价";
+    return markPayload;
+  } catch (error) {
+    if (error?.name !== "AbortError") console.warn("analysis:latest-mark:enhance-failed", error);
+    return null;
+  }
+}
+
 async function refreshMarkOnly() {
   const token = activeRenderToken;
   if (document.hidden || !isRunActive(token)) return;
   invalidateCache("/market-prices/marks/latest");
-  const markPayload = await api.getLatestMark(appState.selectedInstrumentId, {
-    preferLive: true,
-    force: true,
-  });
-  if (markPayload && isRunActive(token)) {
-    document.getElementById("analysis-mark-price").textContent = formatNumber(markPayload.mark_price);
-    document.getElementById("analysis-mark-updated").textContent = formatDateTime(markPayload.ts_event);
-    document.getElementById("analysis-mark-next").textContent = "5 分钟自动刷新";
-  }
+  return enhanceLatestMark(token, { preferLive: true });
 }
 
 function syncToolbarState() {

@@ -27,6 +27,7 @@ from app.services.cache_registry import (
     analysis_cache_key,
     expires_at_for_page,
     macro_calendar_cache_key,
+    macro_overview_cache_key,
     market_events_cache_key,
     monitoring_dashboard_cache_key,
     strategy_bundle_cache_key,
@@ -709,6 +710,25 @@ class PrecomputeService:
                 source_updated_at=max((item.scheduled_at for item in items), default=now),
                 source_version=CACHE_SOURCE_VERSION,
                 meta_json={"lane": task.lane},
+            )
+            from app.services.macro_overview import MacroOverviewService
+
+            overview_started = time.perf_counter()
+            overview = await MacroOverviewService(repository).build_overview(now=now)
+            overview_payload = overview.model_dump(mode="json")
+            await repository.upsert_page_snapshot_cache(
+                cache_key=macro_overview_cache_key(),
+                page_type="macro",
+                payload_json={"overview": overview_payload},
+                status="ready",
+                cache_state="fresh",
+                snapshot_at=now,
+                data_ts=now,
+                expires_at=expires_at_for_page("macro", now),
+                source_updated_at=now,
+                source_version=CACHE_SOURCE_VERSION,
+                cost_ms=int((time.perf_counter() - overview_started) * 1000),
+                meta_json={"lane": task.lane, "kind": "macro_overview"},
             )
             return
         if task.page_type == "events":

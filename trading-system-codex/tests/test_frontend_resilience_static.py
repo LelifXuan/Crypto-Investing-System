@@ -112,11 +112,11 @@ console.log(JSON.stringify(samples));
 
 def test_analysis_uses_canonical_latest_mark_independent_of_timeframe() -> None:
     source = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
-    assert "let markPayload = latestMark?.mark_price != null ? latestMark : (bundle.mark || null);" in source
+    assert "let markPayload = bundle.mark || null;" in source
     assert "getAnalysisBundle" in source
     assert "getLatestMark" in source
-    assert "preferLive: true" in source
-    assert "Promise.all" in source
+    assert "enhanceLatestMark" in source
+    assert "{ preferLive = false }" in source
     assert "let allCandles = normalizeOhlcCandles" in source
 
 

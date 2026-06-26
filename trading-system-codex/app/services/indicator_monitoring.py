@@ -39,6 +39,7 @@ from app.quant.indicators import (
 )
 from app.repositories.market_repository import MarketRepository
 from app.services.contract_snapshot import ContractSnapshotService
+from app.services.macro import transforms as macro_transforms
 from app.services.macro.indicator_key_aliases import canonical_macro_key, canonical_provider_key
 from app.services.macro.provider_registry import MacroProviderRegistry
 from app.services.market import MarketService
@@ -62,7 +63,7 @@ MICROSTRUCTURE_KEYS = {
 
 
 FRESHNESS_DAYS_BY_FREQUENCY = {
-    "intraday": 0.1, "daily": 3, "weekly": 14,
+    "intraday": 0.5, "daily": 3, "weekly": 14,
     "monthly": 45, "quarterly": 120, "fomc": 60, "irregular": 30, "event": 60,
 }
 
@@ -73,7 +74,7 @@ FALLBACK_SYMBOLS = {
     "us_unemployment_rate": {"fred": "UNRATE"},
     "us_10y_yield": {"fred": "DGS10"},
     "us_5y_yield": {"fred": "DGS5", "twelvedata": "DGS5"},
-    "real_yield_5y": {"fred": "DFII5"},
+    "real_yield_5y": {"fred": "DFII5", "tradingeconomics_web": "US 5Y TIPS"},
     "real_yield_10y": {"fred": "DFII10"},
     "us_2y_yield": {"fred": "DGS2"},
     "us_dff": {"fred": "DFF"},
@@ -134,9 +135,17 @@ class IndicatorMonitoringService:
         )
         return FRESHNESS_DAYS_BY_FREQUENCY.get(freq, 30.0)
 
-    def _get_fallback_symbols(self, indicator_key: str, primary_symbol: str) -> list[str]:
-        symbols = [primary_symbol]
+    def _get_fallback_symbols(
+        self,
+        indicator_key: str,
+        primary_symbol: str,
+        source_provider: str | None = None,
+    ) -> list[str]:
+        symbols: list[str] = [primary_symbol]
         fb = FALLBACK_SYMBOLS.get(indicator_key, {})
+        provider_symbol = fb.get(source_provider or "")
+        if provider_symbol and provider_symbol not in symbols:
+            symbols.append(provider_symbol)
         for sym in fb.values():
             if sym not in symbols:
                 symbols.append(sym)
@@ -848,10 +857,16 @@ class IndicatorMonitoringService:
             freshness_days = self._freshness_days_for_frequency(definition)
             if latest_obs is not None and fresh_in_window(latest_obs, freshness_days) and latest_obs.signal_state != "source_error":
                 return [latest_obs]
-            symbol_fallback = self._get_fallback_symbols(indicator_key, symbol)
+            symbol_fallback = self._get_fallback_symbols(
+                indicator_key,
+                symbol,
+                source_provider,
+            )
             result = None
+            result_provider = None
+            stale_result = None
             last_error = None
-            for sym in symbol_fallback:
+            for index, sym in enumerate(symbol_fallback):
                 try:
                     resolved_provider = (
                         provider
@@ -866,6 +881,22 @@ class IndicatorMonitoringService:
                     fetch_started_at = time_module.perf_counter()
                     try:
                         result = await resolved_provider.fetch_latest(sym)
+                        result_provider = resolved_provider
+                        if not fresh_in_window(result, freshness_days):
+                            stale_result = result
+                            await self._record_macro_source_health(
+                                provider_key=resolved_provider.provider_key,
+                                source_key=sym,
+                                status="stale",
+                                message="latest observation is outside freshness window",
+                                latency_ms=int(
+                                    (time_module.perf_counter() - fetch_started_at) * 1000
+                                ),
+                                payload_json={"indicator_key": indicator_key},
+                            )
+                            if index < len(symbol_fallback) - 1:
+                                result = None
+                                continue
                         await self._record_macro_source_health(
                             provider_key=resolved_provider.provider_key,
                             source_key=sym,
@@ -889,7 +920,15 @@ class IndicatorMonitoringService:
                 except Exception:
                     continue
 
+            if result is None and stale_result is not None:
+                result = stale_result
+
             if result is not None:
+                value_num, value_json = await self._transform_macro_result(
+                    definition,
+                    result,
+                    result_provider,
+                )
                 country_code = "global" if indicator_key in {"dollar_index", "gold"} else "US"
                 obs = await self._persist_observation(
                     definition=definition,
@@ -897,9 +936,9 @@ class IndicatorMonitoringService:
                     country_code=country_code,
                     timeframe="1d",
                     observation_ts=result.observation_ts,
-                    value_num=result.value,
-                    value_json=result.metadata or {},
-                    signal_state=self._macro_state(indicator_key, result.value),
+                    value_num=value_num,
+                    value_json=value_json,
+                    signal_state=self._macro_state(indicator_key, value_num),
                     source_provider=(
                         result.source_ref.split(":")[0]
                         if ":" in str(result.source_ref)
@@ -1036,6 +1075,44 @@ class IndicatorMonitoringService:
             source_granularity="event",
         )
         return [obs]
+
+    async def _transform_macro_result(self, definition, result, provider):
+        transform = str((definition.calc_params_json or {}).get("transform") or "")
+        metadata = dict(result.metadata or {})
+        if transform not in {"mom_pct", "yoy_pct"} or provider is None:
+            return result.value, metadata
+        fetch_history = getattr(provider, "fetch_history", None)
+        if not callable(fetch_history):
+            return result.value, metadata
+        symbol = str((definition.calc_params_json or {}).get("external_symbol") or "")
+        if not symbol:
+            return result.value, metadata
+        try:
+            history = await fetch_history(symbol, lookback_points=14)
+        except Exception:
+            return result.value, metadata
+        points = [
+            (point.observation_ts, point.value)
+            for point in history
+            if point.observation_ts is not None
+        ]
+        computed = (
+            macro_transforms.compute_mom_pct(points)
+            if transform == "mom_pct"
+            else macro_transforms.compute_yoy_pct(points)
+        )
+        if computed is None:
+            return result.value, metadata
+        value, transformed_at = computed
+        metadata.update(
+            {
+                "raw_value": str(result.value),
+                "transform_applied": transform,
+                "transform_source": f"{symbol}_{transform}",
+                "transformed_at": transformed_at.isoformat(),
+            }
+        )
+        return value, metadata
 
     async def _record_macro_source_health(
         self,

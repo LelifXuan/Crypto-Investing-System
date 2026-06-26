@@ -18,6 +18,7 @@ from app.services.monitoring_dashboard import MonitoringDashboardService
 from app.services.strategy_signal.config_loader import load_strategy_signal_config
 from app.services.strategy_signal.risk_reward import clamp
 from app.services.strategy_signal.setup_lifecycle import normalize_direction_metrics
+from app.services.technical_risk import build_divergence_risk, score_divergence_for_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -185,34 +186,6 @@ def _build_regime_fit(structure_overall: dict[str, Any], regime: str | None) -> 
     return 50.0, 50.0, 50.0
 
 
-def _build_flow_score(derivatives: dict[str, Any]) -> tuple[float, float]:
-    """Compute the money-flow component from CVD / OI change / funding.
-
-    The audit (T04) found that OI was being treated as a raw number while
-    CVD is z-scored, and the two were being summed with the same weight
-    (250). This routine keeps the OI percent weight, the CVD z-score weight,
-    and the funding-z weight separate so the audit can tune them in
-    isolation. OI is assumed to be a percent value per the
-    ``oi_change_pct`` field name; values in (0, 1) are treated as decimals
-    and rescaled to percent.
-    """
-
-    cvd = _num(derivatives.get("cvd_norm"))
-    oi_raw = _num(derivatives.get("oi_change_pct"))
-    # Normalize to percent: oi_change_pct should be a percent (4.0 == 4 %).
-    # Decimal sources slip in (< 1) and are silently rescaled.
-    oi_change = oi_raw * 100.0 if -1.0 < oi_raw < 1.0 else oi_raw
-    funding_z = abs(_num(derivatives.get("funding_zscore")))
-
-    bullish = 50.0 + max(0.0, cvd) * 18.0 + max(0.0, oi_change) * 6.0
-    bearish = 50.0 + max(0.0, -cvd) * 18.0 + max(0.0, -oi_change) * 6.0
-    # Funding z dilutes both sides: extreme funding often precedes reversals.
-    dilution = min(20.0, funding_z * 12.0)
-    bullish -= dilution
-    bearish -= dilution
-    return clamp(bullish), clamp(bearish)
-
-
 def _classify_margin_pressure(impact_pct: float, thresholds: dict[str, Any]) -> str:
     """Map a margin-impact percent to one of ``ok / downsize / small / block``.
 
@@ -340,12 +313,7 @@ class StrategySnapshotBuilder:
         final_decision = (
             analysis_payload.get("final_decision") or alerts_payload.get("final_decision") or {}
         )
-        chip = alerts_payload.get("chip_structure") or {}
-        contract_snapshot = (
-            analysis_payload.get("contract_snapshot")
-            or alerts_payload.get("contract_snapshot")
-            or {}
-        )
+        technical_risk_payload = alerts_payload.get("technical_risk") or {}
         macro_overview = monitoring_payload.get("macro_overview") or {}
         structure_overall = (
             structure_payload.get("snapshot", {}).get("overall")
@@ -362,21 +330,14 @@ class StrategySnapshotBuilder:
         data_quality_score = _status_score(*dependency_state.values())
         indicators = self._indicators(core, secondary)
         levels = self._levels(structure_payload)
-        derivatives = self._derivatives(contract_snapshot, chip)
         config = load_strategy_signal_config()
 
-        direction_score = _num(
-            final_decision.get("direction_score") or chip.get("direction_score"), 0
-        )
+        direction_score = _num(final_decision.get("direction_score"), 0)
         direction_metrics = normalize_direction_metrics(direction_score, scale="signed")
-        execution_score = _num(
-            final_decision.get("execution_score") or chip.get("execution_score"), 50
-        )
-        risk_score = _num(final_decision.get("risk_score") or chip.get("risk_score"), 50)
-        confidence_score = _num(
-            final_decision.get("confidence_score") or chip.get("confidence_score"), 50
-        )
-        conflict_level = _num(final_decision.get("conflict_level") or chip.get("conflict_level"), 0)
+        execution_score = _num(final_decision.get("execution_score"), 50)
+        risk_score = _num(final_decision.get("risk_score"), 50)
+        confidence_score = _num(final_decision.get("confidence_score"), 50)
+        conflict_level = _num(final_decision.get("conflict_level"), 0)
         price = float(current_price) if current_price is not None else 0.0
         atr = max(_num(indicators.get("atr_14"), price * 0.025), price * 0.006) if price else 0
         support = _decimal(levels.get("support_price") or levels.get("val_price"))
@@ -388,13 +349,18 @@ class StrategySnapshotBuilder:
         macro_bias = (
             macro_overview.get("risk_bias") or macro_overview.get("macro_bias") or "neutral"
         )
-        cvd = _num(derivatives.get("cvd_norm"))
-        oi_change = _num(derivatives.get("oi_change_pct"))
         rsi = _num(indicators.get("rsi_14"), 50)
         macd = _num(indicators.get("macd_hist"))
         macd_prev = _num(indicators.get("macd_hist_prev"))
         adx = _num(indicators.get("adx_14"), 20)
-        funding_z = abs(_num(derivatives.get("funding_zscore")))
+        divergence_risk = (technical_risk_payload.get("divergence") or {}) if isinstance(technical_risk_payload, dict) else {}
+        if not divergence_risk:
+            divergence_risk = build_divergence_risk(
+                alerts_payload.get("divergence_summary"),
+                strategy_bias=final_decision.get("strategy_bias", "neutral"),
+                timeframe=tf,
+            )
+        divergence_scores = score_divergence_for_snapshot(divergence_risk)
         trigger_tf = (config.get("timeframe_mapping") or {}).get(tf)
         lower_tf_required = bool(trigger_tf)
         # T05 audit fix: actually load the lower timeframe snapshot instead
@@ -431,7 +397,7 @@ class StrategySnapshotBuilder:
         atr_pct = _num(indicators.get("natr_14")) or (atr / price * 100 if price else 0)
         atr_expansion_score = max(0, min(100, atr_pct * 12))
         volume_confirmation = max(0, min(100, 50 + _num(indicators.get("obv_slope")) * 80))
-        missing_inputs = list(dict.fromkeys(derivatives.get("missing_inputs") or []))
+        missing_inputs: list[str] = []
         futures_risk_config = config.get("futures_risk") or {}
         leverage = _num(futures_risk_config.get("default_leverage"), 10) or 10
         thresholds = futures_risk_config.get("margin_pressure_thresholds") or {}
@@ -481,11 +447,9 @@ class StrategySnapshotBuilder:
             "price": {"current": str(current_price) if current_price is not None else None},
             "indicators": indicators,
             "levels": levels,
-            "derivatives_micro": derivatives,
             "macro": {"macro_bias": macro_bias, "event_window_status": macro_status},
             "structure": {
                 "overall": structure_overall,
-                "chip_structure": chip,
                 "snapshot": structure_payload.get("snapshot"),
             },
             "final_decision_v12": final_decision,
@@ -493,6 +457,7 @@ class StrategySnapshotBuilder:
                 "events": alerts_payload.get("alert_events", []),
                 "divergence_summary": alerts_payload.get("divergence_summary"),
             },
+            "technical_risk": {"divergence": divergence_risk},
             "monitoring": monitoring_payload,
             "bundle_status": {
                 **dependency_state,
@@ -522,43 +487,28 @@ class StrategySnapshotBuilder:
                 "candle_completeness": data_quality_score,
                 "candle_freshness": data_quality_score,
                 "multi_timeframe_availability": 80 if final_decision else 55,
-                "derivatives_data_availability": max(
-                    0,
-                    100 - min(70, len(missing_inputs) * 10),
-                ),
-                "orderbook_data_availability": 100
-                if derivatives.get("spread_bps") is not None
-                else 50,
                 "macro_event_availability": 100 if macro_status else 60,
+                **divergence_scores,
                 **self._feature_components(
                     indicators=indicators,
                     structure_overall=structure_overall,
-                    regime=structure_overall.get("regime") or chip.get("regime"),
-                    derivatives=derivatives,
+                    regime=structure_overall.get("regime"),
                     direction_metrics=direction_metrics,
                     rsi=rsi,
                     macd=macd,
                     macd_prev=macd_prev,
-                    cvd=cvd,
-                    oi_change=oi_change,
                     adx=adx,
                 ),
                 "low_volume_confirmation": 50,
                 "low_adx": max(0, 60 - adx),
-                "derivatives_long_confirmation": 50 + max(0, oi_change) * 250,
-                "derivatives_short_confirmation": 50 + max(0, -oi_change) * 250,
+                "volume_proxy_confirmation": volume_confirmation,
                 "execution_quality": execution_score,
-                "depth_score": execution_score,
                 "event_risk_score": 85
                 if macro_status in {"block", "event_wait", "risk_off"}
                 else 20,
-                "funding_crowding_score": min(100, funding_z * 35),
-                "oi_price_divergence_score": 20,
-                "cvd_divergence_score": 20,
+                "funding_crowding_score": 0,
                 "late_entry_risk_score": risk_score,
                 "conflict_score": min(100, conflict_level * 20),
-                "spread_bps": derivatives.get("spread_bps") or 0,
-                "slippage_bps": derivatives.get("slippage_bps") or 0,
                 "long_setup_ready": direction_metrics["bullish"] >= 58,
                 "short_setup_ready": direction_metrics["bearish"] >= 58,
                 "long_trigger_ready": bool(levels.get("breakout_up")) or confidence_score >= 72,
@@ -572,9 +522,7 @@ class StrategySnapshotBuilder:
                 "short_stop": _num(levels.get("structure_invalid_short"), short_entry + atr * 1.6),
                 "short_tp1": float(support) if support is not None else price - atr * 2.2,
                 "short_tp2": price - atr * 3.6,
-                "market_regime": str(
-                    structure_overall.get("regime") or chip.get("regime") or "unknown"
-                ),
+                "market_regime": str(structure_overall.get("regime") or "unknown"),
                 "atr_14": indicators.get("atr_14"),
                 "adx_14": indicators.get("adx_14"),
                 "ema_20": indicators.get("ema_20"),
@@ -631,32 +579,17 @@ class StrategySnapshotBuilder:
         indicators: dict[str, Any],
         structure_overall: dict[str, Any],
         regime: str | None,
-        derivatives: dict[str, Any],
         direction_metrics: dict[str, float],
         rsi: float,
         macd: float,
         macd_prev: float,
-        cvd: float,
-        oi_change: float,
         adx: float,
     ) -> dict[str, float]:
-        """Combine the 5 independent feature sources into the snapshot feature row.
-
-        Each feature family now lives in its own helper so the audit (T04)
-        can tune weights in isolation and a regression in one family does
-        not silently poison the others. The 5 families are:
-
-        * **trend** — EMA 20/50/200 alignment + slope + ADX strength
-        * **structure** — BOS / swing / value area from structure page
-        * **regime_fit** — market-regime classifier (trend/balance/transition)
-        * **momentum** — RSI / MACD histogram (no change in source)
-        * **flow** — CVD / OI / funding-z, with explicit unit normalization
-        """
+        """Combine strategy features from trend, structure, regime and momentum."""
 
         trend_bullish, trend_bearish = _build_trend_score(indicators)
         struct_bullish, struct_bearish = _build_structure_score(structure_overall)
         regime_long, regime_short, range_score = _build_regime_fit(structure_overall, regime)
-        flow_bullish, flow_bearish = _build_flow_score(derivatives)
         # Momentum still derives from RSI / MACD; capped to a sensible 0..100
         # band because the audit flagged the previous raw-add formula as
         # able to escape the 0..100 range.
@@ -682,11 +615,6 @@ class StrategySnapshotBuilder:
             "bullish_momentum": bullish_momentum,
             "bearish_momentum": bearish_momentum,
             "momentum_source": "rsi+macd",
-            "bullish_flow": flow_bullish,
-            "bearish_flow": flow_bearish,
-            "flow_source": "cvd+oi+funding",
-            "derivatives_long_confirmation": flow_bullish,
-            "derivatives_short_confirmation": flow_bearish,
             "direction_score_aggregate": direction_metrics["bullish"]
             - direction_metrics["bearish"],
         }
@@ -731,36 +659,10 @@ class StrategySnapshotBuilder:
         }
 
     @staticmethod
-    def _derivatives(contract_snapshot: dict[str, Any], chip: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "funding_zscore": _find_value(
-                contract_snapshot, "funding_rate_zscore", "funding_zscore"
-            ),
-            "basis_zscore": _find_value(contract_snapshot, "basis_rate_zscore", "basis_zscore"),
-            "cvd_norm": _find_value(contract_snapshot, "cvd_norm", "cvd_zscore"),
-            "oi_change_pct": _find_value(
-                contract_snapshot, "oi_change_pct", "open_interest_change_pct"
-            ),
-            "price_change_pct": _find_value(contract_snapshot, "price_change_pct"),
-            "depth_notional": _find_value(contract_snapshot, "depth_notional", "depth_50bps"),
-            "spread_bps": _find_value(contract_snapshot, "spread_bps"),
-            "slippage_bps": _find_value(contract_snapshot, "buy_slippage_bps", "slippage_bps"),
-            "missing_inputs": chip.get("missing_inputs", []),
-        }
-
-    @staticmethod
     def _missing_input_penalties(missing_inputs: list[str]) -> list[dict[str, Any]]:
         penalties: list[dict[str, Any]] = []
         joined = " ".join(missing_inputs).lower()
         rules = [
-            ("OI", ("oi", "open_interest"), 70, "缺少持仓量数据，衍生品确认分上限降至 70。"),
-            ("CVD/Delta", ("cvd", "delta"), 65, "缺少主动买卖流数据，微观结构确认分上限降至 65。"),
-            (
-                "depth/spread/slippage",
-                ("depth", "spread", "slippage"),
-                60,
-                "缺少盘口深度、价差或滑点数据，执行质量上限降至 60。",
-            ),
             (
                 "structure",
                 ("structure:missing", "structure:error", "structure:stale"),

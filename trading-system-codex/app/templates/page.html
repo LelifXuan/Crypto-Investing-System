@@ -12,7 +12,11 @@
 <body data-page="{{ page_id }}" data-page-title="{{ title }}">
   <header class="shell-header">
     <div class="shell-brand">
+      {% if page_id == "gold-allocation" %}
+      <p class="eyebrow">Gold Allocation / 黄金配置</p>
+      {% else %}
       <p class="eyebrow">Market Research Terminal / 市场研究终端</p>
+      {% endif %}
       <h1>{{ title }}</h1>
     </div>
   </header>
@@ -29,12 +33,13 @@
       <a data-page-link="monitoring-overview" href="/monitoring-page">监控总览</a>
       <a data-page-link="market-structure" href="/structure-page">形态结构</a>
       <a data-page-link="market-analysis" href="/indicators-page">技术指标</a>
-      <a data-page-link="alert-center" href="/alerts-page">告警中心</a>
+      <a data-page-link="btc-derivatives" href="/btc-derivatives-page">BTC 衍生品</a>
       <a data-page-link="ai-strategy" href="/strategy-page">AI策略</a>
     </div>
     <div class="nav-section" data-nav-scope="ashare">
       <span class="nav-section-label">A股</span>
       <a data-page-link="ashare-etf" href="/ashare-etf-page">A股ETF</a>
+      <a data-page-link="gold-allocation" href="/gold-allocation-page">黄金配置</a>
     </div>
   </nav>
 

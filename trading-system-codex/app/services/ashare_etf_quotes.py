@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -265,6 +266,8 @@ class AShareETFQuoteService:
         self.cache_path = cache_path or self.default_cache_path()
         self._cache: dict[str, Any] | None = None
         self._cache_written_monotonic = 0.0
+        self._refresh_tasks: dict[str, asyncio.Task[None]] = {}
+        self._refresh_next_allowed: dict[str, float] = {}
 
     @classmethod
     def default_cache_path(cls) -> Path:
@@ -331,9 +334,55 @@ class AShareETFQuoteService:
             and now - self._cache_written_monotonic <= self.ttl_seconds
         ):
             cached = dict(self._cache["payload"])
-            cached["cache_status"] = "hit"
+            if cached.get("source_status") == "stale":
+                cached["cache_status"] = "stale"
+                cached["freshness_state"] = "usable_stale"
+            else:
+                cached["cache_status"] = "hit"
+                cached["freshness_state"] = "fresh"
             return cached
 
+        if not force:
+            stale = self._load_cached_payload(cache_key)
+            if stale:
+                cached = dict(stale)
+                cached["source_status"] = "stale"
+                cached["cache_status"] = "stale"
+                cached["freshness_state"] = "usable_stale"
+                cached["refresh_enqueued"] = self._enqueue_refresh(cache_key)
+                self._cache = {"cache_key": cache_key, "payload": cached}
+                self._cache_written_monotonic = time.monotonic()
+                return cached
+
+        return await self._fetch_and_cache(cache_key)
+
+    def _enqueue_refresh(self, cache_key: str) -> bool:
+        existing = self._refresh_tasks.get(cache_key)
+        if existing is not None and not existing.done():
+            return True
+        now = time.monotonic()
+        if now < self._refresh_next_allowed.get(cache_key, 0.0):
+            return False
+        self._refresh_next_allowed[cache_key] = now + 60.0
+        task = asyncio.create_task(
+            self._refresh_after_response(cache_key),
+            name=f"ashare-etf-quotes:{cache_key}",
+        )
+        self._refresh_tasks[cache_key] = task
+        task.add_done_callback(lambda _task: self._refresh_tasks.pop(cache_key, None))
+        return True
+
+    async def _refresh_after_response(self, cache_key: str) -> None:
+        await asyncio.sleep(1.0)
+        await self._refresh_in_background(cache_key)
+
+    async def _refresh_in_background(self, cache_key: str) -> None:
+        try:
+            await self._fetch_and_cache(cache_key)
+        except Exception:
+            logger.warning("ETF background quote refresh failed", exc_info=True)
+
+    async def _fetch_and_cache(self, cache_key: str) -> dict[str, Any]:
         requested_items = self.list_items(cache_key)
         errors: list[str] = []
         for provider in self.providers:
@@ -346,6 +395,8 @@ class AShareETFQuoteService:
                     cache_status="live",
                     warnings=[q.error_message for q in quotes if q.error_message],
                 )
+                payload["freshness_state"] = "fresh"
+                payload["refresh_enqueued"] = False
                 self._store_cache(cache_key, payload)
                 return payload
             except Exception as exc:  # noqa: BLE001
@@ -357,6 +408,8 @@ class AShareETFQuoteService:
             stale = dict(stale)
             stale["source_status"] = "stale"
             stale["cache_status"] = "stale"
+            stale["freshness_state"] = "usable_stale"
+            stale["refresh_enqueued"] = False
             stale["warnings"] = [*stale.get("warnings", []), *errors]
             self._cache = {"cache_key": cache_key, "payload": stale}
             self._cache_written_monotonic = time.monotonic()
@@ -369,13 +422,16 @@ class AShareETFQuoteService:
             )
             for item in requested_items
         ]
-        return self._format_response(
+        payload = self._format_response(
             quotes=unavailable,
             source=None,
             source_status="error",
             cache_status="empty",
             warnings=errors or ["all_providers_failed"],
         )
+        payload["freshness_state"] = "missing"
+        payload["refresh_enqueued"] = False
+        return payload
 
     def sources_health(self) -> dict[str, Any]:
         return {

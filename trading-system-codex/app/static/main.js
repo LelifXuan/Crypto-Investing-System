@@ -1,7 +1,13 @@
-import { setRoot, renderNavSkeleton } from "./core/dom.js";
+import { setRoot } from "./core/dom.js";
 
 const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
-const loadPageModule = (path) => import(`${path}${assetVersion}`);
+const moduleLoadPromises = new Map();
+const loadPageModule = (path) => {
+  if (!moduleLoadPromises.has(path)) {
+    moduleLoadPromises.set(path, import(`${path}${assetVersion}`));
+  }
+  return moduleLoadPromises.get(path);
+};
 
 const pageModules = {
   "market-analysis": () => loadPageModule("./pages/analysis.js"),
@@ -9,10 +15,11 @@ const pageModules = {
   "market-structure": () => loadPageModule("./pages/structure/index.js"),
   "market-events": () => loadPageModule("./pages/market_events.js"),
   "macro-calendar": () => loadPageModule("./pages/macro_calendar.js"),
-  "alert-center": () => loadPageModule("./pages/alerts.js"),
   "knowledge-base": () => loadPageModule("./pages/knowledge.js"),
   "cn-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
+  "gold-allocation": () => loadPageModule("./pages/gold_allocation.js"),
+  "btc-derivatives": () => loadPageModule("./pages/btc_derivatives.js"),
   "ai-strategy": () => loadPageModule("./pages/strategy.js"),
 };
 
@@ -22,9 +29,10 @@ const PAGE_TITLES = {
   "monitoring-overview": "监控总览",
   "market-structure": "形态结构",
   "market-analysis": "技术指标",
-  "alert-center": "告警中心",
   "knowledge-base": "知识百科",
   "ashare-etf": "A股ETF",
+  "gold-allocation": "黄金配置",
+  "btc-derivatives": "BTC 衍生品市场",
   "ai-strategy": "AI策略",
 };
 
@@ -120,9 +128,17 @@ async function ensureAssetsForPage(pageId) {
   if (pageId === "ai-strategy") {
     ensureStylesheetOnce(`/static/styles-v15.css${assetVersion}`, "styles-v15");
   }
-  if (pageId === "market-analysis") {
-    await loadScriptOnce("https://cdn.jsdelivr.net/npm/chart.js", "Chart");
+  if (pageId === "market-analysis" || pageId === "btc-derivatives") {
+    await loadScriptOnce(`/static/vendor/chart.umd.js${assetVersion}`, "Chart");
   }
+}
+
+function prefetchPage(pageId) {
+  const loadModule = pageModules[pageId];
+  if (!loadModule) return;
+  void Promise.all([ensureAssetsForPage(pageId), loadModule()]).catch((error) => {
+    console.debug("page:prefetch:skipped", pageId, error);
+  });
 }
 
 function setDocumentTitleForPage(pageId) {
@@ -137,10 +153,6 @@ async function boot() {
   const pageId = document.body.dataset.page;
   const loadModule = pageModules[pageId];
   if (!loadModule) return;
-  if (activeController) {
-    await activeController.unmount();
-    activeController = null;
-  }
   let module;
   try {
     await ensureAssetsForPage(pageId);
@@ -154,6 +166,10 @@ async function boot() {
     );
     return;
   }
+  if (activeController) {
+    await activeController.unmount();
+    activeController = null;
+  }
   const renderPage =
     module.renderPage ||
     module.renderStructure ||
@@ -164,6 +180,8 @@ async function boot() {
     module.renderAlerts ||
     module.renderKnowledge ||
     module.renderAshareEtf ||
+    module.renderGoldAllocation ||
+    module.renderBtcDerivatives ||
     module.renderStrategy;
   if (typeof renderPage !== "function") {
     console.error("page:render-missing", pageId);
@@ -184,10 +202,26 @@ async function boot() {
 function installSpaRouter() {
   if (!window.history || !window.history.pushState) return;
   const scheduleBoot = () => {
+    document.body.classList.add("is-page-loading");
     void boot().finally(() => {
       spaNavigationInFlight = false;
+      document.body.classList.remove("is-page-loading");
     });
   };
+  document.addEventListener("pointerover", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("[data-page-link]");
+    const pageId = link?.getAttribute("data-page-link");
+    if (pageId && pageId !== activePageId) prefetchPage(pageId);
+  }, { passive: true });
+  document.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("[data-page-link]");
+    const pageId = link?.getAttribute("data-page-link");
+    if (pageId && pageId !== activePageId) prefetchPage(pageId);
+  });
   document.addEventListener("click", (event) => {
     if (event.defaultPrevented) return;
     if (event.button !== 0) return;
@@ -212,7 +246,6 @@ function installSpaRouter() {
     window.history.pushState({ pageId, href }, "", href);
     document.body.dataset.page = pageId;
     setDocumentTitleForPage(pageId);
-    setRoot(renderNavSkeleton(PAGE_TITLES[pageId] || ""));
     scheduleBoot();
   });
 

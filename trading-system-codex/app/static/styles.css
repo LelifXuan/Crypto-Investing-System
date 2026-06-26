@@ -272,7 +272,6 @@ body[data-page="market-analysis"] .main-nav a[href="/indicators-page"],
 body[data-page="monitoring-overview"] .main-nav a[href="/monitoring-page"],
 body[data-page="market-structure"] .main-nav a[href="/structure-page"],
 body[data-page="macro-calendar"] .main-nav a[href="/macro-calendar-page"],
-body[data-page="alert-center"] .main-nav a[href="/alerts-page"],
 body[data-page="knowledge-base"] .main-nav a[href="/knowledge-page"],
 body[data-page="ashare-etf"] .main-nav a[href="/ashare-etf-page"],
 body[data-page="ai-strategy"] .main-nav a[href="/strategy-page"] {
@@ -288,7 +287,6 @@ body[data-page="market-analysis"] .main-nav a[data-page-link="market-analysis"],
 body[data-page="monitoring-overview"] .main-nav a[data-page-link="monitoring-overview"],
 body[data-page="market-structure"] .main-nav a[data-page-link="market-structure"],
 body[data-page="macro-calendar"] .main-nav a[data-page-link="macro-calendar"],
-body[data-page="alert-center"] .main-nav a[data-page-link="alert-center"],
 body[data-page="knowledge-base"] .main-nav a[data-page-link="knowledge-base"],
 body[data-page="ashare-etf"] .main-nav a[data-page-link="ashare-etf"],
 body[data-page="ai-strategy"] .main-nav a[data-page-link="ai-strategy"] {
@@ -1325,6 +1323,7 @@ main:has(.tooltip-anchor:focus-within) {
 }
 
 .tooltip-bubble {
+  display: none;
   position: absolute;
   left: 50%;
   top: calc(100% + 12px);
@@ -1363,6 +1362,7 @@ main:has(.tooltip-anchor:focus-within) {
 .tooltip-anchor:hover .tooltip-bubble,
 .tooltip-anchor:focus-visible .tooltip-bubble,
 .tooltip-anchor:focus-within .tooltip-bubble {
+  display: block;
   visibility: visible;
   opacity: 1;
   transform: translateX(-50%) translateY(0);
@@ -5131,7 +5131,7 @@ body[data-page="ai-strategy"] main {
 
 .etf-page-grid {
   display: grid;
-  gap: 20px;
+  gap: 14px;
 }
 
 .etf-dashboard-card {
@@ -5284,6 +5284,481 @@ body[data-page="ai-strategy"] main {
   margin-bottom: 0;
 }
 
+.etf-execution-bar,
+.etf-holdings-card,
+.etf-execution-table-card,
+.etf-plan-summary,
+.etf-instruction-card,
+.etf-quote-background {
+  padding: 18px 20px;
+}
+
+.etf-top-deck {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.55fr);
+  margin-top: 18px;
+}
+
+.etf-top-left {
+  display: grid;
+  gap: 18px;
+}
+
+.etf-mini-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.etf-mini-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(250, 247, 239, 0.74));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 14px 32px rgba(27, 41, 51, 0.06);
+  display: grid;
+  gap: 12px;
+  min-height: 164px;
+  padding: 16px;
+}
+
+.etf-mini-card.is-featured {
+  min-height: 178px;
+}
+
+.etf-mini-head,
+.etf-mini-price {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.etf-mini-head p {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0 0 4px;
+}
+
+.etf-mini-head h3 {
+  font-size: 17px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.etf-mini-price {
+  align-items: baseline;
+}
+
+.etf-mini-price strong {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.etf-mini-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.etf-mini-metrics span {
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(26, 47, 55, 0.07);
+  border-radius: 7px;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+}
+
+.etf-mini-metrics small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.etf-mini-metrics b {
+  font-size: 13px;
+}
+
+.etf-execution-title,
+.etf-action-row,
+.compact-head {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.etf-execution-title h2,
+.compact-head h2 {
+  margin: 3px 0 0;
+}
+
+.etf-control-strip {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(140px, 0.8fr) repeat(5, minmax(100px, 1fr));
+  margin-top: 14px;
+}
+
+.etf-control-strip label,
+.etf-control-strip span,
+.etf-summary-grid span {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(26, 47, 55, 0.08);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.etf-control-strip label > span,
+.etf-control-strip small,
+.etf-summary-grid small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.etf-control-strip input,
+.etf-control-strip select,
+.etf-cell-input {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 7px 8px;
+}
+
+.etf-control-strip strong {
+  font-size: 16px;
+}
+
+.etf-workbench-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 0.75fr);
+  margin-top: 18px;
+}
+
+#etf-workbench {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.etf-plan-summary {
+  align-self: start;
+}
+
+.etf-summary-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 12px 0;
+}
+
+.compact-table-wrap {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.etf-dense-table {
+  border-collapse: collapse;
+  font-size: 15px;
+  min-width: 860px;
+  width: 100%;
+}
+
+.etf-dense-table th,
+.etf-dense-table td {
+  border-bottom: 1px solid rgba(26, 47, 55, 0.08);
+  padding: 0 10px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.etf-dense-table th {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  height: 40px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.etf-dense-table td small {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.etf-cell-input {
+  max-width: 104px;
+  width: 100%;
+}
+
+.etf-order-table {
+  min-width: 1060px;
+}
+
+.etf-combined-table {
+  min-width: 990px;
+  table-layout: fixed;
+}
+
+.etf-combined-table th,
+.etf-combined-table td {
+  box-sizing: border-box;
+}
+
+.etf-combined-table th {
+  text-align: center;
+}
+
+.etf-combined-table th:nth-child(1),
+.etf-combined-table td:nth-child(1) {
+  width: 136px;
+  padding-left: 32px;
+}
+
+.etf-combined-table th:last-child,
+.etf-combined-table td:last-child {
+  padding-right: 32px;
+}
+.etf-combined-table th:nth-child(2),
+.etf-combined-table td:nth-child(2) {
+  width: 96px;
+}
+.etf-combined-table th:nth-child(3),
+.etf-combined-table td:nth-child(3) {
+  width: 96px;
+}
+.etf-combined-table th:nth-child(4),
+.etf-combined-table td:nth-child(4) {
+  width: 78px;
+}
+.etf-combined-table th:nth-child(5),
+.etf-combined-table td:nth-child(5) {
+  width: 88px;
+}
+.etf-combined-table th:nth-child(6),
+.etf-combined-table td:nth-child(6) {
+  width: 96px;
+}
+.etf-combined-table th:nth-child(7),
+.etf-combined-table td:nth-child(7) {
+  width: 110px;
+}
+.etf-combined-table th:nth-child(8),
+.etf-combined-table td:nth-child(8) {
+  width: 102px;
+}
+.etf-combined-table th:nth-child(9),
+.etf-combined-table td:nth-child(9) {
+  width: 102px;
+}
+.etf-combined-table th:nth-child(10),
+.etf-combined-table td:nth-child(10) {
+  width: 122px;
+}
+
+/* Group dividers between 持仓 / 操作 / 权重. */
+.etf-combined-table th:nth-child(4),
+.etf-combined-table td:nth-child(4),
+.etf-combined-table th:nth-child(7),
+.etf-combined-table td:nth-child(7) {
+  border-right: 1px solid rgba(26, 47, 55, 0.10);
+}
+
+.etf-combined-table th:nth-child(n + 4),
+.etf-combined-table td:nth-child(n + 4) {
+  text-align: right;
+}
+
+.etf-combined-table th:nth-child(5),
+.etf-combined-table td:nth-child(5),
+.etf-action-cell {
+  text-align: center;
+}
+
+/* Uniform row height + vertically centered content. */
+.etf-combined-table tbody td {
+  height: 48px;
+  line-height: 36px;
+}
+
+.etf-combined-table .etf-cell-input {
+  height: 36px;
+  max-width: none;
+  padding: 6px 10px;
+  width: 100%;
+}
+
+/* Span inside a <td> for the locked price — flex on the span is fine. */
+.etf-combined-table .etf-locked-price {
+  align-items: center;
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+  height: 36px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* .etf-number-cell sits on a <td>; do NOT change its display — table
+   layout breaks if a cell becomes inline-flex. Use vertical-align +
+   height + line-height to center the inner text. */
+.etf-combined-table .etf-number-cell {
+  font-variant-numeric: tabular-nums;
+  height: 36px;
+  line-height: 36px;
+  vertical-align: middle;
+}
+
+.etf-combined-table .etf-action-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.etf-combined-table .etf-action-cell .status-chip {
+  border-radius: 6px;
+}
+
+.etf-locked-price {
+  color: var(--ink);
+  display: inline-block;
+  font-weight: 800;
+  min-width: 72px;
+  text-align: right;
+  width: 100%;
+}
+
+.etf-number-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.etf-reason-cell {
+  max-width: 360px;
+  white-space: normal;
+}
+
+.etf-note-list {
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.etf-positive {
+  color: #087a6f;
+  font-weight: 800;
+}
+
+.etf-negative {
+  color: #b7522a;
+  font-weight: 800;
+}
+
+/* A股ETF执行后偏离文字色 token —— 仅 color,不动背景与边框 */
+:root {
+  --etf-state-on-target-text: #13715f;
+  --etf-state-underweight-text: #2d5f9a;
+  --etf-state-overweight-text: #99651f;
+  --etf-state-buy-text: #0f766e;
+  --etf-state-sell-text: #a24b38;
+  --etf-state-neutral-text: #53636b;
+  --etf-state-blocked-text: #6b675c;
+  --etf-state-warning-text: #8a6a00;
+}
+
+.etf-number-cell.etf-state-color--on-target {
+  color: var(--etf-state-on-target-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--underweight {
+  color: var(--etf-state-underweight-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--overweight {
+  color: var(--etf-state-overweight-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--buy {
+  color: var(--etf-state-buy-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--sell {
+  color: var(--etf-state-sell-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--neutral {
+  color: var(--etf-state-neutral-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--blocked {
+  color: var(--etf-state-blocked-text);
+  font-weight: 800;
+}
+.etf-number-cell.etf-state-color--warning {
+  color: var(--etf-state-warning-text);
+  font-weight: 800;
+}
+
+/* 现金流ETF固定月投卡 */
+.etf-cashflow-fixed {
+  background: rgba(90, 112, 140, 0.14);
+  color: #4f6481;
+  font-size: 11px;
+  padding: 4px 10px;
+  letter-spacing: 0.02em;
+}
+
+.etf-mini-card--cashflow {
+  border-style: dashed;
+}
+
+.etf-scope-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 12px;
+  line-height: 1.4;
+}
+
+.etf-warning-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: rgba(183, 121, 31, 0.08);
+  border: 1px solid rgba(183, 121, 31, 0.28);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #8a6a00;
+  display: grid;
+  gap: 6px;
+}
+
+.etf-warning-list code {
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
+
 @media (max-width: 980px) {
   .knowledge-toolbar,
   .knowledge-card-grid {
@@ -5293,6 +5768,22 @@ body[data-page="ai-strategy"] main {
 
 @media (max-width: 1180px) {
   .etf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .etf-control-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .etf-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .etf-top-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .etf-mini-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -5309,6 +5800,41 @@ body[data-page="ai-strategy"] main {
   }
 
   .etf-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .etf-execution-bar,
+  .etf-holdings-card,
+  .etf-execution-table-card,
+  .etf-plan-summary,
+  .etf-instruction-card,
+  .etf-quote-background {
+    padding: 16px;
+  }
+
+  .etf-execution-title,
+  .compact-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .etf-control-strip,
+  .etf-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .etf-mini-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .etf-dense-table {
+    min-width: 820px;
+  }
+}
+
+@media (max-width: 520px) {
+  .etf-control-strip,
+  .etf-summary-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -6239,6 +6765,51 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
 .strategy-trigger-card h3 { font-size: 0.85rem; margin: 0 0 0.35rem; }
 .strategy-permission { font-size: 1.2rem; padding: 0.5rem 0; }
 .strategy-gate-list { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+
+.strategy-divergence-risk-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.strategy-divergence-summary {
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.strategy-divergence-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.strategy-divergence-conditions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strategy-divergence-conditions span {
+  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid rgba(26, 47, 55, 0.08);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+}
+
+.strategy-divergence-conditions strong {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .strategy-divergence-grid,
+  .strategy-divergence-conditions {
+    grid-template-columns: 1fr;
+  }
+}
 .strategy-plan-board { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .strategy-plan-card-v2 { background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius); padding: 1rem; }
 
@@ -6283,6 +6854,1486 @@ body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface 
   }
 
   .macro-score-block {
+    grid-template-columns: 1fr;
+  }
+}
+
+body[data-page="gold-allocation"] [data-page-link="gold-allocation"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 10px 26px rgba(15, 118, 110, 0.24);
+}
+
+.btc-derivatives-page {
+  display: grid;
+  gap: 24px;
+}
+
+.btc-quality-actions,
+.btc-provider-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.btc-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.btc-provider-card {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+}
+
+.btc-provider-card p,
+.btc-provider-card small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.btc-provider-card[data-status="ok"] {
+  border-color: color-mix(in srgb, var(--bullish) 42%, var(--border));
+}
+
+.btc-provider-card[data-status="failed"],
+.btc-provider-card[data-status="circuit_open"] {
+  border-color: color-mix(in srgb, var(--bearish) 42%, var(--border));
+}
+
+.btc-provider-error {
+  color: var(--bearish);
+}
+
+@media (max-width: 900px) {
+  .btc-provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .btc-quality-actions {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+}
+
+.btc-derivatives-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.btc-derivatives-hero p:last-child {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.btc-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btc-hero-actions > span,
+.btc-chart-head > span {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.btc-chart-head-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btc-chart-head-actions > span {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.btc-chart-head small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.btc-chart-mode {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.btc-chart-mode button {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.btc-chart-mode button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btc-safety-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid rgba(183, 121, 31, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 248, 235, 0.82);
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.btc-safety-strip strong {
+  color: var(--warning);
+}
+
+.btc-safety-strip span {
+  padding-left: 10px;
+  border-left: 1px solid rgba(183, 121, 31, 0.2);
+}
+
+.btc-decision-grid,
+.btc-chart-overview,
+.btc-level-strip,
+.btc-evidence-columns,
+.btc-quality-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.btc-decision-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.btc-decision-card {
+  min-height: 230px;
+}
+
+.btc-chart-toolbar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 18px 20px;
+}
+
+.btc-chart-toolbar label {
+  display: grid;
+  gap: 7px;
+}
+
+.btc-chart-toolbar label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.btc-chart-toolbar select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.btc-decision-card h2 {
+  margin-top: 22px;
+  font-size: 21px;
+  line-height: 1.45;
+}
+
+.btc-decision-label {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.btc-decision-impact {
+  margin: 14px 0 0;
+  color: var(--muted-strong);
+  line-height: 1.65;
+}
+
+.btc-card-kicker,
+.btc-chart-head,
+.btc-inline-state,
+.btc-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.btc-card-kicker span,
+.btc-inline-state span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.btc-evidence-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 16px 0 10px;
+}
+
+.btc-evidence-chips span {
+  padding: 6px 9px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.07);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.btc-warning {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--warning);
+  border-radius: 6px;
+  background: var(--warning-soft);
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.btc-section-heading {
+  align-items: end;
+}
+
+.btc-section-heading h2 {
+  margin-bottom: 0;
+}
+
+.btc-section-heading > p {
+  max-width: 650px;
+  margin: 0;
+  color: var(--muted);
+  text-align: right;
+}
+
+.btc-chart-overview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.btc-chart-section {
+  display: grid;
+  gap: 16px;
+}
+
+.btc-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.btc-card-span-12 {
+  grid-column: span 12;
+}
+
+.btc-card-span-8 {
+  grid-column: span 8;
+}
+
+.btc-card-span-6 {
+  grid-column: span 6;
+}
+
+.btc-card-span-4 {
+  grid-column: span 4;
+}
+
+.btc-chart-card {
+  min-width: 0;
+}
+
+.btc-chart-card.wide {
+  grid-column: 1 / -1;
+}
+
+.btc-chart-card.compact {
+  padding: 20px;
+}
+
+.btc-chart-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.btc-chart-wrap {
+  position: relative;
+  height: var(--btc-chart-height, 340px);
+  margin-top: 12px;
+}
+
+.btc-chart-card.compact .btc-chart-wrap {
+  height: 250px;
+}
+
+.btc-chart-density-hero {
+  --btc-chart-height: 420px;
+}
+
+.btc-chart-density-surface {
+  --btc-chart-height: 460px;
+}
+
+.btc-chart-density-standard {
+  --btc-chart-height: 340px;
+}
+
+.btc-chart-density-compact {
+  --btc-chart-height: 280px;
+}
+
+.btc-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.btc-section {
+  display: grid;
+  gap: 16px;
+}
+
+.btc-futures-layout,
+.btc-options-layout,
+.btc-hedge-layout {
+  display: grid;
+  gap: 18px;
+  align-items: start;
+}
+
+.btc-futures-layout {
+  grid-template-columns: 1fr;
+}
+
+.btc-side-charts,
+.btc-option-charts,
+.btc-hedge-output {
+  display: grid;
+  gap: 18px;
+}
+
+.btc-side-charts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.btc-table-card {
+  overflow: hidden;
+}
+
+.btc-inline-state {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.btc-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.btc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.btc-table th,
+.btc-table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.btc-table th:first-child,
+.btc-table td:first-child {
+  text-align: left;
+}
+
+.btc-table td small {
+  display: block;
+  color: var(--muted);
+}
+
+.btc-option-chain th:nth-child(4),
+.btc-option-chain td:nth-child(4) {
+  text-align: center;
+  background: rgba(15, 118, 110, 0.05);
+}
+
+.btc-expiry-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btc-expiry-tabs button {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.btc-expiry-tabs button.is-active {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.btc-level-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.btc-level-strip article {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.btc-level-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+}
+
+.btc-level-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.btc-level-card p {
+  margin: 14px 0 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.btc-level-strip span,
+.btc-level-strip small {
+  display: block;
+  color: var(--muted);
+}
+
+.btc-level-strip strong {
+  display: block;
+  margin: 7px 0;
+  font-size: 25px;
+}
+
+.btc-options-layout {
+  grid-template-columns: 1fr;
+}
+
+.btc-option-charts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.btc-evidence-layer {
+  display: grid;
+  gap: 16px;
+}
+
+.btc-inference-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.btc-inference-grid article {
+  padding: 16px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.btc-inference-grid article > span {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.btc-inference-grid h3 {
+  margin: 9px 0 14px;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.btc-inference-grid p {
+  margin: 8px 0 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.btc-inference-basis {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.btc-evidence-explanations {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.btc-evidence-explanations article {
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 10px;
+  background: rgba(15, 118, 110, 0.055);
+}
+
+.btc-evidence-explanations strong {
+  color: var(--accent-strong);
+  text-transform: capitalize;
+}
+
+.btc-evidence-explanations p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.btc-evidence-columns {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.btc-evidence-columns article {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.btc-evidence-columns h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.btc-evidence-columns ul,
+.btc-data-quality ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.btc-hedge-layout {
+  grid-template-columns: minmax(420px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.btc-hedge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.btc-hedge-grid label {
+  display: grid;
+  gap: 7px;
+}
+
+.btc-hedge-grid label span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.btc-hedge-grid input,
+.btc-hedge-grid select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  font: inherit;
+}
+
+.btc-hedge-grid .button {
+  grid-column: 1 / -1;
+}
+
+.btc-hedge-result {
+  min-height: 220px;
+}
+
+.btc-plan-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btc-plan-metrics span {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 9px;
+  background: rgba(15, 118, 110, 0.06);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.btc-plan-metrics b {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.btc-data-quality {
+  display: grid;
+  gap: 16px;
+}
+
+.btc-fixture-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warning);
+  border-radius: 8px;
+  background: rgba(183, 121, 31, 0.09);
+  color: var(--muted-strong);
+}
+
+.btc-quality-details,
+.btc-method-notes {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 251, 245, 0.72);
+}
+
+.btc-quality-details summary,
+.btc-method-notes summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  color: var(--muted-strong);
+  font-weight: 800;
+}
+
+.btc-quality-details[open] summary,
+.btc-method-notes[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.btc-quality-details > div,
+.btc-quality-details > ul,
+.btc-method-notes > div {
+  margin: 16px;
+}
+
+.btc-method-notes p {
+  margin: 8px 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.btc-details-drawer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 251, 245, 0.72);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.btc-details-drawer summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.btc-details-drawer summary small {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.btc-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+.btc-quality-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.btc-quality-grid article {
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.btc-quality-grid h3,
+.btc-quality-grid p {
+  margin: 0;
+}
+
+.btc-quality-grid p {
+  margin-top: 7px;
+  color: var(--muted);
+}
+
+@media (max-width: 1180px) {
+  .btc-futures-layout,
+  .btc-options-layout,
+  .btc-hedge-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .btc-evidence-columns,
+  .btc-evidence-explanations,
+  .btc-inference-grid,
+  .btc-plan-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .btc-option-charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1280px) {
+  .btc-card-span-8,
+  .btc-card-span-6,
+  .btc-card-span-4 {
+    grid-column: span 12;
+  }
+
+  .btc-chart-toolbar {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  .btc-derivatives-hero,
+  .btc-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .btc-section-heading > p {
+    text-align: left;
+  }
+
+  .btc-decision-grid,
+  .btc-chart-overview,
+  .btc-level-strip,
+  .btc-side-charts,
+  .btc-option-charts,
+  .btc-evidence-columns,
+  .btc-evidence-explanations,
+  .btc-inference-grid,
+  .btc-quality-grid,
+  .btc-hedge-grid,
+  .btc-plan-metrics,
+  .btc-details-grid,
+  .btc-chart-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .btc-chart-card.wide {
+    grid-column: auto;
+  }
+
+  .btc-expiry-tabs {
+    justify-content: flex-start;
+  }
+
+  .btc-hedge-grid .button {
+    grid-column: auto;
+  }
+}
+
+.gold-page {
+  display: grid;
+  gap: 16px;
+}
+
+.gold-hero {
+  display: block;
+  padding: 22px 24px;
+}
+
+.gold-decision-header,
+.gold-market-panel,
+.gold-diagnostics-card,
+.gold-module-card {
+  border-radius: 8px;
+}
+
+.gold-decision-header {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(430px, 1.08fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.gold-workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.72fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.gold-left-stack,
+.gold-right-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.gold-primary-instruction {
+  margin: 8px 0 10px;
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.gold-decision-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.gold-decision-metrics article {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  padding: 12px 13px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.gold-decision-metrics span,
+.gold-module-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gold-decision-metrics b {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.gold-driver-section {
+  display: grid;
+  gap: 14px;
+}
+
+.gold-evidence-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.gold-evidence-primary,
+.gold-evidence-secondary {
+  display: grid;
+  gap: 14px;
+}
+
+.gold-evidence-primary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gold-evidence-secondary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.gold-market-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.gold-market-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.gold-market-values,
+.gold-window-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.gold-market-values {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gold-market-values span,
+.gold-window-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.gold-market-values span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.gold-market-values b,
+.gold-window-grid strong {
+  color: var(--ink);
+}
+
+.gold-window-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.gold-module-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+}
+
+.gold-module-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.gold-module-card.is-secondary {
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.gold-module-card h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.gold-module-card.is-secondary h3 {
+  font-size: 17px;
+}
+
+.gold-module-head > span {
+  padding: 7px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: rgba(9, 122, 111, 0.08);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.gold-module-card strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.gold-module-card.is-secondary strong {
+  font-size: 15px;
+}
+
+.gold-card-windows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.gold-card-windows article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(9, 122, 111, 0.14);
+  border-radius: 8px;
+  background: rgba(232, 246, 241, 0.42);
+}
+
+.gold-card-windows strong {
+  font-size: 14px;
+}
+
+.gold-card-windows p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gold-card-windows ul {
+  font-size: 13px;
+}
+
+.gold-module-card ul,
+.gold-diagnostics-card ul,
+.gold-diagnostics-card ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.gold-warning {
+  padding: 10px;
+  border-left: 3px solid #c57925;
+  border-radius: 6px;
+  background: rgba(197, 121, 37, 0.08);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.gold-diagnostics-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.gold-diagnostics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 16px;
+}
+
+.gold-diagnostics-grid article {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.gold-diagnostics-grid h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+@media (max-width: 1100px) {
+  .gold-workbench-grid,
+  .gold-decision-header,
+  .gold-evidence-primary,
+  .gold-evidence-secondary,
+  .gold-diagnostics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .gold-decision-metrics,
+  .gold-market-values,
+  .gold-card-windows {
+    grid-template-columns: 1fr;
+  }
+
+  .gold-market-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .gold-primary-instruction {
+    font-size: 22px;
+  }
+}
+
+.gold-v3-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.gold-v3-layout {
+  display: grid;
+  gap: 24px;
+}
+
+.gold-top-grid,
+.gold-indicator-layout,
+.gold-bottom-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.gold-top-grid {
+  grid-template-columns: minmax(360px, 1.35fr) minmax(280px, 0.8fr);
+  align-items: stretch;
+}
+
+.gold-indicator-layout,
+.gold-bottom-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gold-execution-summary,
+.gold-strategy-panel {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(360px, 1.6fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.gold-strategy-panel {
+  grid-template-columns: 1fr;
+}
+
+.gold-execution-title {
+  margin: 10px 0;
+  color: var(--color-primary);
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.gold-execution-metrics,
+.gold-card-metrics,
+.gold-diagnostics-grid,
+.gold-strategy-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.gold-card-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.gold-strategy-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.gold-execution-metrics article,
+.gold-card-metrics article,
+.gold-diagnostics-grid article,
+.gold-strategy-metrics article {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.gold-execution-metrics span,
+.gold-card-metrics span,
+.gold-diagnostics-grid span,
+.gold-strategy-metrics span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.gold-execution-metrics b,
+.gold-card-metrics b,
+.gold-diagnostics-grid b,
+.gold-strategy-metrics b {
+  display: block;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.gold-v3-main-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.gold-formula-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.gold-execution-card,
+.gold-market-card,
+.gold-settings-card,
+.gold-system-card,
+.gold-formula-card,
+.gold-indicator-section,
+.gold-strategy-panel {
+  min-width: 0;
+}
+
+.gold-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.gold-card-head span {
+  flex: 0 0 auto;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgba(15, 127, 113, 0.12);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.gold-card-lead {
+  min-height: 56px;
+  color: var(--text-strong);
+  font-weight: 650;
+  line-height: 1.7;
+}
+
+.gold-main-formula {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin: 10px 0 8px;
+  color: var(--text-strong);
+}
+
+.gold-main-formula strong {
+  color: var(--color-primary);
+  font-size: clamp(36px, 4vw, 58px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.gold-main-formula span {
+  color: var(--text-muted);
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 800;
+}
+
+.gold-strategy-copy,
+.gold-formula-card p {
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.gold-formula-symbol {
+  margin: 10px 0 14px;
+  color: var(--color-primary);
+  font-size: clamp(34px, 4vw, 52px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.gold-formula-card small {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-weight: 750;
+}
+
+.gold-formula-card--accent {
+  border-color: rgba(15, 127, 113, 0.22);
+  background:
+    linear-gradient(135deg, rgba(15, 127, 113, 0.09), rgba(255, 255, 255, 0.76)),
+    var(--surface-card);
+}
+
+.gold-signal-list {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  line-height: 1.75;
+}
+
+.gold-market-price {
+  margin: 8px 0 10px;
+  font-size: clamp(30px, 3vw, 44px);
+  font-weight: 850;
+  line-height: 1;
+}
+
+.gold-indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gold-indicator-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.gold-indicator-card div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gold-indicator-card strong {
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.gold-indicator-card span {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.gold-indicator-card b {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-strong);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.gold-indicator-card small {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.gold-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.gold-settings-grid label {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.gold-settings-grid span,
+.gold-checkbox span {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.gold-settings-grid input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 750;
+  outline: none;
+}
+
+.gold-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.gold-diagnostics-lists {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1100px) {
+  .gold-execution-summary,
+  .gold-v3-main-grid,
+  .gold-top-grid,
+  .gold-indicator-layout,
+  .gold-bottom-grid,
+  .gold-formula-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .gold-v3-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .gold-execution-metrics,
+  .gold-diagnostics-grid,
+  .gold-settings-grid,
+  .gold-strategy-metrics,
+  .gold-indicator-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .gold-execution-metrics,
+  .gold-card-metrics,
+  .gold-diagnostics-grid,
+  .gold-settings-grid,
+  .gold-strategy-metrics,
+  .gold-indicator-grid {
     grid-template-columns: 1fr;
   }
 }

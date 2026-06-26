@@ -206,7 +206,7 @@ def test_monitoring_dashboard_api_defaults_to_btc_daily() -> None:
         "@router.post",
         1,
     )[0]
-    assert "allow_refresh=True" in dashboard_block
+    assert "allow_refresh=False" in dashboard_block
 
 
 @pytest.mark.asyncio

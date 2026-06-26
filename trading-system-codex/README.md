@@ -2,9 +2,15 @@
 
 基于 `FastAPI + SQLite + Gate.io` 构建的 Windows 本地加密货币研究与交易管理应用。
 
-当前版本：**V1.5.5**（详见下方 [Release Timeline](#release-timeline)）。
+当前版本：**V1.6.0**（详见下方 [Release Timeline](#release-timeline)）。
 
 ## Release Timeline
+
+### V1.6.0 — 衍生品数据与 Portable 发布加固
+
+V1.6.0 接入 BTC 衍生品公开数据源，刷新流程改为异步任务回执与缓存读取，
+并引入 SQLite 索引 + gzip JSONL 分区归档、保留期和 5 GB 水位治理。
+Portable 发布改用 staging、运行时数据保留、失败回滚和同步后 Playwright 实例验收。
 
 `V1.5` 系列在 V1.5 监控总览可解释性闭环的基础上，引入了"可解释性 + 性能 + UI 清晰度"三方面的迭代。每个 release 独立可发布、内容自洽；下面的版本号按工作落地顺序排列。
 

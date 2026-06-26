@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from app.db.models.market import MarkPrice
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import AnalysisBundleRead, CandleRead, MarkPriceRead
-from app.services.cache_registry import CACHE_SOURCE_VERSION
+from app.services.cache_registry import CACHE_SOURCE_VERSION, source_freshness
 from app.services.contract_snapshot import ContractSnapshotService
 from app.services.final_decision import FinalDecisionService
 from app.services.indicator_matrix import IndicatorMatrixService
@@ -62,6 +62,10 @@ class AnalysisBundleService:
         cache = await self.repository.get_page_snapshot_cache(cache_key)
         status = cache_status(cache)
         payload = cache.payload_json if cache is not None else {}
+        freshness = source_freshness(
+            cache.source_updated_at if cache is not None else None,
+            timeframe,
+        )
         return AnalysisBundleRead.model_validate(
             {
                 "instrument_id": instrument_id,
@@ -75,6 +79,8 @@ class AnalysisBundleService:
                 "final_decision": payload.get("final_decision", {}),
                 "status": "ready" if status == "fresh" else status,
                 "cache_state": status,
+                "freshness_state": freshness.state,
+                "source_age_seconds": freshness.age_seconds,
                 "snapshot_at": cache.snapshot_at if cache else None,
                 "data_ts": cache.data_ts if cache else None,
                 "source_updated_at": cache.source_updated_at if cache else None,
@@ -200,6 +206,13 @@ class AnalysisBundleService:
                 "final_decision": final_decision,
                 "status": "ready",
                 "cache_state": "fresh",
+                "freshness_state": source_freshness(
+                    source_updated_at,
+                    normalized_timeframe,
+                    now=now,
+                ).state,
+                "source_age_seconds": 0,
+                "refresh_completed_at": now,
                 "snapshot_at": cache.snapshot_at,
                 "data_ts": cache.data_ts,
                 "source_updated_at": cache.source_updated_at,

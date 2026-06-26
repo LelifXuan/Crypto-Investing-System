@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,6 +36,7 @@ def _make_observation(
     source_ref: str,
     source_provider: str,
     signal_state: str = "ok",
+    value_json: dict | None = None,
 ) -> IndicatorObservation:
     return IndicatorObservation(
         observation_id=f"obs-{indicator_key}-test",
@@ -46,6 +48,7 @@ def _make_observation(
         observation_ts=datetime(2026, 4, 1, tzinfo=UTC),
         effective_start_ts=datetime(2026, 4, 1, tzinfo=UTC),
         value_num=value_num,
+        value_json=value_json or {},
         signal_state=signal_state,
         source_provider=source_provider,
         source_ref=source_ref,
@@ -123,17 +126,19 @@ async def test_cpi_mom_applies_mom_transform(macro_db, monkeypatch) -> None:
         session.add(
             _make_observation(
                 indicator_key="cpi_mom",
-                value_num=Decimal("332.407"),
+                value_num=Decimal("0.301"),
                 source_ref="bls:CUSR0000SA0",
                 source_provider="bls",
+                value_json={
+                    "raw_value": "333.0",
+                    "transform_applied": "mom_pct",
+                    "transform_source": "CUSR0000SA0_mom_pct",
+                },
             )
         )
         await session.commit()
 
     # 14 monthly points ending at 333.0, step +1.0 → mom = 1.0/332.0 = ~0.3%
-    history = _series(latest_value="333.0", monthly_increment="1.0", count=14)
-    _patch_provider_history(monkeypatch, history, "bls")
-
     async with db_manager.session() as session:
         repo = MarketRepository(session)
         overview = await MacroOverviewService(repo).build_overview(
@@ -162,9 +167,14 @@ async def test_pce_yoy_applies_yoy_transform(macro_db, monkeypatch) -> None:
         session.add(
             _make_observation(
                 indicator_key="pce_yoy",
-                value_num=Decimal("130.902"),
+                value_num=Decimal("3.0"),
                 source_ref="fred:PCEPI",
                 source_provider="fred",
+                value_json={
+                    "raw_value": "103",
+                    "transform_applied": "yoy_pct",
+                    "transform_source": "PCEPI_yoy_pct",
+                },
             )
         )
         await session.commit()
@@ -191,8 +201,6 @@ async def test_pce_yoy_applies_yoy_transform(macro_db, monkeypatch) -> None:
             status="ok",
         )
     )
-    _patch_provider_history(monkeypatch, points, "fred")
-
     async with db_manager.session() as session:
         repo = MarketRepository(session)
         overview = await MacroOverviewService(repo).build_overview(
@@ -209,6 +217,36 @@ async def test_pce_yoy_applies_yoy_transform(macro_db, monkeypatch) -> None:
     assert pce_yoy.unit == "%"
     assert pce_yoy.value_num is not None
     assert abs(float(pce_yoy.value_num) - 3.0) < 0.01
+
+
+@pytest.mark.asyncio
+async def test_sync_stage_computes_and_persists_macro_transform(macro_db) -> None:
+    history = _series(latest_value="333.0", monthly_increment="1.0", count=14)
+
+    class Provider:
+        async def fetch_history(self, _symbol: str, lookback_points: int):
+            assert lookback_points == 14
+            return history
+
+    definition = SimpleNamespace(
+        calc_params_json={
+            "transform": "mom_pct",
+            "external_symbol": "CUSR0000SA0",
+        }
+    )
+    result = SimpleNamespace(value=Decimal("333.0"), metadata={})
+
+    async with db_manager.session() as session:
+        service = IndicatorMonitoringService(MarketRepository(session))
+        value, metadata = await service._transform_macro_result(
+            definition,
+            result,
+            Provider(),
+        )
+
+    assert Decimal("0.2") <= value <= Decimal("0.4")
+    assert metadata["transform_applied"] == "mom_pct"
+    assert metadata["transform_source"] == "CUSR0000SA0_mom_pct"
 
 
 @pytest.mark.asyncio

@@ -172,3 +172,18 @@ console.log(JSON.stringify({{
         assert len(text) < 180
     assert "查看百科" in payload["html"]
     assert "/knowledge-page#ema" in payload["html"]
+
+
+def test_btc_derivatives_terms_are_available_to_dashboard_tooltips() -> None:
+    sections = _load_knowledge_sections()
+    terms = {
+        item["term"]: item
+        for section in sections
+        for item in section["items"]
+    }
+
+    for label in {"Call Wall", "Put Wall", "Max Pain", "Constant Maturity"}:
+        assert label in terms
+        assert "btc-derivatives" in terms[label]["page_refs"]
+        assert terms[label]["summary"]
+        assert terms[label]["risk_note"]

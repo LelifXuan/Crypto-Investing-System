@@ -15,6 +15,7 @@ from app.schemas.market import (
     IndicatorObservationRead,
     MacroOverviewResponse,
     MonitoringDashboardRead,
+    PrecomputeHintRequest,
 )
 from app.services.analysis_bundle import AnalysisBundleService
 from app.services.cache_registry import (
@@ -23,6 +24,7 @@ from app.services.cache_registry import (
     analysis_cache_key,
     expires_at_for_page,
     monitoring_decision_brief_cache_key,
+    source_freshness,
     strategy_bundle_cache_key,
     structure_bundle_cache_key,
 )
@@ -77,6 +79,11 @@ class MonitoringDashboardService:
             monitoring_dashboard_cache_key(instrument_id, timeframe)
         )
         status = cache_status(cache)
+        freshness = source_freshness(
+            cache.source_updated_at if cache is not None else None,
+            timeframe,
+            now=now,
+        )
         payload = cache.payload_json if cache is not None else {}
         technical_observations = self._fresh_technical_observations(
             payload.get("technical_observations", []),
@@ -89,6 +96,29 @@ class MonitoringDashboardService:
             or (status == "stale" and not displayable_cache)
             or not displayable_cache
         )
+        refresh_enqueued = False
+        refresh_task_key = None
+        if allow_refresh and displayable_cache and (
+            status == "stale" or freshness.state in {"expired", "missing"}
+        ):
+            try:
+                from app.services.precompute import precompute_service
+
+                queued = await precompute_service.enqueue_hint(
+                    PrecomputeHintRequest(
+                        current_page="monitoring",
+                        instrument_id=instrument_id,
+                        timeframe=timeframe,
+                        reason="monitoring_dashboard_stale_read",
+                        visible=True,
+                        candidates=["monitoring"],
+                        priority=3,
+                    )
+                )
+                refresh_enqueued = queued.accepted > 0 or queued.deduped > 0
+                refresh_task_key = queued.queued_keys[0] if queued.queued_keys else None
+            except Exception:
+                logger.warning("monitoring refresh enqueue failed", exc_info=True)
         if allow_refresh and needs_refresh:
             # T11 audit fix: the previous code path logged that a refresh
             # was needed but never actually called refresh_bundle, so the
@@ -166,6 +196,10 @@ class MonitoringDashboardService:
             "source_status": self._normalize_source_status(payload.get("source_status", {})),
             "status": "ready" if status == "fresh" else status,
             "cache_state": status,
+            "freshness_state": freshness.state,
+            "source_age_seconds": freshness.age_seconds,
+            "refresh_enqueued": refresh_enqueued,
+            "refresh_task_key": refresh_task_key,
             "snapshot_at": cache.snapshot_at if cache else None,
             "data_ts": cache.data_ts if cache else None,
             "source_updated_at": cache.source_updated_at if cache else None,
@@ -326,6 +360,13 @@ class MonitoringDashboardService:
                 **payload,
                 "status": "ready",
                 "cache_state": "fresh",
+                "freshness_state": source_freshness(
+                    source_updated_at,
+                    timeframe,
+                    now=now,
+                ).state,
+                "source_age_seconds": 0,
+                "refresh_completed_at": now,
                 "snapshot_at": cache.snapshot_at,
                 "data_ts": cache.data_ts,
                 "source_updated_at": cache.source_updated_at,

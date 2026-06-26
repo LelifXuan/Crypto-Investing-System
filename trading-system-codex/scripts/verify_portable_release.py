@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict verifier for the V1.3 Windows true-portable release.
+"""Strict verifier for the V1.6 Windows true-portable release.
 
 Copy this file to:
     scripts/verify_portable_release.py
@@ -111,6 +111,7 @@ REMEDIATION_MAP: dict[str, str] = {
     "runtime_python_version_invalid": "portable_runtime.lock.json must pin python_version to a 3.11.x release. Edit the lock and rebuild.",
     "stub_runtime_enabled": "Official releases must set PORTABLE_RUNTIME_STUB=0 (or unset) and rebuild the runtime. Fast-test stubs are not allowed for release builds.",
     "manifest_release_type_invalid": "release_manifest.json release_type must be 'embedded_runtime_portable'. Regenerate via build_portable_bundle.py.",
+    "manifest_version_invalid": "release_manifest.json version must match the V1.6.0 package release.",
     "manifest_python_embedded_invalid": "release_manifest.json must set python_embedded=true. Regenerate via build_portable_bundle.py.",
     "manifest_platform_invalid": "release_manifest.json must declare platform=win-x64.",
     "manifest_runtime_path_invalid": "python_runtime_path must be 'runtime_env/python/python.exe' (forward slashes).",
@@ -376,12 +377,20 @@ class Auditor:
                 self.add(
                     "critical",
                     "stub_runtime_enabled",
-                    "portable runtime is still a stub; official V1.3 portable release must have stub_runtime=false",
+                "portable runtime is still a stub; official V1.6 portable release must have stub_runtime=false",
                     "runtime_env/python/portable_runtime.json",
                 )
 
         if manifest:
             self.summary["release_type"] = manifest.get("release_type")
+            self.summary["version"] = manifest.get("version")
+            if manifest.get("version") != "1.6.0":
+                self.add(
+                    "critical",
+                    "manifest_version_invalid",
+                    f"release version must be 1.6.0, got {manifest.get('version')}",
+                    "release_manifest.json",
+                )
             if manifest.get("release_type") != "embedded_runtime_portable":
                 self.add(
                     "critical",

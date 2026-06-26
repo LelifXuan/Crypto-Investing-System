@@ -60,6 +60,10 @@ class AShareEtfQuoteResponse(BaseModel):
     ttl_seconds: int
     groups: list[AShareEtfQuoteGroup] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    freshness_state: Literal["fresh", "usable_stale", "expired", "refreshing", "missing"] = (
+        "missing"
+    )
+    refresh_enqueued: bool = False
 
 
 class AShareEtfProviderHealth(BaseModel):

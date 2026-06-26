@@ -538,29 +538,15 @@ class MacroOverviewService:
         transform_applied: str | None = None
         transform_source: str | None = None
 
+        observation_meta = getattr(obs, "value_json", None) or {}
+        persisted_transform = observation_meta.get("transform_applied")
         if (
             spec.indicator_key in TRANSFORM_AFFECTED_KEYS
-            and spec.transform in {"mom_pct", "yoy_pct"}
-            and spec.series_symbol
-            and spec.source_provider
+            and persisted_transform in {"mom_pct", "yoy_pct"}
         ):
-            computed_value, transform_source = await self._apply_transform(
-                spec, status, value
-            )
-            if computed_value is not None:
-                value = computed_value
-                unit = "%"
-                transform_applied = spec.transform
-                is_scored = _is_scored_indicator(
-                    spec.indicator_key,
-                    status,
-                    signal_state,
-                    value,
-                    text_value,
-                    fallback.get("is_scored"),
-                )
-                if is_scored:
-                    block_reason = None
+            unit = "%"
+            transform_applied = persisted_transform
+            transform_source = observation_meta.get("transform_source")
 
         return MacroOverviewIndicatorRead(
             indicator_key=spec.indicator_key,

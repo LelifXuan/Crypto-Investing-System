@@ -10,10 +10,36 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.core.db import db_manager
 from app.db.models.instrument import Instrument
-from app.db.models.market import MarketCandle
+from app.db.models.market import IndicatorObservation, MarketCandle
 from app.main import create_app
 from app.repositories.market_repository import MarketRepository
 from app.services.indicator_monitoring import IndicatorMonitoringService
+
+
+def _stub_gateio_rwa_provider(service: IndicatorMonitoringService, monkeypatch) -> None:
+    provider = service.macro_provider_registry.resolve(
+        source_provider="gateio_rwa",
+        source_kind="raw_series",
+    )
+
+    class FakeResult:
+        def __init__(self, symbol: str, value: str) -> None:
+            self.observation_ts = datetime(2026, 4, 1, tzinfo=UTC)
+            self.value = Decimal(value)
+            self.source_ref = f"gateio_rwa:futures:{symbol}"
+            self.source_granularity = "intraday"
+            self.metadata = {}
+
+    async def fake_fetch_latest(symbol: str):
+        values = {
+            "CL_USDT": "90.10",
+            "VIX_USDT": "21.51",
+            "NAS100_USDT": "29320.70",
+            "SPX500_USDT": "7388.81",
+        }
+        return FakeResult(symbol, values.get(symbol, "100.00"))
+
+    monkeypatch.setattr(provider, "fetch_latest", fake_fetch_latest)
 
 
 @pytest.fixture()
@@ -44,7 +70,183 @@ async def test_seed_defaults_loads_catalog_and_rules(monitoring_db) -> None:
     assert any(item.category == "macro" for item in definitions)
     assert any(item.category == "onchain" for item in definitions)
     assert any(item.indicator_key == "ema_20" for item in policies)
+    assert any(item.indicator_key == "real_yield_5y" for item in policies)
     assert any(item.rule_key == "macro_fomc_pre_window" for item in rules)
+
+
+@pytest.mark.asyncio
+async def test_seed_defaults_prefers_gateio_rwa_for_wti_crude(monitoring_db) -> None:
+    async with db_manager.session() as session:
+        service = IndicatorMonitoringService(MarketRepository(session))
+        await service.seed_defaults()
+        definitions = await MarketRepository(session).list_indicator_definitions(enabled_only=True)
+
+    wti = next(item for item in definitions if item.indicator_key == "wti_crude")
+    assert wti.source_provider == "gateio_rwa"
+    assert wti.calc_params_json["external_symbol"] == "CL_USDT"
+
+
+@pytest.mark.asyncio
+async def test_seed_defaults_prefers_gateio_rwa_contracts_for_us_indices(
+    monitoring_db,
+) -> None:
+    async with db_manager.session() as session:
+        service = IndicatorMonitoringService(MarketRepository(session))
+        await service.seed_defaults()
+        definitions = await MarketRepository(session).list_indicator_definitions(enabled_only=True)
+
+    by_key = {item.indicator_key: item for item in definitions}
+    vix = by_key["vix"]
+    qqq = by_key["qqq"]
+    spy = by_key["spy"]
+
+    assert vix.source_provider == "gateio_rwa"
+    assert vix.calc_params_json["external_symbol"] == "VIX_USDT"
+    assert vix.calc_params_json["frequency"] == "intraday"
+    assert qqq.source_provider == "gateio_rwa"
+    assert qqq.calc_params_json["external_symbol"] == "NAS100_USDT"
+    assert qqq.calc_params_json["frequency"] == "intraday"
+    assert spy.source_provider == "gateio_rwa"
+    assert spy.calc_params_json["external_symbol"] == "SPX500_USDT"
+    assert spy.calc_params_json["frequency"] == "intraday"
+
+
+@pytest.mark.asyncio
+async def test_wti_sync_replaces_stale_fred_observation_with_gateio_rwa(
+    monitoring_db, monkeypatch
+) -> None:
+    async with db_manager.session() as session:
+        repo = MarketRepository(session)
+        service = IndicatorMonitoringService(repo)
+        await service.seed_defaults()
+        definitions = await repo.list_indicator_definitions(enabled_only=True)
+        wti_definition = next(item for item in definitions if item.indicator_key == "wti_crude")
+        session.add(
+            IndicatorObservation(
+                observation_id="obs_old_wti_fred",
+                dedupe_key="old-wti-fred",
+                indicator_key="wti_crude",
+                category="macro",
+                country_code="US",
+                timeframe="1d",
+                observation_ts=datetime(2026, 6, 1, tzinfo=UTC),
+                effective_start_ts=datetime(2026, 6, 1, tzinfo=UTC),
+                value_num=Decimal("95.96"),
+                signal_state="neutral",
+                source_provider="fred",
+                source_ref="fred:DCOILWTICO",
+                source_granularity="1d",
+                run_id="old",
+            )
+        )
+        await session.commit()
+
+        provider = service.macro_provider_registry.resolve(
+            source_provider="gateio_rwa",
+            source_kind="raw_series",
+        )
+
+        class FakeResult:
+            observation_ts = datetime.now(UTC)
+            value = Decimal("90.10")
+            source_ref = "gateio_rwa:futures:CL_USDT"
+            source_granularity = "intraday"
+            metadata = {}
+
+        async def fake_fetch_latest(symbol: str):
+            assert symbol == "CL_USDT"
+            return FakeResult()
+
+        monkeypatch.setattr(provider, "fetch_latest", fake_fetch_latest)
+        observations = await service._sync_macro_definition(
+            wti_definition,
+            type("Policy", (), {"mode": "raw"})(),
+            "run-wti",
+        )
+
+    assert observations
+    latest = observations[0]
+    assert latest.value_num == Decimal("90.10")
+    assert latest.source_provider == "gateio_rwa"
+    assert latest.source_ref == "gateio_rwa:futures:CL_USDT"
+
+
+@pytest.mark.asyncio
+async def test_real_yield_5y_can_fallback_to_tradingeconomics_web(
+    monitoring_db,
+    monkeypatch,
+) -> None:
+    async with db_manager.session() as session:
+        repo = MarketRepository(session)
+        service = IndicatorMonitoringService(repo)
+        await service.seed_defaults()
+        definitions = await repo.list_indicator_definitions(enabled_only=True)
+        definition = next(item for item in definitions if item.indicator_key == "real_yield_5y")
+        session.add(
+            IndicatorObservation(
+                observation_id="obs_old_dfii5",
+                dedupe_key="old-dfii5",
+                indicator_key="real_yield_5y",
+                category="macro",
+                country_code="US",
+                timeframe="1d",
+                observation_ts=datetime(2026, 6, 1, tzinfo=UTC),
+                effective_start_ts=datetime(2026, 6, 1, tzinfo=UTC),
+                value_num=Decimal("1.55"),
+                signal_state="stable",
+                source_provider="fred",
+                source_ref="fred:DFII5",
+                source_granularity="1d",
+                run_id="old",
+            )
+        )
+        await session.commit()
+
+        fred_provider = service.macro_provider_registry.resolve(
+            source_provider="fred",
+            source_kind="raw_series",
+        )
+        te_provider = service.macro_provider_registry.resolve(
+            source_provider="tradingeconomics_web",
+            source_kind="raw_series",
+        )
+
+        class FakeStaleFredResult:
+            observation_ts = datetime(2026, 6, 1, tzinfo=UTC)
+            value = Decimal("1.55")
+            source_ref = "fred:DFII5"
+            source_granularity = "1d"
+            metadata = {}
+
+        async def fake_fred_fetch_latest(symbol: str):
+            assert symbol == "DFII5"
+            return FakeStaleFredResult()
+
+        class FakeTeResult:
+            observation_ts = datetime(2026, 6, 8, tzinfo=UTC)
+            value = Decimal("1.83")
+            source_ref = "tradingeconomics_web:US 5Y TIPS"
+            source_granularity = "1d"
+            metadata = {"day_change_pct": "0.030"}
+
+        async def fake_te_fetch_latest(symbol: str):
+            assert symbol == "US 5Y TIPS"
+            return FakeTeResult()
+
+        monkeypatch.setattr(fred_provider, "fetch_latest", fake_fred_fetch_latest)
+        monkeypatch.setattr(te_provider, "fetch_latest", fake_te_fetch_latest)
+
+        observations = await service._sync_macro_definition(
+            definition,
+            type("Policy", (), {"mode": "raw"})(),
+            "run-real-yield-5y",
+        )
+
+    assert observations
+    latest = observations[0]
+    assert latest.value_num == Decimal("1.83")
+    assert latest.source_provider == "tradingeconomics_web"
+    assert latest.source_ref == "tradingeconomics_web:US 5Y TIPS"
 
 
 @pytest.mark.asyncio
@@ -52,6 +254,7 @@ async def test_sync_macro_creates_observations(monitoring_db, monkeypatch) -> No
     async with db_manager.session() as session:
         service = IndicatorMonitoringService(MarketRepository(session))
         await service.seed_defaults()
+        _stub_gateio_rwa_provider(service, monkeypatch)
 
         async def fake_fred_latest(symbol: str):
             values = {"DFF": "5.25", "DGS2": "4.60", "DGS10": "4.10"}
@@ -73,6 +276,7 @@ async def test_latest_by_key_returns_observation_models(monitoring_db, monkeypat
     async with db_manager.session() as session:
         service = IndicatorMonitoringService(MarketRepository(session))
         await service.seed_defaults()
+        _stub_gateio_rwa_provider(service, monkeypatch)
 
         async def fake_fred_latest(symbol: str):
             values = {"DFF": "5.25", "DGS2": "4.60", "DGS10": "4.10"}

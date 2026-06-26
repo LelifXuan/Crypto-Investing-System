@@ -27,6 +27,7 @@ RWA_CANDIDATES: dict[str, list[GateQuoteCandidate]] = {
     "vix": [{"market": "futures", "symbol": "VIX_USDT", "settle": "usdt"}],
     # Gate.io UI displays CLUSDT/BZUSDT, but API v4 futures contracts use CL_USDT/BZ_USDT.
     "wti_oil": [{"market": "futures", "symbol": "CL_USDT", "settle": "usdt"}],
+    "wti_crude": [{"market": "futures", "symbol": "CL_USDT", "settle": "usdt"}],
     "brent_oil": [{"market": "futures", "symbol": "BZ_USDT", "settle": "usdt"}],
     "gold": [{"market": "spot", "symbol": "XAUT_USDT", "settle": "usdt"}],
     # Direct contract aliases are used by fallback chains and diagnostics.

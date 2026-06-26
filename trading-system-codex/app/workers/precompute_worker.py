@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 
 from app.core.config import settings
 from app.core.db import db_manager
 from app.repositories.market_repository import MarketRepository
 from app.services.precompute import precompute_service
+from app.services.storage_maintenance import StorageMaintenanceService
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +35,22 @@ class PrecomputeWorker:
         self._task = None
 
     async def _run_loop(self) -> None:
+        next_maintenance_at = 0.0
         while not self._stopping.is_set():
             processed = False
             try:
                 async with db_manager.session() as session:
-                    processed = await precompute_service.process_next(MarketRepository(session))
+                    repository = MarketRepository(session)
+                    processed = await precompute_service.process_next(repository)
+                    if time.monotonic() >= next_maintenance_at:
+                        from app.services.btc_derivatives.live_service import (
+                            btc_derivatives_live_service,
+                        )
+
+                        await StorageMaintenanceService(
+                            btc_derivatives_live_service.collector.archive
+                        ).run(repository)
+                        next_maintenance_at = time.monotonic() + 900
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover

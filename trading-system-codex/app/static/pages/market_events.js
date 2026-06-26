@@ -153,7 +153,7 @@ export async function renderMarketEvents() {
     if (force) invalidateCache("/marketevents");
     const response = await api.getMarketEvents(50, appState.translateEvents);
     let items = response.items || response || [];
-    if (!items.length && !force && !autoSyncedEvents) {
+    if (false && !items.length && !force && !autoSyncedEvents) {
       autoSyncedEvents = true;
       renderStatus("正在同步市场信息流", "loading");
       await api.syncMarketEvents();

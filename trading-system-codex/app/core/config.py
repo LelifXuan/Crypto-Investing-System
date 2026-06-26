@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = Field(default="Trading System API", alias="APP_NAME")
+    app_version: str = Field(default="1.6.0", alias="APP_VERSION")
     app_env: str = Field(default="dev", alias="APP_ENV")
     app_distribution_mode: str = Field(
         default=app_paths.distribution_mode, alias="APP_DISTRIBUTION_MODE"
@@ -67,7 +68,7 @@ class Settings(BaseSettings):
         alias="LOCAL_BOOTSTRAP_WARMUP_ENABLED",
     )
     local_bootstrap_warmup_all_instruments: bool = Field(
-        default=app_paths.distribution_mode != "portable",
+        default=False,
         alias="LOCAL_BOOTSTRAP_WARMUP_ALL_INSTRUMENTS",
     )
     local_bootstrap_candle_limit: int = Field(default=240, alias="LOCAL_BOOTSTRAP_CANDLE_LIMIT")
@@ -76,11 +77,11 @@ class Settings(BaseSettings):
         alias="LOCAL_BOOTSTRAP_CANDLE_LIMITS_BY_TIMEFRAME",
     )
     local_bootstrap_warmup_timeframes: list[str] = Field(
-        default_factory=lambda: ["1h", "4h", "1d", "1w", "30d"],
+        default_factory=lambda: ["1d"],
         alias="LOCAL_BOOTSTRAP_WARMUP_TIMEFRAMES",
     )
     local_bootstrap_structure_timeframes: list[str] = Field(
-        default_factory=lambda: ["1h", "4h", "1d", "1w"],
+        default_factory=list,
         alias="LOCAL_BOOTSTRAP_STRUCTURE_TIMEFRAMES",
     )
 
@@ -96,6 +97,29 @@ class Settings(BaseSettings):
 
     market_data_provider: str = Field(default="gateio", alias="MARKET_DATA_PROVIDER")
     market_data_prefer_live: bool = Field(default=False, alias="MARKET_DATA_PREFER_LIVE")
+    btc_derivatives_timeout_seconds: int = Field(
+        default=8, alias="BTC_DERIVATIVES_TIMEOUT_SECONDS"
+    )
+    btc_derivatives_live_enabled: bool = Field(
+        default=True,
+        alias="BTC_DERIVATIVES_LIVE_ENABLED",
+    )
+    btc_derivatives_provider_concurrency: int = Field(
+        default=2, alias="BTC_DERIVATIVES_PROVIDER_CONCURRENCY"
+    )
+    btc_derivatives_stale_max_seconds: int = Field(
+        default=900, alias="BTC_DERIVATIVES_STALE_MAX_SECONDS"
+    )
+    btc_derivatives_circuit_failure_threshold: int = Field(
+        default=3, alias="BTC_DERIVATIVES_CIRCUIT_FAILURE_THRESHOLD"
+    )
+    btc_derivatives_circuit_cooldown_seconds: int = Field(
+        default=300, alias="BTC_DERIVATIVES_CIRCUIT_COOLDOWN_SECONDS"
+    )
+    btc_derivatives_archive_quota_bytes: int = Field(
+        default=5 * 1024**3,
+        alias="BTC_DERIVATIVES_ARCHIVE_QUOTA_BYTES",
+    )
     gateio_base_url: str = Field(default="https://api.gateio.ws/api/v4", alias="GATEIO_BASE_URL")
     gateio_timeout_seconds: int = Field(default=10, alias="GATEIO_TIMEOUT_SECONDS")
     gateio_default_settle: str = Field(default="usdt", alias="GATEIO_DEFAULT_SETTLE")

@@ -10,13 +10,14 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED_PYTHONS = {(3, 11), (3, 14)}
-DEV_COMMANDS = {"install", "dev", "dev-local", "test", "lint", "check"}
+DEV_COMMANDS = {"install", "dev", "dev-local", "test", "lint", "check", "release-v16"}
 COMMAND_DEPENDENCIES = {
     "dev": ("uvicorn",),
     "dev-local": ("uvicorn",),
     "test": ("pytest",),
     "lint": ("ruff",),
     "check": ("ruff", "pytest"),
+    "release-v16": ("ruff", "pytest", "playwright"),
 }
 
 class TaskError(RuntimeError):
@@ -205,6 +206,20 @@ def run_build_portable() -> None:
     )
 
 
+def run_release_v16() -> None:
+    run_check()
+    run_step(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/sync_portable_local.ps1",
+        ]
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Project task runner for local Windows-first development."
@@ -222,6 +237,7 @@ def parse_args() -> argparse.Namespace:
             "release-zip",
             "portable-preflight",
             "build-portable",
+            "release-v16",
         ],
     )
     return parser.parse_args()
@@ -244,6 +260,7 @@ def main() -> int:
             "release-zip": run_release_zip,
             "portable-preflight": run_portable_preflight,
             "build-portable": run_build_portable,
+            "release-v16": run_release_v16,
         }[command]()
     except TaskError as exc:
         print(f"error: {exc}", file=sys.stderr)

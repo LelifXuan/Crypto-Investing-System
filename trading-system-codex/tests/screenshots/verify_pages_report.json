@@ -1,0 +1,30 @@
+{
+  "per_page": [
+    {
+      "page_id": "btc-derivatives",
+      "url": "http://127.0.0.1:8002/btc-derivatives-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 28.3,
+      "state": "found:.btc-derivatives-page",
+      "screenshot": null,
+      "failed_responses": []
+    }
+  ],
+  "spa_switches": [
+    {
+      "page_id": "btc-derivatives",
+      "ok": true,
+      "duration_ms": 2.5,
+      "state": "found:.btc-derivatives-page"
+    }
+  ],
+  "summary": {
+    "per_page_total": 1,
+    "per_page_fail": 0,
+    "spa_total": 1,
+    "spa_fail": 0,
+    "spa_slow": 0
+  }
+}

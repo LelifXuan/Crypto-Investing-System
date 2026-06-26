@@ -90,17 +90,12 @@ def build_confidence_report(snapshot: dict[str, Any], scores: Any) -> dict[str, 
     data_quality = _score01(getattr(scores, "data_quality_score", None), 50.0)
     conflict = _score01(getattr(scores, "conflict_score", None), 0.0)
     score_map = snapshot.get("score_map") or snapshot.get("signals") or {}
-    data_availability = snapshot.get("data_availability") or {}
     rr_long = _score01(getattr(scores, "rr_long", None), 50.0)
     rr_short = _score01(getattr(scores, "rr_short", None), 50.0)
 
     def sm(name, default=50.0):
         return _score01(score_map.get(name, default), default)
 
-    derivatives_missing = not any(
-        bool(data_availability.get(key))
-        for key in ("funding", "open_interest", "oi", "cvd", "orderbook", "depth")
-    )
     event_risk = _score01(score_map.get("event_risk", 50.0), 50.0)
     event_confidence = _clamp(100.0 - max(0.0, event_risk - 45.0) * 1.4)
     conflict_confidence = _clamp(100.0 - conflict)
@@ -145,25 +140,24 @@ def build_confidence_report(snapshot: dict[str, Any], scores: Any) -> dict[str, 
         ),
         _bucket(
             "flow",
-            "资金流与订单流",
-            max(sm("spot_flow"), sm("cvd_flow"), sm("volume_flow")),
+            "成交量确认",
+            max(sm("volume_proxy_confirmation"), sm("volume_confirmation")),
             0.08,
-            "CVD、OBV、成交量和主动买卖压力。",
+            "OBV、成交量和量价配合质量。",
         ),
         _bucket(
-            "derivatives",
-            "衍生品结构",
-            max(sm("funding_score"), sm("oi_confirmation"), 25.0 if derivatives_missing else 50.0),
+            "technical_risk",
+            "背离风险",
+            max(sm("divergence_support_long"), sm("divergence_support_short")),
             0.08,
-            "资金费率、未平仓量、杠杆拥挤度。",
-            derivatives_missing,
+            "RSI、MACD、CCI、OBV、KDJ 等 OHLCV 背离风险。",
         ),
         _bucket(
             "execution",
             "执行与流动性",
             sm("execution_quality", 55.0),
             0.08,
-            "价差、深度、滑点和订单簿可执行性。",
+            "策略价位、波动和执行计划的可执行性。",
         ),
         _bucket(
             "risk_reward",
@@ -200,8 +194,6 @@ def build_confidence_report(snapshot: dict[str, Any], scores: Any) -> dict[str, 
         weighted = min(weighted, 48.0)
     elif data_quality < 55:
         weighted = min(weighted, 62.0)
-    if derivatives_missing:
-        weighted = min(weighted, 74.0)
     confidence_score = round(_clamp(weighted), 2)
 
     drags = [b.label for b in buckets if b.impact == "drag"][:3]

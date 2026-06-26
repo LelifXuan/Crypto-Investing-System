@@ -236,8 +236,19 @@ function buildChartScale(candles, width, height, minPrice, maxPrice) {
 
 function buildLinePath(points, scale) {
   if (!points.length) return "";
+  let drawing = false;
   return points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${scale.xForIndex(index).toFixed(2)} ${scale.yForPrice(Number(point.close ?? 0)).toFixed(2)}`)
+    .map((point, index) => {
+      const close = Number(point?.close);
+      if (!Number.isFinite(close)) {
+        drawing = false;
+        return "";
+      }
+      const command = drawing ? "L" : "M";
+      drawing = true;
+      return `${command} ${scale.xForIndex(index).toFixed(2)} ${scale.yForPrice(close).toFixed(2)}`;
+    })
+    .filter(Boolean)
     .join(" ");
 }
 

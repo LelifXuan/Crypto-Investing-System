@@ -17,6 +17,7 @@ from app.services.cache_registry import (
     bundle_status_message,
     cache_status,
     expires_at_for_strategy,
+    source_freshness,
     strategy_bundle_cache_key,
 )
 from app.services.strategy_signal.confidence_dimensions import build_confidence_report
@@ -76,12 +77,16 @@ class StrategySignalService:
         cache = await self.repository.get_page_snapshot_cache(cache_key)
         status = cache_status(cache)
         if cache is not None and isinstance(cache.payload_json, dict) and cache.payload_json:
+            freshness = source_freshness(cache.source_updated_at, timeframe)
             payload = dict(cache.payload_json)
             payload.update(
                 {
                     "status": "ready" if status == "fresh" else status,
                     "cache_state": status,
-                    "refresh_enqueued": status in {"stale", "missing", "updating"},
+                    "freshness_state": freshness.state,
+                    "source_age_seconds": freshness.age_seconds,
+                    "refresh_enqueued": status in {"stale", "missing", "updating"}
+                    or freshness.state in {"expired", "missing"},
                     "snapshot_at": cache.snapshot_at,
                     "data_ts": cache.data_ts,
                     "expires_at": cache.expires_at,
@@ -89,7 +94,10 @@ class StrategySignalService:
                     "status_message": bundle_status_message(status),
                 }
             )
-            if status in {"stale", "missing", "error"} and enqueue_refresh:
+            if (
+                status in {"stale", "missing", "error"}
+                or freshness.state in {"expired", "missing"}
+            ) and enqueue_refresh:
                 await self.enqueue_refresh(
                     instrument_id, timeframe, reason=f"strategy_cache_{status}"
                 )
@@ -115,6 +123,12 @@ class StrategySignalService:
                 {
                     "status": payload.get("status") or "ready",
                     "cache_state": "fresh",
+                    "freshness_state": source_freshness(
+                        payload.get("generated_at") or now,
+                        timeframe,
+                        now=now,
+                    ).state,
+                    "source_age_seconds": 0,
                     "refreshed": True,
                     "refresh_enqueued": False,
                     "snapshot_at": now,
@@ -123,6 +137,7 @@ class StrategySignalService:
                     "source_version": CACHE_SOURCE_VERSION,
                     "status_message": payload.get("status_message")
                     or bundle_status_message("fresh"),
+                    "refresh_completed_at": now,
                 }
             )
             await self.repository.upsert_page_snapshot_cache(
@@ -582,6 +597,8 @@ class StrategySignalService:
             "current_price": None,
             "status": "updating" if refresh_enqueued else "missing",
             "cache_state": "missing",
+            "freshness_state": "missing",
+            "source_age_seconds": None,
             "status_message": "暂无策略快照，后台正在准备当前标的与周期的数据。",
             "snapshot": {
                 "instrument_id": instrument_id,

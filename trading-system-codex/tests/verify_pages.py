@@ -51,6 +51,7 @@ PAGE_ROUTES = {
     "alert-center": "/alerts-page",
     "knowledge-base": "/knowledge-page",
     "ashare-etf": "/ashare-etf-page",
+    "btc-derivatives": "/btc-derivatives-page",
     "ai-strategy": "/strategy-page",
 }
 
@@ -68,6 +69,7 @@ REAL_CONTENT_SELECTORS = {
     "alert-center": ["#alerts-chip-structure", "#alerts-body"],
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
     "ashare-etf": ["#etf-overview", "#etf-groups"],
+    "btc-derivatives": [".btc-derivatives-page", ".btc-chart-overview"],
     "ai-strategy": [".strategy-toolbar", ".strategy-control-panel"],
 }
 ERROR_SELECTOR = ".error-state, .render-fatal, [data-render-fatal]"

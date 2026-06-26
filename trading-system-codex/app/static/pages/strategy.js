@@ -388,6 +388,57 @@ function renderReasons(decision) {
   return list(reasons.length ? reasons : gates, "暂无阻断门禁。", 6);
 }
 
+function divergenceDirectionLabel(direction) {
+  return {
+    bullish: "底背离风险",
+    bearish: "顶背离风险",
+    neutral: "未发现有效背离",
+  }[direction] || "背离观察";
+}
+
+function divergenceEffectLabel(effect, action) {
+  if (action === "block_chasing") return "禁止直接追单";
+  if (effect === "opposes_strategy") return "削弱当前方向";
+  if (effect === "supports_strategy") return "支持当前观察";
+  return "仅观察";
+}
+
+function renderDivergenceRiskCard(decision) {
+  const risk = decision?.technical_risk?.divergence || {};
+  const active = risk.status === "active";
+  const leaders = Array.isArray(risk.leaders) ? risk.leaders.filter(Boolean).slice(0, 5) : [];
+  const tone = risk.strategy_effect === "opposes_strategy"
+    ? "chip-warning"
+    : risk.strategy_effect === "supports_strategy"
+      ? "chip-bullish"
+      : "chip-neutral";
+  return `
+    <article class="card strategy-divergence-risk-card">
+      <div class="card-head-inline">
+        <div>
+          <p class="eyebrow">TECHNICAL RISK</p>
+          <h3>背离风险提醒</h3>
+        </div>
+        ${statusChip(divergenceDirectionLabel(risk.direction || "neutral"), tone)}
+      </div>
+      <p class="strategy-divergence-summary">
+        ${escapeHtml(cleanText(risk.summary || "未发现有效背离风险。"))}
+      </p>
+      <div class="strategy-divergence-grid">
+        ${miniMetric("策略影响", divergenceEffectLabel(risk.strategy_effect, risk.recommended_action), "warn")}
+        ${miniMetric("置信度", active ? numberText(Number(risk.confidence || 0) * 100) : "-", "")}
+        ${miniMetric("领先指标", leaders.length ? leaders.join(" / ") : "-", "")}
+      </div>
+      ${(risk.confirmation || risk.invalidation) ? `
+        <div class="strategy-divergence-conditions">
+          ${risk.confirmation ? `<span><strong>确认</strong>${escapeHtml(cleanText(risk.confirmation))}</span>` : ""}
+          ${risk.invalidation ? `<span><strong>失效</strong>${escapeHtml(cleanText(risk.invalidation))}</span>` : ""}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
 function renderBundle(bundle) {
   const decision = bundle.decision || {};
   const state = decision.strategy_state || "NO_EDGE";
@@ -436,6 +487,8 @@ function renderBundle(bundle) {
         ${renderScoreBars(decision)}
       </article>
     </section>
+
+    ${renderDivergenceRiskCard(decision)}
 
     ${renderTriggerBoard(decision, decision.trigger_diagnostics || decision.gates || [])}
 

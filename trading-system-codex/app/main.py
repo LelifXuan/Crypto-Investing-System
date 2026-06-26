@@ -18,8 +18,10 @@ from app.middleware.local_only import LocalOnlyMiddleware
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.bootstrap_repository import BootstrapRepository
 from app.repositories.market_repository import MarketRepository
-from app.services.bootstrap import seed_local_defaults, warm_local_market_data
+from app.schemas.market import PrecomputeHintRequest
+from app.services.bootstrap import seed_local_defaults
 from app.services.network.http_client_factory import init_network
+from app.services.precompute import precompute_service
 from app.web.router import web_router
 
 logger = logging.getLogger(__name__)
@@ -138,10 +140,24 @@ async def lifespan(app: FastAPI):
         async def run_startup_warmup(instrument_ids: list[str]) -> None:
             # Let interactive page requests and precompute hints take the lead first.
             await asyncio.sleep(8)
-            async with db_manager.session() as warmup_session:
-                warmup_repository = MarketRepository(warmup_session)
-                for target_instrument_id in instrument_ids:
-                    await warm_local_market_data(warmup_repository, target_instrument_id)
+            for target_instrument_id in instrument_ids:
+                for page, candidates in (
+                    ("analysis", ["analysis"]),
+                    ("monitoring", ["monitoring"]),
+                    ("strategy", ["strategy"]),
+                    ("macro", ["macro"]),
+                ):
+                    await precompute_service.enqueue_hint(
+                        PrecomputeHintRequest(
+                            current_page=page,
+                            instrument_id=target_instrument_id,
+                            timeframe="1d",
+                            reason="startup_critical_snapshot",
+                            visible=False,
+                            candidates=candidates,
+                            priority=5,
+                        )
+                    )
 
         warmup_task = asyncio.create_task(
             run_startup_warmup(warmup_instrument_ids),
@@ -170,6 +186,7 @@ async def lifespan(app: FastAPI):
 def create_app(*, enable_lifespan: bool = True) -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
+        version=settings.app_version,
         debug=settings.app_debug,
         lifespan=lifespan if enable_lifespan else None,
         docs_url="/docs" if settings.enable_docs else None,

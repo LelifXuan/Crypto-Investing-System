@@ -167,6 +167,12 @@ refresh_policies:
     cron_expr: 10 7,13,19 * * 1-5
     timezone: UTC
     priority: 5
+  - indicator_key: real_yield_5y
+    scope_type: global
+    mode: cron
+    cron_expr: 12 7,13,19 * * 1-5
+    timezone: UTC
+    priority: 5
   - indicator_key: us_10y_2y_spread
     scope_type: global
     mode: chained

@@ -10,6 +10,7 @@ export const knowledgePageFilters = [
   { key: "knowledge-base", label: "知识百科" },
   { key: "risk", label: "风险管理" },
   { key: "ashare-etf", label: "A股ETF" },
+  { key: "btc-derivatives", label: "BTC衍生品" },
 ];
 
 export const knowledgeLevelFilters = [
@@ -1290,6 +1291,57 @@ const etfItems = [
   }),
 ];
 
+const derivativesItems = [
+  term("call-wall", "Call Wall", {
+    aliases: ["Call 持仓墙", "上方 Call 持仓集中区"],
+    category: "btc-derivatives",
+    family: "options-positioning",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    tags: ["options", "open-interest", "grid-risk"],
+    summary: "Call Wall 是当前到期链上 Call 持仓较集中的行权价区域。",
+    definition: "它反映期权持仓分布与潜在对冲敏感区，不等于确定压力位。其位置持续上移时，说明上方仓位重心正在抬高。",
+    how_to_use: "比较现价与 Call Wall 的距离及其历史迁移。空网格接近该区域时，重新评估上破保护和网格敞口。",
+    risk_note: "不能把 Call Wall 单独当成反转信号或确定阻力。",
+  }),
+  term("put-wall", "Put Wall", {
+    aliases: ["Put 持仓墙", "下方 Put 持仓集中区"],
+    category: "btc-derivatives",
+    family: "options-positioning",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    tags: ["options", "open-interest", "downside-risk"],
+    summary: "Put Wall 是当前到期链上 Put 持仓较集中的行权价区域。",
+    definition: "它反映下方保护仓位的集中位置与迁移，不等于确定支撑位。",
+    how_to_use: "观察 Put Wall 是否下移，以及现价接近该区域时保护需求和下行波动是否同步升高。",
+    risk_note: "不能把 Put Wall 单独当成抄底位置或确定支撑。",
+  }),
+  term("max-pain", "Max Pain", {
+    aliases: ["最大痛点", "理论最小赔付价"],
+    category: "btc-derivatives",
+    family: "options-positioning",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    tags: ["options", "open-interest", "settlement"],
+    summary: "Max Pain 是按当前期权持仓估算的理论最小总赔付行权价。",
+    definition: "它适合观察持仓分布重心是否整体上移或下移，不是价格预测模型。",
+    how_to_use: "结合 Call Wall、Put Wall 和现价共同观察仓位结构迁移，不把单一数值设为交易目标。",
+    risk_note: "临近到期、持仓变化和流动性都会改变计算结果。",
+  }),
+  term("constant-maturity", "Constant Maturity", {
+    aliases: ["恒定期限", "固定剩余期限", "60D 期限桶"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "advanced",
+    page_refs: ["btc-derivatives"],
+    tags: ["options", "maturity", "rollover"],
+    summary: "Constant Maturity 使用接近目标剩余天数的期权链追踪历史。",
+    definition: "系统从有效未来到期日中选择最接近目标 DTE 的链，并在来源到期日改变时标记 rollover。",
+    how_to_use: "用于减少固定到期日临近到期造成的样本结构变化；换月跳变应明确保留，不做平滑隐藏。",
+    risk_note: "实际选中到期日的 DTE 可能与目标期限桶存在差距。",
+  }),
+];
+
 export const knowledgeSections = [
   {
     id: "technical",
@@ -1326,6 +1378,12 @@ export const knowledgeSections = [
     title: "A股ETF",
     description: "现金流、HALO 行业篮子和 A 股 ETF 行情源的独立观察口径。",
     items: etfItems,
+  },
+  {
+    id: "btc-derivatives",
+    title: "BTC 衍生品",
+    description: "期权持仓集中、恒定期限追踪与有限风险保护的判断口径。",
+    items: derivativesItems,
   },
 ];
 

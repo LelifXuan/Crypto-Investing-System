@@ -21,7 +21,7 @@ REQUIRED_BUCKET_KEYS = [
     "structure",
     "momentum",
     "flow",
-    "derivatives",
+    "technical_risk",
     "execution",
     "risk_reward",
     "event_risk",
@@ -40,12 +40,11 @@ def test_all_twelve_bucket_keys_present():
             "bullish_momentum": 65.0,
             "bearish_momentum": 30.0,
             "volume_confirmation": 55.0,
-            "spot_flow": 50.0,
-            "cvd_flow": 45.0,
-            "volume_flow": 48.0,
-            "funding_score": 50.0,
-            "oi_confirmation": 50.0,
-            "execution_quality": 55.0,
+                "volume_proxy_confirmation": 48.0,
+                "funding_score": 50.0,
+                "divergence_support_long": 54.0,
+                "divergence_support_short": 46.0,
+                "execution_quality": 55.0,
             "event_risk": 40.0,
             "regime_fit_long": 60.0,
             "regime_fit_short": 35.0,
@@ -81,7 +80,7 @@ def test_all_twelve_bucket_keys_present():
         assert bucket["impact"] in ("support", "drag", "neutral")
 
 
-def test_derivatives_missing_flags_bucket():
+def test_technical_risk_bucket_replaces_derivatives_bucket():
     snapshot = {
         "score_map": {},
         "data_availability": {},
@@ -89,8 +88,9 @@ def test_derivatives_missing_flags_bucket():
     scores = MockScores()
     report = build_confidence_report(snapshot, scores)
 
-    deriv_bucket = next(b for b in report["confidence_buckets"] if b["key"] == "derivatives")
-    assert deriv_bucket["missing"] is True
+    bucket_keys = [b["key"] for b in report["confidence_buckets"]]
+    assert "technical_risk" in bucket_keys
+    assert "derivatives" not in bucket_keys
 
 
 def test_data_quality_cap():

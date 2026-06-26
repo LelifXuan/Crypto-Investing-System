@@ -575,6 +575,11 @@ class MacroOverviewResponse(BaseModel):
 class BundleMetaRead(BaseModel):
     status: str = "missing"
     cache_state: str = "missing"
+    freshness_state: str = "missing"
+    source_age_seconds: int | None = None
+    refresh_enqueued: bool = False
+    refresh_task_key: str | None = None
+    refresh_completed_at: datetime | None = None
     snapshot_at: datetime | None = None
     data_ts: datetime | None = None
     source_updated_at: datetime | None = None

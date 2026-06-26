@@ -116,13 +116,13 @@ async def test_dashboard_forwards_alerts_and_strategy_into_terminal_summary() ->
     assert "analysis_bundle" in alignment["primary_sources"]
     assert set(alignment["timeframes"]) == {"4h", "1d", "1w"}
     market = next(row for row in brief["rows"] if row["key"] == "market_situation")
-    assert "alerts.chip_structure" in market["source_refs"]
-    assert "alerts.divergence_summary" in market["source_refs"]
+    assert "alerts.chip_structure" not in market["source_refs"]
+    assert "alerts.technical_risk.divergence" in market["source_refs"]
     assert any("analysis.4h" in ref for ref in market["source_refs"])
     # T09: the trading_guidance row is gone. The overview is a summary
     # layer and does not re-render the strategy page. The strategy page
     # still owns the strategy.decision references; the overview's
-    # market_situation row cites the chip / divergence / analysis
+    # market_situation row cites the divergence risk / analysis
     # sources that the strategy page also depends on, so callers can
     # navigate from the overview to the strategy page by following the
     # source chips.
