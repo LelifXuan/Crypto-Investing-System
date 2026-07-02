@@ -1,5 +1,64 @@
 # Changelog
 
+## V1.7 (2026-07-02)
+
+AI 策略页重构（X + Y + Z 全栈 + 截图 8 项修复 + 双 endpoint verify_pages）。
+
+### 后端
+
+- `MarketContextBuilder` 注入真实字段：
+  - `market_data` 不再为空 — 透传 `chip_structure` 的 `current_price / price_change_pct / execution_score / execution_label / direction_score / direction_label / weekly_context / daily_bias / primary_regime / primary_regime_label`。
+  - `derivatives_features` 不再只有 `key_levels_axis` — 透传 `funding_state / oi_state / skew_state / basis_state / hedge_cost_state / wall_movement / max_pain_movement / call_wall_strike / put_wall_strike / max_pain_strike / spot_price / skew_25d / put_call_ratios`。
+  - 新增 `chip_features` 顶层字段（证据质量、regime 标签、weekly_context、daily_bias、h4_structure、h1_confirmation、evidence 数组等）。
+  - 新增 `freshness_breakdown` 顶层字段（按 source 扁平化 `data_quality.dependencies`）。
+  - `onchain_features` 顶层暴露 `metrics_flat` 便于 `CapitalFlowEngine` 取稳定币 / DEX 数据。
+- 新增 `app/services/onchain/policy_adapter.py` — DefiLlama P0 接通：
+  - `DefiLlamaPolicyAdapter.collect()` 直接走 `DefiLlamaProvider.fetch_snapshot()`。
+  - `collect_via_router(router)` 通过 `OnchainProviderRouter.fetch_metric` 收集（便于 `monkeypatch` 测试）。
+  - `ensure_defillama_definitions()` 注册 4 个核心 key 到 `indicator_definitions`（FK）。
+  - `persist_drafts()` 写入 `IndicatorObservation`，含 `value_json.source = "defillama"`。
+- `IndicatorMonitoringService.sync_onchain()` 改为先调 `policy_adapter.collect_via_router()` + `persist_drafts()`，再走原有 `run_policy()` 路径（双轨并行，保留旧 path 兼容）。
+- `strategy_unified` 引擎重构：
+  - `contracts.py` 新增 `pick_context(primary, fallback)`、`verdict_for_node(state, direction, timeframe)`、`evidence_confidence(freshness, consistency, coverage)`、`VERDICT_FROM_STATE` 映射。
+  - `multi_timeframe_structure` 不再独立计算 `confidence`（置 0，由 `EvidenceTraceBuilder` 统一计算）。
+  - 4 个 regime engines (`macro_regime / derivatives_regime / capital_flow / onchain_regime`) 改用 `pick_context` 多源 pick + 结构化判定（funding/oi/skew/basis）+ 中文 `human_explanation`。
+  - `cross_horizon._view` 改用 `evidence_confidence`。
+  - `evidence.py` 唯一 confidence 来源；逐证据 `freshness + consistency + coverage` 三因子加权。
+  - `trade_plan.py` 注入实际价格（`stop_loss` / `entry_zone` / `invalidation` 价格写入文本）。
+  - `risk_gate.py` 全部中文 label/message/action。
+  - `TimeframeNode` 新增 `verdict_code` / `verdict_label` 字段。
+
+### 前端
+
+- `pages/strategy/index.js` 改 4 endpoint 并行 fetch（`Promise.allSettled`）：`/strategy/unified` + `/monitoring/dashboard` + `/btc-derivatives/dashboard` + `/monitoring/macro-overview`。4/4 失败才 `errorState`；其余在页面末端展示"数据源接入状态"小卡。
+- `pages/strategy/adapter.js` 接收 4 endpoint payload；为 timeframe_node / horizon_view / market_operation.dim 附加 `evidence_ref` + `evidence_confidence` + `evidence_freshness`；新增 `buildDataDegradedCard()` 渲染数据源状态。
+- `pages/strategy/renderEvidenceTrace.js` 重写为自然语言卡：仅渲染 `conclusion_key / conclusion / human_explanation / confidence / source_modules (人类可读) / source_timeframes / freshness`；不再展示 `calculation_rule / input_features / source_modules` 作为 UI 文本（仅 payload 保留供 API 调用方使用）。
+- `pages/strategy/renderTradePlans.js` 新增"入场区间 / 止损 / 止盈 / 失效条件"四列，渲染真实价格。
+- `pages/strategy/renderHorizonStack.js` 新增"结论"列展示 `verdictLabel`；置信列改读 `evidence_confidence`。
+- `pages/strategy/renderHorizonGovernance.js` 用 `verdictLabel` + `directionLabel` 统一 8 个 verdict 文案。
+- `pages/strategy/renderMarketOperation.js` 置信列改读 `evidence_confidence`。
+- `app/static/styles.css` 新增 `.strategy-evidence-item` + `.strategy-degraded-footer` 样式。
+
+### 测试
+
+- 新增 `tests/test_onchain_policy_adapter.py`（6 测试）：live/degraded snapshot、router 协议、持久化、幂等。
+- 扩展 `tests/test_strategy_market_context_static.py`（11 测试）：并行 fetch、evidence_ref、natural language card、verdict mapping、Chinese risk labels。
+- 全部 52 受影响测试通过（`test_strategy_unified_service / test_strategy_unified_api / test_market_context_builder / test_market_context_api / test_options_wall_signal / test_strategy_market_context_static / test_onchain_policy_adapter / test_indicator_monitoring / test_defillama_provider`）。
+
+### 风险
+
+- DefiLlama 在 CN 不可达时自动降级为 `data_status=upstream_missing`，strategy 主推演不受影响。
+- 4 endpoint 并行 fetch 中任一 4xx 由 `Promise.allSettled` 兜底，4/4 失败才 `errorState`。
+- Confidence 统一为 evidence_trace 来源；6 个旧断言被新数据形态覆盖，无破坏性变更。
+- 数据源缺失时 `pages/strategy` 仍渲染其它维度，链上维度显示"上游缺失"，不阻断主流程。
+
+### 验证
+
+- `node --check` 7 个 strategy frontend 文件全通过
+- `py_compile` 所有改动 .py 文件全通过
+- `pytest` 全部 52 受影响测试通过（indicator_monitoring 用时 124s 为 fixture 开销）
+- `python tests/verify_pages.py --pages strategy,monitoring-overview` 计划中（需启动 backend 8002 + chromium）
+
 ## V1.5.6 (2026-06-09)
 
 监控总览"宏观指标明细"页 4 项口径异常 + 1 项 0% 防御。

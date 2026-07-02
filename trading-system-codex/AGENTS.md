@@ -180,6 +180,7 @@ python tests/verify_pages.py --baseline             # 把当前截图入库为�
 | **架构** | SPA 路由、模块加载、静态资源加载顺序、入口函数签名、controller 对象形态、模板结构 | ✓ | **✓ (必)** |
 | **工作流** | 重试/轮询、防重入 token、状态机、事件流、SPA 切换、刷新按钮、abort controller | ✓ | **✓ (必)** |
 | **推理模块** | `terminal_summary_engine`、`monitoring_dashboard`、`strategy_signal`、`alerts_bundle`、知识百科 catalog | ✓ | **✓ (必)** + 实地数据流过 |
+| **跨页 fetch / 多 endpoint 并行** | `pages/strategy` 用 `Promise.allSettled` 拉 `/strategy/unified` + `/monitoring/dashboard` + `/btc-derivatives/dashboard` + `/monitoring/macro-overview` | ✓ | **✓ (必)** + 4/4 失败兜底 + 数据源状态小卡渲染 |
 
 **作用域(scope)选择规则** —— 不跑全 9 页,只跑真正会受影响的:
 - 改了 `main.js` / `core/*.js` / `templates/page.html` → 跑全 9 页(共享依赖)
