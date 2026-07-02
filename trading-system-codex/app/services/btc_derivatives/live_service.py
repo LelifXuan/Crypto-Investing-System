@@ -161,7 +161,7 @@ def _empty_dashboard(
             "quality": envelope.snapshot_state,
             "missing_reason": reason if chart["status"] != "ok" else None,
         }
-    snapshot_state = envelope.snapshot_state if envelope.perps else "data_insufficient"
+    snapshot_state = envelope.snapshot_state if (envelope.options or envelope.perps) else "data_insufficient"
     return BtcDerivativesDashboardResponse.model_validate(
         {
             "generated_at": _iso_now(),
