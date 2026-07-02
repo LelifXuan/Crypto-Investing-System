@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_db_session
 from app.main import create_app
-from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
 
 async def _dummy_db_session():

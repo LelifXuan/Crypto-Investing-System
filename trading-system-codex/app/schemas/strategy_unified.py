@@ -27,7 +27,10 @@ class StrategyUnifiedRead(BaseModel):
     event_watch: list[dict[str, Any]] = Field(default_factory=list)
     evidence_trace: list[dict[str, Any]] = Field(default_factory=list)
     narrative: dict[str, Any] = Field(default_factory=dict)
-    degraded: bool = Field(default=False, description="True if at least one component failed during build.")
+    degraded: bool = Field(
+        default=False,
+        description="True if at least one component failed during build.",
+    )
     degraded_components: list[str] = Field(
         default_factory=list,
         description="List of component names that failed (e.g., 'macro_regime', 'cross_horizon').",

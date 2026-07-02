@@ -85,8 +85,16 @@ def _degraded_payload(instrument_id: str, reason: str) -> dict[str, object]:
         "horizon_governance": {
             "position_cap": "0%",
             "allowed_sides": [],
-            "higher_timeframe_constraint": {"direction": "NEUTRAL", "rule": "上游数据缺失", "source_timeframes": []},
-            "lower_timeframe_driver": {"direction": "NEUTRAL", "rule": "上游数据缺失", "source_timeframes": []},
+            "higher_timeframe_constraint": {
+                "direction": "NEUTRAL",
+                "rule": "上游数据缺失",
+                "source_timeframes": [],
+            },
+            "lower_timeframe_driver": {
+                "direction": "NEUTRAL",
+                "rule": "上游数据缺失",
+                "source_timeframes": [],
+            },
             "upgrade_path": [],
             "invalidation_path": [],
         },

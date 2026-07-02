@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import pytest
 from playwright.sync_api import sync_playwright
-
 
 DEGRADED_UNIFIED_PAYLOAD = {
     "instrument_id": "btc-usdt-perp",
@@ -25,8 +23,16 @@ DEGRADED_UNIFIED_PAYLOAD = {
     "horizon_governance": {
         "position_cap": "0%",
         "allowed_sides": [],
-        "higher_timeframe_constraint": {"direction": "NEUTRAL", "rule": "上游数据缺失", "source_timeframes": []},
-        "lower_timeframe_driver": {"direction": "NEUTRAL", "rule": "上游数据缺失", "source_timeframes": []},
+        "higher_timeframe_constraint": {
+            "direction": "NEUTRAL",
+            "rule": "上游数据缺失",
+            "source_timeframes": [],
+        },
+        "lower_timeframe_driver": {
+            "direction": "NEUTRAL",
+            "rule": "上游数据缺失",
+            "source_timeframes": [],
+        },
         "upgrade_path": [],
         "invalidation_path": [],
     },
@@ -47,7 +53,7 @@ EMPTY_DASHBOARD_PAYLOAD = {}
 
 
 def test_degraded_payload_shows_yellow_banner_not_red(base_url):
-    """When /strategy/unified returns degraded, frontend shows .strategy-degraded-banner, NOT .error-state."""
+    """When /strategy/unified returns degraded, frontend shows the banner, not error-state."""
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 1366, "height": 900})
@@ -122,7 +128,9 @@ def test_mount_fires_prewarm_endpoint(base_url):
         page.wait_for_timeout(3000)
 
         # Prewarm must have been called at least once (mount + degraded fallback)
-        assert prewarm_called["count"] >= 1, f"Expected prewarm to be called, got {prewarm_called['count']}"
+        assert prewarm_called["count"] >= 1, (
+            f"Expected prewarm to be called, got {prewarm_called['count']}"
+        )
 
         context.close()
         browser.close()
