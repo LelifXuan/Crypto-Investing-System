@@ -238,6 +238,128 @@ async def test_market_context_marks_onchain_upstream_missing_without_provider_ca
 
 
 @pytest.mark.asyncio
+async def test_market_context_returns_low_confidence_on_chip_failure(monkeypatch) -> None:
+    """When ChipStructureService.analyze() raises, MarketContextBuilder
+    must still return a usable snapshot with degraded chip_structure."""
+    from unittest.mock import AsyncMock, patch
+
+    await shared_query_cache.clear()
+
+    async def fake_macro(self):
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {
+                "regime_key": "risk_on",
+                "operation_bias": "bullish",
+                "confidence": "high",
+            }
+        )
+
+    async def fake_dashboard(*, force=False):  # noqa: ANN001
+        raise RuntimeError("derivatives unavailable")
+
+    monkeypatch.setattr(
+        "app.services.market_context.MacroOverviewService.build_overview", fake_macro
+    )
+    monkeypatch.setattr(
+        "app.services.market_context.btc_derivatives_live_service.dashboard", fake_dashboard
+    )
+
+    builder = MarketContextBuilder(SimpleNamespace())
+    try:
+        with patch(
+            "app.services.chip_structure.ChipStructureService.analyze",
+            new=AsyncMock(side_effect=RuntimeError("chip db error")),
+        ):
+            snapshot = await builder.get_context("btc-usdt-perp", "1d")
+    finally:
+        await shared_query_cache.clear()
+
+    assert snapshot is not None
+    assert snapshot.chip_structure.get("state") in {"missing", "low_confidence", "error"}
+    assert snapshot.freshness_breakdown is not None
+    assert "chip_structure" in snapshot.freshness_breakdown
+
+
+@pytest.mark.asyncio
+async def test_market_context_returns_empty_macro_on_failure(monkeypatch) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    await shared_query_cache.clear()
+
+    async def fake_analyze(self, instrument_id: str, timeframe: str):
+        return {"evidence_quality": "structure_snapshot", "components": {}}
+
+    async def fake_dashboard(*, force=False):  # noqa: ANN001
+        raise RuntimeError("derivatives unavailable")
+
+    monkeypatch.setattr(
+        "app.services.market_context.ChipStructureService.analyze", fake_analyze
+    )
+    monkeypatch.setattr(
+        "app.services.market_context.btc_derivatives_live_service.dashboard", fake_dashboard
+    )
+
+    builder = MarketContextBuilder(SimpleNamespace())
+    try:
+        with patch(
+            "app.services.market_context.MacroOverviewService.build_overview",
+            new=AsyncMock(side_effect=RuntimeError("macro db error")),
+        ):
+            snapshot = await builder.get_context("btc-usdt-perp", "1d")
+    finally:
+        await shared_query_cache.clear()
+
+    assert snapshot is not None
+    assert snapshot.macro_features.get("regime_key") in {None, "unknown"}
+    assert "macro" in snapshot.freshness_breakdown
+    assert snapshot.freshness_breakdown["macro"]["cache_state"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_market_context_returns_missing_onchain_on_failure(monkeypatch) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    await shared_query_cache.clear()
+
+    async def fake_analyze(self, instrument_id: str, timeframe: str):
+        return {"evidence_quality": "structure_snapshot", "components": {}}
+
+    async def fake_macro(self):
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {
+                "regime_key": "risk_on",
+                "confidence": "high",
+            }
+        )
+
+    async def fake_dashboard(*, force=False):  # noqa: ANN001
+        raise RuntimeError("derivatives unavailable")
+
+    monkeypatch.setattr(
+        "app.services.market_context.ChipStructureService.analyze", fake_analyze
+    )
+    monkeypatch.setattr(
+        "app.services.market_context.MacroOverviewService.build_overview", fake_macro
+    )
+    monkeypatch.setattr(
+        "app.services.market_context.btc_derivatives_live_service.dashboard", fake_dashboard
+    )
+
+    builder = MarketContextBuilder(SimpleNamespace())
+    try:
+        with patch(
+            "app.services.onchain.feature_engine.OnchainFeatureEngine.build",
+            new=AsyncMock(side_effect=RuntimeError("onchain db error")),
+        ):
+            snapshot = await builder.get_context("btc-usdt-perp", "1d")
+    finally:
+        await shared_query_cache.clear()
+
+    assert snapshot is not None
+    assert snapshot.onchain_features.get("data_status") in {"missing", None, "error"}
+
+
+@pytest.mark.asyncio
 async def test_market_context_marks_stale_onchain_observations(monkeypatch) -> None:
     await shared_query_cache.clear()
     stale_ts = datetime(2026, 6, 28, tzinfo=UTC)

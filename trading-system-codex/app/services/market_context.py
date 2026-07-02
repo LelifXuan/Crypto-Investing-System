@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -13,6 +14,8 @@ from app.services.cache_registry import market_context_cache_key
 from app.services.chip_structure import ChipStructureService
 from app.services.macro_overview import MacroOverviewService
 from app.services.onchain.feature_engine import OnchainFeatureEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -66,24 +69,51 @@ class MarketContextBuilder:
             now = datetime.now(UTC)
             dependencies: dict[str, dict[str, Any]] = {}
             sources: list[str] = []
-            chip = await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
-            dependencies["chip_structure"] = self._dependency_meta(
-                "chip_structure",
-                cache_state="fresh",
-                source_updated_at=now,
-            )
+            chip: dict[str, Any] = {
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
+                "state": "missing",
+                "state_label": "筹码结构暂时不可用",
+                "state_reason": "上游数据缺失，策略将依赖其他维度。",
+                "evidence_quality": "missing",
+                "direction_score": 0.0,
+                "execution_score": 0.0,
+                "components": {},
+                "evidence": [],
+                "missing_inputs": ["chip_structure"],
+            }
+            try:
+                chip = await ChipStructureService(self.repository).analyze(instrument_id, timeframe)
+            except Exception as exc:
+                dependencies["chip_structure"] = self._dependency_meta(
+                    "chip_structure",
+                    cache_state="missing",
+                    source_updated_at=None,
+                )
+                logger.warning("chip_structure_analyze_failed: %s", exc, exc_info=True)
+            else:
+                dependencies["chip_structure"] = self._dependency_meta(
+                    "chip_structure",
+                    cache_state="fresh",
+                    source_updated_at=now,
+                )
             sources.append("chip_structure")
-            macro = await MacroOverviewService(self.repository).build_overview()
-            macro_payload = macro.model_dump(mode="json")
+            macro_payload: dict[str, Any] = {}
+            try:
+                macro = await MacroOverviewService(self.repository).build_overview()
+                macro_payload = macro.model_dump(mode="json")
+            except Exception as exc:
+                logger.warning("macro_overview_build_failed: %s", exc, exc_info=True)
+                macro_payload = {"regime_key": None, "operation_bias": None, "total_score": None}
+            macro_ts = self._parse_ts(
+                macro_payload.get("generated_at")
+                or macro_payload.get("snapshot_at")
+                or macro_payload.get("source_updated_at")
+            ) or now
             dependencies["macro"] = self._dependency_meta(
                 "macro",
-                cache_state="fresh" if macro_payload else "missing",
-                source_updated_at=self._parse_ts(
-                    macro_payload.get("generated_at")
-                    or macro_payload.get("snapshot_at")
-                    or macro_payload.get("source_updated_at")
-                )
-                or now,
+                cache_state="fresh" if macro_payload.get("regime_key") else "missing",
+                source_updated_at=macro_ts,
             )
             sources.append("macro")
             derivatives_features: dict[str, Any] = {
@@ -165,7 +195,21 @@ class MarketContextBuilder:
                     source_updated_at=None,
                 )
                 sources.append("btc_derivatives")
-            onchain_read = await OnchainFeatureEngine(self.repository).build(now=now)
+            try:
+                onchain_read = await OnchainFeatureEngine(self.repository).build(now=now)
+            except Exception as exc:
+                logger.warning("onchain_feature_build_failed: %s", exc, exc_info=True)
+                from app.services.onchain.feature_engine import OnchainFeatureRead
+                onchain_read = OnchainFeatureRead(
+                    features={"metrics": {}, "data_status": "missing"},
+                    dependency={
+                        "source_page": "onchain",
+                        "cache_state": "missing",
+                        "freshness_state": "missing",
+                        "source_updated_at": None,
+                        "source_age_seconds": None,
+                    },
+                )
             dependencies["onchain"] = onchain_read.dependency
             sources.append("onchain")
             cache_meta = self._cache_meta(sources, dependencies)
