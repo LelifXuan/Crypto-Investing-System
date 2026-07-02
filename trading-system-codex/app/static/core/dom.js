@@ -258,6 +258,19 @@ export function errorState(message = "拉取失败，可手动重试") {
   return `<div class="data-state data-state-error">${escapeHtml(message)}</div>`;
 }
 
+export function degradedState(title, detail = "", retrySeconds = 30) {
+  return `
+    <section class="strategy-degraded-banner">
+      <div class="degraded-icon">⚠</div>
+      <div>
+        <h3>${escapeHtml(title)}</h3>
+        <p>${escapeHtml(detail)}</p>
+        <small>已自动触发后台预热，预计 ${retrySeconds} 秒后自动更新。</small>
+      </div>
+    </section>
+  `;
+}
+
 export function metricCard(label, value, subLabel = "") {
   return `
     <article class="card metric">
