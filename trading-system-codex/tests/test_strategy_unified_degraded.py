@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -40,3 +42,30 @@ def test_strategy_unified_endpoint_returns_200_when_service_throws(monkeypatch) 
     # Ensure a placeholder unified_state so frontend can render skeleton
     assert body["unified_state"]["code"] == "DATA_DEGRADED"
     assert body["unified_state"]["permission"] in {"observe", "no_trade"}
+
+
+def test_strategy_prewarm_endpoint_enqueues_hint() -> None:
+    """POST /strategy/prewarm enqueues a hint and returns immediately."""
+    app = create_app(enable_lifespan=False)
+    app.dependency_overrides[get_db_session] = _dummy_db_session
+    with patch(
+        "app.api.v1.endpoints.strategy.precompute_service"
+    ) as mock_pc, TestClient(app, raise_server_exceptions=False) as client:
+        mock_pc.enqueue_hint.return_value = {"status": "enqueued"}
+        response = client.post(
+            "/api/v1/strategy/prewarm",
+            params={"instrument_id": "btc-usdt-perp"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "enqueued"
+    assert "eta_seconds" in body
+
+    mock_pc.enqueue_hint.assert_called_once()
+    call_arg = mock_pc.enqueue_hint.call_args[0][0]
+    assert call_arg.current_page == "strategy"
+    assert call_arg.reason == "strategy_cold_start"
+    assert "monitoring" in call_arg.candidates
+    assert "btc-derivatives" in call_arg.candidates
+    assert "macro-overview" in call_arg.candidates

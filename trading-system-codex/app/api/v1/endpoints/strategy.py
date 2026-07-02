@@ -150,6 +150,31 @@ async def refresh_strategy_bundle(
     )
 
 
+@router.post("/prewarm")
+async def prewarm_strategy_dependencies(
+    instrument_id: str = Query(default="btc-usdt-perp"),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+):
+    """Fire-and-forget background refresh of monitoring/derivatives/macro.
+
+    Called by the SPA on mount when the strategy payload is missing or
+    degraded. Returns immediately; actual work happens in the background
+    worker via precompute_service.enqueue_hint().
+    """
+    precompute_service.enqueue_hint(
+        PrecomputeHintRequest(
+            current_page="strategy",
+            instrument_id=_instrument(instrument_id),
+            timeframe="1d",
+            reason="strategy_cold_start",
+            visible=False,
+            candidates=["monitoring", "btc-derivatives", "macro-overview"],
+            priority=2,
+        )
+    )
+    return {"status": "enqueued", "eta_seconds": 30}
+
+
 @router.post("/signals", response_model=StrategySignalSaveRead)
 async def save_strategy_signal(
     payload: StrategySnapshotRequest,
