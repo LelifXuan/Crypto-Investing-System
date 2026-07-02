@@ -59,6 +59,36 @@ AI 策略页重构（X + Y + Z 全栈 + 截图 8 项修复 + 双 endpoint verify
 - `pytest` 全部 52 受影响测试通过（indicator_monitoring 用时 124s 为 fixture 开销）
 - `python tests/verify_pages.py --pages strategy,monitoring-overview` 计划中（需启动 backend 8002 + chromium）
 
+## V1.7.1 (2026-07-02)
+
+修复直接打开 AI 策略页时显示红色错误条的问题。
+
+### 后端
+
+- `/strategy/unified` endpoint 包 try/except，永不返回 5xx；失败时返回 HTTP 200 + degraded payload（含 `degraded=true` / `degraded_components` / `prewarm_status` 字段）。
+- `MarketContextBuilder.get_context()` 把 chip/macro/onchain 三处上游调用都包 try/except，任一失败返回 fallback，snapshot 仍可用。
+- `UnifiedStrategyService.build_unified_strategy()` 把每个 regime engine / cross_horizon / risk_gate / trade_plan / evidence / narrative 都包 try/except，失败时该组件加入 `degraded_components`，其他组件继续工作。Per-dimension fallback 保留正确 `key` / `label`。
+- 新增 `POST /strategy/prewarm` 端点，触发 monitoring / btc-derivatives / macro-overview 的后台预热，立即返回 `{status: 'enqueued', eta_seconds: 30}`。
+- `StrategyUnifiedRead` schema 新增 3 个 optional 字段（默认值，向后兼容）。
+
+### 前端
+
+- 新增 `degradedState()` helper（黄色警告横幅，区别于 `errorState()` 红色）。
+- 新增 `api.prewarmStrategy()` 方法（POST /strategy/prewarm，3s timeout）。
+- `index.js` mount 阶段 fire-and-forget 触发预热。
+- 失败路径用 `degradedState` 替换 `errorState`，并自动重新触发预热。
+- `payload.degraded=true` 时 statusBanner 显示"部分降级 + 命名降级组件"。
+- `adapter.js` 透传 `degraded` / `degraded_components` / `prewarm_status` 字段。
+- 新增 `.strategy-degraded-banner` 样式。
+
+### 测试
+
+- 新增 `tests/test_strategy_unified_degraded.py`：endpoint 永抛错 + prewarm enqueue 验证。
+- 新增 `tests/test_strategy_degraded_frontend.py`：Playwright 验证黄色 banner + prewarm 调用。
+- 修改 `tests/test_market_context_builder.py`：3 个 upstream 失败路径。
+- 修改 `tests/test_strategy_unified_service.py`：engine 失败标记 degraded_components + per-dimension label 验证。
+- 修改 `tests/conftest.py`：新增 `repository` / `base_url` fixtures。
+
 ## V1.5.6 (2026-06-09)
 
 监控总览"宏观指标明细"页 4 项口径异常 + 1 项 0% 防御。
