@@ -59,8 +59,8 @@ PAGE_ROUTES = {
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
 
 # Pages that have a navigation link (data-page-link) in the SPA shell.
-# Pages NOT in this set either have no link (e.g. legacy URLs) or are routed to other pages.
-# The SPA-switch test only iterates this subset, since the others cannot be reached by clicking a tab.
+# Pages NOT in this set either have no link (e.g. legacy URLs) or are routed
+# to other pages. The SPA-switch test only iterates this subset.
 SPA_NAV_PAGES = {
     "monitoring-overview",
     "market-analysis",
@@ -87,7 +87,11 @@ REAL_CONTENT_SELECTORS = {
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
     "ashare-etf": ["#etf-overview", "#etf-groups"],
     "btc-derivatives": [".btc-derivatives-page", ".btc-chart-overview"],
-    "ai-strategy": [".strategy-v2-page", ".strategy-unified-overview", ".strategy-horizon-governance"],
+    "ai-strategy": [
+        ".strategy-v2-page",
+        ".strategy-unified-overview",
+        ".strategy-horizon-governance",
+    ],
 }
 ERROR_SELECTOR = ".error-state, .render-fatal, [data-render-fatal]"
 

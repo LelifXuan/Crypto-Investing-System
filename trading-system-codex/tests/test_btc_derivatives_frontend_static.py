@@ -178,7 +178,9 @@ def test_chart_header_uses_interpretation_not_timestamp_metadata() -> None:
 
 def test_chart_header_uses_short_labels_not_evidence_layer_sentences() -> None:
     source = PAGE.read_text(encoding="utf-8")
-    chart_insight = source[source.index("function chartInsight") : source.index("function chartCard")]
+    chart_insight = source[
+        source.index("function chartInsight") : source.index("function chartCard")
+    ]
 
     assert "implication" not in chart_insight
     assert "关键价位迁移与现价存在分歧" not in chart_insight
@@ -188,7 +190,9 @@ def test_chart_header_uses_short_labels_not_evidence_layer_sentences() -> None:
 
 def test_hero_uses_market_verdict_not_generic_page_description() -> None:
     source = PAGE.read_text(encoding="utf-8")
-    hero_verdict = source[source.index("function heroMarketVerdict") : source.index("function renderHero")]
+    hero_verdict = source[
+        source.index("function heroMarketVerdict") : source.index("function renderHero")
+    ]
 
     assert "function heroMarketVerdict" in source
     assert "暂不能形成可靠多空判定" in source

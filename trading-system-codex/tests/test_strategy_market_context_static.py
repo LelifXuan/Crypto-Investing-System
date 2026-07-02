@@ -58,7 +58,8 @@ def test_strategy_v2_renderers_show_real_unified_payload_fields() -> None:
     assert "normal" in event_watch
     assert "dedupeRisks" in risk_panel
     assert "risk.id" in risk_panel or "risk.key" in risk_panel
-    # v1.7: evidence card no longer renders calculation_rule / input_features / source_modules as visible text
+    # v1.7: evidence card no longer renders calculation_rule / input_features /
+    # source_modules as visible text.
     assert "计算规则" not in evidence
     assert "输入特征" not in evidence
     assert "human_explanation" in evidence
