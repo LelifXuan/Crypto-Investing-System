@@ -25,7 +25,11 @@ from app.db.models.market import (
     MacroEventCalendar,
     MacroSourceHealth,
 )
-from app.monitoring.loader import load_alert_rules, load_indicator_catalog, load_refresh_policies
+from app.monitoring.loader import (
+    load_alert_rules,
+    load_indicator_catalog,
+    load_refresh_policies,
+)
 from app.quant.indicators import (
     adx_wilder_series,
     atr_ema_series,
@@ -40,7 +44,10 @@ from app.quant.indicators import (
 from app.repositories.market_repository import MarketRepository
 from app.services.contract_snapshot import ContractSnapshotService
 from app.services.macro import transforms as macro_transforms
-from app.services.macro.indicator_key_aliases import canonical_macro_key, canonical_provider_key
+from app.services.macro.indicator_key_aliases import (
+    canonical_macro_key,
+    canonical_provider_key,
+)
 from app.services.macro.provider_registry import MacroProviderRegistry
 from app.services.market import MarketService
 from app.services.microstructure import (
@@ -49,6 +56,7 @@ from app.services.microstructure import (
     summarize_depth_slippage,
     summarize_open_interest,
 )
+from app.services.onchain.router import OnchainProviderRouter
 
 UTC = timezone.utc
 logger = logging.getLogger(__name__)
@@ -125,6 +133,7 @@ class IndicatorMonitoringService:
             market_service=self.market_service,
         )
         self.macro_provider_registry = MacroProviderRegistry()
+        self.onchain_provider_router = OnchainProviderRouter()
         self._technical_batch_cache: dict | None = None
 
     def _freshness_days_for_frequency(self, definition) -> float:
@@ -335,12 +344,83 @@ class IndicatorMonitoringService:
         return results
 
     async def sync_onchain(self) -> list[SyncResult]:
-        return [
-            await self.run_policy(policy, trigger_type="manual")
-            for policy in await self.repository.list_monitoring_policies(
-                enabled_only=True, category="onchain"
+        # Strategy layer path: ensure DefiLlama indicator definitions exist,
+        # collect a public snapshot through ``OnchainProviderRouter`` and persist
+        # observations even when no ``IndicatorMonitoringPolicy`` row is
+        # registered for category=onchain.
+        from app.services.onchain.policy_adapter import (
+            collect_via_router,
+            ensure_defillama_definitions,
+            persist_drafts,
+        )
+
+        results: list[SyncResult] = []
+        try:
+            await ensure_defillama_definitions(self.repository)
+            outcome = await collect_via_router(self.onchain_provider_router)
+            written = await persist_drafts(self.repository, outcome.drafts)
+            meta_obs = [
+                IndicatorObservation(
+                    observation_id=f"sync-meta-{__import__('uuid').uuid4().hex[:8]}",
+                    dedupe_key=f"__onchain_defillama__|{outcome.meta['fetched_at']}",
+                    indicator_key="defi_total_tvl",
+                    category="onchain",
+                    observation_ts=datetime.now(UTC),
+                    value_num=None,
+                    value_json={
+                        "meta": True,
+                        "status": outcome.meta["status"],
+                        "missing_keys": outcome.meta["missing_keys"],
+                        "warnings": outcome.meta["warnings"],
+                        "written": written,
+                    },
+                    source_provider="defillama",
+                    source_ref="defillama:__sync_meta__",
+                    source_granularity="daily",
+                    quality_score=Decimal("100"),
+                )
+            ]
+            results.append(
+                SyncResult(
+                    run_id=f"defillama-{outcome.meta['fetched_at']}",
+                    indicator_key="__onchain_defillama__",
+                    rows_written=written,
+                    observations=meta_obs,
+                )
             )
-        ]
+        except Exception as exc:  # noqa: BLE001 - defensive guard, see AGENTS.md §六
+            logger.warning("defillama policy adapter failed: %s", exc, exc_info=True)
+            results.append(
+                SyncResult(
+                    run_id=f"defillama-error-{datetime.now(UTC).isoformat()}",
+                    indicator_key="__onchain_defillama__",
+                    rows_written=0,
+                    observations=[
+                        IndicatorObservation(
+                            observation_id=f"sync-meta-{__import__('uuid').uuid4().hex[:8]}",
+                            dedupe_key="__onchain_defillama__|error",
+                            indicator_key="defi_total_tvl",
+                            category="onchain",
+                            observation_ts=datetime.now(UTC),
+                            value_num=None,
+                            value_json={"meta": True, "error": str(exc)},
+                            source_provider="defillama",
+                            source_ref="defillama:__sync_error__",
+                            source_granularity="daily",
+                            quality_score=Decimal("0"),
+                        )
+                    ],
+                )
+            )
+
+        # Legacy path: still run any registered monitoring policies for parity.
+        for policy in await self.repository.list_monitoring_policies(
+            enabled_only=True, category="onchain"
+        ):
+            results.append(
+                await self.run_policy(policy, trigger_type="manual")
+            )
+        return results
 
     async def sync_technical(
         self,
@@ -1158,19 +1238,89 @@ class IndicatorMonitoringService:
     ) -> list[IndicatorObservation]:
         now = datetime.now(timezone.utc)
         asset_code = policy.asset_code or (definition.supported_assets_json or ["BTC"])[0]
+        if definition.source_provider == "defillama":
+            result = await self.onchain_provider_router.fetch_metric(definition.indicator_key)
+            raw_value = result.get("value")
+            value = Decimal(str(raw_value)) if raw_value is not None else None
+            if value is None:
+                return [
+                    await self._persist_observation(
+                        definition=definition,
+                        run_id=run_id,
+                        observation_ts=now,
+                        value_num=None,
+                        value_json={
+                            "source": "defillama",
+                            "status": result.get("status", "degraded"),
+                            "missing_fields": result.get("missing_fields") or [],
+                            "score_excluded": True,
+                        },
+                        signal_state="degraded",
+                        source_provider="defillama",
+                        source_ref=f"defillama:{definition.indicator_key}",
+                        source_granularity=policy.timeframe or "1d",
+                        asset_code=asset_code,
+                        quality_score=Decimal("0"),
+                    )
+                ]
+            return [
+                await self._persist_observation(
+                    definition=definition,
+                    run_id=run_id,
+                    observation_ts=now,
+                    value_num=value,
+                    value_json={
+                        "value": str(value),
+                        "source": "defillama",
+                        "status": result.get("status", "live"),
+                        "all_metrics": result.get("indicators") or {},
+                    },
+                    signal_state="neutral",
+                    source_provider="defillama",
+                    source_ref=f"defillama:{definition.indicator_key}",
+                    source_granularity=policy.timeframe or "1d",
+                    asset_code=asset_code,
+                    quality_score=Decimal(settings.monitoring_default_quality_score),
+                )
+            ]
+        if not settings.enable_demo_onchain:
+            observation = await self._persist_observation(
+                definition=definition,
+                run_id=run_id,
+                observation_ts=now,
+                value_num=None,
+                value_json={
+                    "source": definition.source_provider,
+                    "status": "degraded",
+                    "missing_reason": "onchain_provider_not_configured",
+                    "score_excluded": True,
+                },
+                signal_state="degraded",
+                source_provider=definition.source_provider,
+                source_ref=f"unavailable:{definition.indicator_key}:{asset_code}",
+                source_granularity=policy.timeframe or "1d",
+                asset_code=asset_code,
+                quality_score=Decimal("0"),
+            )
+            return [observation]
         value = self._demo_onchain_value(definition.indicator_key, asset_code, now)
         observation = await self._persist_observation(
             definition=definition,
             run_id=run_id,
             observation_ts=now,
             value_num=value,
-            value_json={"value": str(value), "source": "demo_onchain"},
+            value_json={
+                "value": str(value),
+                "source": "demo_onchain",
+                "demo_only": True,
+                "score_excluded": True,
+            },
             signal_state=self._onchain_state(definition.indicator_key, value),
             source_provider=definition.source_provider,
             source_ref=f"demo:{definition.indicator_key}:{asset_code}",
             source_granularity=policy.timeframe or "1d",
             asset_code=asset_code,
-            quality_score=Decimal(settings.monitoring_demo_quality_score),
+            quality_score=Decimal("0"),
         )
         return [observation]
 
@@ -1233,7 +1383,9 @@ class IndicatorMonitoringService:
             source_ref=source_ref,
             source_granularity=source_granularity,
             is_preliminary=is_preliminary,
-            quality_score=quality_score or Decimal(settings.monitoring_default_quality_score),
+            quality_score=quality_score
+            if quality_score is not None
+            else Decimal(settings.monitoring_default_quality_score),
             run_id=run_id,
         )
         return await self.repository.add_or_update_observation(observation)
@@ -1242,6 +1394,8 @@ class IndicatorMonitoringService:
         for observation in observations:
             payload = observation.value_json or {}
             if payload.get("is_immature") or payload.get("lookback_ready") is False:
+                continue
+            if payload.get("demo_only") or payload.get("score_excluded"):
                 continue
             rules = await self.repository.list_alert_rules(
                 enabled_only=True, indicator_key=observation.indicator_key

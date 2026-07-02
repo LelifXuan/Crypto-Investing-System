@@ -160,6 +160,18 @@ def strategy_bundle_cache_key(
     )
 
 
+def market_context_cache_key(
+    instrument_id: str,
+    timeframe: str,
+    source_version: str = CACHE_SOURCE_VERSION,
+) -> str:
+    return (
+        "market_context:"
+        f"{normalize_instrument_id(instrument_id)}:"
+        f"{normalize_timeframe_for_cache(timeframe)}:{source_version}"
+    )
+
+
 def monitoring_decision_brief_cache_key(
     instrument_id: str,
     timeframe: str,
@@ -263,6 +275,7 @@ def ttl_seconds_for_page(page_type: str) -> int:
         "macro": settings.page_snapshot_macro_ttl_seconds,
         "events": settings.page_snapshot_events_ttl_seconds,
         "strategy": settings.page_snapshot_analysis_ttl_seconds,
+        "market_context": settings.page_snapshot_monitoring_ttl_seconds,
     }
     return mapping.get(page_type, settings.page_snapshot_analysis_ttl_seconds)
 

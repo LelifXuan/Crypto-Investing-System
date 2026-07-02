@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,48 @@ from app.services.precompute import precompute_service
 from app.web.router import web_router
 
 logger = logging.getLogger(__name__)
+
+MAIN_PAGE_PATHS = {
+    "/market-analysis-page",
+    "/structure-page",
+    "/monitoring-page",
+    "/strategy-page",
+    "/btc-derivatives-page",
+}
+
+
+async def _enqueue_daily_page_prewarm() -> None:
+    instrument_id = "btc-usdt-perp"
+    plan = (
+        ("analysis", ["analysis"], ("1h", "4h", "1d")),
+        ("structure", ["structure"], ("1h", "4h", "1d")),
+        ("strategy", ["strategy"], ("4h", "1d")),
+        ("monitoring", ["monitoring"], ("1d",)),
+        ("macro", ["macro"], ("1d",)),
+        ("events", ["events"], ("1d",)),
+    )
+    for page, candidates, timeframes in plan:
+        for timeframe in timeframes:
+            await precompute_service.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page=page,
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    reason="daily_first_page_access",
+                    visible=False,
+                    candidates=candidates,
+                    priority=4,
+                )
+            )
+    await precompute_service.enqueue_hint(
+        PrecomputeHintRequest(
+            current_page="btc-derivatives",
+            reason="daily_first_page_access",
+            visible=False,
+            candidates=["btc_derivatives"],
+            priority=4,
+        )
+    )
 
 
 def _should_start_worker(name: str) -> bool:
@@ -140,24 +183,37 @@ async def lifespan(app: FastAPI):
         async def run_startup_warmup(instrument_ids: list[str]) -> None:
             # Let interactive page requests and precompute hints take the lead first.
             await asyncio.sleep(8)
+            warmup_plan = (
+                ("analysis", ["analysis"], ("1h", "4h", "1d")),
+                ("structure", ["structure"], ("1h", "4h", "1d")),
+                ("strategy", ["strategy"], ("4h", "1d")),
+                ("monitoring", ["monitoring"], ("1d",)),
+                ("macro", ["macro"], ("1d",)),
+                ("events", ["events"], ("1d",)),
+            )
             for target_instrument_id in instrument_ids:
-                for page, candidates in (
-                    ("analysis", ["analysis"]),
-                    ("monitoring", ["monitoring"]),
-                    ("strategy", ["strategy"]),
-                    ("macro", ["macro"]),
-                ):
-                    await precompute_service.enqueue_hint(
-                        PrecomputeHintRequest(
-                            current_page=page,
-                            instrument_id=target_instrument_id,
-                            timeframe="1d",
-                            reason="startup_critical_snapshot",
-                            visible=False,
-                            candidates=candidates,
-                            priority=5,
+                for page, candidates, timeframes in warmup_plan:
+                    for timeframe in timeframes:
+                        await precompute_service.enqueue_hint(
+                            PrecomputeHintRequest(
+                                current_page=page,
+                                instrument_id=target_instrument_id,
+                                timeframe=timeframe,
+                                reason="startup_critical_snapshot",
+                                visible=False,
+                                candidates=candidates,
+                                priority=5,
+                            )
                         )
-                    )
+            await precompute_service.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page="btc-derivatives",
+                    reason="startup_critical_snapshot",
+                    visible=False,
+                    candidates=["btc_derivatives"],
+                    priority=5,
+                )
+            )
 
         warmup_task = asyncio.create_task(
             run_startup_warmup(warmup_instrument_ids),
@@ -205,6 +261,20 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(web_router)
+
+    app.state.daily_prewarm_utc_day = None
+
+    @app.middleware("http")
+    async def daily_first_page_prewarm(request, call_next):
+        if settings.precompute_enabled and request.method == "GET" and request.url.path in MAIN_PAGE_PATHS:
+            today = datetime.now(timezone.utc).date().isoformat()
+            if app.state.daily_prewarm_utc_day != today:
+                app.state.daily_prewarm_utc_day = today
+                asyncio.create_task(
+                    _enqueue_daily_page_prewarm(),
+                    name="daily-first-page-prewarm",
+                )
+        return await call_next(request)
 
     @app.middleware("http")
     async def static_cache_control(request, call_next):

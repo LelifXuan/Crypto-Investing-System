@@ -101,7 +101,7 @@ async def get_structure_bundle(
     needs_refresh = (
         bundle.cache_state == "missing"
         or bundle.is_stale
-        or bundle.freshness_state in {"lagging", "stale", "missing"}
+        or bundle.freshness_state in {"due", "lagging", "stale", "missing"}
     )
     if needs_refresh:
         await precompute_service.enqueue_hint(
@@ -117,7 +117,7 @@ async def get_structure_bundle(
             bundle.status_message = "暂无结构快照，已加入后台预计算队列。"
         elif bundle.is_stale:
             bundle.status_message = "结构快照可能滞后，后台正在准备新数据。"
-        elif bundle.freshness_state in {"lagging", "stale"}:
+        elif bundle.freshness_state in {"due", "lagging", "stale"}:
             bundle.status_message = "K 线数据滞后，后台正在更新 K 线与结构快照。"
     return bundle
 

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = Field(default="Trading System API", alias="APP_NAME")
-    app_version: str = Field(default="1.6.0", alias="APP_VERSION")
+    app_version: str = Field(default="1.7.0", alias="APP_VERSION")
     app_env: str = Field(default="dev", alias="APP_ENV")
     app_distribution_mode: str = Field(
         default=app_paths.distribution_mode, alias="APP_DISTRIBUTION_MODE"
@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     )
     btc_derivatives_stale_max_seconds: int = Field(
         default=900, alias="BTC_DERIVATIVES_STALE_MAX_SECONDS"
+    )
+    btc_derivatives_hard_stale_max_seconds: int = Field(
+        default=7200, alias="BTC_DERIVATIVES_HARD_STALE_MAX_SECONDS"
     )
     btc_derivatives_circuit_failure_threshold: int = Field(
         default=3, alias="BTC_DERIVATIVES_CIRCUIT_FAILURE_THRESHOLD"
@@ -236,6 +239,7 @@ class Settings(BaseSettings):
         default=95, alias="MONITORING_DEFAULT_QUALITY_SCORE"
     )
     monitoring_demo_quality_score: int = Field(default=60, alias="MONITORING_DEMO_QUALITY_SCORE")
+    enable_demo_onchain: bool = Field(default=False, alias="ENABLE_DEMO_ONCHAIN")
     ashare_etf_provider_order: list[str] = Field(
         default_factory=lambda: ["eastmoney_direct"],
         alias="ASHARE_ETF_PROVIDER_ORDER",

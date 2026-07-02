@@ -26,7 +26,7 @@ async def get_analysis_bundle(
         instrument_id, normalized_timeframe, view_window
     )
     if bundle.cache_state in {"missing", "stale", "error", "updating"} or (
-        bundle.freshness_state in {"expired", "missing"}
+        bundle.freshness_state in {"due", "expired", "missing"}
     ):
         queued = await precompute_service.enqueue_hint(
             PrecomputeHintRequest(

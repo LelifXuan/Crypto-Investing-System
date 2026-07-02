@@ -14,6 +14,7 @@ from app.services.cache_registry import (
     expires_at_for_strategy,
     strategy_bundle_cache_key,
 )
+from app.services.market_context import MarketContextBuilder
 from app.services.monitoring_dashboard import MonitoringDashboardService
 from app.services.strategy_signal.config_loader import load_strategy_signal_config
 from app.services.strategy_signal.risk_reward import clamp
@@ -136,7 +137,79 @@ def _build_trend_score(indicators: dict[str, Any]) -> tuple[float, float]:
             bullish += 10.0
         elif bearish > bullish:
             bearish += 10.0
+    vwap_config = load_strategy_signal_config().get("vwap_cost_channel") or {}
+    vwap = classify_vwap_cost_channel(indicators, vwap_config)
+    if vwap["vwap_bias"] == "bullish":
+        bullish += 8.0
+        bearish -= 4.0
+    elif vwap["vwap_bias"] == "bearish":
+        bearish += 8.0
+        bullish -= 4.0
     return clamp(bullish), clamp(bearish)
+
+
+def classify_vwap_cost_channel(
+    features: dict[str, Any], config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    config = config or {}
+    close = _num(features.get("close") or features.get("current_price"))
+    vwap_short = _num(features.get("vwap_short") or features.get("vwap_50"))
+    vwap_long = _num(features.get("vwap_long") or features.get("vwap_100"))
+    short_slope = _num(features.get("vwap_slope_short_10") or features.get("vwap_slope_10"))
+    long_slope = _num(features.get("vwap_slope_long_10"))
+    price_buffer = float(config.get("price_buffer", 0.01))
+    spread_buffer = float(config.get("spread_buffer", 0.005))
+    if not close or not vwap_short or not vwap_long:
+        return {
+            "vwap_regime": "data_unavailable",
+            "vwap_bias": "neutral",
+            "vwap_confidence": 0,
+            "price_position": "unknown",
+            "risk_note": "VWAP 成本通道数据不足，仅保留中性过滤。",
+        }
+    above = close > vwap_long * (1 + price_buffer)
+    below = close < vwap_long * (1 - price_buffer)
+    short_above_long = vwap_short > vwap_long * (1 + spread_buffer)
+    short_below_long = vwap_short < vwap_long * (1 - spread_buffer)
+    slopes_up = short_slope >= 0 and long_slope >= 0
+    slopes_down = short_slope <= 0 and long_slope <= 0
+    price_position = "inside_channel"
+    if above:
+        price_position = "above_channel"
+    elif below:
+        price_position = "below_channel"
+    if above and short_above_long and slopes_up:
+        regime = "bull_trend"
+        bias = "bullish"
+        confidence = 75
+        note = "价格有效站上长期 VWAP，短期成本高于长期成本且斜率确认。"
+    elif below and short_below_long and slopes_down:
+        regime = "bear_trend"
+        bias = "bearish"
+        confidence = 75
+        note = "价格有效跌破长期 VWAP，短期成本低于长期成本且斜率确认。"
+    elif short_above_long != above or short_below_long != below:
+        regime = "cost_disagreement"
+        bias = "neutral"
+        confidence = 40
+        note = "价格位置与 VWAP 成本结构不一致，按分歧处理。"
+    elif above or below:
+        regime = "mean_reversion_risk"
+        bias = "neutral"
+        confidence = 45
+        note = "价格偏离成本通道但缺少斜率或价差确认，避免直接当作趋势触发。"
+    else:
+        regime = "neutral"
+        bias = "neutral"
+        confidence = 50
+        note = "价格仍在 VWAP 成本缓冲区内。"
+    return {
+        "vwap_regime": regime,
+        "vwap_bias": bias,
+        "vwap_confidence": confidence,
+        "price_position": price_position,
+        "risk_note": note,
+    }
 
 
 def _build_structure_score(structure_overall: dict[str, Any]) -> tuple[float, float]:
@@ -148,9 +221,12 @@ def _build_structure_score(structure_overall: dict[str, Any]) -> tuple[float, fl
     missing. Returns ``(bullish, bearish)``.
     """
 
-    bias_score = _num(structure_overall.get("bias_score"))
-    if not bias_score:
-        bias_score = _num(structure_overall.get("bullish_score"))
+    bias_score = _num(
+        structure_overall.get("bias_score")
+        or structure_overall.get("bullish_score")
+        or structure_overall.get("overall_score")
+        or structure_overall.get("score")
+    )
     if bias_score:
         return clamp(bias_score), clamp(100.0 - bias_score)
     bias = str(
@@ -159,10 +235,14 @@ def _build_structure_score(structure_overall: dict[str, Any]) -> tuple[float, fl
         or structure_overall.get("direction")
         or ""
     ).lower()
-    if bias in {"bullish", "long", "up"}:
+    if bias in {"bullish", "long", "up", "strong_bullish"}:
         return 70.0, 30.0
-    if bias in {"bearish", "short", "down"}:
+    if bias in {"bearish", "short", "down", "strong_bearish"}:
         return 30.0, 70.0
+    if bias in {"weak_bullish", "slightly_bullish", "neutral_bullish"}:
+        return 60.0, 40.0
+    if bias in {"weak_bearish", "slightly_bearish", "neutral_bearish"}:
+        return 40.0, 60.0
     return 50.0, 50.0
 
 
@@ -298,6 +378,25 @@ class StrategySnapshotBuilder:
             allow_refresh=not cache_only,
         )
         structure_payload = await self._structure_payload(instrument, tf)
+        try:
+            market_context = await MarketContextBuilder(self.repository).get_context(
+                instrument,
+                tf,
+                cache_only=True,
+            )
+            market_context_payload = market_context.__dict__
+        except Exception as exc:
+            logger.debug("strategy market context unavailable: %s", exc)
+            market_context_payload = {
+                "instrument_id": instrument,
+                "timeframe": tf,
+                "data_quality": {"dependencies": {"market_context": {"cache_state": "error"}}},
+                "cache_meta": {
+                    "source": "market_context_builder",
+                    "cache_state": "error",
+                    "last_error": str(exc),
+                },
+            }
 
         analysis_payload = analysis.model_dump(mode="json")
         alerts_payload = alerts.model_dump(mode="json")
@@ -316,7 +415,7 @@ class StrategySnapshotBuilder:
         technical_risk_payload = alerts_payload.get("technical_risk") or {}
         macro_overview = monitoring_payload.get("macro_overview") or {}
         structure_overall = (
-            structure_payload.get("snapshot", {}).get("overall")
+            (structure_payload.get("snapshot") or {}).get("overall")
             or structure_payload.get("overall")
             or {}
         )
@@ -331,6 +430,12 @@ class StrategySnapshotBuilder:
         indicators = self._indicators(core, secondary)
         levels = self._levels(structure_payload)
         config = load_strategy_signal_config()
+        price = float(current_price) if current_price is not None else 0.0
+        if price:
+            indicators["close"] = price
+        vwap_features = classify_vwap_cost_channel(
+            indicators, config.get("vwap_cost_channel") or {}
+        )
 
         direction_score = _num(final_decision.get("direction_score"), 0)
         direction_metrics = normalize_direction_metrics(direction_score, scale="signed")
@@ -338,7 +443,6 @@ class StrategySnapshotBuilder:
         risk_score = _num(final_decision.get("risk_score"), 50)
         confidence_score = _num(final_decision.get("confidence_score"), 50)
         conflict_level = _num(final_decision.get("conflict_level"), 0)
-        price = float(current_price) if current_price is not None else 0.0
         atr = max(_num(indicators.get("atr_14"), price * 0.025), price * 0.006) if price else 0
         support = _decimal(levels.get("support_price") or levels.get("val_price"))
         resistance = _decimal(levels.get("resistance_price") or levels.get("vah_price"))
@@ -446,6 +550,7 @@ class StrategySnapshotBuilder:
             },
             "price": {"current": str(current_price) if current_price is not None else None},
             "indicators": indicators,
+            "vwap_features": vwap_features,
             "levels": levels,
             "macro": {"macro_bias": macro_bias, "event_window_status": macro_status},
             "structure": {
@@ -459,6 +564,7 @@ class StrategySnapshotBuilder:
             },
             "technical_risk": {"divergence": divergence_risk},
             "monitoring": monitoring_payload,
+            "market_context": market_context_payload,
             "bundle_status": {
                 **dependency_state,
             },
@@ -534,6 +640,9 @@ class StrategySnapshotBuilder:
                 "breakout_up": bool(levels.get("breakout_up")),
                 "breakout_down": bool(levels.get("breakout_down")),
                 "event_window_status": macro_status,
+                "vwap_regime": vwap_features.get("vwap_regime"),
+                "vwap_bias": vwap_features.get("vwap_bias"),
+                "vwap_confidence": vwap_features.get("vwap_confidence"),
             }
         )
         await self._persist_strategy_cache(instrument, tf, snapshot)
@@ -636,6 +745,13 @@ class StrategySnapshotBuilder:
             "percent_b": _last_value(secondary, "percent_b"),
             "obv": _last_value(secondary, "obv"),
             "obv_slope": _last_value(secondary, "obv_slope"),
+            "vwap_short": _last_value(secondary, "vwap_short", "vwap_50"),
+            "vwap_long": _last_value(secondary, "vwap_long", "vwap_100"),
+            "price_vs_vwap_short_pct": _last_value(secondary, "price_vs_vwap_short_pct"),
+            "price_vs_vwap_long_pct": _last_value(secondary, "price_vs_vwap_long_pct"),
+            "vwap_spread_pct": _last_value(secondary, "vwap_spread_pct"),
+            "vwap_slope_short_10": _last_value(secondary, "vwap_slope_short_10", "vwap_slope_10"),
+            "vwap_slope_long_10": _last_value(secondary, "vwap_slope_long_10"),
         }
 
     @staticmethod
@@ -794,7 +910,15 @@ class StrategySnapshotBuilder:
                 include_geometry=True,
                 candles_limit=220,
             )
-            return structure.model_dump(mode="json")
+            payload = structure.model_dump(mode="json")
+            snapshot = payload.get("snapshot")
+            if snapshot is None:
+                payload["snapshot"] = {"overall": {}}
+            if not payload.get("overall"):
+                payload["overall"] = {}
+            payload.setdefault("candles", [])
+            payload.setdefault("diagnostics", {})
+            return payload
         except Exception as exc:
             return {
                 "instrument_id": instrument_id,

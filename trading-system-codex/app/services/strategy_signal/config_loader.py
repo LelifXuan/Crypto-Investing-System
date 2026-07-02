@@ -56,6 +56,17 @@ DEFAULT_STRATEGY_SIGNAL_CONFIG: dict[str, Any] = {
         "high_conflict_score": 0.10,
         "event_uncertainty": 0.10,
     },
+    "vwap_cost_channel": {
+        "enabled": True,
+        "short_window": 50,
+        "long_window": 100,
+        "alt_short_window": 30,
+        "alt_long_window": 120,
+        "price_buffer": 0.01,
+        "spread_buffer": 0.005,
+        "slope_lookback": 10,
+        "use_as_filter_not_trigger": True,
+    },
     "thresholds": {
         "data_quality_min_decision": 40,
         "event_wait": 75,

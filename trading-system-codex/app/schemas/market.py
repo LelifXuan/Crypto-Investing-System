@@ -500,6 +500,11 @@ class MacroOverviewIndicatorRead(BaseModel):
     status: str = "missing"
     fallback_level: str | None = None
     is_scored: bool = False
+    score: int | None = None
+    direction: str | None = None
+    direction_label: str | None = None
+    formula_id: str | None = None
+    score_reason: str | None = None
     score_block_reason: str | None = None
     status_reason: str | None = None
     insight: str
@@ -564,6 +569,7 @@ class MacroOverviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     layer_contributions: dict[str, float] = Field(default_factory=dict)
     operation_bias: str = "observe"
+    event_window_state: str = "unknown"
     event_window_status: str = ""
     event_window_summary: str = ""
     next_event_title: str | None = None

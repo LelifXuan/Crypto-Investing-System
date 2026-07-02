@@ -118,7 +118,7 @@ def bootstrap_runtime_environment() -> AppPaths:
         manifest_path.write_text(
             json.dumps(
                 {
-                    "app_version": "1.6.0",
+                    "app_version": "1.7.0",
                     "distribution_mode": app_paths.distribution_mode,
                     "bundle_root": app_paths.bundle_root.as_posix(),
                     "runtime_root": app_paths.runtime_root.as_posix(),
@@ -154,7 +154,7 @@ def bootstrap_runtime_environment() -> AppPaths:
             "\n".join(
                 [
                     f"distribution_mode={app_paths.distribution_mode}",
-                    "app_version=1.6.0",
+                    "app_version=1.7.0",
                     f"bundle_root={app_paths.bundle_root}",
                     f"runtime_root={app_paths.runtime_root}",
                     f"embedded_python_dir={app_paths.embedded_python_dir}",
