@@ -266,7 +266,7 @@ def run_audit(portable_root: Path, report_path: Path, screenshots: Path) -> dict
         or item.failed_responses
     ]
     payload = {
-        "version": "1.6.0",
+        "version": "1.7.0",
         "portable_root": str(portable_root),
         "results": [asdict(item) for item in results],
         "restart_persistence": {

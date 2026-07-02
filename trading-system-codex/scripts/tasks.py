@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -136,7 +137,48 @@ def run_install() -> None:
     run_step([sys.executable, "-m", "pip", "install", "-e", ".[dev]"])
 
 
+def _port_from_env_or_default(default: int) -> int:
+    raw = os.getenv("APP_PORT")
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise TaskError(f"APP_PORT must be an integer, got {raw!r}.") from exc
+    if not 1 <= port <= 65535:
+        raise TaskError(f"APP_PORT must be between 1 and 65535, got {port}.")
+    return port
+
+
+def _can_bind_localhost(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _select_dev_port(preferred: int, *, fallback_span: int = 20) -> int:
+    for port in range(preferred, min(preferred + fallback_span, 65536)):
+        if _can_bind_localhost(port):
+            return port
+    raise TaskError(
+        f"No available localhost port found in range {preferred}-"
+        f"{min(preferred + fallback_span - 1, 65535)}."
+    )
+
+
 def run_dev(port: int) -> None:
+    requested_port = _port_from_env_or_default(port)
+    selected_port = _select_dev_port(requested_port)
+    if selected_port != requested_port:
+        print(
+            f"Port {requested_port} is unavailable; using {selected_port} instead.",
+            flush=True,
+        )
+    print(f"Starting dev server at http://127.0.0.1:{selected_port}", flush=True)
     run_step(
         [
             sys.executable,
@@ -146,7 +188,7 @@ def run_dev(port: int) -> None:
             "--host",
             "127.0.0.1",
             "--port",
-            str(port),
+            str(selected_port),
             "--reload",
         ]
     )

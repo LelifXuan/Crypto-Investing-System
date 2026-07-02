@@ -1,0 +1,10 @@
+archive_old/
+runtime_dev/
+TradingSystemPortable/
+_codex_secret_backups/
+.opencode_backups/
+*.pyc
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

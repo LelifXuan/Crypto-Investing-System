@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -113,6 +115,23 @@ RESIDUE_SUFFIXES = {
 # never ship.
 PORTABLE_EXCLUDES_JSON = DIST_DIR / "portable_excludes.json"
 
+SECRET_KEY_PATTERN = re.compile(
+    r"(?i)(secret|password|passwd|token|api[_-]?key|access[_-]?key|private[_-]?key|jwt)"
+)
+SAFE_SECRET_VALUES = {"", "changeme", "change-me", "example", "your-value-here", "replace-me"}
+NON_SECRET_KEYS = {
+    "JWT_ALGORITHM",
+    "JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
+    "JWT_REFRESH_TOKEN_EXPIRE_MINUTES",
+}
+
+
+@dataclass(frozen=True)
+class SecretFinding:
+    path: Path
+    key: str
+    line_number: int
+
 
 def should_skip(path: Path, *, root: Path = PROJECT_ROOT) -> bool:
     relative = path.relative_to(root)
@@ -131,6 +150,51 @@ def should_skip(path: Path, *, root: Path = PROJECT_ROOT) -> bool:
     if path.suffix in EXCLUDED_SUFFIXES:
         return True
     return False
+
+
+def scan_secret_like_content(paths: list[Path] | tuple[Path, ...]) -> list[SecretFinding]:
+    """Find non-empty secret-like key/value pairs in text files.
+
+    This intentionally reports keys only, never values, so verifier output does
+    not become the next leak vector.
+    """
+
+    findings: list[SecretFinding] = []
+    for path in paths:
+        if not path.exists() or not path.is_file():
+            continue
+        if path.name.endswith((".png", ".jpg", ".jpeg", ".gif", ".ico", ".zip", ".7z")):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for key, line_number in scan_secret_text(text):
+            findings.append(SecretFinding(path=path, key=key, line_number=line_number))
+    return findings
+
+
+def scan_secret_text(text: str) -> list[tuple[str, int]]:
+    findings: list[tuple[str, int]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        if "==" in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip().strip('"').strip("'")
+        value = value.strip().strip('"').strip("'")
+        if key in NON_SECRET_KEYS:
+            continue
+        if not key.upper() == key:
+            continue
+        if not SECRET_KEY_PATTERN.search(key):
+            continue
+        if value.lower() in SAFE_SECRET_VALUES:
+            continue
+        findings.append((key, line_number))
+    return findings
 
 
 def release_residue(root: Path = PROJECT_ROOT) -> list[Path]:
