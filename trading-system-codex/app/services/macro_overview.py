@@ -16,8 +16,8 @@ from app.schemas.market import (
 )
 from app.services.macro import transforms
 from app.services.macro.fallback_resolver import fallback_for_indicator
-from app.services.macro.indicator_key_aliases import canonical_macro_key
 from app.services.macro.provider_registry import MacroProviderRegistry
+from app.services.macro.scoring_engine import DEFAULT_MACRO_SCORING_ENGINE
 
 UTC = timezone.utc
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "monitoring" / "configs"
@@ -344,9 +344,10 @@ class MacroOverviewService:
                 indicators.append(
                     await self._indicator_read(layer, spec, latest_by_key, definitions)
                 )
+            _apply_macro_scoring_metadata(indicators)
             scored = [item for item in indicators if item.is_scored]
             score = (
-                round(sum(_score_indicator(item) for item in scored) / len(scored))
+                round(sum(int(item.score or 50) for item in scored) / len(scored))
                 if scored
                 else 50
             )
@@ -387,6 +388,7 @@ class MacroOverviewService:
         total_score = _total_score(layer_contributions)
         event_items = _event_items(events, now)
         event_status, event_summary, next_event = _event_window(events, now)
+        event_state = _event_window_state(event_status)
         completeness = _data_completeness(layers)
 
         warnings = _warnings(layers)
@@ -409,6 +411,7 @@ class MacroOverviewService:
             warnings=warnings,
             layer_contributions=layer_contributions,
             operation_bias=_operation_bias(total_score, completeness),
+            event_window_state=event_state,
             event_window_status=event_status,
             event_window_summary=event_summary,
             next_event_title=next_event.title if next_event else None,
@@ -919,103 +922,54 @@ def _decimal_or_none(value: Any | None) -> Decimal | None:
 
 
 def _score_indicator(item: MacroOverviewIndicatorRead) -> int:
-    value = item.value_num
-    orig_key = item.indicator_key
-
-    if orig_key == "fomc_event_window":
-        text = str(item.value_text or "").strip().lower()
-        return {
-            "inactive": 50,
-            "pre_event": 25,
-            "post_event": 35,
-            "live_event": 20,
-        }.get(text, 50)
-
-    canon_key = canonical_macro_key(orig_key)
-    if value is None or item.value_text is not None:
-        return 50
-    x = float(value)
-
-    if orig_key in {"cpi_mom", "core_cpi_mom"}:
-        return _inverse_score(x, low=0.15, high=0.55)
-    if orig_key in {"real_yield_10y", "real_yield_5y"}:
-        return _inverse_score(x, low=0.5, high=2.8)
-
-    if canon_key in {"us_dff", "sofr", "us_2y_yield", "us_10y_yield"}:
-        return _inverse_score(x, low=2.5, high=6.0)
-    if canon_key in {"us_10y_2y_spread", "us10y_3m_spread"}:
-        return _range_score(x, bearish_below=-0.7, bullish_above=0.4)
-    if canon_key in {"us_cpi_yoy", "us_core_cpi_yoy"}:
-        return _inverse_score(x, low=2.0, high=5.0)
-    if canon_key in {"us_nfp", "retail_sales", "gdp_qoq"}:
-        return _direct_score(x, low=0.0, high=250.0)
-    if canon_key in {"us_unemployment_rate", "initial_claims", "continuing_claims"}:
-        return _inverse_score(x, low=3.5, high=5.5)
-    if canon_key in {"ism_mfg_pmi", "ism_srv_pmi"}:
-        return _direct_score(x, low=45.0, high=55.0)
-    if canon_key in {"hy_oas", "ig_spread", "vix"}:
-        return _inverse_score(x, low=3.5, high=8.0)
-    if canon_key in {"dollar_index", "usd_cny"}:
-        return _inverse_score(x, low=98.0, high=108.0)
-    if canon_key in {"wti_crude"}:
-        return _range_mid_score(x, low=55.0, high=95.0)
-    if canon_key in {"gold", "qqq", "spy", "hyg"}:
-        return _price_20d_momentum(x, canon_key, item)
-    return 50
-
-@dataclass
-class _MomentumBacking:
-    key: str
-    values: list[float]
-
-_momentum_store: dict[str, _MomentumBacking] = {}
-
-def _price_20d_momentum(current: float, key: str, item) -> int:
-    ctx = _momentum_store.get(key)
-    if ctx is None:
-        _momentum_store[key] = _MomentumBacking(key=key, values=[current])
-        return 50
-    ctx.values.append(current)
-    if len(ctx.values) > 20:
-        ctx.values = ctx.values[-20:]
-    if len(ctx.values) < 5:
-        return 50
-    avg_first_5 = sum(ctx.values[:5]) / min(5, len(ctx.values))
-    if avg_first_5 <= 0:
-        return 50
-    pct = (current - avg_first_5) / avg_first_5 * 100
-    if pct > 8:
-        return 80
-    if pct > 3:
-        return 65
-    if pct < -8:
-        return 20
-    if pct < -3:
-        return 35
-    return 50
+    result = DEFAULT_MACRO_SCORING_ENGINE.score(item)
+    return int(result.score) if result.score is not None else 50
 
 
-def _direct_score(value: float, *, low: float, high: float) -> int:
-    return round(_clamp((value - low) / (high - low)) * 100)
+def _apply_macro_scoring_metadata(items: list[MacroOverviewIndicatorRead]) -> None:
+    for item in items:
+        result = DEFAULT_MACRO_SCORING_ENGINE.score(item)
+        item.score = result.score
+        item.formula_id = result.formula_id
+        item.score_reason = result.reason
+        if item.is_scored:
+            item.is_scored = result.is_scored
+        if not item.is_scored:
+            item.score_block_reason = item.score_block_reason or result.reason
+            item.direction = None
+            item.direction_label = None
+            continue
+        score = int(result.score or 50)
+        if score >= 65:
+            item.direction = "bullish"
+            item.direction_label = "偏多"
+        elif score <= 35:
+            item.direction = "bearish"
+            item.direction_label = "偏空"
+        else:
+            item.direction = "neutral"
+            item.direction_label = "中性"
 
 
-def _inverse_score(value: float, *, low: float, high: float) -> int:
-    return 100 - _direct_score(value, low=low, high=high)
-
-
-def _range_score(value: float, *, bearish_below: float, bullish_above: float) -> int:
-    return _direct_score(value, low=bearish_below, high=bullish_above)
-
-
-def _range_mid_score(value: float, *, low: float, high: float) -> int:
-    midpoint = (low + high) / 2
-    distance = abs(value - midpoint) / ((high - low) / 2)
-    return round((1 - _clamp(distance)) * 100)
-
-
-def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
-    return max(low, min(high, value))
-
+def _event_window_state(display_status: str) -> str:
+    normalized = str(display_status or "").strip().lower()
+    mapping = {
+        "清朗": "clear",
+        "娓呮櫚": "clear",
+        "clear": "clear",
+        "normal": "clear",
+        "inactive": "clear",
+        "临近发布": "pre_event",
+        "涓磋繎鍙戝竷": "pre_event",
+        "pre_event": "pre_event",
+        "事件进行中": "live_event",
+        "浜嬩欢杩涜涓": "live_event",
+        "live_event": "live_event",
+        "刚发布": "post_event",
+        "鍒氬彂甯": "post_event",
+        "post_event": "post_event",
+    }
+    return mapping.get(normalized, "unknown")
 
 def _score_to_bias(score: int) -> str:
     if score >= 65:

@@ -1,105 +1,163 @@
 {
   "version": "macro_scoring_registry_v1",
-  "score_scale": {"min": 0, "neutral": 50, "max": 100},
-  "bias_thresholds": {"bullish_gte": 65, "bearish_lte": 35},
+  "score_scale": {
+    "min": 0,
+    "neutral": 50,
+    "max": 100
+  },
+  "bias_thresholds": {
+    "bullish_gte": 65,
+    "bearish_lte": 35
+  },
   "missing_data_policy": "not_scored_exclude_from_layer_mean",
   "indicators": [
     {
       "indicator_key": "us_dff",
-      "aliases": ["effr"],
+      "aliases": [
+        "effr"
+      ],
       "formula_id": "inverse_linear",
       "unit": "%",
-      "thresholds": {"low": 2.5, "high": 6.0},
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "利率压力缓和",
       "bearish_label": "利率压力偏强"
     },
     {
       "indicator_key": "us_10y_yield",
-      "aliases": ["us10y_yield", "ust_10y_yield"],
+      "aliases": [
+        "us10y_yield",
+        "ust_10y_yield"
+      ],
       "formula_id": "inverse_linear",
       "unit": "%",
-      "thresholds": {"low": 2.5, "high": 6.0},
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "长端利率压力缓和",
       "bearish_label": "长端利率压力偏强"
     },
     {
       "indicator_key": "us_cpi_yoy",
-      "aliases": ["cpi_yoy"],
+      "aliases": [
+        "cpi_yoy"
+      ],
       "formula_id": "inverse_linear",
       "unit": "% YoY",
-      "thresholds": {"low": 2.0, "high": 5.0},
+      "thresholds": {
+        "low": 2.0,
+        "high": 5.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "通胀压力缓和",
       "bearish_label": "通胀压力偏强"
     },
     {
       "indicator_key": "us_core_cpi_yoy",
-      "aliases": ["core_cpi_yoy"],
+      "aliases": [
+        "core_cpi_yoy"
+      ],
       "formula_id": "inverse_linear",
       "unit": "% YoY",
-      "thresholds": {"low": 2.0, "high": 5.0},
+      "thresholds": {
+        "low": 2.0,
+        "high": 5.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "核心通胀压力缓和",
       "bearish_label": "核心通胀压力偏强"
     },
     {
       "indicator_key": "us_nfp",
-      "aliases": ["nfp"],
+      "aliases": [
+        "nfp"
+      ],
       "formula_id": "direct_linear",
       "unit": "thousand",
-      "thresholds": {"low": 0, "high": 250},
+      "thresholds": {
+        "low": 0,
+        "high": 250
+      },
       "higher_value_bias": "bullish_for_risk_assets",
       "bullish_label": "就业偏强",
       "bearish_label": "就业偏弱"
     },
     {
       "indicator_key": "us_unemployment_rate",
-      "aliases": ["unemployment_rate"],
+      "aliases": [
+        "unemployment_rate"
+      ],
       "formula_id": "inverse_linear",
       "unit": "%",
-      "thresholds": {"low": 3.5, "high": 5.5},
+      "thresholds": {
+        "low": 3.5,
+        "high": 5.5
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "就业市场健康",
       "bearish_label": "失业率偏高"
     },
     {
       "indicator_key": "dollar_index",
-      "aliases": ["dxy"],
+      "aliases": [
+        "dxy"
+      ],
       "formula_id": "inverse_linear",
       "unit": "index",
-      "thresholds": {"low": 98.0, "high": 108.0},
+      "thresholds": {
+        "low": 98.0,
+        "high": 108.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "美元压力缓和",
       "bearish_label": "美元走强压制风险"
     },
     {
       "indicator_key": "ism_mfg_pmi",
-      "aliases": ["ism_manufacturing"],
+      "aliases": [
+        "ism_manufacturing"
+      ],
       "formula_id": "direct_linear",
       "unit": "index",
-      "thresholds": {"low": 45.0, "high": 55.0},
+      "thresholds": {
+        "low": 45.0,
+        "high": 55.0
+      },
       "higher_value_bias": "bullish_for_risk_assets",
       "bullish_label": "制造业景气扩张",
       "bearish_label": "制造业景气收缩"
     },
     {
       "indicator_key": "ism_srv_pmi",
-      "aliases": ["ism_services"],
+      "aliases": [
+        "ism_services"
+      ],
       "formula_id": "direct_linear",
       "unit": "index",
-      "thresholds": {"low": 45.0, "high": 55.0},
+      "thresholds": {
+        "low": 45.0,
+        "high": 55.0
+      },
       "higher_value_bias": "bullish_for_risk_assets",
       "bullish_label": "服务业景气扩张",
       "bearish_label": "服务业景气收缩"
     },
     {
       "indicator_key": "hy_oas",
-      "aliases": ["hy_spread"],
+      "aliases": [
+        "hy_spread"
+      ],
       "formula_id": "inverse_linear",
       "unit": "%",
-      "thresholds": {"low": 3.5, "high": 8.0},
+      "thresholds": {
+        "low": 3.5,
+        "high": 8.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "信用风险偏低",
       "bearish_label": "信用风险抬升"
@@ -108,17 +166,25 @@
       "indicator_key": "vix",
       "formula_id": "inverse_linear",
       "unit": "index",
-      "thresholds": {"low": 15.0, "high": 28.0},
+      "thresholds": {
+        "low": 15.0,
+        "high": 28.0
+      },
       "higher_value_bias": "bearish_for_risk_assets",
       "bullish_label": "波动平稳",
       "bearish_label": "波动升高"
     },
     {
       "indicator_key": "wti_crude",
-      "aliases": ["wti_oil"],
+      "aliases": [
+        "wti_oil"
+      ],
       "formula_id": "range_mid",
       "unit": "USD/bbl",
-      "thresholds": {"low": 55.0, "high": 95.0},
+      "thresholds": {
+        "low": 55.0,
+        "high": 95.0
+      },
       "higher_value_bias": "mixed",
       "bullish_label": "油价处于需求确认区间",
       "bearish_label": "油价极端波动"
@@ -130,6 +196,489 @@
       "higher_value_bias": "mixed",
       "bullish_label": "黄金避险需求温和",
       "bearish_label": "黄金避险需求升高"
+    },
+    {
+      "indicator_key": "us_2y_yield",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "us_5y_yield",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "real_yield_5y",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 0.5,
+        "high": 2.8
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "real_yield_10y",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 0.5,
+        "high": 2.8
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "us_10y_2y_spread",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "range_score",
+      "unit": "%",
+      "thresholds": {
+        "bearish_below": -0.7,
+        "bullish_above": 0.4
+      },
+      "higher_value_bias": "bullish_for_risk_assets"
+    },
+    {
+      "indicator_key": "sofr",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "us03m_yield",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "us30y_yield",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 2.5,
+        "high": 6.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "breakeven_5y",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "range_mid",
+      "unit": "%",
+      "thresholds": {
+        "low": 1.5,
+        "high": 3.2
+      },
+      "higher_value_bias": "mixed"
+    },
+    {
+      "indicator_key": "breakeven_10y",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "range_mid",
+      "unit": "%",
+      "thresholds": {
+        "low": 1.5,
+        "high": 3.2
+      },
+      "higher_value_bias": "mixed"
+    },
+    {
+      "indicator_key": "cpi_mom",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "% MoM",
+      "thresholds": {
+        "low": 0.15,
+        "high": 0.55
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "core_cpi_mom",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "% MoM",
+      "thresholds": {
+        "low": 0.15,
+        "high": 0.55
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "pce_yoy",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "% YoY",
+      "thresholds": {
+        "low": 2.0,
+        "high": 5.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "core_pce_yoy",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "% YoY",
+      "thresholds": {
+        "low": 2.0,
+        "high": 5.0
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "average_hourly_earnings_yoy",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "range_mid",
+      "unit": "% YoY",
+      "thresholds": {
+        "low": 2.5,
+        "high": 5.5
+      },
+      "higher_value_bias": "mixed"
+    },
+    {
+      "indicator_key": "initial_claims",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "count",
+      "thresholds": {
+        "low": 180000,
+        "high": 400000
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "continuing_claims",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "count",
+      "thresholds": {
+        "low": 1500000,
+        "high": 2300000
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "jolts_openings",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "direct_linear",
+      "unit": "count",
+      "thresholds": {
+        "low": 6500000,
+        "high": 10000000
+      },
+      "higher_value_bias": "bullish_for_risk_assets"
+    },
+    {
+      "indicator_key": "gdp_qoq",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "direct_linear",
+      "unit": "% QoQ annualized",
+      "thresholds": {
+        "low": 0.0,
+        "high": 4.0
+      },
+      "higher_value_bias": "bullish_for_risk_assets"
+    },
+    {
+      "indicator_key": "ig_spread",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 1.0,
+        "high": 2.5
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "usd_cny",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "inverse_linear",
+      "unit": "CNY per USD",
+      "thresholds": {
+        "low": 6.8,
+        "high": 7.45
+      },
+      "higher_value_bias": "bearish_for_risk_assets"
+    },
+    {
+      "indicator_key": "fomc_event_window",
+      "aliases": [],
+      "bullish_label": "???????",
+      "bearish_label": "??????",
+      "neutral_label": "??",
+      "scoring_policy": "scored",
+      "formula_id": "event_window_penalty",
+      "unit": "state",
+      "thresholds": {},
+      "higher_value_bias": "event_risk"
+    },
+    {
+      "indicator_key": "tga",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "on_rrp",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "financial_conditions",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "nasdaq",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "fed_balance_sheet",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "bank_reserves",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "m2",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "qqq",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "spy",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "hyg",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "btc_usdt",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "eth_usdt",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
+    },
+    {
+      "indicator_key": "eth_btc",
+      "aliases": [],
+      "formula_id": "display_only",
+      "unit": "",
+      "thresholds": {},
+      "higher_value_bias": "display_only",
+      "scoring_policy": "display_only",
+      "bullish_label": "???",
+      "bearish_label": "???",
+      "neutral_label": "???"
     }
   ]
 }
