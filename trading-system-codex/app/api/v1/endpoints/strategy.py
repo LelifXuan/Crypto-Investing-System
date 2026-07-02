@@ -14,9 +14,11 @@ from app.schemas.strategy import (
     StrategySnapshotRequest,
     StrategySnapshotSaveRead,
 )
+from app.schemas.strategy_unified import StrategyUnifiedRead
 from app.services.precompute import precompute_service
 from app.services.strategy_signal.review_engine import ReviewEngine
 from app.services.strategy_signal.service import StrategySignalService, StrategySignalUnavailable
+from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
 router = APIRouter(prefix="/strategy", tags=["strategy"])
 
@@ -54,6 +56,19 @@ async def get_strategy_decision(
         _timeframe(timeframe),
     )
     return bundle["decision"]
+
+
+@router.get("/unified", response_model=StrategyUnifiedRead)
+async def get_unified_strategy(
+    instrument_id: str = Query(default="btc-usdt-perp"),
+    force: bool = Query(default=False),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+):
+    return await UnifiedStrategyService(MarketRepository(session)).build_unified_strategy(
+        _instrument(instrument_id),
+        force=force,
+    )
 
 
 @router.post("/refresh", response_model=PrecomputeHintResponse)
