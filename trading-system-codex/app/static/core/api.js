@@ -619,6 +619,17 @@ export const api = {
       retry: 1,
     });
   },
+  prewarmStrategy(instrumentId, options = {}) {
+    return requestJson("/strategy/prewarm", {
+      method: "POST",
+      params: { instrument_id: instrumentId },
+      ttl: 0,
+      force: true,
+      timeoutMs: options.timeoutMs ?? 3000,
+      signal: options.signal,
+      retry: 0,
+    });
+  },
   refreshStrategyBundle(instrumentId, timeframe, options = {}) {
     const normalizedTimeframe = timeframe === "1M" ? "30d" : timeframe;
     invalidateCache("/strategy/bundle");
