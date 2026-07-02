@@ -437,6 +437,30 @@ refresh_policies:
     timezone: UTC
     priority: 7
   onchain:
+  - indicator_key: defi_total_tvl
+    scope_type: global
+    asset_code: global
+    mode: interval
+    interval_seconds: 21600
+    priority: 7
+  - indicator_key: stablecoin_total_mcap
+    scope_type: global
+    asset_code: global
+    mode: interval
+    interval_seconds: 21600
+    priority: 7
+  - indicator_key: dex_volume_24h
+    scope_type: global
+    asset_code: global
+    mode: interval
+    interval_seconds: 21600
+    priority: 7
+  - indicator_key: protocol_fees_24h
+    scope_type: global
+    asset_code: global
+    mode: interval
+    interval_seconds: 21600
+    priority: 7
   - indicator_key: btc_mvrv
     scope_type: asset
     asset_code: BTC
