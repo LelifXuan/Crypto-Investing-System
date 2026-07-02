@@ -11,7 +11,7 @@ def test_sync_preserves_config_data_and_user_files_but_rebuilds_cache(
     bundle = tmp_path / "bundle"
     destination = tmp_path / "TradingSystemPortable"
     (bundle / "app").mkdir(parents=True)
-    (bundle / "app" / "version.txt").write_text("1.6.0", encoding="utf-8")
+    (bundle / "app" / "version.txt").write_text("1.7.0", encoding="utf-8")
     (bundle / "runtime_env" / "python").mkdir(parents=True)
     (bundle / "runtime_env" / "python" / "python.exe").write_text("", encoding="utf-8")
     (destination / "runtime" / "config").mkdir(parents=True)
@@ -40,7 +40,7 @@ def test_sync_preserves_config_data_and_user_files_but_rebuilds_cache(
     report = sync_portable_tree(bundle, destination)
 
     assert report.status == "success"
-    assert (destination / "app" / "version.txt").read_text(encoding="utf-8") == "1.6.0"
+    assert (destination / "app" / "version.txt").read_text(encoding="utf-8") == "1.7.0"
     assert "keep-me" in (
         destination / "runtime" / "config" / "portable.env"
     ).read_text(encoding="utf-8")

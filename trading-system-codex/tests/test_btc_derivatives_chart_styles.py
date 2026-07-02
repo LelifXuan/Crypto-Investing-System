@@ -34,4 +34,4 @@ def test_option_chart_series_emit_visually_distinct_styles() -> None:
     assert levels["Max Pain"]["opacity"] < 1
     assert risk["25D Skew"]["borderDash"] == []
     assert risk["Put/Call OI"]["borderDash"]
-    assert risk["Call保护成本"]["opacity"] < 1
+    assert risk["Call 保护成本"]["opacity"] < 1

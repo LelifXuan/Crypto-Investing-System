@@ -25,17 +25,17 @@ def test_alerts_page_is_routed_to_ai_strategy() -> None:
     )[0]
 
 
-def test_strategy_page_renders_divergence_risk_card() -> None:
-    strategy = (ROOT / "app/static/pages/strategy.js").read_text(encoding="utf-8")
-    styles = (ROOT / "app/static/styles.css").read_text(encoding="utf-8")
+def test_strategy_page_no_longer_renders_divergence_risk_card() -> None:
+    """V1.7 SPA 重构后，divergence risk card 已从 strategy 页面移除。
 
-    assert "renderDivergenceRiskCard" in strategy
-    assert "背离风险提醒" in strategy
-    assert "technical_risk" in strategy
-    assert "strategy-divergence-risk-card" in styles
-    forbidden = ["CVD", "open_interest", "order_book", "depth", "slippage"]
-    card_source = strategy.split("renderDivergenceRiskCard", 1)[1].split(
-        "function renderBundle", 1
-    )[0]
-    for token in forbidden:
-        assert token not in card_source
+    卡片功能仍在 alerts 页面保留（见 ``app/static/pages/alerts.js``），
+    但 strategy 页应专注于"X+Y+Z 全栈推演"，不再嵌入告警卡片。
+    """
+    strategy_legacy = (ROOT / "app/static/pages/strategy.js").read_text(encoding="utf-8")
+    strategy_index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+
+    # 新 strategy 页是 re-export，不应再渲染 divergence risk card
+    assert "renderDivergenceRiskCard" not in strategy_legacy
+    assert "renderDivergenceRiskCard" not in strategy_index
+    # 与 alert center 相关的内部分类/状态码不应暴露
+    assert "technical_risk" not in strategy_index

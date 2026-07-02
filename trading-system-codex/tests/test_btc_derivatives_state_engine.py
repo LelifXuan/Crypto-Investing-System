@@ -76,3 +76,48 @@ def test_downside_stress_and_deleveraging_are_distinct_states() -> None:
     assert "put_skew_high" in stress["hurts_long"]
     assert deleveraging["market_state"] == "deleveraging"
     assert "late_short_risk" in deleveraging["hurts_short"]
+
+
+def test_key_levels_axis_prevents_single_call_wall_rising_from_becoming_strong_bullish() -> None:
+    result = build_market_state(
+        price_oi_state="flat",
+        funding_state="neutral",
+        iv_state="iv_neutral",
+        skew_state="skew_neutral",
+        wall_movement={"call_wall": "rising", "put_wall": "falling"},
+        max_pain_movement="falling",
+        data_quality_status="live",
+        options_wall_signal={
+            "status": "ok",
+            "overall_signal": "bearish_confirmed",
+            "bias": "bearish",
+            "confirmation": "confirmed",
+            "confidence": "medium",
+            "status_label": "关键价位结构偏空并获得现价确认",
+            "summary": "Call Wall 上移未获确认，Put Wall 与 Max Pain 下移获得现价确认。",
+            "evidence": [
+                {
+                    "label": "Call Wall",
+                    "explanation": "上方 Call 持仓重心上移，但现价没有跟随，属于结构分歧",
+                },
+                {
+                    "label": "Put Wall",
+                    "explanation": "下方 Put 保护集中区下移，并与现价走弱一致",
+                },
+                {
+                    "label": "Max Pain",
+                    "explanation": "Max Pain 持仓重心下移，并获得现价同步确认",
+                },
+            ],
+            "conflicts": ["部分关键价位迁移与现价方向不一致"],
+            "direct_command": False,
+        },
+    )
+
+    key_block = next(
+        block for block in result["inference_blocks"] if block["id"] == "key_levels"
+    )
+    assert result["key_levels_axis"]["overall_signal"] == "bearish_confirmed"
+    assert "call_wall_rising" not in result["helps_long"]
+    assert key_block["tone"] == "bearish"
+    assert "偏空" in key_block["conclusion"]

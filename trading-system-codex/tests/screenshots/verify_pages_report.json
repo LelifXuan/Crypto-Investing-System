@@ -1,29 +1,176 @@
 {
   "per_page": [
     {
+      "page_id": "market-analysis",
+      "url": "http://127.0.0.1:8002/indicators-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 1710.1,
+      "state": "found:.analysis-hero-grid",
+      "screenshot": "tests\\screenshots\\market-analysis.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "monitoring-overview",
+      "url": "http://127.0.0.1:8002/monitoring-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 148.1,
+      "state": "found:#monitoring-topbar",
+      "screenshot": "tests\\screenshots\\monitoring-overview.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "market-structure",
+      "url": "http://127.0.0.1:8002/structure-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 16.9,
+      "state": "found:.structure-page",
+      "screenshot": "tests\\screenshots\\market-structure.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "market-events",
+      "url": "http://127.0.0.1:8002/market-events-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 94.4,
+      "state": "found:.event-card",
+      "screenshot": "tests\\screenshots\\market-events.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "macro-calendar",
+      "url": "http://127.0.0.1:8002/macro-calendar-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 14.2,
+      "state": "found:#macro-statusbar",
+      "screenshot": "tests\\screenshots\\macro-calendar.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "alert-center",
+      "url": "http://127.0.0.1:8002/alerts-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 99.7,
+      "state": "found:.strategy-v2-page",
+      "screenshot": "tests\\screenshots\\alert-center.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "knowledge-base",
+      "url": "http://127.0.0.1:8002/knowledge-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 114.0,
+      "state": "found:.knowledge-hero",
+      "screenshot": "tests\\screenshots\\knowledge-base.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "ashare-etf",
+      "url": "http://127.0.0.1:8002/ashare-etf-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 46.5,
+      "state": "found:#etf-overview",
+      "screenshot": "tests\\screenshots\\ashare-etf.png",
+      "failed_responses": []
+    },
+    {
       "page_id": "btc-derivatives",
       "url": "http://127.0.0.1:8002/btc-derivatives-page",
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 28.3,
+      "duration_ms": 220.3,
       "state": "found:.btc-derivatives-page",
-      "screenshot": null,
+      "screenshot": "tests\\screenshots\\btc-derivatives.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "ai-strategy",
+      "url": "http://127.0.0.1:8002/strategy-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 75.2,
+      "state": "found:.strategy-v2-page",
+      "screenshot": "tests\\screenshots\\ai-strategy.png",
       "failed_responses": []
     }
   ],
   "spa_switches": [
     {
+      "page_id": "market-analysis",
+      "ok": true,
+      "duration_ms": 2.4,
+      "state": "found:.analysis-hero-grid"
+    },
+    {
+      "page_id": "monitoring-overview",
+      "ok": true,
+      "duration_ms": 58.5,
+      "state": "found:#monitoring-topbar"
+    },
+    {
+      "page_id": "market-structure",
+      "ok": true,
+      "duration_ms": 454.7,
+      "state": "found:.structure-page"
+    },
+    {
+      "page_id": "market-events",
+      "ok": true,
+      "duration_ms": 491.5,
+      "state": "found:.event-card"
+    },
+    {
+      "page_id": "macro-calendar",
+      "ok": true,
+      "duration_ms": 65.5,
+      "state": "found:#macro-statusbar"
+    },
+    {
+      "page_id": "knowledge-base",
+      "ok": true,
+      "duration_ms": 101.3,
+      "state": "found:.knowledge-hero"
+    },
+    {
+      "page_id": "ashare-etf",
+      "ok": true,
+      "duration_ms": 421.4,
+      "state": "found:#etf-overview"
+    },
+    {
       "page_id": "btc-derivatives",
       "ok": true,
-      "duration_ms": 2.5,
+      "duration_ms": 132.1,
       "state": "found:.btc-derivatives-page"
+    },
+    {
+      "page_id": "ai-strategy",
+      "ok": true,
+      "duration_ms": 63.4,
+      "state": "found:.strategy-v2-page"
     }
   ],
   "summary": {
-    "per_page_total": 1,
+    "per_page_total": 10,
     "per_page_fail": 0,
-    "spa_total": 1,
+    "spa_total": 9,
     "spa_fail": 0,
     "spa_slow": 0
   }

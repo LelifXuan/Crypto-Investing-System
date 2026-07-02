@@ -33,6 +33,15 @@ def test_btc_derivatives_refresh_uses_job_polling_instead_of_long_request() -> N
     assert "planBtcDerivativeHedge" in api
 
 
+def test_refresh_freshness_copy_sits_under_refresh_button_not_status_banner() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    styles = STYLES.read_text(encoding="utf-8")
+
+    assert "btc-refresh-freshness" in source
+    assert "btc-refresh-freshness" in styles
+    assert 'statusBanner("衍生品快照已刷新"' not in source
+
+
 def test_internal_snapshot_state_codes_are_mapped_to_chinese_copy() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
@@ -140,6 +149,7 @@ def test_chart_styles_and_risk_mode_are_rendered_without_api_reload() -> None:
     assert 'renderSingleChart("options_risk_premium_history")' in mode_handler
     assert "rendered.modeHidden = rendered.hidden" in source
     assert "!data.datasets[item.datasetIndex]?.modeHidden" in source
+    assert "updateRiskChartHeaderInsight" in source
 
 
 def test_page_safety_copy_is_explicit_and_forbidden_actions_are_absent() -> None:
@@ -157,6 +167,61 @@ def test_page_safety_copy_is_explicit_and_forbidden_actions_are_absent() -> None
         assert forbidden not in source
 
 
+def test_chart_header_uses_interpretation_not_timestamp_metadata() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "function chartInsight" in source
+    assert "btc-chart-insight" in source
+    assert "metadata.updated_at" not in source
+    assert "displayState(metadata.quality)" not in source
+
+
+def test_chart_header_uses_short_labels_not_evidence_layer_sentences() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    chart_insight = source[source.index("function chartInsight") : source.index("function chartCard")]
+
+    assert "implication" not in chart_insight
+    assert "关键价位迁移与现价存在分歧" not in chart_insight
+    assert "墙位迁移" in chart_insight
+    assert "保护成本" in chart_insight
+
+
+def test_hero_uses_market_verdict_not_generic_page_description() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    hero_verdict = source[source.index("function heroMarketVerdict") : source.index("function renderHero")]
+
+    assert "function heroMarketVerdict" in source
+    assert "暂不能形成可靠多空判定" in source
+    assert "用真实公开数据观察期货拥挤" not in source
+    assert "依据：" not in hero_verdict
+
+
+def test_page_renders_options_wall_signal_card_from_dashboard_metrics() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "function renderOptionsWallSignal" in source
+    assert "options_wall_signal" in source
+    assert "call_wall" in source
+    assert "put_wall" in source
+    assert "max_pain" in source
+    assert "btc-wall-signal-card" in source
+    assert "现价变化" in source
+    assert "signal.spot_change_pct" in source
+    assert "expiry_context" in source
+
+
+def test_bottom_sections_are_grouped_into_parent_containers() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    styles = STYLES.read_text(encoding="utf-8")
+
+    assert "btc-bottom-group" in source
+    assert "btc-protection-group" in source
+    assert "btc-audit-group" in source
+    assert "btc-governance-group" in source
+    assert ".btc-bottom-group" in styles
+    assert ".btc-bottom-group-body" in styles
+
+
 def test_page_has_scoped_responsive_styles() -> None:
     styles = STYLES.read_text(encoding="utf-8")
 
@@ -168,4 +233,7 @@ def test_page_has_scoped_responsive_styles() -> None:
         assert f".btc-chart-density-{density}" in styles
     assert ".btc-hedge-grid" in styles
     assert ".btc-details-drawer" in styles
+    assert ".btc-chart-insight" in styles
+    assert ".btc-level-title .tooltip-icon" in styles
+    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in styles
     assert 'body[data-page="btc-derivatives"]' in styles

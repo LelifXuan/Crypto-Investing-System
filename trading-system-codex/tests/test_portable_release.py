@@ -65,7 +65,7 @@ def test_release_zip_and_portable_bundle_exclude_local_artifacts() -> None:
         assert "TradingSystemLauncher.exe" in names
         manifest = json.loads(archive.read("release_manifest.json").decode("utf-8"))
     assert manifest["release_type"] == "embedded_runtime_portable"
-    assert manifest["version"] == "1.6.0"
+    assert manifest["version"] == "1.7.0"
     assert manifest["python_embedded"] is True
     assert manifest["platform"] == "win-x64"
     assert manifest["python_runtime_path"] == "runtime_env/python/python.exe"
@@ -83,12 +83,12 @@ def test_release_v16_task_includes_sync_and_browser_audit() -> None:
     assert "sync_portable_local.ps1" in source
 
 
-def test_portable_verifier_requires_v160_manifest() -> None:
+def test_portable_verifier_requires_v170_manifest() -> None:
     source = (PROJECT_ROOT / "scripts" / "verify_portable_release.py").read_text(
         encoding="utf-8"
     )
 
-    assert 'manifest.get("version") != "1.6.0"' in source
+    assert 'manifest.get("version") != "1.7.0"' in source
     assert '"manifest_version_invalid"' in source
 
 

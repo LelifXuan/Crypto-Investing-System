@@ -78,3 +78,23 @@ def test_decision_cards_use_chinese_conclusion_basis_and_implication_only() -> N
     assert "upside_squeeze_risk" not in visible
     assert "不输出直接买卖命令" not in visible
     assert "score" not in cards[0]
+
+
+def test_directionless_and_expensive_hedge_can_be_high_confidence() -> None:
+    analysis = _analysis(
+        price_oi_state="flat",
+        funding_state="neutral",
+        iv_state="iv_neutral",
+        skew_state="skew_neutral",
+        wall_movement={"call_wall": "stable", "put_wall": "stable"},
+        max_pain_movement="stable",
+        data_quality_status="live",
+        basis_state="neutral",
+        hedge_cost_state="expensive",
+    )
+    cards = decision_cards(analysis)
+
+    assert cards[0]["conclusion"] == "杠杆资金暂未形成清晰方向"
+    assert cards[0]["confidence"] == "high"
+    assert cards[2]["conclusion"] == "保护成本偏高"
+    assert cards[2]["confidence"] == "high"

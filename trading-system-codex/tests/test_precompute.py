@@ -94,6 +94,31 @@ async def test_precompute_hint_analysis_expands_related_tasks(precompute_db) -> 
 
 
 @pytest.mark.asyncio
+async def test_precompute_hint_strategy_expands_market_context_task(precompute_db) -> None:
+    response = await precompute_service.enqueue_hint(
+        PrecomputeHintRequest(
+            current_page="ai-strategy",
+            instrument_id="btc-usdt-perp",
+            timeframe="4h",
+            reason="test_market_context",
+            priority=2,
+        )
+    )
+
+    assert response.status in {"accepted", "deduped"}
+    if response.status != "deduped":
+        for timeframe in ("30d", "1w", "1d", "4h", "1h", "15m"):
+            assert any(
+                key.startswith(f"strategy_bundle:btc-usdt-perp:{timeframe}:")
+                for key in response.queued_keys
+            )
+            assert any(
+                key.startswith(f"market_context:btc-usdt-perp:{timeframe}:")
+                for key in response.queued_keys
+            )
+
+
+@pytest.mark.asyncio
 async def test_precompute_task_status_reports_queued_task(precompute_db) -> None:
     response = await precompute_service.enqueue_hint(
         PrecomputeHintRequest(

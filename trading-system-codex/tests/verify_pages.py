@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -55,7 +56,22 @@ PAGE_ROUTES = {
     "ai-strategy": "/strategy-page",
 }
 
-BASE_URL = "http://127.0.0.1:8002"
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
+
+# Pages that have a navigation link (data-page-link) in the SPA shell.
+# Pages NOT in this set either have no link (e.g. legacy URLs) or are routed to other pages.
+# The SPA-switch test only iterates this subset, since the others cannot be reached by clicking a tab.
+SPA_NAV_PAGES = {
+    "monitoring-overview",
+    "market-analysis",
+    "market-structure",
+    "market-events",
+    "macro-calendar",
+    "knowledge-base",
+    "ashare-etf",
+    "btc-derivatives",
+    "ai-strategy",
+}
 
 # 等待 #page-root 出现真实内容时,要找的特征 selector
 # (至少一个出现 = 真内容; 只出现 skeleton-card = 还是骨架;
@@ -66,11 +82,12 @@ REAL_CONTENT_SELECTORS = {
     "market-structure": [".structure-page"],
     "market-events": [".event-card", "#market-events-root"],
     "macro-calendar": ["#macro-statusbar", "#macro-summary-cards"],
-    "alert-center": ["#alerts-chip-structure", "#alerts-body"],
+    # alert-center was removed; /alerts-page now routes to ai-strategy (see app/web/router.py).
+    "alert-center": [".strategy-v2-page", ".strategy-unified-overview"],
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
     "ashare-etf": ["#etf-overview", "#etf-groups"],
     "btc-derivatives": [".btc-derivatives-page", ".btc-chart-overview"],
-    "ai-strategy": [".strategy-toolbar", ".strategy-control-panel"],
+    "ai-strategy": [".strategy-v2-page", ".strategy-unified-overview", ".strategy-horizon-governance"],
 }
 ERROR_SELECTOR = ".error-state, .render-fatal, [data-render-fatal]"
 
@@ -284,10 +301,14 @@ def main(argv: list[str]) -> int:
                 ctx.close()
 
         if not args.skip_spa:
-            print("[spa-switch] cold-start → click 9 tabs in one session")
-            ctx = browser.new_context(viewport={"width": 1366, "height": 900})
-            page = ctx.new_page()
-            report["spa_switches"] = verify_spa_switch(page, page_ids)
+            spa_pages = [pid for pid in page_ids if pid in SPA_NAV_PAGES]
+            if not spa_pages:
+                print("[spa-switch] no nav pages in selection, skipping")
+            else:
+                print(f"[spa-switch] cold-start → click {len(spa_pages)} tabs in one session")
+                ctx = browser.new_context(viewport={"width": 1366, "height": 900})
+                page = ctx.new_page()
+                report["spa_switches"] = verify_spa_switch(page, spa_pages)
             for r in report["spa_switches"]:
                 if r["ok"] and r["duration_ms"] < 3000.0:
                     tag = "OK"

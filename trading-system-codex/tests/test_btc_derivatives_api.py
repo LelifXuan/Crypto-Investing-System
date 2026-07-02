@@ -13,7 +13,10 @@ from app.schemas.btc_derivatives_sources import (
     ProviderStatus,
 )
 from app.services.btc_derivatives.chart_builder import REQUIRED_CHART_IDS
-from app.services.btc_derivatives.live_service import btc_derivatives_live_service
+from app.services.btc_derivatives.live_service import (
+    BtcDerivativesLiveService,
+    btc_derivatives_live_service,
+)
 from app.services.btc_derivatives.service import BtcDerivativesService
 
 
@@ -100,6 +103,95 @@ def _live_envelope() -> LiveSnapshotEnvelope:
     )
 
 
+def _wall_basis_envelope() -> LiveSnapshotEnvelope:
+    now = datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc)
+    options = []
+    expiry = "2026-08-28"
+    for strike in (50_000, 62_000, 72_000, 75_000):
+        call_oi = 900 if strike == 75_000 else 100
+        put_oi = 900 if strike == 50_000 else 100
+        options.extend(
+            [
+                NormalizedOptionQuote(
+                    provider="deribit",
+                    instrument=f"BTC-{expiry}-{strike}-C",
+                    expiry=expiry,
+                    strike=strike,
+                    option_type="call",
+                    bid=900,
+                    ask=1_100,
+                    mid=1_000,
+                    mark_price=1_000,
+                    underlying_price=59_218.52,
+                    iv=0.6,
+                    delta=0.25,
+                    open_interest=call_oi,
+                    volume_24h=20,
+                    collected_at=now,
+                ),
+                NormalizedOptionQuote(
+                    provider="deribit",
+                    instrument=f"BTC-{expiry}-{strike}-P",
+                    expiry=expiry,
+                    strike=strike,
+                    option_type="put",
+                    bid=850,
+                    ask=1_050,
+                    mid=950,
+                    mark_price=950,
+                    underlying_price=59_218.52,
+                    iv=0.62,
+                    delta=-0.25,
+                    open_interest=put_oi,
+                    volume_24h=18,
+                    collected_at=now,
+                ),
+            ]
+        )
+    envelope = LiveSnapshotEnvelope(
+        snapshot_state="stale",
+        data_timestamp=now,
+        options=options,
+        perps=[
+            NormalizedPerpSnapshot(
+                provider="binance_futures",
+                instrument="BTCUSDT",
+                mark_price=59_218.52,
+                index_price=59_218.52,
+                funding_rate=0.0001,
+                open_interest_contracts=100_000,
+                open_interest_usd=5_900_000_000,
+                volume_24h_usd=8_000_000_000,
+                collected_at=now,
+            )
+        ],
+        price_history=[
+            {"timestamp": "2026-06-30T00:34:43.271173+00:00", "spot_price": 60_074.63},
+            {"timestamp": "2026-07-01T09:00:00+00:00", "spot_price": 59_218.52},
+        ],
+        key_level_history=[
+            {
+                "timestamp": "2026-06-30T00:34:43.271173+00:00",
+                "spot_price": 60_074.63,
+                "call_wall_strike": 72_000,
+                "put_wall_strike": 50_000,
+                "max_pain_strike": 62_000,
+                "source_provider": "deribit",
+            },
+            {
+                "timestamp": "2026-07-01T08:30:00+00:00",
+                "spot_price": 59_500,
+                "call_wall_strike": 75_000,
+                "put_wall_strike": 50_000,
+                "max_pain_strike": 62_000,
+                "source_provider": "deribit",
+            },
+        ],
+        primary_option_provider="deribit",
+    )
+    return envelope
+
+
 @pytest.fixture(autouse=True)
 def stub_live_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     builder = BtcDerivativesService()
@@ -115,6 +207,70 @@ def stub_live_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     monkeypatch.setattr(btc_derivatives_live_service, "dashboard", dashboard)
+
+
+def test_dashboard_key_level_axis_uses_previous_utc_day_not_same_day_history() -> None:
+    dashboard = BtcDerivativesService().build_dashboard(
+        expiry_mode="constant_maturity",
+        maturity_bucket="60D",
+        live_snapshot=_wall_basis_envelope(),
+    )
+
+    signal = dashboard.options.metrics["options_wall_signal"]
+    assert signal["comparison_basis"] == "previous_utc_day"
+    assert signal["comparison_is_same_day"] is False
+    assert signal["call_wall_previous"] == 72_000
+    assert signal["call_wall_today"] == 75_000
+    assert signal["call_wall_shift_pct"] == pytest.approx(0.0416666, rel=1e-4)
+    assert signal["levels"]["call_wall"]["signal"] == "divergence_watch"
+    assert signal["overall_signal"] != "wall_stable"
+
+
+@pytest.mark.asyncio
+async def test_live_dashboard_get_path_is_read_only_and_single_build() -> None:
+    class Cache:
+        def __init__(self) -> None:
+            self.append_calls = 0
+
+        def read_history(self) -> list[dict]:
+            return []
+
+        def append_daily(self, point: dict) -> list[dict]:
+            self.append_calls += 1
+            raise AssertionError("GET dashboard must not append daily history")
+
+    class Archive:
+        def append(self, **kwargs) -> None:
+            raise AssertionError("GET dashboard must not write archive")
+
+    class Collector:
+        def __init__(self) -> None:
+            self.cache = Cache()
+            self.archive = Archive()
+
+        async def snapshot(self, *, force: bool = False, allow_network: bool = True):
+            assert force is False
+            assert allow_network is False
+            return _live_envelope()
+
+    class CountingBuilder(BtcDerivativesService):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def build_dashboard(self, **kwargs):
+            self.calls += 1
+            return super().build_dashboard(**kwargs)
+
+    collector = Collector()
+    builder = CountingBuilder()
+    service = BtcDerivativesLiveService(collector=collector, dashboard_builder=builder)
+
+    dashboard = await service.dashboard(force=False)
+
+    assert dashboard.snapshot_state == "live"
+    assert builder.calls == 1
+    assert collector.cache.append_calls == 0
 
 
 def test_dashboard_endpoint_returns_stable_chart_first_contract() -> None:
@@ -136,6 +292,14 @@ def test_dashboard_endpoint_returns_stable_chart_first_contract() -> None:
     assert data["chart_layout"]["cards"]["strike_surface"]["span"] == 12
     assert len(data["joint_analysis"]["inference_blocks"]) == 4
     assert len(data["options"]["key_level_cards"]) == 4
+    assert (
+        data["options"]["metrics"]["options_wall_signal"]["schema_version"]
+        == "options_wall_signal.v1"
+    )
+    assert (
+        data["joint_analysis"]["derivatives_axes"]["key_levels_axis"]["schema_version"]
+        == "options_wall_signal.v1"
+    )
     leverage = data["futures"]["charts"]["leverage_pressure_timeline"]
     levels = data["options"]["charts"]["key_levels_history"]
     surface = data["options"]["charts"]["strike_surface"]

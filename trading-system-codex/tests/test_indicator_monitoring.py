@@ -343,29 +343,64 @@ async def test_derivatives_contract_uses_policy_instrument_mapping(monitoring_db
 
 
 @pytest.mark.asyncio
-async def test_sync_onchain_can_generate_alerts(monitoring_db, monkeypatch) -> None:
+async def test_default_onchain_is_degraded_not_demo(monitoring_db, monkeypatch) -> None:
     async with db_manager.session() as session:
         service = IndicatorMonitoringService(MarketRepository(session))
         await service.seed_defaults()
 
-        def fake_demo_value(indicator_key: str, asset_code: str, now):
-            mapping = {
-                "btc_mvrv": 4,
-                "eth_mvrv": 2,
-                "btc_sth_mvrv": 2,
-                "btc_lth_mvrv": 2,
-                "btc_exchange_net_position_change": -100,
-                "eth_exchange_net_position_change": -10,
-                "btc_active_addresses": 2000000,
-                "eth_active_addresses": 800000,
+        async def fake_fetch_metric(indicator_key: str):
+            return {
+                "provider": "defillama",
+                "status": "live",
+                "value": 10,
+                "indicators": {indicator_key: 10},
+                "missing_fields": [],
             }
-            return Decimal(str(mapping[indicator_key]))
 
-        monkeypatch.setattr(service, "_demo_onchain_value", fake_demo_value)
+        monkeypatch.setattr(service.onchain_provider_router, "fetch_metric", fake_fetch_metric)
         await service.sync_onchain()
         alerts = await MarketRepository(session).list_alert_events(limit=50)
+        observations = await MarketRepository(session).list_indicator_observations(
+            category="onchain", limit=50
+        )
 
-    assert any(item.rule_key == "onchain_btc_mvrv_overheated" for item in alerts)
+    assert not any(item.rule_key == "onchain_btc_mvrv_overheated" for item in alerts)
+    assert observations
+    assert not any((item.value_json or {}).get("source") == "demo_onchain" for item in observations)
+    assert any((item.value_json or {}).get("source") == "defillama" for item in observations)
+    assert all(
+        Decimal(item.quality_score) == Decimal("0")
+        for item in observations
+        if (item.value_json or {}).get("source") != "defillama"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_onchain_writes_defillama_observations(monitoring_db, monkeypatch) -> None:
+    async with db_manager.session() as session:
+        service = IndicatorMonitoringService(MarketRepository(session))
+        await service.seed_defaults()
+
+        async def fake_fetch_metric(indicator_key: str):
+            return {
+                "provider": "defillama",
+                "status": "live",
+                "value": 123.45,
+                "indicators": {indicator_key: 123.45},
+                "missing_fields": [],
+            }
+
+        monkeypatch.setattr(service.onchain_provider_router, "fetch_metric", fake_fetch_metric)
+        await service.sync_onchain()
+        observations = await MarketRepository(session).list_indicator_observations(
+            indicator_key="defi_total_tvl", category="onchain", limit=5
+        )
+
+    assert observations
+    latest = observations[0]
+    assert latest.source_provider == "defillama"
+    assert latest.value_num == Decimal("123.45")
+    assert (latest.value_json or {}).get("source") == "defillama"
 
 
 @pytest.mark.asyncio
