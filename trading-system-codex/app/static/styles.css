@@ -9102,3 +9102,41 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
     grid-template-columns: 1fr;
   }
 }
+
+/* Degraded state banner (yellow warning, replaces red errorState) */
+.strategy-degraded-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+  margin: 24px 0;
+  background: rgba(255, 215, 130, 0.18);
+  border-left: 4px solid #d4a72c;
+  border-radius: 8px;
+  color: #5a4612;
+}
+
+.strategy-degraded-banner .degraded-icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.strategy-degraded-banner h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.strategy-degraded-banner p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.strategy-degraded-banner small {
+  display: block;
+  font-size: 12px;
+  color: #8a6e1d;
+  font-style: italic;
+}
