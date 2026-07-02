@@ -318,6 +318,9 @@ class BtcDerivativesLiveService:
                 window=window,
                 strike_range_pct=strike_range_pct,
             )
+        if not force:
+            return dashboard
+
         previous = envelope.key_level_history[-1] if envelope.key_level_history else {}
         metrics = dashboard.options.metrics
         protection = _protection_costs(

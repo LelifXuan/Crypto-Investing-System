@@ -184,6 +184,13 @@ class LiveCollector:
                 envelope.source_status = self.statuses()
                 envelope.missing_reasons = ["实时快照过期，正在使用最近真实缓存"]
                 return envelope
+            hard_stale = self.cache.read_snapshot(settings.btc_derivatives_hard_stale_max_seconds)
+            if hard_stale:
+                envelope = LiveSnapshotEnvelope.model_validate(hard_stale)
+                envelope.snapshot_state = "stale"
+                envelope.source_status = self.statuses()
+                envelope.missing_reasons = ["实时快照超过软时效，正在使用 2 小时内的最近真实缓存"]
+                return envelope
             if not allow_network:
                 return LiveSnapshotEnvelope(
                     snapshot_state="data_insufficient",
@@ -199,6 +206,13 @@ class LiveCollector:
             envelope.snapshot_state = "stale"
             envelope.source_status = live.source_status
             envelope.missing_reasons = ["实时采集失败，正在使用 15 分钟内的最近真实缓存"]
+            return envelope
+        hard_stale = self.cache.read_snapshot(settings.btc_derivatives_hard_stale_max_seconds)
+        if hard_stale:
+            envelope = LiveSnapshotEnvelope.model_validate(hard_stale)
+            envelope.snapshot_state = "stale"
+            envelope.source_status = live.source_status
+            envelope.missing_reasons = ["实时采集失败，正在使用 2 小时内的最近真实缓存"]
             return envelope
         return live
 

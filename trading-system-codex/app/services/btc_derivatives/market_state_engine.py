@@ -3,21 +3,24 @@ from __future__ import annotations
 from math import isfinite
 from typing import Any, Mapping
 
+VALID_DATA_STATES = {"ok", "live", "stale", "partial"}
+HIGH_QUALITY_STATES = {"ok", "live", "stale"}
+
 SIGNAL_TRANSLATIONS: dict[str, dict[str, str]] = {
     "price_up_oi_up": {
         "label": "价格上涨且持仓增加",
         "tone": "supports_long",
-        "explanation": "杠杆资金正在顺势进入，趋势延续证据增强。",
+        "explanation": "杠杆资金顺势进入，趋势延续证据增强。",
     },
     "price_down_oi_up": {
         "label": "价格下跌且持仓增加",
         "tone": "supports_short",
-        "explanation": "新增仓位正在压低价格，现货和多网格的下行压力上升。",
+        "explanation": "新增仓位压低价格，下行压力上升。",
     },
     "price_down_oi_down": {
         "label": "价格与持仓同步下降",
         "tone": "deleveraging",
-        "explanation": "市场处于去杠杆释放阶段，晚追空的赔率可能下降。",
+        "explanation": "市场处于去杠杆释放阶段，追空性价比下降。",
     },
     "flat_oi_up": {
         "label": "横盘期间持仓增加",
@@ -45,7 +48,7 @@ SIGNAL_TRANSLATIONS: dict[str, dict[str, str]] = {
         "explanation": "资金成本暂未形成明显拥挤信号。",
     },
     "basis_rising": {
-        "label": "期货溢价扩大",
+        "label": "期货溢价偏高",
         "tone": "supports_long",
         "explanation": "远期合约相对现货溢价抬升，市场仍在为上方空间或资金成本定价。",
     },
@@ -57,7 +60,7 @@ SIGNAL_TRANSLATIONS: dict[str, dict[str, str]] = {
     "call_skew_high": {
         "label": "Call 追涨需求偏高",
         "tone": "upside_squeeze_watch",
-        "explanation": "市场正在为上涨或逼空情形支付更高期权价格，空网格需关注上破保护。",
+        "explanation": "市场正在为上涨或逼空情形支付更高期权价格。",
     },
     "put_skew_high": {
         "label": "Put 保护需求偏高",
@@ -72,12 +75,12 @@ SIGNAL_TRANSLATIONS: dict[str, dict[str, str]] = {
     "iv_high": {
         "label": "隐含波动率偏高",
         "tone": "expensive_options",
-        "explanation": "单腿买权成本偏高，保护需求应比较借记价差、降低敞口或等待。",
+        "explanation": "直接买入保护的成本偏高，应比较有限风险价差或降低敞口。",
     },
     "iv_neutral": {
         "label": "隐含波动率中性",
         "tone": "neutral",
-        "explanation": "波动率定价未明显偏高或偏低，需结合期限结构和保护成本判断。",
+        "explanation": "波动率定价未明显偏高或偏低，需要结合期限结构和保护成本判断。",
     },
     "rising": {
         "label": "持仓集中区上移",
@@ -94,10 +97,15 @@ SIGNAL_TRANSLATIONS: dict[str, dict[str, str]] = {
         "tone": "neutral",
         "explanation": "关键持仓价位近期没有明显迁移。",
     },
+    "cheap": {
+        "label": "保护成本偏低",
+        "tone": "hedge_cost_supportive",
+        "explanation": "保护成本相对可接受，可优先比较有限风险保护方案。",
+    },
     "expensive": {
         "label": "保护成本偏高",
         "tone": "hedge_cost_warning",
-        "explanation": "直接买入保护成本不低，应优先比较有限风险借记价差或降低网格敞口。",
+        "explanation": "直接买入保护成本不低，应优先比较借记价差或降低网格敞口。",
     },
     "data_insufficient": {
         "label": "数据不足",
@@ -105,14 +113,6 @@ SIGNAL_TRANSLATIONS: dict[str, dict[str, str]] = {
         "explanation": "当前数据不足以形成可靠推定。",
     },
 }
-
-
-def _confidence(data_quality_status: str, evidence_count: int) -> str:
-    if data_quality_status == "ok" and evidence_count >= 4:
-        return "high"
-    if data_quality_status in {"ok", "partial"} and evidence_count >= 2:
-        return "medium"
-    return "low"
 
 
 def _display_item(code: str) -> dict[str, str]:
@@ -130,15 +130,40 @@ def _display_item(code: str) -> dict[str, str]:
     }
 
 
+def _signal_is_valid(code: str | None) -> bool:
+    return bool(code) and code != "data_insufficient" and code in SIGNAL_TRANSLATIONS
+
+
+def _confidence_for_signals(
+    data_quality_status: str,
+    signals: list[str],
+    *,
+    decisive: bool = False,
+) -> str:
+    valid_count = sum(1 for signal in signals if _signal_is_valid(signal))
+    if decisive and data_quality_status in VALID_DATA_STATES and valid_count >= 1:
+        return "high" if data_quality_status in HIGH_QUALITY_STATES else "medium"
+    if data_quality_status in HIGH_QUALITY_STATES and valid_count >= 2:
+        return "high"
+    if data_quality_status in VALID_DATA_STATES and valid_count >= 1:
+        return "medium"
+    return "low"
+
+
 def _group(
     signals: list[str],
     *,
     conclusion: str,
     implication: str,
     tone: str,
+    confidence: str,
 ) -> dict[str, Any]:
     items = [_display_item(code) for code in signals]
-    basis = [item["label"] for item in items if item["label"] not in {"数据不足", "解释暂不可用"}]
+    basis = [
+        item["label"]
+        for item in items
+        if item["label"] not in {"数据不足", "解释暂不可用"}
+    ]
     return {
         "signals": signals,
         "display_items": items,
@@ -146,6 +171,7 @@ def _group(
         "basis": basis,
         "implication": implication,
         "tone": tone,
+        "confidence": confidence,
     }
 
 
@@ -156,6 +182,7 @@ def _key_level_group(
     conclusion: str,
     implication: str,
     tone: str,
+    confidence: str,
 ) -> dict[str, Any]:
     signals = [
         wall_movement.get("call_wall", "data_insufficient"),
@@ -185,15 +212,70 @@ def _key_level_group(
         "basis": [item["label"] for item in items],
         "implication": implication,
         "tone": tone,
+        "confidence": confidence,
+    }
+
+
+def _axis_tone(axis: Mapping[str, Any]) -> str:
+    bias = str(axis.get("bias") or "neutral")
+    if bias == "bullish":
+        return "bullish"
+    if bias == "bearish":
+        return "bearish"
+    if bias == "mixed":
+        return "mixed"
+    return "neutral"
+
+
+def _key_level_axis_group(axis: Mapping[str, Any]) -> dict[str, Any]:
+    evidence = [
+        item for item in axis.get("evidence", [])
+        if isinstance(item, Mapping) and item.get("code") in {"call_wall", "put_wall", "max_pain"}
+    ]
+    items = [
+        {
+            "label": str(item.get("label") or "关键价位"),
+            "tone": str(item.get("bias") or "neutral"),
+            "explanation": str(item.get("explanation") or "解释暂不可用"),
+        }
+        for item in evidence
+    ]
+    if not items:
+        items = [
+            {
+                "label": "关键价位样本不足",
+                "tone": "neutral",
+                "explanation": "当前关键价位数据不足，暂不形成方向判断。",
+            }
+        ]
+    basis = [
+        f"{item['label']}：{item['explanation']}"
+        for item in items
+    ]
+    return {
+        "signals": [str(axis.get("overall_signal") or "data_insufficient")],
+        "display_items": items,
+        "conclusion": str(
+            axis.get("status_label")
+            or axis.get("summary")
+            or "关键价位解释暂不可用"
+        ),
+        "basis": basis,
+        "implication": str(
+            axis.get("summary")
+            or "等待 Call Wall、Put Wall 与 Max Pain 的有效迁移证据。"
+        ),
+        "tone": _axis_tone(axis),
+        "confidence": str(axis.get("confidence") or "low"),
     }
 
 
 def _inference_blocks(groups: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
     titles = {
-        "futures": "期货/永续层",
-        "options": "期权层",
-        "key_levels": "关键价位层",
-        "hedge_cost": "保护成本层",
+        "futures": "期货与永续",
+        "options": "期权情绪",
+        "key_levels": "关键价位",
+        "hedge_cost": "保护成本",
     }
     return [
         {
@@ -203,9 +285,19 @@ def _inference_blocks(groups: Mapping[str, Mapping[str, Any]]) -> list[dict[str,
             "basis": list(groups[key]["basis"]),
             "implication": str(groups[key]["implication"]),
             "tone": str(groups[key]["tone"]),
+            "confidence": str(groups[key].get("confidence", "low")),
         }
         for key in ("futures", "options", "key_levels", "hedge_cost")
     ]
+
+
+def _overall_confidence(groups: Mapping[str, Mapping[str, Any]]) -> str:
+    values = [str(group.get("confidence", "low")) for group in groups.values()]
+    if values.count("high") >= 2 and "low" not in values:
+        return "high"
+    if "high" in values or values.count("medium") >= 2:
+        return "medium"
+    return "low"
 
 
 def build_market_state(
@@ -220,11 +312,13 @@ def build_market_state(
     basis_state: str = "data_insufficient",
     hedge_cost_state: str = "data_insufficient",
     technical_bias: str | None = None,
+    options_wall_signal: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     helps_long: list[str] = []
     hurts_long: list[str] = []
     helps_short: list[str] = []
     hurts_short: list[str] = []
+    conflicts: list[str] = []
     warnings = [
         "最大痛点用于观察持仓分布迁移，不作为价格预测。",
         "期权墙用于观察持仓集中与对冲敏感区，不作为确定支撑或阻力。",
@@ -260,12 +354,33 @@ def build_market_state(
         helps_long.append("short_crowding")
         hurts_short.append("funding_negative_extreme")
 
-    if wall_movement.get("call_wall") == "rising":
-        helps_long.append("call_wall_rising")
-        hurts_short.append("call_wall_rising")
-    if wall_movement.get("put_wall") == "falling":
-        hurts_long.append("put_wall_falling")
-        helps_short.append("put_wall_falling")
+    key_levels_axis = dict(options_wall_signal or {})
+    has_key_levels_axis = key_levels_axis.get("status") == "ok"
+    if has_key_levels_axis:
+        axis_bias = str(key_levels_axis.get("bias") or "neutral")
+        axis_confirmation = str(key_levels_axis.get("confirmation") or "unconfirmed")
+        axis_signal = str(key_levels_axis.get("overall_signal") or "data_insufficient")
+        if axis_bias == "bullish":
+            helps_long.append(f"key_levels_{axis_signal}")
+            hurts_short.append(f"key_levels_{axis_signal}")
+            if axis_confirmation != "confirmed":
+                conflicts.append("关键价位结构偏多但现价确认不足。")
+        elif axis_bias == "bearish":
+            hurts_long.append(f"key_levels_{axis_signal}")
+            helps_short.append(f"key_levels_{axis_signal}")
+            if axis_confirmation != "confirmed":
+                conflicts.append("关键价位结构偏空但现价确认不足。")
+        elif axis_bias == "mixed":
+            conflicts.extend(
+                str(item) for item in key_levels_axis.get("conflicts", []) if item
+            )
+    else:
+        if wall_movement.get("call_wall") == "rising":
+            helps_long.append("call_wall_rising")
+            hurts_short.append("call_wall_rising")
+        if wall_movement.get("put_wall") == "falling":
+            hurts_long.append("put_wall_falling")
+            helps_short.append("put_wall_falling")
 
     if state != "deleveraging":
         if price_oi_state == "price_up_oi_up" and skew_state == "call_skew_high":
@@ -284,7 +399,6 @@ def build_market_state(
         hurts_long.append("basis_falling")
         helps_short.append("basis_falling")
 
-    conflicts: list[str] = []
     if technical_bias == "bearish" and (
         price_oi_state == "price_up_oi_up" or skew_state == "call_skew_high"
     ):
@@ -295,15 +409,15 @@ def build_market_state(
         conflicts.append("技术面偏多，但下跌增仓或 Put 保护需求削弱多头置信度。")
 
     futures_conclusion = "杠杆资金暂未形成清晰方向"
-    futures_implication = "优先等待价格与持仓形成一致变化。"
+    futures_implication = "价格、持仓、资金费率与基差尚未形成同向共振，方向敞口不宜上调。"
     futures_tone = "neutral"
     if price_oi_state == "price_up_oi_up":
         futures_conclusion = "杠杆资金偏多，但多头已有拥挤"
-        futures_implication = "支持趋势延续，但资金费率偏热时追多性价比下降，空网格需防上破。"
+        futures_implication = "趋势延续证据存在；若资金费率继续偏热，追多性价比下降。"
         futures_tone = "mixed"
     elif price_oi_state == "price_down_oi_up":
         futures_conclusion = "新增仓位偏空，下行压力上升"
-        futures_implication = "现货和多网格应比较保护成本或降低杠杆。"
+        futures_implication = "现货和多网格应优先比较保护成本或降低杠杆。"
         futures_tone = "bearish"
     elif price_oi_state == "price_down_oi_down":
         futures_conclusion = "市场处于去杠杆释放阶段"
@@ -311,11 +425,11 @@ def build_market_state(
         futures_tone = "deleveraging"
 
     options_conclusion = "期权市场未形成明显方向偏好"
-    options_implication = "重点观察 IV 与 Skew 是否重新倾斜。"
+    options_implication = "IV 与 Skew 均未明显倾斜，期权层当前不给出额外方向增量。"
     options_tone = "neutral"
     if skew_state == "put_skew_high":
         options_conclusion = "下行保护需求偏高"
-        options_implication = "削弱单纯追多置信度；现货或多网格可比较 Put Spread 保护成本。"
+        options_implication = "单纯追多的置信度下降；现货或多网格可比较 Put Spread 保护成本。"
         options_tone = "bearish"
     elif skew_state == "call_skew_high":
         options_conclusion = "上行追涨或逼空保护需求升高"
@@ -323,11 +437,22 @@ def build_market_state(
         options_tone = "bullish"
 
     key_conclusion = "关键持仓价位迁移不明显"
-    key_implication = "当前仓位结构未提供额外方向增量。"
+    key_implication = "当前仓位结构暂未提供额外方向增量。"
     key_tone = "neutral"
-    if wall_movement.get("call_wall") == "rising":
+    if has_key_levels_axis:
+        key_conclusion = str(
+            key_levels_axis.get("status_label")
+            or key_levels_axis.get("summary")
+            or "关键价位解释暂不可用"
+        )
+        key_implication = str(
+            key_levels_axis.get("summary")
+            or "等待 Call Wall、Put Wall 与 Max Pain 的有效迁移证据。"
+        )
+        key_tone = _axis_tone(key_levels_axis)
+    elif wall_movement.get("call_wall") == "rising":
         key_conclusion = "上方持仓集中区正在抬高"
-        key_implication = "价格接近 Call Wall 时，空网格上破保护需求上升。"
+        key_implication = "价格接近 Call Wall 时，空网格需重新评估上破保护成本。"
         key_tone = "bullish"
     elif wall_movement.get("put_wall") == "falling":
         key_conclusion = "下方保护集中区继续下移"
@@ -335,38 +460,66 @@ def build_market_state(
         key_tone = "bearish"
 
     hedge_conclusion = "保护成本处于可观察区间"
-    hedge_implication = "可继续比较单买期权、借记价差与降低网格敞口。"
+    hedge_implication = "继续比较单买期权、借记价差与降低网格敞口。"
     hedge_tone = "neutral"
     if hedge_cost_state == "expensive" or iv_state == "iv_high":
         hedge_conclusion = "保护成本偏高"
         hedge_implication = "单腿买权成本不低，优先比较借记价差或直接降低网格敞口。"
         hedge_tone = "warning"
+    elif hedge_cost_state == "cheap":
+        hedge_conclusion = "保护成本偏低"
+        hedge_implication = "可优先比较有限风险保护，但仍需检查流动性与价差。"
+        hedge_tone = "supportive"
 
+    futures_signals = [price_oi_state, funding_state, basis_state]
+    options_signals = [iv_state, skew_state]
+    key_signals = (
+        [str(key_levels_axis.get("overall_signal") or "data_insufficient")]
+        if has_key_levels_axis
+        else [
+            wall_movement.get("call_wall", "data_insufficient"),
+            wall_movement.get("put_wall", "data_insufficient"),
+            max_pain_movement,
+        ]
+    )
+    hedge_signals = [hedge_cost_state if hedge_cost_state != "neutral" else iv_state]
     evidence_groups = {
         "futures": _group(
-            [price_oi_state, funding_state, basis_state],
+            futures_signals,
             conclusion=futures_conclusion,
             implication=futures_implication,
             tone=futures_tone,
+            confidence=_confidence_for_signals(data_quality_status, futures_signals),
         ),
         "options": _group(
-            [iv_state, skew_state],
+            options_signals,
             conclusion=options_conclusion,
             implication=options_implication,
             tone=options_tone,
+            confidence=_confidence_for_signals(data_quality_status, options_signals),
         ),
-        "key_levels": _key_level_group(
-            wall_movement,
-            max_pain_movement,
-            conclusion=key_conclusion,
-            implication=key_implication,
-            tone=key_tone,
+        "key_levels": (
+            _key_level_axis_group(key_levels_axis)
+            if has_key_levels_axis
+            else _key_level_group(
+                wall_movement,
+                max_pain_movement,
+                conclusion=key_conclusion,
+                implication=key_implication,
+                tone=key_tone,
+                confidence=_confidence_for_signals(data_quality_status, key_signals),
+            )
         ),
         "hedge_cost": _group(
-            [hedge_cost_state],
+            hedge_signals,
             conclusion=hedge_conclusion,
             implication=hedge_implication,
             tone=hedge_tone,
+            confidence=_confidence_for_signals(
+                data_quality_status,
+                hedge_signals,
+                decisive=hedge_cost_state in {"expensive", "cheap"} or iv_state == "iv_high",
+            ),
         ),
     }
     inference_blocks = _inference_blocks(evidence_groups)
@@ -375,10 +528,9 @@ def build_market_state(
         for group in evidence_groups.values()
         for item in group["display_items"]
     ]
-    evidence_count = len(helps_long) + len(hurts_long) + len(helps_short) + len(hurts_short)
     return {
         "market_state": state,
-        "confidence": _confidence(data_quality_status, evidence_count),
+        "confidence": _overall_confidence(evidence_groups),
         "score": score,
         "helps_long": helps_long,
         "hurts_long": hurts_long,
@@ -410,6 +562,10 @@ def build_market_state(
         },
         "wall_movement": dict(wall_movement),
         "max_pain_movement": max_pain_movement,
+        "key_levels_axis": key_levels_axis,
+        "derivatives_axes": {
+            "key_levels_axis": key_levels_axis,
+        },
         "direct_command": "none; evidence layer only",
         "warnings": warnings,
     }
@@ -425,13 +581,12 @@ def decision_cards(analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
     options = blocks.get("options", {})
     levels = blocks.get("key_levels", {})
     hedge = blocks.get("hedge_cost", {})
-    confidence = str(analysis.get("confidence", "low"))
     return [
         {
             "id": "market_state",
             "label": "当前衍生品状态",
             "state": str(futures.get("tone", "neutral")),
-            "confidence": confidence,
+            "confidence": str(futures.get("confidence", "low")),
             "summary": str(futures.get("conclusion", "当前数据不足以形成清晰判断")),
             "conclusion": str(futures.get("conclusion", "当前数据不足以形成清晰判断")),
             "basis": list(futures.get("basis", [])),
@@ -441,7 +596,7 @@ def decision_cards(analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
             "id": "primary_risk",
             "label": "主要风险",
             "state": str(options.get("tone", "neutral")),
-            "confidence": confidence,
+            "confidence": str(options.get("confidence", "low")),
             "summary": str(options.get("conclusion", "当前风险方向尚不清晰")),
             "conclusion": str(options.get("conclusion", "当前风险方向尚不清晰")),
             "basis": [*list(options.get("basis", [])), *list(levels.get("basis", []))],
@@ -458,7 +613,7 @@ def decision_cards(analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
             "id": "strategy_implication",
             "label": "策略含义",
             "state": str(hedge.get("tone", "neutral")),
-            "confidence": confidence,
+            "confidence": str(hedge.get("confidence", "low")),
             "summary": str(hedge.get("conclusion", "保护成本尚待观察")),
             "conclusion": str(hedge.get("conclusion", "保护成本尚待观察")),
             "basis": list(hedge.get("basis", [])),
@@ -511,16 +666,16 @@ def build_key_level_cards(
     call_meaning = (
         "当前链数据不足，暂时无法判断上方 Call 持仓集中区。"
         if _finite(call_wall) is None
-        else "上方 Call 持仓集中区继续抬高，空网格接近该区时应检查上破保护。"
+        else "上方 Call 持仓集中区正在抬高，空网格接近该区域时应检查上破保护。"
         if call_move == "上移"
-        else "观察现价与上方持仓集中区的距离；接近该区时重新评估上破保护成本。"
+        else "观察现价与上方持仓集中区的距离，接近时重新评估上破保护成本。"
     )
     put_meaning = (
         "当前链数据不足，暂时无法判断下方 Put 持仓集中区。"
         if _finite(put_wall) is None
         else "下方 Put 持仓集中区继续下移，市场对更低价格的保护需求增加。"
         if put_move == "下移"
-        else "观察现价与下方保护集中区的距离；接近该区时关注下行波动和保护需求。"
+        else "观察现价与下方保护集中区的距离，接近时关注下行波动和保护需求。"
     )
     pain_meaning = (
         "当前链数据不足，暂时无法计算持仓分布重心。"

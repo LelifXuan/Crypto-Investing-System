@@ -90,6 +90,49 @@ class KeyLevelCard(BaseModel):
     knowledge_term: str
 
 
+class KeyLevelAxisItem(BaseModel):
+    id: Literal["call_wall", "put_wall", "max_pain"]
+    label: str
+    value: float | None = None
+    previous_value: float | None = None
+    shift_pct: float | None = None
+    movement: str = "data_insufficient"
+    distance_pct: float | None = None
+    signal: str = "data_insufficient"
+    bias: str = "neutral"
+    confirmation: str = "unavailable"
+    explanation: str = ""
+
+
+class OptionsWallSignal(BaseModel):
+    schema_version: str = "options_wall_signal.v1"
+    status: str = "data_insufficient"
+    overall_signal: str = "data_insufficient"
+    bias: str = "neutral"
+    confirmation: str = "unavailable"
+    confidence: str = "low"
+    status_label: str = ""
+    spot_price: float | None = None
+    previous_spot_price: float | None = None
+    spot_change_pct: float | None = None
+    spot_direction: str = "unknown"
+    expiry_context: dict[str, Any] = Field(default_factory=dict)
+    provider: str | None = None
+    quality: str = "data_insufficient"
+    comparison_basis: str = "previous_available_point"
+    comparison_timestamp: str | None = None
+    comparison_is_same_day: bool = False
+    levels: dict[str, KeyLevelAxisItem] = Field(default_factory=dict)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    summary: str = ""
+    risk_note: str = ""
+    direct_command: bool = False
+
+
+KeyLevelsAxis = OptionsWallSignal
+
+
 class FuturesRow(BaseModel):
     exchange: str
     instrument: str

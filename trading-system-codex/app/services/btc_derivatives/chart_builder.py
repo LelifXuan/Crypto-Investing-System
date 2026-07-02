@@ -100,7 +100,7 @@ CHART_SERIES_STYLE: dict[str, dict[str, dict[str, Any]]] = {
             "order": 3,
             "opacity": 0.74,
         },
-        "Call保护成本": {
+        "Call 保护成本": {
             "borderWidth": 1.8,
             "borderDash": [1, 4],
             "pointRadius": 0,
@@ -108,7 +108,7 @@ CHART_SERIES_STYLE: dict[str, dict[str, dict[str, Any]]] = {
             "order": 4,
             "opacity": 0.68,
         },
-        "Put保护成本": {
+        "Put 保护成本": {
             "borderWidth": 1.8,
             "borderDash": [1, 4],
             "pointRadius": 0,
@@ -566,18 +566,18 @@ def build_consolidated_dashboard_charts(
                 ),
             ],
             metadata={"points": list(history)},
-            empty_reason="暂无关键行权价历史；最大痛点和期权墙仅为持仓结构参考。",
+            empty_reason="真实关键价位历史仍在积累中。",
         ),
         "options_risk_premium_history": _chart(
             "options_risk_premium_history",
             "期权情绪与保护成本",
             [point.get("timestamp", "") for point in history],
             {
-                "y_skew": _axis("skew", "left", "skew", baseline=0),
-                "y_ratio": _axis("ratio", "right", "ratio", grid=False, baseline=1),
+                "y_ratio": _axis("ratio", "left", "ratio", grid=True, baseline=1),
+                "y_skew": _axis("skew", "right", "skew", grid=False, baseline=0),
                 "y_cost": _axis(
                     "percent",
-                    "right",
+                    "left",
                     "cost",
                     display_ticks=False,
                     grid=False,
@@ -617,25 +617,25 @@ def build_consolidated_dashboard_charts(
                     ],
                 ),
                 _dataset(
-                    "Call保护成本",
+                    "Call 保护成本",
                     _values(history, "call_protection_cost_pct"),
                     "y_cost",
                     "percent",
                     "line",
                     "percent",
                     style=CHART_SERIES_STYLE["options_risk_premium_history"][
-                        "Call保护成本"
+                        "Call 保护成本"
                     ],
                 ),
                 _dataset(
-                    "Put保护成本",
+                    "Put 保护成本",
                     _values(history, "put_protection_cost_pct"),
                     "y_cost",
                     "percent",
                     "line",
                     "percent",
                     style=CHART_SERIES_STYLE["options_risk_premium_history"][
-                        "Put保护成本"
+                        "Put 保护成本"
                     ],
                 ),
                 _dataset(

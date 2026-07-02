@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from math import isfinite
 from typing import Any
 
 from app.schemas.btc_derivatives import BtcDerivativesDashboardResponse
@@ -31,6 +32,7 @@ from app.services.btc_derivatives.options_metrics import (
     skew_25d,
     spread_pct,
 )
+from app.services.btc_derivatives.options_wall_signal import evaluate_key_levels_axis
 from app.services.btc_derivatives.time_window_policy import (
     TIME_WINDOW_POLICY,
     filter_history_window,
@@ -43,6 +45,80 @@ from app.services.btc_derivatives.wall_tracker import (
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _finite(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if isfinite(number) else None
+
+
+def _last_history_number(history: list[dict[str, Any]], key: str) -> float | None:
+    for item in reversed(history):
+        value = _finite(item.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _last_history_item(history: list[dict[str, Any]]) -> dict[str, Any]:
+    for item in reversed(history):
+        if isinstance(item, dict):
+            return item
+    return {}
+
+
+def _parse_history_timestamp(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value.strip():
+        text = value.strip()
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                parsed = datetime.fromisoformat(f"{text}T00:00:00+00:00")
+            except ValueError:
+                return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _history_item_day(item: dict[str, Any]) -> date | None:
+    parsed = _parse_history_timestamp(item.get("timestamp"))
+    return parsed.date() if parsed else None
+
+
+def _previous_history_item(
+    history: list[dict[str, Any]],
+    *,
+    current_timestamp: datetime | None,
+) -> dict[str, Any]:
+    """Return the latest valid history point before the current UTC day.
+
+    The daily key-level history may already contain today's refreshed point.
+    Comparing the current snapshot against that same-day point hides real
+    day-over-day migration (for example 72k -> 75k Call Wall becomes 75k ->
+    75k).  This helper deliberately skips all points from the current UTC day.
+    """
+
+    if not history:
+        return {}
+    if current_timestamp is None:
+        return _last_history_item(history)
+    current_day = current_timestamp.astimezone(timezone.utc).date()
+    for item in reversed(history):
+        if not isinstance(item, dict):
+            continue
+        item_day = _history_item_day(item)
+        if item_day is None or item_day < current_day:
+            return item
+    return {}
 
 def _serialize_side(quote: OptionQuote | None) -> dict[str, Any] | None:
     if quote is None:
@@ -238,6 +314,56 @@ class BtcDerivativesService:
             movement_history,
             "max_pain_strike",
         )
+        current_timestamp = (
+            live_snapshot.data_timestamp
+            if live_snapshot.data_timestamp
+            else datetime.now(timezone.utc)
+        )
+        previous_key_level = _previous_history_item(
+            movement_history,
+            current_timestamp=current_timestamp,
+        )
+        comparison_timestamp = previous_key_level.get("timestamp")
+        comparison_is_same_day = False
+        previous_day = _history_item_day(previous_key_level) if previous_key_level else None
+        if previous_day is not None:
+            comparison_is_same_day = (
+                previous_day == current_timestamp.astimezone(timezone.utc).date()
+            )
+        options_wall_signal = evaluate_key_levels_axis(
+            spot_price=spot_price,
+            previous_spot_price=_finite(previous_key_level.get("spot_price")),
+            call_wall=walls.get("call_wall_strike"),
+            previous_call_wall=_finite(previous_key_level.get("call_wall_strike")),
+            put_wall=walls.get("put_wall_strike"),
+            previous_put_wall=_finite(previous_key_level.get("put_wall_strike")),
+            max_pain=pain.get("strike"),
+            previous_max_pain=_finite(previous_key_level.get("max_pain_strike")),
+            data_quality_status=live_snapshot.snapshot_state,
+            provider=live_snapshot.primary_option_provider,
+            quality=live_snapshot.snapshot_state,
+            stale=live_snapshot.snapshot_state == "stale",
+            rollover=bool(previous_key_level.get("rollover")),
+            provider_changed=bool(previous_key_level.get("source_provider_change")),
+            comparison_basis=(
+                "previous_utc_day"
+                if previous_key_level
+                else "missing_previous_utc_day"
+            ),
+            comparison_timestamp=comparison_timestamp,
+            comparison_is_same_day=comparison_is_same_day,
+            selected_expiry=selected_expiry,
+            source_dte=maturity_selection.get("dte"),
+            oi_context={
+                "call_wall_open_interest": walls.get("call_wall_open_interest"),
+                "put_wall_open_interest": walls.get("put_wall_open_interest"),
+                "put_call_oi_ratio": ratios.get("put_call_oi_ratio"),
+            },
+            iv_context={
+                "put_call_skew": skew.get("put_call_skew"),
+                "atm_iv_term_points": len(atm_points),
+            },
+        )
         funding_median = metric_summary.get("funding_median")
         funding_state = (
             "positive_hot"
@@ -288,6 +414,7 @@ class BtcDerivativesService:
             basis_state=basis_state,
             hedge_cost_state=hedge_cost_state,
             technical_bias=None,
+            options_wall_signal=options_wall_signal,
         )
         chart_windows = {
             "leverage_pressure_timeline": {
@@ -415,6 +542,7 @@ class BtcDerivativesService:
                         "put_call_ratios": ratios,
                         "wall_movement": wall_movement,
                         "max_pain_movement": max_pain_movement,
+                        "options_wall_signal": options_wall_signal,
                     },
                     "walls": walls,
                     "max_pain": pain,
