@@ -27,6 +27,24 @@ def TIMEFRAME_STACK_LIST() -> list[str]:
     return [spec.logical for spec in TIMEFRAME_SPECS]
 
 
+def _make_fallback_dimension(key: str, label: str) -> "MarketDimension":  # noqa: F821
+    """Build a per-dimension fallback MarketDimension with correct key/label."""
+    from .contracts import MarketDimension
+    return MarketDimension(
+        key=key,
+        label=label,
+        state="DATA_MISSING",  # recognized by evidence._state_confidence
+        bias="NEUTRAL",
+        horizon_impact=[],
+        score=50,
+        confidence=0,
+        evidence=[],
+        source_modules=[],
+        freshness="missing",
+        details={"reason": "上游数据缺失", "degraded": True},
+    )
+
+
 class UnifiedStrategyService:
     """Orchestrate the unified multi-horizon strategy stack."""
 
@@ -75,27 +93,22 @@ class UnifiedStrategyService:
                 degraded_components.append(key)
                 return fallback_dim
 
-        from .contracts import MarketDimension
-        price_structure_fallback = MarketDimension(
-            key="price_structure",
-            label="价格结构",
-            state="MISSING",
-            bias="NEUTRAL",
-            horizon_impact=[],
-            score=50,
-            confidence=0,
-            evidence=[],
-            source_modules=[],
-            freshness="missing",
-            details={"reason": "上游数据缺失"},
-        )
-
         market_dimensions = {
-            "macro_regime": _safe_dimension(self.macro_engine, "macro_regime", price_structure_fallback),
-            "capital_flow": _safe_dimension(self.capital_engine, "capital_flow", price_structure_fallback),
-            "derivatives_regime": _safe_dimension(self.derivatives_engine, "derivatives_regime", price_structure_fallback),
-            "onchain_regime": _safe_dimension(self.onchain_engine, "onchain_regime", price_structure_fallback),
-            "price_structure": self._safe_price_structure(nodes, price_structure_fallback, degraded_components),
+            "macro_regime": _safe_dimension(
+                self.macro_engine, "macro_regime", _make_fallback_dimension("macro_regime", "宏观")
+            ),
+            "capital_flow": _safe_dimension(
+                self.capital_engine, "capital_flow", _make_fallback_dimension("capital_flow", "资金")
+            ),
+            "derivatives_regime": _safe_dimension(
+                self.derivatives_engine, "derivatives_regime", _make_fallback_dimension("derivatives_regime", "衍生品")
+            ),
+            "onchain_regime": _safe_dimension(
+                self.onchain_engine, "onchain_regime", _make_fallback_dimension("onchain_regime", "链上")
+            ),
+            "price_structure": self._safe_price_structure(
+                nodes, _make_fallback_dimension("price_structure", "价格结构"), degraded_components
+            ),
         }
 
         # Cross-horizon synthesis (defensive)

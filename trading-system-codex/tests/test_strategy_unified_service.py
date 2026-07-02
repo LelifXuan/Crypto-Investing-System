@@ -551,3 +551,7 @@ async def test_build_unified_marks_degraded_when_engine_fails(repository) -> Non
     assert payload["status"] == "degraded"
     assert "horizon_views" in payload
     assert "timeframe_stack" in payload
+
+    # Verify per-dimension fallback uses correct label (regression for shared fallback bug)
+    assert payload["market_operation"]["chain"]["macro_regime"]["label"] == "宏观"
+    assert payload["market_operation"]["chain"]["macro_regime"]["key"] == "macro_regime"
