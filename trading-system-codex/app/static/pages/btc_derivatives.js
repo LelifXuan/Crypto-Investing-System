@@ -33,6 +33,7 @@ const FALLBACK_CHART_IDS = [
 
 let requestController = null;
 let dashboard = null;
+let autoRefreshAttempted = false;
 let hedgePlan = null;
 let riskChartMode = "sentiment";
 let filters = {
@@ -897,6 +898,29 @@ async function loadDashboard({ refresh = false } = {}) {
       dashboardQuery(),
       { signal: requestController.signal },
     );
+    // Auto-fetch when initial read returns data_insufficient (matches analysis.js
+    // pattern for the technical indicator page). Only attempt once per page load
+    // to avoid loops; subsequent user clicks on the refresh button still work.
+    if (dashboard?.snapshot_state === "data_insufficient" && !autoRefreshAttempted) {
+      autoRefreshAttempted = true;
+      const banner = statusBanner("首次加载自动拉取衍生品实时数据", "info");
+      setRoot(`<div class="btc-derivatives-page">${renderHero({ banner })}</div>`);
+      try {
+        const receipt = await api.refreshBtcDerivativesDashboard(
+          dashboardQuery(),
+          { signal: requestController.signal },
+        );
+        await waitForRefreshJob(receipt, requestController.signal);
+        dashboard = await api.getBtcDerivativesDashboard(
+          dashboardQuery(),
+          { signal: requestController.signal, force: true },
+        );
+      } catch (refreshError) {
+        if (refreshError?.name !== "AbortError") {
+          console.warn("btc-derivatives:auto-refresh:failed", refreshError);
+        }
+      }
+    }
   }
   syncFiltersFromDashboard();
   destroyChartsForPage("btc-derivatives-");
@@ -906,6 +930,7 @@ async function loadDashboard({ refresh = false } = {}) {
 }
 
 export async function renderBtcDerivatives() {
+  autoRefreshAttempted = false;
   const ready = loadDashboard().catch((error) => {
     if (error?.name !== "AbortError") showError(error);
   });
