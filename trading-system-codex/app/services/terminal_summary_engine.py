@@ -176,8 +176,11 @@ class TerminalSummaryEngine:
         """
 
         decision = _decision_extract_strategy(strategy_bundle)
-        chip = _decision_as_mapping(alerts_bundle.get("chip_structure"))
-        divergence = _decision_as_mapping(alerts_bundle.get("divergence_summary"))
+        chip: Mapping[str, Any] = {}
+        technical_risk = _decision_as_mapping(alerts_bundle.get("technical_risk"))
+        divergence = _decision_as_mapping(technical_risk.get("divergence"))
+        if not divergence:
+            divergence = _decision_as_mapping(alerts_bundle.get("divergence_summary"))
 
         alignment = _decision_source_alignment(
             base_summary=base_summary,
@@ -1742,13 +1745,6 @@ def _decision_source_alignment(
             strategy_decision, "strategy_bias", "bias", "direction"
         ),
     )
-    _decision_append_direction(
-        directions,
-        "alerts.chip_structure",
-        _decision_first_present(
-            chip, "direction", "direction_label", "bias", "signal"
-        ),
-    )
     div_direction_value = _decision_first_present(
         divergence, "direction", "direction_label", "bias", "signal"
     )
@@ -1759,7 +1755,7 @@ def _decision_source_alignment(
         div_direction_value = _decision_first_present(
             overall, "tone", "direction", "title"
         )
-    _decision_append_direction(directions, "alerts.divergence_summary", div_direction_value)
+    _decision_append_direction(directions, "alerts.technical_risk.divergence", div_direction_value)
     directions.extend(_decision_timeframe_directions(timeframe_snapshots))
 
     positive = [name for name, direction in directions if direction == "bullish"]
@@ -2006,7 +2002,7 @@ _MATRIX_ROW_DEFINITIONS: tuple[dict[str, Any], ...] = (
 # fall back to the strategy_gates row (best-effort) so the row still
 # receives an evidence_strength.
 _SOURCE_REF_TO_MATRIX_KEY: dict[str, str] = {
-    "alerts.chip_structure": "chip_structure",
+    "alerts.technical_risk.divergence": "divergence_summary",
     "alerts.divergence_summary": "divergence_summary",
     "alerts.final_decision": "strategy_gates",
     "strategy.decision": "strategy_gates",
@@ -2027,8 +2023,8 @@ _SOURCE_REF_TO_MATRIX_KEY: dict[str, str] = {
 # no-op link (target the monitoring page itself).
 SOURCE_REF_META: dict[str, dict[str, str]] = {
     "terminal_summary": {"label": "全局摘要", "page": "monitoring-overview"},
-    "alerts.chip_structure": {"label": "筹码结构", "page": "alert-center"},
-    "alerts.divergence_summary": {"label": "背离摘要", "page": "alert-center"},
+    "alerts.technical_risk.divergence": {"label": "背离风险", "page": "ai-strategy"},
+    "alerts.divergence_summary": {"label": "背离摘要", "page": "ai-strategy"},
     "alerts.final_decision": {"label": "策略结论", "page": "ai-strategy"},
     "strategy.decision": {"label": "策略决策", "page": "ai-strategy"},
     "strategy.gates": {"label": "策略门控", "page": "ai-strategy"},
@@ -2631,15 +2627,10 @@ def _decision_build_market_row(
         bullets.append("多周期状态：" + mtf_breakdown + "。")
         sources.extend(f"analysis.{tf}" for tf in timeframe_snapshots.keys())
 
-    chip_comment = _decision_describe_chip(chip)
-    if chip_comment:
-        bullets.append(chip_comment)
-        sources.append("alerts.chip_structure")
-
     div_comment = _decision_describe_divergence(divergence)
     if div_comment:
         bullets.append(div_comment)
-        sources.append("alerts.divergence_summary")
+        sources.append("alerts.technical_risk.divergence")
 
     if not bullets:
         bullets.append(

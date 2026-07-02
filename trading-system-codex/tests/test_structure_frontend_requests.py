@@ -26,7 +26,14 @@ def test_structure_page_local_filters_only_rerender() -> None:
 def test_structure_page_does_not_auto_live_sync_on_open() -> None:
     source = STRUCTURE_PAGE.read_text(encoding="utf-8", errors="ignore")
     load_data_start = source.index("async function loadData")
-    load_data_end = source.index("await loadData();", load_data_start)
+    # V1.5.x: loadData is now invoked via .catch() so the page
+    # returns a controller object immediately and the load
+    # either settles or aborts in the background. Either of
+    # these two patterns must be present:
+    try:
+        load_data_end = source.index("loadData().catch", load_data_start)
+    except ValueError:
+        load_data_end = source.index("await loadData();", load_data_start)
     load_data_source = source[load_data_start:load_data_end]
     assert "api.refreshStructure" not in load_data_source
     assert "async function loadData({ forceRefresh = false } = {})" in source

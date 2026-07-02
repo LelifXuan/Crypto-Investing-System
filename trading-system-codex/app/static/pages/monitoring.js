@@ -31,6 +31,7 @@ const INVALID_TEXT_VALUES = new Set([
   "none",
   "null",
   "nan",
+  "suspect_zero",
   "unavailable_placeholder",
 ]);
 
@@ -146,6 +147,7 @@ const MISSING_REASON_LABELS = {
   placeholder: "仅占位",
   pending: "同步未运行或缓存未命中",
   pending_release: "等待数据发布",
+  suspect_zero: "数据待发布（口径异常）",
   missing: "同步未运行或缓存未命中",
   no_data: "同步未运行或缓存未命中",
 };
@@ -303,7 +305,15 @@ function macroUnitSuffix(unit) {
 
 function macroDisplayValue(item) {
   const rawText = cleanText(item?.value_text, "");
-  const rawNum = numeric(item?.value_num);
+  // value_num may be null/undefined/"" when the DB has no numeric
+  // observation yet (e.g. BLS only publishes monthly). Treat those as
+  // "no numeric" and fall through to the text / DASH branch.
+  // ``numeric(null)`` returns 0 because ``Number(null) === 0``, so we
+  // explicitly gate on the raw value first.
+  const rawValue = item?.value_num;
+  const rawNum = (rawValue === null || rawValue === undefined || rawValue === "")
+    ? null
+    : numeric(rawValue);
   const unit = cleanText(item?.unit, "").trim();
   if (rawNum !== null) {
     const value = formatNumber(rawNum, 2);
@@ -315,11 +325,17 @@ function macroDisplayValue(item) {
 
 function validMacroIndicator(item) {
   const rawText = normalizeKey(item?.value_text);
-  const hasIndicatorValue = numeric(item?.value_num) !== null
+  const rawValue = item?.value_num;
+  // Same null/empty guard as ``macroDisplayValue``: literal null or
+  // empty string means "no observation yet" and must not be coerced
+  // to 0 by ``Number(null)``.
+  const hasNumeric = (rawValue !== null && rawValue !== undefined && rawValue !== "")
+    && numeric(rawValue) !== null;
+  const hasIndicatorValue = hasNumeric
     || (rawText && !INVALID_TEXT_VALUES.has(rawText));
   if (!hasIndicatorValue) return false;
   const status = normalizeKey(item?.status);
-  if (["source_error", "unavailable", "unavailable_placeholder", "placeholder", "missing"].includes(status)) {
+  if (["source_error", "unavailable", "unavailable_placeholder", "placeholder", "missing", "suspect_zero"].includes(status)) {
     return false;
   }
   return true;
@@ -486,7 +502,6 @@ const SOURCE_PAGE_HREFS = {
   "monitoring-overview": "/monitoring-page",
   "market-analysis": "/indicators-page",
   "market-structure": "/structure-page",
-  "alert-center": "/alerts-page",
   "macro-calendar": "/macro-calendar-page",
   "market-events": "/market-events-page",
   "ai-strategy": "/strategy-page",
@@ -525,7 +540,10 @@ function renderShellFallback(message) {
 
 function hasRenderedMonitoringShell() {
   const root = document.getElementById("page-root");
-  return Boolean(root?._monitoringSections);
+  return Boolean(
+    root?._monitoringSections?.topbar?.isConnected &&
+    root.querySelector("#monitoring-topbar"),
+  );
 }
 
 function showMonitoringBanner(message, tone = "warning") {
@@ -980,7 +998,7 @@ function applyMonitoringDiff(data, options = {}) {
     setRoot(renderDashboard(data));
     return;
   }
-  if (!root._monitoringSections) {
+  if (!hasRenderedMonitoringShell()) {
     root.innerHTML = `
       <div id="monitoring-topbar"></div>
       <section class="monitoring-surface monitoring-summary-surface">
@@ -1159,5 +1177,16 @@ async function loadDashboard() {
 }
 
 export async function renderMonitoring() {
-  await loadDashboard();
+  const loadPromise = loadDashboard().catch((error) => {
+    console.error("monitoring:load:error", error);
+  });
+  return {
+    async unmount() {
+      activeController?.abort();
+      activeController = null;
+      void loadPromise.catch(() => null);
+    },
+    async pause() {},
+    async resume() {},
+  };
 }

@@ -186,6 +186,7 @@ let autoSyncedMacro = false;
 
 export async function renderMacroCalendar() {
   let currentMonth = monthStart(new Date());
+  let disposed = false;
   setRoot(`
     <section id="macro-statusbar"></section>
     <section class="grid cols-4" id="macro-summary-cards"></section>
@@ -202,7 +203,7 @@ export async function renderMacroCalendar() {
     if (force) invalidateCache("/macro/calendar");
     let payload = await api.getMacroCalendar(300);
     let items = filterCalendarItems(payload || []);
-    if (!items.length && !force && !autoSyncedMacro) {
+    if (false && !items.length && !force && !autoSyncedMacro) {
       autoSyncedMacro = true;
       renderStatus("正在同步宏观日历", "loading");
       await api.refreshMacro();
@@ -215,6 +216,7 @@ export async function renderMacroCalendar() {
     const scheduled = items.filter((item) => item.status !== "released").length;
     const fomc = items.filter((item) => String(item.event_key || "").includes("fomc")).length;
     const core = items.filter((item) => ["us_cpi", "us_nfp", "ism_mfg", "ism_srv"].includes(item.event_key)).length;
+    if (disposed) return;
 
     document.getElementById("macro-summary-cards").innerHTML = [
       metricCard("已发布", released, "事件数"),
@@ -254,5 +256,15 @@ export async function renderMacroCalendar() {
     });
   }
 
-  await load();
+  const loadPromise = load().catch((error) => {
+    if (!disposed) console.error("macro-calendar:initial-load:error", error);
+  });
+  return {
+    async unmount() {
+      disposed = true;
+      void loadPromise.catch(() => null);
+    },
+    async pause() {},
+    async resume() {},
+  };
 }

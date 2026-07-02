@@ -71,6 +71,14 @@ def test_monitoring_css_has_terminal_brief_classes() -> None:
         assert cls in content, f"Missing CSS class: {cls}"
 
 
+def test_monitoring_surfaces_have_clear_vertical_separation() -> None:
+    content = _read(STYLES_CSS)
+
+    selector = 'body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface'
+    assert selector in content
+    assert "margin-top: 28px;" in content
+
+
 def test_monitoring_js_handles_decision_brief_only() -> None:
     """V1.5.2 row set is sourced exclusively from the backend
     decision_brief.rows payload; no synthetic fallback rows are

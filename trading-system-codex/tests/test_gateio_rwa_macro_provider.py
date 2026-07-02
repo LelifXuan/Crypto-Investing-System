@@ -16,6 +16,11 @@ def test_oil_candidates_use_gateio_futures_api_contracts() -> None:
         "symbol": "CL_USDT",
         "settle": "usdt",
     }
+    assert RWA_CANDIDATES["wti_crude"][0] == {
+        "market": "futures",
+        "symbol": "CL_USDT",
+        "settle": "usdt",
+    }
     assert RWA_CANDIDATES["brent_oil"][0] == {
         "market": "futures",
         "symbol": "BZ_USDT",
@@ -63,6 +68,27 @@ async def test_gateio_rwa_futures_ticker_uses_mark_price(monkeypatch) -> None:
         {"market": "futures", "symbol": "CL_USDT", "settle": "usdt"},
     ]
     assert result.value == Decimal("98.12")
+    assert result.source_ref == "gateio_rwa:futures:CL_USDT"
+
+
+@pytest.mark.asyncio
+async def test_gateio_rwa_accepts_canonical_wti_crude_key(monkeypatch) -> None:
+    provider = GateioRwaMacroProvider()
+
+    async def fake_fetch(candidate):
+        return [
+            {
+                "contract": candidate["symbol"],
+                "mark_price": "90.33",
+                "volume_24h_quote": "120000",
+            }
+        ], 3, False
+
+    monkeypatch.setattr(provider, "_fetch_ticker", fake_fetch)
+
+    result = await provider.fetch_latest("wti_crude")
+
+    assert result.value == Decimal("90.33")
     assert result.source_ref == "gateio_rwa:futures:CL_USDT"
 
 

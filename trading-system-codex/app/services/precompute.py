@@ -27,6 +27,8 @@ from app.services.cache_registry import (
     analysis_cache_key,
     expires_at_for_page,
     macro_calendar_cache_key,
+    macro_overview_cache_key,
+    market_context_cache_key,
     market_events_cache_key,
     monitoring_dashboard_cache_key,
     strategy_bundle_cache_key,
@@ -80,8 +82,13 @@ PAGE_PRIORITY_MATRIX = {
     "knowledge": {"current": [], "secondary": [], "related": []},
     "strategy": {
         "current": [("strategy", "P1")],
-        "secondary": [],
+        "secondary": [("market_context", "P2")],
         "related": [("analysis", "P3"), ("structure", "P3"), ("alerts", "P3")],
+    },
+    "btc-derivatives": {
+        "current": [("btc_derivatives", "P1")],
+        "secondary": [],
+        "related": [],
     },
 }
 
@@ -98,6 +105,8 @@ LANE_BY_TASK = {
     "events": "maintenance",
     "adjacent_timeframe_analysis": "background_precompute",
     "strategy": "background_precompute",
+    "market_context": "background_precompute",
+    "btc_derivatives": "network_limited",
 }
 
 TASK_COST_CLASS = {
@@ -113,6 +122,8 @@ TASK_COST_CLASS = {
     "events": "network",
     "adjacent_timeframe_analysis": "medium",
     "strategy": "medium",
+    "market_context": "light",
+    "btc_derivatives": "network",
 }
 
 
@@ -266,19 +277,20 @@ class PrecomputeTaskPlanner:
                 )
             )
         elif task_type == "strategy":
-            items.append(
-                self._build_task(
-                    task_type=task_type,
-                    page_type="strategy",
-                    cache_key=strategy_bundle_cache_key(instrument_id, timeframe),
-                    instrument_id=instrument_id,
-                    timeframe=timeframe,
-                    priority_level=priority_level,
-                    page=page,
-                    reason=reason,
-                    visible=visible,
+            for target_timeframe in strategy_stack_timeframes(page, timeframe):
+                items.append(
+                    self._build_task(
+                        task_type=task_type,
+                        page_type="strategy",
+                        cache_key=strategy_bundle_cache_key(instrument_id, target_timeframe),
+                        instrument_id=instrument_id,
+                        timeframe=target_timeframe,
+                        priority_level=priority_level,
+                        page=page,
+                        reason=reason,
+                        visible=visible and target_timeframe == timeframe,
+                    )
                 )
-            )
         elif task_type == "macro":
             items.append(
                 self._build_task(
@@ -297,6 +309,33 @@ class PrecomputeTaskPlanner:
                     task_type=task_type,
                     page_type="events",
                     cache_key=market_events_cache_key(60, False),
+                    priority_level=priority_level,
+                    page=page,
+                    reason=reason,
+                    visible=visible,
+                )
+            )
+        elif task_type == "market_context":
+            for target_timeframe in strategy_stack_timeframes(page, timeframe):
+                items.append(
+                    self._build_task(
+                        task_type=task_type,
+                        page_type="market_context",
+                        cache_key=market_context_cache_key(instrument_id, target_timeframe),
+                        instrument_id=instrument_id,
+                        timeframe=target_timeframe,
+                        priority_level=priority_level,
+                        page=page,
+                        reason=reason,
+                        visible=visible and target_timeframe == timeframe,
+                    )
+                )
+        elif task_type == "btc_derivatives":
+            items.append(
+                self._build_task(
+                    task_type=task_type,
+                    page_type="btc_derivatives",
+                    cache_key=f"btc_derivatives:dashboard:{CACHE_SOURCE_VERSION}",
                     priority_level=priority_level,
                     page=page,
                     reason=reason,
@@ -339,6 +378,7 @@ class PrecomputeTaskPlanner:
             "structure_diagnostics": "structure",
             "divergence": "alerts",
             "microstructure": "alerts",
+            "market_context": "market_context",
         }.get(task_type, task_type)
         signature = (
             f"{dedupe_task_type}|{instrument_id or '-'}|{timeframe or '-'}|"
@@ -440,6 +480,12 @@ def adjacent_timeframes(timeframe: str) -> list[str]:
     if idx + 1 < len(ordered):
         neighbors.append(ordered[idx + 1])
     return neighbors
+
+
+def strategy_stack_timeframes(page: str, timeframe: str) -> list[str]:
+    if page == "strategy":
+        return ["30d", "1w", "1d", "4h", "1h", "15m"]
+    return [timeframe]
 
 
 class PrecomputeService:
@@ -651,7 +697,16 @@ class PrecomputeService:
 
     async def _execute_task(self, repository: MarketRepository, task: PrecomputeTask) -> None:
         if task.page_type == "analysis" and task.instrument_id and task.timeframe:
-            await AnalysisBundleService(repository).refresh_bundle(
+            service = AnalysisBundleService(repository)
+            if task.reason in {"startup_critical_snapshot", "daily_first_page_access"}:
+                existing = await service.get_bundle(
+                    task.instrument_id,
+                    task.timeframe,
+                    task.view_window or "default",
+                )
+                if existing.cache_state == "fresh" and existing.freshness_state == "fresh":
+                    return
+            await service.refresh_bundle(
                 task.instrument_id, task.timeframe, task.view_window or "default"
             )
             return
@@ -677,6 +732,15 @@ class PrecomputeService:
             from app.services.structure import StructureSnapshotService
 
             service = StructureSnapshotService(repository)
+            if task.reason in {"startup_critical_snapshot", "daily_first_page_access"}:
+                existing = await service.get_bundle(
+                    task.instrument_id,
+                    task.timeframe,
+                    include_geometry=True,
+                    candles_limit=220,
+                )
+                if existing.cache_state == "fresh" and existing.freshness_state == "fresh":
+                    return
             await service.refresh_snapshot(
                 task.instrument_id,
                 task.timeframe,
@@ -689,6 +753,45 @@ class PrecomputeService:
                 include_geometry=True,
                 candles_limit=220,
             )
+            return
+        if task.page_type == "market_context" and task.instrument_id and task.timeframe:
+            from app.services.market_context import MarketContextBuilder
+
+            started = time.perf_counter()
+            context = await MarketContextBuilder(repository).get_context(
+                task.instrument_id,
+                task.timeframe,
+                cache_only=True,
+            )
+            now = datetime.now(timezone.utc)
+            await repository.upsert_page_snapshot_cache(
+                cache_key=task.cache_key,
+                page_type="market_context",
+                instrument_id=task.instrument_id,
+                timeframe=task.timeframe,
+                payload_json=context.__dict__,
+                status="ready",
+                cache_state=context.cache_meta.get("cache_state") or "fresh",
+                snapshot_at=now,
+                data_ts=now,
+                expires_at=expires_at_for_page("market_context", now),
+                source_updated_at=now,
+                source_version=CACHE_SOURCE_VERSION,
+                cost_ms=int((time.perf_counter() - started) * 1000),
+                meta_json={"reason": task.reason or "", "lane": task.lane},
+            )
+            return
+        if task.page_type == "btc_derivatives":
+            from app.services.btc_derivatives.live_service import btc_derivatives_live_service
+
+            if (
+                task.reason in {"startup_critical_snapshot", "daily_first_page_access"}
+                and btc_derivatives_live_service.collector.cache.read_snapshot(
+                    settings.btc_derivatives_stale_max_seconds
+                )
+            ):
+                return
+            await btc_derivatives_live_service.dashboard(force=True)
             return
         if task.page_type == "macro":
             items = await repository.list_macro_events(limit=200)
@@ -709,6 +812,25 @@ class PrecomputeService:
                 source_updated_at=max((item.scheduled_at for item in items), default=now),
                 source_version=CACHE_SOURCE_VERSION,
                 meta_json={"lane": task.lane},
+            )
+            from app.services.macro_overview import MacroOverviewService
+
+            overview_started = time.perf_counter()
+            overview = await MacroOverviewService(repository).build_overview(now=now)
+            overview_payload = overview.model_dump(mode="json")
+            await repository.upsert_page_snapshot_cache(
+                cache_key=macro_overview_cache_key(),
+                page_type="macro",
+                payload_json={"overview": overview_payload},
+                status="ready",
+                cache_state="fresh",
+                snapshot_at=now,
+                data_ts=now,
+                expires_at=expires_at_for_page("macro", now),
+                source_updated_at=now,
+                source_version=CACHE_SOURCE_VERSION,
+                cost_ms=int((time.perf_counter() - overview_started) * 1000),
+                meta_json={"lane": task.lane, "kind": "macro_overview"},
             )
             return
         if task.page_type == "events":

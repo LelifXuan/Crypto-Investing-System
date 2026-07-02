@@ -1,7 +1,13 @@
-import { setRoot, renderNavSkeleton } from "./core/dom.js";
+import { setRoot } from "./core/dom.js";
 
 const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
-const loadPageModule = (path) => import(`${path}${assetVersion}`);
+const moduleLoadPromises = new Map();
+const loadPageModule = (path) => {
+  if (!moduleLoadPromises.has(path)) {
+    moduleLoadPromises.set(path, import(`${path}${assetVersion}`));
+  }
+  return moduleLoadPromises.get(path);
+};
 
 const pageModules = {
   "market-analysis": () => loadPageModule("./pages/analysis.js"),
@@ -9,16 +15,31 @@ const pageModules = {
   "market-structure": () => loadPageModule("./pages/structure/index.js"),
   "market-events": () => loadPageModule("./pages/market_events.js"),
   "macro-calendar": () => loadPageModule("./pages/macro_calendar.js"),
-  "alert-center": () => loadPageModule("./pages/alerts.js"),
   "knowledge-base": () => loadPageModule("./pages/knowledge.js"),
   "cn-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
-  "ai-strategy": () => loadPageModule("./pages/strategy.js"),
+  "gold-allocation": () => loadPageModule("./pages/gold_allocation.js"),
+  "btc-derivatives": () => loadPageModule("./pages/btc_derivatives.js"),
+  "ai-strategy": () => loadPageModule("./pages/strategy.js?v=narrative-layers"),
+};
+
+const PAGE_TITLES = {
+  "macro-calendar": "宏观日历",
+  "market-events": "市场事件",
+  "monitoring-overview": "监控总览",
+  "market-structure": "形态结构",
+  "market-analysis": "技术指标",
+  "knowledge-base": "知识百科",
+  "ashare-etf": "A股ETF",
+  "gold-allocation": "黄金配置",
+  "btc-derivatives": "BTC 衍生品市场",
+  "ai-strategy": "AI策略",
 };
 
 let activeController = null;
 let activePageId = null;
 let spaNavigationInFlight = false;
+const assetLoadPromises = new Map();
 
 function renderFatalPageError(title, detail, code) {
   const root = document.getElementById("page-root");
@@ -40,15 +61,10 @@ function renderFatalPageError(title, detail, code) {
 }
 
 function normalizeController(result) {
-  // V1.5.x: function-typed exports (legacy pattern, e.g. the
-  // knowledge page still returns the bare render function)
-  // used to map `unmount` to `result()` which called the render
-  // function AGAIN on every SPA tab switch. That re-rendered the
-  // old page's DOM right before the new page mounted, which
-  // surfaced as a 100-200 ms visible jank on every navigation.
-  // Now unmount is a no-op for function-typed exports; pages
-  // that need real teardown must export the controller-object
-  // shape below.
+  // Function-typed returns are legacy page exports. Some pages used to return
+  // the render function itself, so calling the function during unmount would
+  // render the old page again. Pages that need teardown should return the
+  // explicit controller object shape below.
   if (typeof result === "function") {
     return {
       mount: async () => {},
@@ -73,25 +89,86 @@ function normalizeController(result) {
   };
 }
 
+function ensureStylesheetOnce(href, key) {
+  const existing = document.querySelector(`link[rel="stylesheet"][href*="${key}"]`);
+  if (existing) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+function loadScriptOnce(src, globalName) {
+  if (globalName && window[globalName]) return Promise.resolve();
+  if (assetLoadPromises.has(src)) return assetLoadPromises.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", () => reject(new Error(`脚本加载失败：${src}`)), { once: true });
+      if (globalName && window[globalName]) resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.defer = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`脚本加载失败：${src}`));
+    document.head.appendChild(script);
+  }).then(() => {
+    if (globalName && !window[globalName]) {
+      throw new Error(`脚本已加载，但 ${globalName} 不可用`);
+    }
+  });
+  assetLoadPromises.set(src, promise);
+  return promise;
+}
+
+async function ensureAssetsForPage(pageId) {
+  if (pageId === "ai-strategy") {
+    ensureStylesheetOnce(`/static/styles-v15.css${assetVersion}`, "styles-v15");
+  }
+  if (pageId === "market-analysis" || pageId === "btc-derivatives") {
+    await loadScriptOnce(`/static/vendor/chart.umd.js${assetVersion}`, "Chart");
+  }
+}
+
+function prefetchPage(pageId) {
+  const loadModule = pageModules[pageId];
+  if (!loadModule) return;
+  void Promise.all([ensureAssetsForPage(pageId), loadModule()]).catch((error) => {
+    console.debug("page:prefetch:skipped", pageId, error);
+  });
+}
+
+function setDocumentTitleForPage(pageId) {
+  const title = PAGE_TITLES[pageId] || "Market Research Terminal";
+  const heading = document.querySelector(".shell-header h1");
+  if (heading) heading.textContent = title;
+  document.title = `${title} | Market Research Terminal`;
+  document.body.dataset.pageTitle = title;
+}
+
 async function boot() {
   const pageId = document.body.dataset.page;
   const loadModule = pageModules[pageId];
   if (!loadModule) return;
+  let module;
+  try {
+    await ensureAssetsForPage(pageId);
+    module = await loadModule();
+  } catch (error) {
+    console.error("page:asset-or-module-load:error", pageId, error);
+    renderFatalPageError(
+      "页面资源加载失败",
+      `当前页面所需的静态资源加载失败，请刷新或稍后重试。${error?.message ? `详情：${error.message}` : ""}`,
+      "asset-or-module-load",
+    );
+    return;
+  }
   if (activeController) {
     await activeController.unmount();
     activeController = null;
-  }
-  let module;
-  try {
-    module = await loadModule();
-  } catch (error) {
-    console.error("page:module-load:error", pageId, error);
-    renderFatalPageError(
-      "页面模块加载失败",
-      `页面静态资源加载失败。${error?.message ? `详情：${error.message}` : ""}`,
-      "module-load",
-    );
-    return;
   }
   const renderPage =
     module.renderPage ||
@@ -103,6 +180,8 @@ async function boot() {
     module.renderAlerts ||
     module.renderKnowledge ||
     module.renderAshareEtf ||
+    module.renderGoldAllocation ||
+    module.renderBtcDerivatives ||
     module.renderStrategy;
   if (typeof renderPage !== "function") {
     console.error("page:render-missing", pageId);
@@ -116,49 +195,33 @@ async function boot() {
   } catch (error) {
     console.error("page:render:error", pageId, error);
     activeController = null;
-    renderFatalPageError("页面渲染失败", "页面初始化过程中出现运行时错误。", "render");
+    renderFatalPageError("页面渲染失败", "页面初始化过程中出现运行时错误，请刷新或稍后重试。", "render");
   }
-}
-
-// V1.5.4 D1: progressive SPA routing.
-// Intercept clicks on [data-page-link] so that switching tabs does
-// NOT trigger a full page reload (which would re-download the
-// 116 KB stylesheet, the main.js module, and the page module).
-// The backend /<page>-page routes still work as deep-link fallbacks
-// for browser refresh, deep linking, and crawler indexing.
-const PAGE_TITLES = {
-  "macro-calendar": "宏观日历",
-  "market-events": "市场事件",
-  "monitoring-overview": "监控总览",
-  "market-structure": "形态结构",
-  "market-analysis": "技术指标",
-  "alert-center": "告警中心",
-  "knowledge-base": "知识百科",
-  "ashare-etf": "A股ETF",
-  "ai-strategy": "AI策略",
-};
-
-function ensureStylesheetForPage(pageId) {
-  if (pageId !== "ai-strategy") return;
-  const href = `/static/styles-v15.css${assetVersion}`;
-  const existing = document.querySelector(`link[rel="stylesheet"][href*="styles-v15"]`);
-  if (existing) return;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = href;
-  document.head.appendChild(link);
-}
-
-function setDocumentTitleForPage(pageId) {
-  const title = PAGE_TITLES[pageId] || "Market Research Terminal";
-  const heading = document.querySelector(".shell-header h1");
-  if (heading) heading.textContent = title;
-  document.title = `${title} | Market Research Terminal`;
-  document.body.dataset.pageTitle = title;
 }
 
 function installSpaRouter() {
   if (!window.history || !window.history.pushState) return;
+  const scheduleBoot = () => {
+    document.body.classList.add("is-page-loading");
+    void boot().finally(() => {
+      spaNavigationInFlight = false;
+      document.body.classList.remove("is-page-loading");
+    });
+  };
+  document.addEventListener("pointerover", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("[data-page-link]");
+    const pageId = link?.getAttribute("data-page-link");
+    if (pageId && pageId !== activePageId) prefetchPage(pageId);
+  }, { passive: true });
+  document.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("[data-page-link]");
+    const pageId = link?.getAttribute("data-page-link");
+    if (pageId && pageId !== activePageId) prefetchPage(pageId);
+  });
   document.addEventListener("click", (event) => {
     if (event.defaultPrevented) return;
     if (event.button !== 0) return;
@@ -182,20 +245,8 @@ function installSpaRouter() {
     spaNavigationInFlight = true;
     window.history.pushState({ pageId, href }, "", href);
     document.body.dataset.page = pageId;
-    ensureStylesheetForPage(pageId);
     setDocumentTitleForPage(pageId);
-    // V1.5.x: paint a skeleton placeholder immediately so the
-    // user sees an instant "正在跳转" state instead of the
-    // previous page staying frozen for 50-300 ms. Then defer
-    // the heavy boot() to the next animation frame so the
-    // browser has a chance to paint the skeleton before the
-    // new page's setRoot(innerHTML=...) blocks the main thread.
-    setRoot(renderNavSkeleton(PAGE_TITLES[pageId] || ""));
-    window.requestAnimationFrame(() => {
-      boot().finally(() => {
-        spaNavigationInFlight = false;
-      });
-    });
+    scheduleBoot();
   });
 
   window.addEventListener("popstate", (event) => {
@@ -205,11 +256,8 @@ function installSpaRouter() {
     if (pageId === activePageId) return;
     spaNavigationInFlight = true;
     document.body.dataset.page = pageId;
-    ensureStylesheetForPage(pageId);
     setDocumentTitleForPage(pageId);
-    boot().finally(() => {
-      spaNavigationInFlight = false;
-    });
+    scheduleBoot();
   });
 }
 

@@ -110,8 +110,7 @@ class DirectionScoringEngine:
     def _long_penalty(snapshot: dict[str, Any]) -> float:
         return clamp(
             0.18 * clamp(snapshot.get("funding_crowding_score", 0))
-            + 0.15 * clamp(snapshot.get("oi_price_divergence_score", 0))
-            + 0.15 * clamp(snapshot.get("cvd_divergence_score", 0))
+            + 0.15 * clamp(snapshot.get("opposite_divergence_risk_score", 0))
             + 0.10 * clamp(snapshot.get("late_entry_risk_score", 0))
             + 0.12 * clamp(snapshot.get("event_risk_score", 0)),
             0,
@@ -122,8 +121,7 @@ class DirectionScoringEngine:
     def _short_penalty(snapshot: dict[str, Any]) -> float:
         return clamp(
             0.12 * clamp(snapshot.get("funding_crowding_score", 0))
-            + 0.15 * clamp(snapshot.get("oi_price_divergence_score", 0))
-            + 0.15 * clamp(snapshot.get("cvd_divergence_score", 0))
+            + 0.15 * clamp(snapshot.get("opposite_divergence_risk_score", 0))
             + 0.10 * clamp(snapshot.get("late_entry_risk_score", 0))
             + 0.12 * clamp(snapshot.get("event_risk_score", 0)),
             0,

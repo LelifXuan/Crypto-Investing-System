@@ -30,6 +30,12 @@ from app.schemas.market import (
     RiskEvaluationRequest,
 )
 from app.services.alerts_bundle import AlertsBundleService
+from app.services.cache_registry import (
+    CACHE_SOURCE_VERSION,
+    cache_status,
+    expires_at_for_page,
+    macro_overview_cache_key,
+)
 from app.services.final_decision import FinalDecisionService
 from app.services.indicator_monitoring import IndicatorMonitoringService
 from app.services.monitoring_dashboard import MonitoringDashboardService
@@ -93,6 +99,7 @@ async def _ensure_monitoring_category_fresh(
     elif category == "onchain":
         await service.sync_onchain()
     elif category == "macro":
+        await service.seed_defaults()
         await service.sync_macro()
     else:
         return False
@@ -104,18 +111,41 @@ async def get_macro_overview(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    async def producer() -> dict:
-        from app.services.macro_overview import MacroOverviewService
+    repository = MarketRepository(session)
+    cache = await repository.get_page_snapshot_cache(macro_overview_cache_key())
+    if cache is not None:
+        payload = cache.payload_json.get("overview", cache.payload_json)
+        if cache_status(cache) != "fresh":
+            await precompute_service.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page="macro",
+                    reason="macro_overview_stale_read",
+                    visible=True,
+                    candidates=["macro"],
+                    priority=2,
+                )
+            )
+        return MacroOverviewResponse.model_validate(payload)
 
-        payload = await MacroOverviewService(MarketRepository(session)).build_overview()
-        return payload.model_dump(mode="json")
+    from app.services.macro_overview import MacroOverviewService
 
-    cached = await shared_query_cache.get_or_set(
-        "monitoring:macro_overview",
-        settings.macro_calendar_cache_seconds,
-        producer,
+    started = datetime.now(UTC)
+    overview = await MacroOverviewService(repository).build_overview(now=started)
+    payload = overview.model_dump(mode="json")
+    await repository.upsert_page_snapshot_cache(
+        cache_key=macro_overview_cache_key(),
+        page_type="macro",
+        payload_json={"overview": payload},
+        status="ready",
+        cache_state="fresh",
+        snapshot_at=started,
+        data_ts=started,
+        expires_at=expires_at_for_page("macro", started),
+        source_updated_at=started,
+        source_version=CACHE_SOURCE_VERSION,
+        meta_json={"kind": "macro_overview", "source": "local_observations"},
     )
-    return MacroOverviewResponse.model_validate(cached)
+    return overview
 
 
 @indicators_catalog_router.get("/catalog", response_model=list[IndicatorDefinitionRead])
@@ -181,7 +211,7 @@ async def get_monitoring_dashboard(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(
-        instrument_id, timeframe, allow_refresh=True
+        instrument_id, timeframe, allow_refresh=False
     )
 
 
@@ -421,6 +451,7 @@ async def sync_macro(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     service = IndicatorMonitoringService(MarketRepository(session))
+    await service.seed_defaults()
     runs = await service.sync_macro()
     await shared_query_cache.invalidate_prefix("monitoring:macro_calendar:")
     await shared_query_cache.invalidate_prefix("monitoring:macro_overview")

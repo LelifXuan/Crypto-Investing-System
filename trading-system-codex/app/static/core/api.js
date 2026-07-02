@@ -191,6 +191,147 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 12000,
     });
   },
+  planEtfRebalance(payload, options = {}) {
+    return requestJson("/ashare-etf/rebalance/plan", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
+  getGoldAllocation(options = {}) {
+    return requestJson("/gold/allocation", {
+      ttl: options.force ? 0 : 30,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  getGoldFundamentals(options = {}) {
+    return requestJson("/gold/fundamentals", {
+      ttl: options.force ? 0 : 300,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  getGoldMarketState(options = {}) {
+    return requestJson("/gold/market-state", {
+      params: { force: options.force ? "true" : "false" },
+      ttl: options.force ? 0 : 30,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  planGoldAllocation(payload, options = {}) {
+    return requestJson("/gold/allocation/plan", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
+  planGoldExecution(payload, options = {}) {
+    return requestJson("/gold/execution-plan", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
+  getBtcDerivativesDashboard(query = {}, options = {}) {
+    return requestJson("/btc-derivatives/dashboard", {
+      params: {
+        expiry: query.selectedExpiry || "",
+        expiry_mode: query.expiryMode || "constant_maturity",
+        maturity_bucket: query.maturityBucket || "60D",
+        window: query.window || "",
+        strike_range_pct: query.strikeRangePct || "30",
+      },
+      ttl: options.force ? 0 : 20,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  refreshBtcDerivativesDashboard(query = {}, options = {}) {
+    invalidateCache("/btc-derivatives/dashboard");
+    return requestJson("/btc-derivatives/dashboard/refresh", {
+      method: "POST",
+      params: {
+        expiry: query.selectedExpiry || "",
+        expiry_mode: query.expiryMode || "constant_maturity",
+        maturity_bucket: query.maturityBucket || "60D",
+        window: query.window || "",
+        strike_range_pct: query.strikeRangePct || "30",
+      },
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
+  getRefreshJob(jobId, options = {}) {
+    return requestJson(`/refresh-jobs/${jobId}`, {
+      ttl: 0,
+      force: true,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 5000,
+    });
+  },
+  getBtcDerivativesSourceStatus(options = {}) {
+    return requestJson("/btc-derivatives/sources/status", {
+      ttl: 5,
+      force: options.force ?? false,
+      signal: options.signal,
+    });
+  },
+  probeBtcDerivativesSources(options = {}) {
+    invalidateCache("/btc-derivatives/sources/status");
+    return requestJson("/btc-derivatives/sources/probe", {
+      method: "POST",
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 45000,
+    });
+  },
+  getBtcDerivativesLiveSnapshot(query = {}, options = {}) {
+    return requestJson("/btc-derivatives/live/snapshot", {
+      params: {
+        expiry: query.selectedExpiry || "",
+        expiry_mode: query.expiryMode || "constant_maturity",
+        maturity_bucket: query.maturityBucket || "60D",
+        window: query.window || "",
+        strike_range_pct: query.strikeRangePct || "30",
+      },
+      ttl: options.force ? 0 : 20,
+      force: options.force ?? false,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 45000,
+    });
+  },
+  refreshBtcDerivativesLiveSnapshot(query = {}, options = {}) {
+    invalidateCache("/btc-derivatives/dashboard");
+    invalidateCache("/btc-derivatives/live/snapshot");
+    return requestJson("/btc-derivatives/live/refresh", {
+      method: "POST",
+      params: {
+        expiry: query.selectedExpiry || "",
+        expiry_mode: query.expiryMode || "constant_maturity",
+        maturity_bucket: query.maturityBucket || "60D",
+        window: query.window || "",
+        strike_range_pct: query.strikeRangePct || "30",
+      },
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 45000,
+    });
+  },
+  planBtcDerivativeHedge(payload, options = {}) {
+    return requestJson("/btc-derivatives/hedge-plan", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
   getAnalysisBundle(instrumentId, timeframe, viewWindow = "default", options = {}) {
     return requestJson("/analysis/bundle", {
       params: {
@@ -224,10 +365,11 @@ export const api = {
         instrument_id: instrumentId,
         prefer_live: options.preferLive ? "true" : "false",
       },
-      ttl: 300,
-      force: options.force ?? false,
-      signal: options.signal,
-    });
+        ttl: 300,
+        force: options.force ?? false,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs ?? 5000,
+      });
   },
   getCandles(instrumentId, timeframe, limit, options = {}) {
     return requestJson("/marketdata/candles", {
@@ -374,6 +516,19 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 30000,
     });
   },
+  getMarketContext(instrumentId, timeframe, options = {}) {
+    return requestJson("/market-context/snapshot", {
+      params: {
+        instrument_id: instrumentId,
+        timeframe: timeframe === "1M" ? "30d" : timeframe,
+        cache_only: options.cacheOnly ?? true,
+      },
+      ttl: options.force ? 0 : 20,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
   updateAlertEventStatus(alertEventId, status) {
     invalidateCache("/alerts/events");
     return requestJson(`/alerts/events/${encodeURIComponent(alertEventId)}/status`, {
@@ -449,6 +604,30 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 12000,
       signal: options.signal,
       retry: 1,
+    });
+  },
+  getUnifiedStrategy(instrumentId, options = {}) {
+    return requestJson("/strategy/unified", {
+      params: {
+        instrument_id: instrumentId,
+        force: options.force ? "true" : "false",
+      },
+      ttl: options.force ? 0 : 30,
+      force: options.force ?? false,
+      timeoutMs: options.timeoutMs ?? 15000,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  prewarmStrategy(instrumentId, options = {}) {
+    return requestJson("/strategy/prewarm", {
+      method: "POST",
+      params: { instrument_id: instrumentId },
+      ttl: 0,
+      force: true,
+      timeoutMs: options.timeoutMs ?? 3000,
+      signal: options.signal,
+      retry: 0,
     });
   },
   refreshStrategyBundle(instrumentId, timeframe, options = {}) {

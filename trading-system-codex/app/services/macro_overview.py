@@ -14,8 +14,10 @@ from app.schemas.market import (
     MacroOverviewLayerRead,
     MacroOverviewResponse,
 )
+from app.services.macro import transforms
 from app.services.macro.fallback_resolver import fallback_for_indicator
-from app.services.macro.indicator_key_aliases import canonical_macro_key
+from app.services.macro.provider_registry import MacroProviderRegistry
+from app.services.macro.scoring_engine import DEFAULT_MACRO_SCORING_ENGINE
 
 UTC = timezone.utc
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "monitoring" / "configs"
@@ -60,6 +62,8 @@ class MacroIndicatorSpec:
     display_label: str | None = None
     aliases: tuple[str, ...] = ()
     source_provider: str | None = None
+    transform: str | None = None
+    series_symbol: str | None = None
 
 
 @dataclass(frozen=True)
@@ -103,7 +107,7 @@ DISPLAY_CODE_BY_INDICATOR = {
     "pce_yoy": "US PCE",
     "core_pce_yoy": "US Core PCE",
     "nfp": "US NFP",
-    "real_yield_5y": "DFII5",
+    "real_yield_5y": "US 5Y TIPS",
     "wti_oil": "WTI",
     "brent_oil": "Brent",
     "vix": "VIX",
@@ -152,6 +156,12 @@ UNIT_BY_INDICATOR = {
     "usd_cny": "CNY",
 }
 FORCE_UNIT_BY_INDICATOR = {"reverse_repo"}
+CANONICAL_LABEL_OVERRIDES = {
+    "real_yield_5y": (
+        "美国5年期通胀保值国债收益率",
+        "5年期 TIPS 实际利率，用于观察黄金的短中期机会成本。",
+    ),
+}
 
 CLEAN_INDICATOR_LABELS = {
     "effr": ("美国有效联邦基金利率", "美联储政策利率的实际成交水平。"),
@@ -273,12 +283,26 @@ TRADFI_LABEL_OVERRIDES = {
     "usd_cny": ("美元兑人民币", "美元兑人民币用于观察人民币与美元流动性压力。"),
 }
 
+# Keys whose configured ``transform`` is applied automatically when the
+# underlying provider can supply history. The list is intentionally
+# narrow so future transform-only keys must be added here explicitly
+# after their series mapping has been verified.
+TRANSFORM_AFFECTED_KEYS = frozenset(
+    {
+        "cpi_mom",
+        "core_cpi_mom",
+        "pce_yoy",
+        "core_pce_yoy",
+        "average_hourly_earnings_yoy",
+    }
+)
+
 FALLBACK_LAYERS = (
     ("rates_policy", ("effr", "us02y_yield", "us10y_yield", "us10y_2y_spread")),
     ("inflation", ("cpi_yoy", "core_cpi_yoy", "breakeven_10y", "wti_oil")),
     ("growth_labor", ("nfp", "unemployment_rate", "ism_manufacturing", "ism_services")),
     ("liquidity_credit", ("hy_spread", "reverse_repo", "financial_conditions")),
-    ("cross_asset_confirmation", ("dxy", "gold", "vix", "real_yield_10y")),
+    ("cross_asset_confirmation", ("dxy", "gold", "vix", "real_yield_5y", "real_yield_10y")),
     ("event_window", ("fomc_event_window",)),
 )
 
@@ -286,8 +310,13 @@ FALLBACK_LAYERS = (
 class MacroOverviewService:
     """Build a macro overview while keeping missing data out of scores."""
 
-    def __init__(self, repository: MarketRepository) -> None:
+    def __init__(
+        self,
+        repository: MarketRepository,
+        provider_registry: MacroProviderRegistry | None = None,
+    ) -> None:
         self.repository = repository
+        self.provider_registry = provider_registry or MacroProviderRegistry()
 
     async def build_overview(self, *, now: datetime | None = None) -> MacroOverviewResponse:
         now = now or datetime.now(UTC)
@@ -310,13 +339,15 @@ class MacroOverviewService:
         layers: list[MacroOverviewLayerRead] = []
         layer_scores: dict[str, int] = {}
         for layer in self._load_layers():
-            indicators = [
-                self._indicator_read(layer, spec, latest_by_key, definitions)
-                for spec in layer.indicators
-            ]
+            indicators: list[MacroOverviewIndicatorRead] = []
+            for spec in layer.indicators:
+                indicators.append(
+                    await self._indicator_read(layer, spec, latest_by_key, definitions)
+                )
+            _apply_macro_scoring_metadata(indicators)
             scored = [item for item in indicators if item.is_scored]
             score = (
-                round(sum(_score_indicator(item) for item in scored) / len(scored))
+                round(sum(int(item.score or 50) for item in scored) / len(scored))
                 if scored
                 else 50
             )
@@ -357,6 +388,7 @@ class MacroOverviewService:
         total_score = _total_score(layer_contributions)
         event_items = _event_items(events, now)
         event_status, event_summary, next_event = _event_window(events, now)
+        event_state = _event_window_state(event_status)
         completeness = _data_completeness(layers)
 
         warnings = _warnings(layers)
@@ -379,6 +411,7 @@ class MacroOverviewService:
             warnings=warnings,
             layer_contributions=layer_contributions,
             operation_bias=_operation_bias(total_score, completeness),
+            event_window_state=event_state,
             event_window_status=event_status,
             event_window_summary=event_summary,
             next_event_title=next_event.title if next_event else None,
@@ -408,6 +441,13 @@ class MacroOverviewService:
                 if sources and isinstance(sources[0], dict)
                 else None
             )
+            series_symbol = None
+            if sources and isinstance(sources[0], dict):
+                series_symbol = (
+                    sources[0].get("symbol")
+                    or sources[0].get("series")
+                )
+            transform_value = item.get("transform")
             grouped.setdefault(layer_key, []).append(
                 MacroIndicatorSpec(
                     indicator_key=key,
@@ -420,6 +460,8 @@ class MacroOverviewService:
                     display_label=display_label,
                     aliases=ALIASES.get(key, ()),
                     source_provider=provider,
+                    transform=transform_value if isinstance(transform_value, str) else None,
+                    series_symbol=series_symbol,
                 )
             )
 
@@ -444,7 +486,7 @@ class MacroOverviewService:
             )
         return tuple(layers) if layers else _fallback_layer_specs()
 
-    def _indicator_read(
+    async def _indicator_read(
         self,
         layer: MacroLayerSpec,
         spec: MacroIndicatorSpec,
@@ -473,18 +515,48 @@ class MacroOverviewService:
             text_value,
             fallback.get("is_scored"),
         )
+        # Defense in depth: even if ETL already wrote 0% to the DB for an
+        # indicator whose valid domain excludes zero, surface a
+        # ``suspect_zero`` status so the UI never renders a misleading
+        # literal 0% on unemployment-style indicators.
+        if (
+            spec.indicator_key in TRANSFORM_AFFECTED_KEYS
+            or spec.indicator_key.startswith("unemployment")
+        ):
+            obs_unit = (
+                getattr(obs, "unit", None)
+                or _unit_for_indicator(spec.indicator_key, spec.unit)
+            )
+            if _looks_like_unemployment_zero(spec.indicator_key, value, obs_unit):
+                status = "suspect_zero"
+                is_scored = False
+                block_reason = "value=0 落在失业率无效域。"
+                value = None
         block_reason = None if is_scored else _score_block_reason(status, fallback)
         definition = definitions.get(getattr(obs, "indicator_key", spec.indicator_key))
         tooltip = getattr(definition, "display_name", None) or spec.tooltip
         obs_ts = getattr(obs, "observation_ts", None)
         status_reason = _status_reason(status)
+        unit = _unit_for_indicator(spec.indicator_key, spec.unit)
+        transform_applied: str | None = None
+        transform_source: str | None = None
+
+        observation_meta = getattr(obs, "value_json", None) or {}
+        persisted_transform = observation_meta.get("transform_applied")
+        if (
+            spec.indicator_key in TRANSFORM_AFFECTED_KEYS
+            and persisted_transform in {"mom_pct", "yoy_pct"}
+        ):
+            unit = "%"
+            transform_applied = persisted_transform
+            transform_source = observation_meta.get("transform_source")
 
         return MacroOverviewIndicatorRead(
             indicator_key=spec.indicator_key,
             label=spec.label,
             display_code=spec.display_code,
             display_label=spec.display_label or spec.label,
-            unit=_unit_for_indicator(spec.indicator_key, spec.unit),
+            unit=unit,
             tooltip=tooltip,
             region="global",
             source_provider=getattr(obs, "source_provider", None) or spec.source_provider,
@@ -505,7 +577,50 @@ class MacroOverviewService:
                 is_scored,
                 obs_ts,
             ),
+            transform_applied=transform_applied,
+            transform_source=transform_source,
         )
+
+    async def _apply_transform(
+        self,
+        spec: MacroIndicatorSpec,
+        status: str,
+        value: Any,
+    ) -> tuple[Any | None, str | None]:
+        """Run the configured transform on a fresh history window.
+
+        Returns ``(new_value, source_ref)`` on success. Returns
+        ``(None, None)`` on any failure so the caller keeps the original
+        value (backward compatibility).
+        """
+        if status not in {"ok", "live"} or value is None:
+            return None, None
+        provider = self.provider_registry.resolve(
+            source_provider=spec.source_provider, source_kind="raw_series"
+        )
+        if provider is None or not hasattr(provider, "fetch_history"):
+            return None, None
+        try:
+            history = await provider.fetch_history(
+                spec.series_symbol, lookback_points=14
+            )
+        except Exception:
+            return None, None
+        points = [
+            (point.observation_ts, point.value)
+            for point in history
+            if point.observation_ts is not None
+        ]
+        if spec.transform == "yoy_pct":
+            result = transforms.compute_yoy_pct(points)
+        elif spec.transform == "mom_pct":
+            result = transforms.compute_mom_pct(points)
+        else:
+            return None, None
+        if result is None:
+            return None, None
+        computed_value, _latest_ts = result
+        return float(computed_value), f"{spec.series_symbol}_{spec.transform}"
 
     def _indicator_from_fallback(
         self,
@@ -602,6 +717,8 @@ def _fallback_layer_specs() -> tuple[MacroLayerSpec, ...]:
 
 
 def _indicator_label(key: str) -> tuple[str, str]:
+    if key in CANONICAL_LABEL_OVERRIDES:
+        return CANONICAL_LABEL_OVERRIDES[key]
     if key in TRADFI_LABEL_OVERRIDES:
         return TRADFI_LABEL_OVERRIDES[key]
     if key in CLEAN_INDICATOR_LABELS:
@@ -616,6 +733,8 @@ def _display_fields(key: str, label: str) -> tuple[str | None, str]:
     code = DISPLAY_CODE_BY_INDICATOR.get(key)
     if not code:
         return None, label
+    if key == "real_yield_5y":
+        return code, label
     if label.upper().startswith(code.upper()):
         return code, label
     return code, f"{code} {label}"
@@ -756,6 +875,35 @@ def _is_scored_indicator(
     }
 
 
+UNEMPLOYMENT_LIKE_KEYS = frozenset({"unemployment_rate", "us_unemployment_rate"})
+PERCENT_UNIT_HINTS = frozenset({"%", "percent"})
+
+
+def _looks_like_unemployment_zero(
+    indicator_key: str, value: Any, unit: Any
+) -> bool:
+    """Service-layer check that flags a literal 0 on unemployment-like
+    indicators even when the data layer defense did not fire (e.g. the
+    observation came straight from the repository without going through
+    ``fallback_resolver``)."""
+    if indicator_key not in UNEMPLOYMENT_LIKE_KEYS:
+        return False
+    normalized_unit = str(unit or "").strip().lower()
+    if normalized_unit not in PERCENT_UNIT_HINTS:
+        return False
+    if value is None:
+        return False
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {"none", "null", "nan"}:
+            return False
+        try:
+            return float(stripped) == 0
+        except (TypeError, ValueError):
+            return False
+    return value == 0 or value == 0.0
+
+
 def _score_block_reason(status: str, fallback: dict[str, Any]) -> str:
     return (
         fallback.get("score_block_reason")
@@ -774,103 +922,54 @@ def _decimal_or_none(value: Any | None) -> Decimal | None:
 
 
 def _score_indicator(item: MacroOverviewIndicatorRead) -> int:
-    value = item.value_num
-    orig_key = item.indicator_key
-
-    if orig_key == "fomc_event_window":
-        text = str(item.value_text or "").strip().lower()
-        return {
-            "inactive": 50,
-            "pre_event": 25,
-            "post_event": 35,
-            "live_event": 20,
-        }.get(text, 50)
-
-    canon_key = canonical_macro_key(orig_key)
-    if value is None or item.value_text is not None:
-        return 50
-    x = float(value)
-
-    if orig_key in {"cpi_mom", "core_cpi_mom"}:
-        return _inverse_score(x, low=0.15, high=0.55)
-    if orig_key in {"real_yield_10y", "real_yield_5y"}:
-        return _inverse_score(x, low=0.5, high=2.8)
-
-    if canon_key in {"us_dff", "sofr", "us_2y_yield", "us_10y_yield"}:
-        return _inverse_score(x, low=2.5, high=6.0)
-    if canon_key in {"us_10y_2y_spread", "us10y_3m_spread"}:
-        return _range_score(x, bearish_below=-0.7, bullish_above=0.4)
-    if canon_key in {"us_cpi_yoy", "us_core_cpi_yoy"}:
-        return _inverse_score(x, low=2.0, high=5.0)
-    if canon_key in {"us_nfp", "retail_sales", "gdp_qoq"}:
-        return _direct_score(x, low=0.0, high=250.0)
-    if canon_key in {"us_unemployment_rate", "initial_claims", "continuing_claims"}:
-        return _inverse_score(x, low=3.5, high=5.5)
-    if canon_key in {"ism_mfg_pmi", "ism_srv_pmi"}:
-        return _direct_score(x, low=45.0, high=55.0)
-    if canon_key in {"hy_oas", "ig_spread", "vix"}:
-        return _inverse_score(x, low=3.5, high=8.0)
-    if canon_key in {"dollar_index", "usd_cny"}:
-        return _inverse_score(x, low=98.0, high=108.0)
-    if canon_key in {"wti_crude"}:
-        return _range_mid_score(x, low=55.0, high=95.0)
-    if canon_key in {"gold", "qqq", "spy", "hyg"}:
-        return _price_20d_momentum(x, canon_key, item)
-    return 50
-
-@dataclass
-class _MomentumBacking:
-    key: str
-    values: list[float]
-
-_momentum_store: dict[str, _MomentumBacking] = {}
-
-def _price_20d_momentum(current: float, key: str, item) -> int:
-    ctx = _momentum_store.get(key)
-    if ctx is None:
-        _momentum_store[key] = _MomentumBacking(key=key, values=[current])
-        return 50
-    ctx.values.append(current)
-    if len(ctx.values) > 20:
-        ctx.values = ctx.values[-20:]
-    if len(ctx.values) < 5:
-        return 50
-    avg_first_5 = sum(ctx.values[:5]) / min(5, len(ctx.values))
-    if avg_first_5 <= 0:
-        return 50
-    pct = (current - avg_first_5) / avg_first_5 * 100
-    if pct > 8:
-        return 80
-    if pct > 3:
-        return 65
-    if pct < -8:
-        return 20
-    if pct < -3:
-        return 35
-    return 50
+    result = DEFAULT_MACRO_SCORING_ENGINE.score(item)
+    return int(result.score) if result.score is not None else 50
 
 
-def _direct_score(value: float, *, low: float, high: float) -> int:
-    return round(_clamp((value - low) / (high - low)) * 100)
+def _apply_macro_scoring_metadata(items: list[MacroOverviewIndicatorRead]) -> None:
+    for item in items:
+        result = DEFAULT_MACRO_SCORING_ENGINE.score(item)
+        item.score = result.score
+        item.formula_id = result.formula_id
+        item.score_reason = result.reason
+        if item.is_scored:
+            item.is_scored = result.is_scored
+        if not item.is_scored:
+            item.score_block_reason = item.score_block_reason or result.reason
+            item.direction = None
+            item.direction_label = None
+            continue
+        score = int(result.score or 50)
+        if score >= 65:
+            item.direction = "bullish"
+            item.direction_label = "偏多"
+        elif score <= 35:
+            item.direction = "bearish"
+            item.direction_label = "偏空"
+        else:
+            item.direction = "neutral"
+            item.direction_label = "中性"
 
 
-def _inverse_score(value: float, *, low: float, high: float) -> int:
-    return 100 - _direct_score(value, low=low, high=high)
-
-
-def _range_score(value: float, *, bearish_below: float, bullish_above: float) -> int:
-    return _direct_score(value, low=bearish_below, high=bullish_above)
-
-
-def _range_mid_score(value: float, *, low: float, high: float) -> int:
-    midpoint = (low + high) / 2
-    distance = abs(value - midpoint) / ((high - low) / 2)
-    return round((1 - _clamp(distance)) * 100)
-
-
-def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
-    return max(low, min(high, value))
-
+def _event_window_state(display_status: str) -> str:
+    normalized = str(display_status or "").strip().lower()
+    mapping = {
+        "清朗": "clear",
+        "娓呮櫚": "clear",
+        "clear": "clear",
+        "normal": "clear",
+        "inactive": "clear",
+        "临近发布": "pre_event",
+        "涓磋繎鍙戝竷": "pre_event",
+        "pre_event": "pre_event",
+        "事件进行中": "live_event",
+        "浜嬩欢杩涜涓": "live_event",
+        "live_event": "live_event",
+        "刚发布": "post_event",
+        "鍒氬彂甯": "post_event",
+        "post_event": "post_event",
+    }
+    return mapping.get(normalized, "unknown")
 
 def _score_to_bias(score: int) -> str:
     if score >= 65:

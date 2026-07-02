@@ -98,7 +98,7 @@ def normalize_direction_metrics(
     The ``scale`` argument is required and must match the contract the caller
     received from its upstream source. The legacy auto-detection heuristic
     (``0..100 ⇒ legacy``) was removed because it silently flipped
-    ``chip_structure.direction_score`` (signed ``-100..100``) into a 100 %
+    signed direction score (``-100..100``) into a 100 %
     bearish reading when the value happened to be in ``0..100`` (e.g. ``0``).
     Callers must now declare the contract:
 
@@ -436,7 +436,7 @@ def evaluate_strong_trend_follow(
         momentum = clamp(snapshot.get("bullish_momentum"))
         flow = clamp(
             max(
-                to_float(snapshot.get("bullish_flow")),
+                to_float(snapshot.get("volume_proxy_confirmation")),
                 to_float(snapshot.get("volume_confirmation")),
             )
         )
@@ -454,7 +454,7 @@ def evaluate_strong_trend_follow(
         momentum = clamp(snapshot.get("bearish_momentum"))
         flow = clamp(
             max(
-                to_float(snapshot.get("bearish_flow")),
+                to_float(snapshot.get("volume_proxy_confirmation")),
                 to_float(snapshot.get("volume_confirmation")),
             )
         )

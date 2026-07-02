@@ -1150,11 +1150,12 @@ indicators:
   display_name: VIX
   category: macro
   family: cross_asset
-  source_provider: fred
+  source_provider: gateio_rwa
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: VIXCLS
+    external_symbol: VIX_USDT
+    frequency: intraday
   supported_assets:
   - global
   supported_timeframes:
@@ -1173,11 +1174,12 @@ indicators:
   display_name: WTI Crude Oil
   category: macro
   family: cross_asset
-  source_provider: fred
+  source_provider: gateio_rwa
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: DCOILWTICO
+    external_symbol: CL_USDT
+    frequency: intraday
   supported_assets:
   - global
   supported_timeframes:
@@ -1239,6 +1241,94 @@ indicators:
   default_thresholds: {}
   use_cases:
   - macro_regime
+  is_enabled: true
+- indicator_key: defi_total_tvl
+  display_name: DeFi Total TVL
+  category: onchain
+  family: fundamental
+  source_provider: defillama
+  source_kind: public_snapshot
+  calc_engine: raw
+  calc_params:
+    external_symbol: defi_total_tvl
+    asset_scope: global
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - low_frequency_confirmation
+  is_enabled: true
+- indicator_key: stablecoin_total_mcap
+  display_name: Stablecoin Total Market Cap
+  category: onchain
+  family: liquidity
+  source_provider: defillama
+  source_kind: public_snapshot
+  calc_engine: raw
+  calc_params:
+    external_symbol: stablecoin_total_mcap
+    asset_scope: global
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - low_frequency_confirmation
+  is_enabled: true
+- indicator_key: dex_volume_24h
+  display_name: DEX Volume 24h
+  category: onchain
+  family: activity
+  source_provider: defillama
+  source_kind: public_snapshot
+  calc_engine: raw
+  calc_params:
+    external_symbol: dex_volume_24h
+    asset_scope: global
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - low_frequency_confirmation
+  is_enabled: true
+- indicator_key: protocol_fees_24h
+  display_name: Protocol Fees 24h
+  category: onchain
+  family: activity
+  source_provider: defillama
+  source_kind: public_snapshot
+  calc_engine: raw
+  calc_params:
+    external_symbol: protocol_fees_24h
+    asset_scope: global
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - neutral
+  default_thresholds: {}
+  use_cases:
+  - low_frequency_confirmation
   is_enabled: true
 - indicator_key: btc_mvrv
   display_name: BTC MVRV
@@ -1874,7 +1964,8 @@ indicators:
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: QQQ
+    external_symbol: NAS100_USDT
+    frequency: intraday
   supported_assets:
   - global
   supported_timeframes:
@@ -1897,7 +1988,8 @@ indicators:
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: SPY
+    external_symbol: SPX500_USDT
+    frequency: intraday
   supported_assets:
   - global
   supported_timeframes:

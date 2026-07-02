@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from app.db.models.market import MarkPrice
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import AnalysisBundleRead, CandleRead, MarkPriceRead
-from app.services.cache_registry import CACHE_SOURCE_VERSION
+from app.services.cache_registry import CACHE_SOURCE_VERSION, source_freshness
 from app.services.contract_snapshot import ContractSnapshotService
+from app.services.data_freshness import bar_close_freshness
 from app.services.final_decision import FinalDecisionService
 from app.services.indicator_matrix import IndicatorMatrixService
 from app.services.indicator_monitoring import IndicatorMonitoringService
@@ -62,6 +63,25 @@ class AnalysisBundleService:
         cache = await self.repository.get_page_snapshot_cache(cache_key)
         status = cache_status(cache)
         payload = cache.payload_json if cache is not None else {}
+        freshness = source_freshness(
+            cache.source_updated_at if cache is not None else None,
+            timeframe,
+        )
+        candles = payload.get("candles", [])
+        latest_bar_ts = None
+        if candles:
+            latest = candles[-1]
+            latest_bar_ts = (
+                latest.get("ts_open")
+                if isinstance(latest, dict)
+                else getattr(latest, "ts_open", None)
+            )
+        bar_state = bar_close_freshness(timeframe, latest_bar_ts)
+        freshness_state = (
+            bar_state.freshness_state
+            if bar_state.freshness_state in {"fresh", "due", "missing"}
+            else freshness.state
+        )
         return AnalysisBundleRead.model_validate(
             {
                 "instrument_id": instrument_id,
@@ -75,6 +95,8 @@ class AnalysisBundleService:
                 "final_decision": payload.get("final_decision", {}),
                 "status": "ready" if status == "fresh" else status,
                 "cache_state": status,
+                "freshness_state": freshness_state,
+                "source_age_seconds": freshness.age_seconds,
                 "snapshot_at": cache.snapshot_at if cache else None,
                 "data_ts": cache.data_ts if cache else None,
                 "source_updated_at": cache.source_updated_at if cache else None,
@@ -82,7 +104,11 @@ class AnalysisBundleService:
                 "source_version": cache.source_version if cache else CACHE_SOURCE_VERSION,
                 "cost_ms": cache.cost_ms if cache else None,
                 "refreshed": False,
-                "status_message": bundle_status_message(status),
+                "status_message": (
+                    "检测到新收盘 K 线，后台正在重建分析快照。"
+                    if freshness_state == "due"
+                    else bundle_status_message(status)
+                ),
             }
         )
 
@@ -200,6 +226,13 @@ class AnalysisBundleService:
                 "final_decision": final_decision,
                 "status": "ready",
                 "cache_state": "fresh",
+                "freshness_state": source_freshness(
+                    source_updated_at,
+                    normalized_timeframe,
+                    now=now,
+                ).state,
+                "source_age_seconds": 0,
+                "refresh_completed_at": now,
                 "snapshot_at": cache.snapshot_at,
                 "data_ts": cache.data_ts,
                 "source_updated_at": cache.source_updated_at,

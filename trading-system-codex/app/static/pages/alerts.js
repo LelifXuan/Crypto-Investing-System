@@ -751,9 +751,7 @@ export async function renderAlerts() {
     }
   });
 
-  try {
-    await load();
-  } catch (error) {
+  const loadPromise = load().catch((error) => {
     console.error("alerts:initial-load:error", error);
     renderStatus("告警摘要暂不可用，已保留页面骨架，可稍后重试或手动刷新。", "danger");
     document.getElementById("alerts-chip-structure").innerHTML = fallbackChipStructureCard(
@@ -768,5 +766,15 @@ export async function renderAlerts() {
     ].join("");
     document.getElementById("alerts-body").innerHTML =
       '<tr><td colspan="7" class="empty-row">告警列表暂不可用。</td></tr>';
-  }
+  });
+  return {
+    async unmount() {
+      activeController?.abort();
+      activeController = null;
+      void loadPromise.catch(() => null);
+      isMounted = false;
+    },
+    async pause() {},
+    async resume() {},
+  };
 }

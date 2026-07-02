@@ -471,12 +471,12 @@ def test_decision_brief_no_longer_renders_strategy_gates() -> None:
     assert "合约准入" not in joined_all
     assert "等待 4H 突破" not in joined_all
     assert "禁止追单" not in joined_all
-    # The market_situation row still cites the chip source.
+    # The market_situation row no longer cites the retired chip source.
     market = next(
         row for row in summary["decision_brief"]["rows"]
         if row["key"] == "market_situation"
     )
-    assert "alerts.chip_structure" in market["source_refs"]
+    assert "alerts.chip_structure" not in market["source_refs"]
 
 
 def test_decision_brief_does_not_use_unconditional_trade_language() -> None:

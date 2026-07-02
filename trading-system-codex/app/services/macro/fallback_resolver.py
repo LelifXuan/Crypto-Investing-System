@@ -7,6 +7,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 
+# Indicator keys that should never legitimately report a literal 0 value.
+# Defense in depth: if a value of 0 sneaks in (e.g. uninitialised column,
+# ETL bug, etc.) the data layer marks the row as suspect_zero so the
+# UI never renders a misleading 0% unemployment rate.
+UNEMPLOYMENT_LIKE_KEYS = frozenset(
+    {"unemployment_rate", "us_unemployment_rate"}
+)
+PERCENT_UNITS = frozenset({"%", "percent"})
+
 DEFAULT_FRESHNESS_WINDOWS = {
     "intraday": {"fresh": 0.25, "extended": 1, "seed": 1},
     "daily": {"fresh": 7, "extended": 30, "seed": 45},
@@ -172,6 +181,24 @@ def _record_from_live(indicator_id: str, live_obs: Any | None) -> dict[str, Any]
         unit = getattr(live_obs, "unit", "")
 
     normalized_date = _date_text(latest_date)
+    if _is_suspect_zero(indicator_id, value, unit):
+        return {
+            "indicator_id": indicator_id,
+            "value": None,
+            "previous_value": None,
+            "unit": unit or "",
+            "latest_date": normalized_date,
+            "source": source,
+            "fallback_level": "suspect_zero",
+            "status": "suspect_zero",
+            "status_reason": (
+                "观测值落在该指标的无效域（失业率典型域 2-15%），"
+                "不参与评分，等待真实数据覆盖。"
+            ),
+            "is_scored": False,
+            "score_block_reason": "value=0 落在失业率无效域。",
+            "updated_at": normalized_date,
+        }
     return {
         "indicator_id": indicator_id,
         "value": _safe_float(value),
@@ -297,6 +324,33 @@ def _safe_float(value: Any | None) -> float | None:
         return None
 
 
+def _is_suspect_zero(indicator_id: str, value: Any, unit: Any) -> bool:
+    """Return True when ``value`` is a literal zero on an indicator whose
+    valid domain excludes 0 (e.g. unemployment_rate).
+
+    The check intentionally fires on raw string ``"0"`` as well as numeric
+    0 / 0.0 / Decimal(0) since ETL pipelines and the data layer can hand
+    us any of these.
+    """
+    if indicator_id not in UNEMPLOYMENT_LIKE_KEYS:
+        return False
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {"none", "null", "nan"}:
+            return False
+        try:
+            numeric = float(stripped)
+        except (TypeError, ValueError):
+            return False
+        is_zero = numeric == 0
+    else:
+        is_zero = value == 0 or value == 0.0
+    if not is_zero:
+        return False
+    normalized_unit = str(unit or "").strip().lower()
+    return normalized_unit in PERCENT_UNITS
+
+
 def _status_reason(status: str) -> str:
     mapping = {
         "stale_cache": "使用运行时缓存，数据可能略滞后。",
@@ -313,5 +367,6 @@ def _status_reason(status: str) -> str:
         "not_implemented": "该数据源尚未接入。",
         "pending": "后台正在准备数据。",
         "missing": "暂无观测值。",
+        "suspect_zero": "观测值落在该指标的无效域，暂不展示。",
     }
     return mapping.get((status or "missing").lower(), "状态暂不可用。")

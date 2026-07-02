@@ -84,6 +84,7 @@ def _write_manifest(runtime_metadata: dict[str, object]) -> None:
         raise RuntimeError(f"portable bundle contains forbidden runtime artifacts: {joined}")
     lock = json.loads((PORTABLE_ROOT / RUNTIME_LOCK.name).read_text(encoding="utf-8"))
     manifest = {
+        "version": "1.7.0",
         "release_type": "embedded_runtime_portable",
         "description": "Windows win-x64 portable bundle with embedded Python runtime.",
         "platform": "win-x64",

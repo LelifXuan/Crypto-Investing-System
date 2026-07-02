@@ -39,4 +39,27 @@
   1. 国家统计局规范化抓取
   2. 人民银行 OMO 公告标准化
   3. ChinaMoney / ChinaBond 利率与曲线指标标准化
+
+## 宏观 transform-only 指标的最小历史窗口
+
+下列 7 个 key 在 `macro_indicator_api_map.v1.json` 中声明了
+`transform: mom_pct | yoy_pct`。计算 percent 变化需要至少 14 个月度
+观测点（5 年），任何 provider 必须在 FRED 官方 JSON / BLS 公共 JSON
+路径上保留最近 5 年的窗口，否则 transform 失败回退到原 value（指数值）。
+
+| key | transform | primary source | series | minimum history |
+| --- | --- | --- | --- | --- |
+| `cpi_yoy` | yoy_pct | bls | CUSR0000SA0 | 13 个月 |
+| `cpi_mom` | mom_pct | bls | CUSR0000SA0 | 2 个月 |
+| `core_cpi_yoy` | yoy_pct | bls | CUSR0000SA0L1E | 13 个月 |
+| `core_cpi_mom` | mom_pct | bls | CUSR0000SA0L1E | 2 个月 |
+| `pce_yoy` | yoy_pct | fred | PCEPI | 13 个月 |
+| `core_pce_yoy` | yoy_pct | fred | PCEPILFE | 13 个月 |
+| `average_hourly_earnings_yoy` | yoy_pct | bls | CES0500000003 | 13 个月 |
+
+其中 4 个 key（`cpi_mom` / `core_cpi_mom` / `pce_yoy` / `core_pce_yoy`）在
+`TRANSFORM_AFFECTED_KEYS` 白名单中，service 会在 build_overview 时自动
+调用 `provider.fetch_history` 重新算 percent；其余 3 个仅供 audit 脚本
+做口径校验。如需启用更多自动 transform-only key，请把 key 加入
+`app/services/macro_overview.py:TRANSFORM_AFFECTED_KEYS` 显式白名单。
   4. PANews HTML 抓取替代旧 RSS 处理

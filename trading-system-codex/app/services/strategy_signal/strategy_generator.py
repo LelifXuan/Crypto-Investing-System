@@ -119,6 +119,7 @@ class StrategyGenerator:
 
     def build_decision(self, snapshot: dict[str, Any], scores: DirectionScores) -> dict[str, Any]:
         state_context = self._state(snapshot, scores)
+        state_context = self._apply_divergence_risk(snapshot, state_context)
         state = state_context["state"]
         bias = state_context["bias"]
         reasons = state_context["reasons"]
@@ -195,6 +196,7 @@ class StrategyGenerator:
             "entry_checklist": self._entry_checklist(snapshot, state, bias, scores),
             "gates": self._gates(snapshot, scores),
             "trigger_diagnostics": trigger_diagnostics,
+            "technical_risk": snapshot.get("technical_risk") or {},
             "lower_tf_confirmation": lower_tf,
             "strong_trend_follow": trend_follow,
             "entry_mode": entry_mode or primary.get("entry_mode") or "no_trade",
@@ -208,6 +210,38 @@ class StrategyGenerator:
             "explain": self._explain(snapshot, state, bias, scores, reasons),
             "components": self._components(snapshot, scores),
         }
+
+    @staticmethod
+    def _apply_divergence_risk(
+        snapshot: dict[str, Any], state_context: dict[str, Any]
+    ) -> dict[str, Any]:
+        divergence = ((snapshot.get("technical_risk") or {}).get("divergence") or {})
+        if not isinstance(divergence, dict):
+            return state_context
+        if divergence.get("recommended_action") != "block_chasing":
+            return state_context
+        bias = state_context.get("bias")
+        if bias not in {"long", "short"}:
+            return state_context
+        state = str(state_context.get("state") or "")
+        if not (state.endswith("TRIGGERED") or state.startswith("WAIT") or state.endswith("BIAS")):
+            return state_context
+        adjusted = dict(state_context)
+        adjusted["state"] = "WAIT_LONG_CONFIRMATION" if bias == "long" else "WAIT_SHORT_CONFIRMATION"
+        adjusted["entry_mode"] = "pullback_confirm"
+        reasons = list(adjusted.get("reasons") or [])
+        reasons.extend(divergence.get("risk_reasons") or [])
+        if divergence.get("summary"):
+            reasons.append(str(divergence["summary"]))
+        adjusted["reasons"] = list(dict.fromkeys(reasons))
+        gates = list(adjusted.get("blocking_gates") or [])
+        if divergence.get("confirmation"):
+            gates.append(f"背离确认条件：{divergence['confirmation']}")
+        if divergence.get("invalidation"):
+            gates.append(f"背离失效条件：{divergence['invalidation']}")
+        adjusted["blocking_gates"] = list(dict.fromkeys(gates))
+        adjusted["next_trigger"] = divergence.get("summary") or adjusted.get("next_trigger")
+        return adjusted
 
     def _state(self, snapshot: dict[str, Any], scores: DirectionScores) -> dict[str, Any]:
         th = self.thresholds
@@ -643,15 +677,7 @@ class StrategyGenerator:
         ]
 
     def _hard_gate_reasons(self, snapshot: dict[str, Any]) -> list[str]:
-        th = self.thresholds
-        reasons = []
-        if clamp(snapshot.get("spread_bps", 0), 0, 10000) > th["spread_hard_limit_bps"]:
-            reasons.append("当前买卖价差过宽，执行风险过高。")
-        if clamp(snapshot.get("slippage_bps", 0), 0, 10000) > th["slippage_hard_limit_bps"]:
-            reasons.append("当前预计滑点过高，入场价格不可控。")
-        if clamp(snapshot.get("depth_score", 100)) < th["min_depth_score"]:
-            reasons.append("当前盘口深度偏薄，冲击成本可能侵蚀收益。")
-        return reasons
+        return []
 
     @staticmethod
     def _conflict_reasons(snapshot: dict[str, Any], scores: DirectionScores) -> list[str]:
@@ -684,10 +710,10 @@ class StrategyGenerator:
                 "detail": "参考 RSI、MACD、ADX、OBV 与成交量确认。",
             },
             {
-                "name": "资金流与衍生品",
-                "long_score": round2(snapshot.get("bullish_flow")),
-                "short_score": round2(snapshot.get("bearish_flow")),
-                "detail": "参考 CVD、OI、Funding、Basis 与盘口深度。",
+                "name": "背离风险",
+                "long_score": round2(snapshot.get("divergence_support_long")),
+                "short_score": round2(snapshot.get("divergence_support_short")),
+                "detail": "参考 RSI、MACD、CCI、OBV、KDJ 等 OHLCV 技术背离风险。",
             },
             {
                 "name": "综合结果",
@@ -710,14 +736,13 @@ class StrategyGenerator:
             "mtf_trend_bullish",
             "bullish_structure",
             "bullish_momentum",
-            "bullish_flow",
-            "derivatives_long_confirmation",
+            "volume_proxy_confirmation",
+            "divergence_support_long",
             "execution_quality",
             "mtf_trend_bearish",
             "bearish_structure",
             "bearish_momentum",
-            "bearish_flow",
-            "derivatives_short_confirmation",
+            "divergence_support_short",
             "range_structure",
             "low_adx",
         ]

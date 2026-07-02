@@ -18,6 +18,7 @@ let candleDataset;
 let destroyChartsForPage;
 let lineDataset;
 let renderChart;
+let sanitizeChartSeries;
 let scheduleIdlePrecompute;
 
 async function ensureDeps() {
@@ -46,7 +47,14 @@ async function ensureDeps() {
     statusBanner,
     statusChip,
   } = domModule);
-  ({ barDataset, candleDataset, destroyChartsForPage, lineDataset, renderChart } = chartModule);
+  ({
+    barDataset,
+    candleDataset,
+    destroyChartsForPage,
+    lineDataset,
+    renderChart,
+    sanitizeChartSeries,
+  } = chartModule);
   ({ scheduleIdlePrecompute } = precomputeModule);
 }
 
@@ -66,6 +74,12 @@ function minCandlesFor(timeframe) {
 
 function toNumber(value) {
   return Number(value ?? 0);
+}
+
+function finiteInputNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function ema(values, period) {
@@ -470,6 +484,33 @@ function obvInterpretation(obvValues, closeValues) {
   return "中性，量能累积方向暂不明确。";
 }
 
+function volumeInterpretation(volumes) {
+  const clean = (volumes || []).map(Number).filter((value) => Number.isFinite(value) && value > 0);
+  if (clean.length < 8) return "成交量样本不足，暂不判断放量质量。";
+  const latest = clean.at(-1) || 0;
+  const recent3 = clean.slice(-3);
+  const recent5 = clean.slice(-5);
+  const baselineWindow = clean.slice(Math.max(0, clean.length - 25), Math.max(0, clean.length - 5));
+  const baselineSource = baselineWindow.length >= 5 ? baselineWindow : clean.slice(0, -1);
+  const baseline = baselineSource.reduce((sum, value) => sum + value, 0) / Math.max(baselineSource.length, 1);
+  const recentAvg = recent3.reduce((sum, value) => sum + value, 0) / recent3.length;
+  const recentMax = Math.max(...recent5);
+  const latestRatio = baseline > 0 ? latest / baseline : 0;
+  const recentRatio = baseline > 0 ? recentAvg / baseline : 0;
+  const maxRatio = baseline > 0 ? recentMax / baseline : 0;
+
+  if (recentRatio >= 1.6 || latestRatio >= 1.8 || maxRatio >= 2.2) {
+    return "成交量明显放大，近几根量柱高于近期均量，当前价格波动具备真实成交支撑。";
+  }
+  if (recentRatio >= 1.25 || latestRatio >= 1.35 || maxRatio >= 1.6) {
+    return "成交量温和放大，量能已经抬升，但还不是极端爆量。";
+  }
+  if (recentRatio <= 0.7 && latestRatio <= 0.8) {
+    return "成交量收缩，当前价格动作缺少量能确认。";
+  }
+  return "成交量接近近期均量，暂未出现持续放量。";
+}
+
 function kdjInterpretation(kValue, dValue, jValue, prevKValue = kValue, prevDValue = dValue) {
   const goldenCross = prevKValue <= prevDValue && kValue > dValue;
   const deadCross = prevKValue >= prevDValue && kValue < dValue;
@@ -507,12 +548,14 @@ function vwapInterpretation(close, vwap50, vwap100, slope10, spreadPct) {
 
 
 function useSeries(values, fallback, expectedLength) {
-  return Array.isArray(values) && values.length === expectedLength ? values.map((item) => (item === null ? null : Number(item))) : fallback;
+  return Array.isArray(values) && values.length === expectedLength
+    ? sanitizeChartSeries(values)
+    : fallback;
 }
 
 function useSeriesOrBuild(values, buildFallback, expectedLength) {
   if (Array.isArray(values) && values.length === expectedLength) {
-    return values.map((item) => (item === null ? null : Number(item)));
+    return sanitizeChartSeries(values);
   }
   return buildFallback();
 }
@@ -529,24 +572,24 @@ function calcAnalysis(candles, bundle = null) {
     const vegas = ema(closes, 144);
     return {
       closes, volumes,
-      ema12: core.ema_12.map(Number), ema30: core.ema_30.map(Number),
-      ema60: core.ema_60.map(Number), ema120: core.ema_120.map(Number),
+      ema12: sanitizeChartSeries(core.ema_12), ema30: sanitizeChartSeries(core.ema_30),
+      ema60: sanitizeChartSeries(core.ema_60), ema120: sanitizeChartSeries(core.ema_120),
       vegasFastLow: vegas, vegasFastHigh: ema(closes, 169),
       vegasSlowLow: ema(closes, 576), vegasSlowHigh: ema(closes, 676),
-      rsiValues: core.rsi_14.map(Number),
-      macdValues: { line: core.macd_line.map(Number), signal: core.macd_signal.map(Number), hist: core.macd_hist.map(Number) },
-      atrValues: core.atr_14.map(Number),
-      adxValues: { adxValues: secondary.adx_14.map(Number), plusDi: secondary.plus_di?.map(Number) || [], minusDi: secondary.minus_di?.map(Number) || [] },
-      boll: { upper: secondary.bbands_upper?.map(Number) || [], middle: secondary.bbands_middle?.map(Number) || [], lower: secondary.bbands_lower?.map(Number) || [], width: secondary.bbands_width?.map(Number) || [], percentB: secondary.percent_b?.map(Number) || [] },
-      obvValues: secondary.obv?.map(Number) || [],
-      kdjValues: { k: secondary.kdj_k?.map(Number) || [], d: secondary.kdj_d?.map(Number) || [], j: secondary.kdj_j?.map(Number) || [] },
-      cciValues: secondary.cci_20?.map(Number) || [],
-      natrValues: core.natr_14?.map(Number) || [],
+      rsiValues: sanitizeChartSeries(core.rsi_14),
+      macdValues: { line: sanitizeChartSeries(core.macd_line), signal: sanitizeChartSeries(core.macd_signal), hist: sanitizeChartSeries(core.macd_hist) },
+      atrValues: sanitizeChartSeries(core.atr_14),
+      adxValues: { adxValues: sanitizeChartSeries(secondary.adx_14), plusDi: sanitizeChartSeries(secondary.plus_di), minusDi: sanitizeChartSeries(secondary.minus_di) },
+      boll: { upper: sanitizeChartSeries(secondary.bbands_upper), middle: sanitizeChartSeries(secondary.bbands_middle), lower: sanitizeChartSeries(secondary.bbands_lower), width: sanitizeChartSeries(secondary.bbands_width), percentB: sanitizeChartSeries(secondary.percent_b) },
+      obvValues: sanitizeChartSeries(secondary.obv),
+      kdjValues: { k: sanitizeChartSeries(secondary.kdj_k), d: sanitizeChartSeries(secondary.kdj_d), j: sanitizeChartSeries(secondary.kdj_j) },
+      cciValues: sanitizeChartSeries(secondary.cci_20),
+      natrValues: sanitizeChartSeries(core.natr_14),
       vwapValues: {
-        vwap50: secondary.vwap_50?.map(Number) || vwap(highs, lows, closes, volumes, 50),
-        vwap100: secondary.vwap_100?.map(Number) || vwap(highs, lows, closes, volumes, 100),
-        spreadPct: secondary.vwap_spread_pct?.map(Number) || [],
-        slope10: secondary.vwap_slope_10?.map(Number) || [],
+        vwap50: secondary.vwap_50 ? sanitizeChartSeries(secondary.vwap_50) : vwap(highs, lows, closes, volumes, 50),
+        vwap100: secondary.vwap_100 ? sanitizeChartSeries(secondary.vwap_100) : vwap(highs, lows, closes, volumes, 100),
+        spreadPct: sanitizeChartSeries(secondary.vwap_spread_pct),
+        slope10: sanitizeChartSeries(secondary.vwap_slope_10),
       },
     };
   }
@@ -692,10 +735,10 @@ function sliceAnalysisForDisplay(analysis, limit) {
 function normalizeOhlcCandles(candles) {
   return candles.map((item) => ({
     ...item,
-    open: Number(item.open),
-    high: Number(item.high),
-    low: Number(item.low),
-    close: Number(item.close),
+    open: finiteInputNumber(item.open),
+    high: finiteInputNumber(item.high),
+    low: finiteInputNumber(item.low),
+    close: finiteInputNumber(item.close),
   })).filter((item) => [item.open, item.high, item.low, item.close].every(Number.isFinite));
 }
 
@@ -809,6 +852,7 @@ let bundleRetryCount = 0;
 let abortController = null;
 let timeframeSelectEl = null;
 let windowSelectEl = null;
+let activeRenderToken = 0;
 
 const analysisCache = new Map();
 const MAX_ANALYSIS_CACHE = 8;
@@ -826,7 +870,11 @@ function resetBundleRetry() {
   clearBundleRetry();
 }
 
-function scheduleBundleRetry() {
+function isRunActive(token) {
+  return isMounted && token === activeRenderToken;
+}
+
+function scheduleBundleRetry(token = activeRenderToken) {
   clearBundleRetry();
   if (bundleRetryCount >= MAX_BUNDLE_RETRY) {
     renderAnalysisStatus("后台暂未就绪，请稍后手动刷新。", "warning");
@@ -834,7 +882,8 @@ function scheduleBundleRetry() {
   }
   bundleRetryCount += 1;
   bundleRetryTimer = window.setTimeout(() => {
-    loadAll(true).catch((error) => console.warn("analysis:bundle-retry:error", error));
+    if (!isRunActive(token)) return;
+    loadAll(true, token).catch((error) => console.warn("analysis:bundle-retry:error", error));
   }, 4000);
 }
 
@@ -850,21 +899,24 @@ function setRefreshBusy(isBusy, label = "刷新分析") {
   button.textContent = isBusy ? label : "刷新分析";
 }
 
-function renderChartBatch(defs) {
+function renderChartBatch(defs, token = activeRenderToken) {
   let idx = 0;
   const step = () => {
+    if (!isRunActive(token)) return;
     const end = Math.min(idx + 2, defs.length);
     for (let i = idx; i < end; i++) {
       const [key, canvas, config] = defs[i];
+      if (!canvas?.isConnected) continue;
       renderChart(key, canvas, config);
     }
     idx = end;
-    if (idx < defs.length) requestAnimationFrame(step);
+    if (idx < defs.length) window.setTimeout(step, 0);
   };
-  requestAnimationFrame(step);
+  window.setTimeout(step, 0);
 }
 
-async function loadAll(force = false) {
+async function loadAll(force = false, token = activeRenderToken) {
+  if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
   clearBundleRetry();
   resetBundleRetry();
   const profile = getWindowProfile(appState.selectedTimeframe, appState.selectedViewWindow);
@@ -881,18 +933,13 @@ async function loadAll(force = false) {
   try {
     abortController?.abort();
     abortController = new AbortController();
-    const [bundle, latestMark] = await Promise.all([
-      api.getAnalysisBundle(
-        appState.selectedInstrumentId,
-        appState.selectedTimeframe,
-        appState.selectedViewWindow,
-        { force, signal: abortController.signal },
-      ),
-      api.getLatestMark(appState.selectedInstrumentId, {
-        preferLive: true,
-        signal: abortController.signal,
-      }).catch((err) => { console.warn("analysis:latest-mark:cache-fallback", err); return null; }),
-    ]);
+    const bundle = await api.getAnalysisBundle(
+      appState.selectedInstrumentId,
+      appState.selectedTimeframe,
+      appState.selectedViewWindow,
+      { force, signal: abortController.signal },
+    );
+    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
       await scheduleIdlePrecompute({
         page: "market-analysis",
@@ -904,7 +951,8 @@ async function loadAll(force = false) {
       });
     }
     let candlesPayload = { candles: bundle.candles || [] };
-    let markPayload = latestMark?.mark_price != null ? latestMark : (bundle.mark || null);
+    let markPayload = bundle.mark || null;
+    void enhanceLatestMark(token, { preferLive: force });
     let allCandles = normalizeOhlcCandles(candlesPayload.candles || []);
     const shouldAutoFetch = allCandles.length < minCandles && !autoFetchKeys.has(fetchKey);
     if (force || shouldAutoFetch) {
@@ -912,23 +960,16 @@ async function loadAll(force = false) {
       liveFetched = true;
       renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading");
       setRefreshBusy(true, "拉取中");
-      const [livePayload, liveMark] = await Promise.all([
-        api.getCandles(
-          appState.selectedInstrumentId,
-          appState.selectedTimeframe,
-          requestLimit,
-          { preferLive: true, force: true, signal: abortController.signal },
-        ),
-        api.getLatestMark(appState.selectedInstrumentId, {
-          preferLive: true,
-          force: true,
-          signal: abortController.signal,
-        }).catch((err) => { console.warn("analysis:mark-refresh:error", err); return null; }),
-      ]);
+      const livePayload = await api.getCandles(
+        appState.selectedInstrumentId,
+        appState.selectedTimeframe,
+        requestLimit,
+        { preferLive: true, force: true, signal: abortController.signal },
+      );
+      if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
       allCandles = normalizeOhlcCandles(livePayload.candles || []);
       invalidateCache("/marketdata/candles");
       candlesPayload = livePayload;
-      if (liveMark?.mark_price != null) markPayload = liveMark;
       renderAnalysisStatus("正在计算指标", "loading");
       setRefreshBusy(true, "计算中");
       try {
@@ -939,6 +980,7 @@ async function loadAll(force = false) {
         console.warn("analysis:technical-refresh:error", error);
       }
     }
+    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (!allCandles.length) {
       if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
         document.getElementById("analysis-summary").textContent = "后台正在准备当前标的与周期的数据，请稍后刷新。";
@@ -965,7 +1007,7 @@ async function loadAll(force = false) {
           bundle.status === "stale" ? "快照可用，但可能略滞后；后台正在准备最新数据" : "暂无快照，已加入预计算队列",
           bundle.status === "stale" ? "warning" : "loading",
         );
-        scheduleBundleRetry();
+        scheduleBundleRetry(token);
         return {
           status: bundle.status,
           data: { candles: [], mark: markPayload, bundle },
@@ -1039,9 +1081,7 @@ async function loadAll(force = false) {
     document.getElementById("analysis-vegas-copy").textContent = vegasText;
     document.getElementById("analysis-boll-copy").textContent = volText;
     document.getElementById("analysis-rsi-copy").textContent = rsiText;
-    document.getElementById("analysis-volume-copy").textContent = candles.length >= 2 && analysis.volumes.at(-1) > analysis.volumes.at(-2) * 1.2
-      ? "放量，结构突破与波动扩张更值得关注。"
-      : "量能平稳，暂未出现明显异常放大。";
+    document.getElementById("analysis-volume-copy").textContent = volumeInterpretation(analysis.volumes);
     document.getElementById("analysis-macd-copy").textContent = macdText;
 
     document.getElementById("analysis-mark-price").textContent = formatNumber(markPayload?.mark_price ?? close);
@@ -1073,9 +1113,11 @@ async function loadAll(force = false) {
       </article>
     `).join("");
 
+    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     renderChartBatch([
       ["analysis-price", document.getElementById("analysis-price-chart"), {
         type: "line",
+        axisProfile: "price",
         data: {
           labels,
           datasets: [
@@ -1090,6 +1132,7 @@ async function loadAll(force = false) {
       }],
       ["analysis-vegas", document.getElementById("analysis-vegas-chart"), {
         type: "line",
+        axisProfile: "price",
         data: {
           labels,
           datasets: [
@@ -1108,6 +1151,7 @@ async function loadAll(force = false) {
       }],
       ["analysis-boll", document.getElementById("analysis-boll-chart"), {
         type: "line",
+        axisProfile: "price",
         data: {
           labels,
           datasets: [
@@ -1146,14 +1190,17 @@ async function loadAll(force = false) {
       }],
       ["analysis-rsi", document.getElementById("analysis-rsi-chart"), {
         type: "line",
+        axisProfile: "oscillator",
         data: { labels, datasets: [lineDataset("RSI", analysis.rsiValues, "#c35a1d", { borderWidth: 2.25 })] },
       }],
       ["analysis-volume", document.getElementById("analysis-volume-chart"), {
         type: "bar",
+        axisProfile: "volume",
         data: { labels, datasets: [barDataset("成交量", analysis.volumes, "rgba(183,121,31,0.72)")] },
       }],
       ["analysis-macd", document.getElementById("analysis-macd-chart"), {
         type: "bar",
+        axisProfile: "centeredZero",
         data: {
           labels,
           datasets: [
@@ -1163,7 +1210,7 @@ async function loadAll(force = false) {
           ],
         },
       }],
-    ]);
+    ], token);
     renderAnalysisStatus(
       allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : liveFetched ? "数据已就绪" : "",
       allCandles.length < minCandles ? "warning" : "success",
@@ -1178,6 +1225,9 @@ async function loadAll(force = false) {
     if (error?.name === "AbortError" || error?.name === "TimeoutError") {
       return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     }
+    if (!isRunActive(token)) {
+      return { status: "aborted", data: null, refreshed: liveFetched, error: null };
+    }
     console.error("analysis:load:error", error);
     const errMsg = String(error?.message || error || "未知错误");
     document.getElementById("analysis-summary").textContent = "拉取失败，可手动重试";
@@ -1188,22 +1238,38 @@ async function loadAll(force = false) {
     renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger");
     return { status: "error", data: null, refreshed: liveFetched, error };
   } finally {
-    setRefreshBusy(false);
+    if (isRunActive(token)) setRefreshBusy(false);
+  }
+}
+
+async function enhanceLatestMark(token = activeRenderToken, { preferLive = false } = {}) {
+  if (!isRunActive(token)) return null;
+  try {
+    const markPayload = await api.getLatestMark(appState.selectedInstrumentId, {
+      preferLive,
+      force: preferLive,
+      signal: abortController?.signal,
+      timeoutMs: preferLive ? 5000 : 1500,
+    });
+    if (!markPayload || !isRunActive(token)) return null;
+    const price = document.getElementById("analysis-mark-price");
+    const updated = document.getElementById("analysis-mark-updated");
+    const next = document.getElementById("analysis-mark-next");
+    if (price) price.textContent = formatNumber(markPayload.mark_price);
+    if (updated) updated.textContent = formatDateTime(markPayload.ts_event);
+    if (next) next.textContent = preferLive ? "5 分钟自动刷新" : "最近可用报价";
+    return markPayload;
+  } catch (error) {
+    if (error?.name !== "AbortError") console.warn("analysis:latest-mark:enhance-failed", error);
+    return null;
   }
 }
 
 async function refreshMarkOnly() {
-  if (document.hidden) return;
+  const token = activeRenderToken;
+  if (document.hidden || !isRunActive(token)) return;
   invalidateCache("/market-prices/marks/latest");
-  const markPayload = await api.getLatestMark(appState.selectedInstrumentId, {
-    preferLive: true,
-    force: true,
-  });
-  if (markPayload) {
-    document.getElementById("analysis-mark-price").textContent = formatNumber(markPayload.mark_price);
-    document.getElementById("analysis-mark-updated").textContent = formatDateTime(markPayload.ts_event);
-    document.getElementById("analysis-mark-next").textContent = "5 分钟自动刷新";
-  }
+  return enhanceLatestMark(token, { preferLive: true });
 }
 
 function syncToolbarState() {
@@ -1249,6 +1315,7 @@ function bindEventHandlers() {
 
 export async function renderAnalysis() {
   await ensureDeps();
+  const token = ++activeRenderToken;
 
   if (!isMounted) {
     setRoot(heroTemplate());
@@ -1262,13 +1329,28 @@ export async function renderAnalysis() {
     syncToolbarState();
   }
 
-  await loadAll();
+  const loadPromise = loadAll(false, token).catch((error) => {
+    if (isRunActive(token)) console.error("analysis:initial-load:error", error);
+  });
 
-  return () => {
-    if (markTimer) window.clearInterval(markTimer);
-    clearBundleRetry();
-    destroyChartsForPage?.("analysis-");
-    document.removeEventListener("visibilitychange", refreshMarkOnly);
-    isMounted = false;
+  return {
+    async unmount() {
+      activeRenderToken += 1;
+      abortController?.abort();
+      abortController = null;
+      if (markTimer) {
+        window.clearInterval(markTimer);
+        markTimer = null;
+      }
+      clearBundleRetry();
+      destroyChartsForPage?.("analysis-");
+      document.removeEventListener("visibilitychange", refreshMarkOnly);
+      isMounted = false;
+    },
+    async pause() {},
+    async resume() {
+      await refreshMarkOnly();
+    },
+    ready: loadPromise,
   };
 }

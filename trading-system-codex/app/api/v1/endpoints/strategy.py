@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,9 +16,13 @@ from app.schemas.strategy import (
     StrategySnapshotRequest,
     StrategySnapshotSaveRead,
 )
+from app.schemas.strategy_unified import StrategyUnifiedRead
 from app.services.precompute import precompute_service
 from app.services.strategy_signal.review_engine import ReviewEngine
 from app.services.strategy_signal.service import StrategySignalService, StrategySignalUnavailable
+from app.services.strategy_unified.unified_service import UnifiedStrategyService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/strategy", tags=["strategy"])
 
@@ -56,6 +62,81 @@ async def get_strategy_decision(
     return bundle["decision"]
 
 
+def _degraded_payload(instrument_id: str, reason: str) -> dict[str, object]:
+    """Minimal payload returned when the unified strategy service fails entirely."""
+    return {
+        "instrument_id": instrument_id,
+        "generated_at": None,
+        "status": "degraded",
+        "degraded": True,
+        "degraded_components": [reason],
+        "prewarm_status": "idle",
+        "refresh_state": "degraded",
+        "refresh_limitations": [f"service raised: {reason}"],
+        "unified_state": {
+            "code": "DATA_DEGRADED",
+            "label": "数据质量不足",
+            "instruction": "统一策略服务暂时不可用，已自动触发后台预热，请稍候刷新。",
+            "permission": "observe",
+            "risk_level": "high",
+            "current_price": None,
+        },
+        "horizon_views": {},
+        "horizon_governance": {
+            "position_cap": "0%",
+            "allowed_sides": [],
+            "higher_timeframe_constraint": {
+                "direction": "NEUTRAL",
+                "rule": "上游数据缺失",
+                "source_timeframes": [],
+            },
+            "lower_timeframe_driver": {
+                "direction": "NEUTRAL",
+                "rule": "上游数据缺失",
+                "source_timeframes": [],
+            },
+            "upgrade_path": [],
+            "invalidation_path": [],
+        },
+        "market_operation": {"chain": {}, "summary": ""},
+        "timeframe_stack": [],
+        "trade_plans": [],
+        "risk_alerts": [
+            {
+                "label": "统一策略服务异常",
+                "category": "service_failure",
+                "severity": "warning",
+                "evidence": [reason],
+            }
+        ],
+        "risk_groups": {},
+        "monitoring_focus": [],
+        "event_watch": [],
+        "evidence_trace": [],
+        "narrative": {"headline": "", "layers": [], "watchlist": [], "action": ""},
+        "snapshot_key": None,
+        "payload_hash": None,
+    }
+
+
+@router.get("/unified", response_model=StrategyUnifiedRead)
+async def get_unified_strategy(
+    instrument_id: str = Query(default="btc-usdt-perp"),
+    force: bool = Query(default=False),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+):
+    try:
+        payload = await UnifiedStrategyService(MarketRepository(session)).build_unified_strategy(
+            _instrument(instrument_id),
+            force=force,
+        )
+        return payload
+    except Exception as exc:
+        logger.warning("strategy_unified_service_failed: %s", exc, exc_info=True)
+        return _degraded_payload(_instrument(instrument_id), reason=f"{type(exc).__name__}: {exc}")
+
+
 @router.post("/refresh", response_model=PrecomputeHintResponse)
 async def refresh_strategy_bundle(
     instrument_id: str = Query(default="btc-usdt-perp"),
@@ -75,6 +156,31 @@ async def refresh_strategy_bundle(
             priority=1,
         )
     )
+
+
+@router.post("/prewarm")
+async def prewarm_strategy_dependencies(
+    instrument_id: str = Query(default="btc-usdt-perp"),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+):
+    """Fire-and-forget background refresh of monitoring/derivatives/macro.
+
+    Called by the SPA on mount when the strategy payload is missing or
+    degraded. Returns immediately; actual work happens in the background
+    worker via precompute_service.enqueue_hint().
+    """
+    precompute_service.enqueue_hint(
+        PrecomputeHintRequest(
+            current_page="strategy",
+            instrument_id=_instrument(instrument_id),
+            timeframe="1d",
+            reason="strategy_cold_start",
+            visible=False,
+            candidates=["monitoring", "btc-derivatives", "macro-overview"],
+            priority=2,
+        )
+    )
+    return {"status": "enqueued", "eta_seconds": 30}
 
 
 @router.post("/signals", response_model=StrategySignalSaveRead)

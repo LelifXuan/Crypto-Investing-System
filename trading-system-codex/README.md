@@ -2,9 +2,26 @@
 
 基于 `FastAPI + SQLite + Gate.io` 构建的 Windows 本地加密货币研究与交易管理应用。
 
-当前版本：**V1.5.5**（详见下方 [Release Timeline](#release-timeline)）。
+当前版本：**V1.7.0**（详见下方 [Release Timeline](#release-timeline)）。
 
 ## Release Timeline
+
+### V1.7.0 — AI 策略页 X+Y+Z 全栈重构
+
+V1.7.0 围绕 AI 策略页完成 X+Y+Z 全栈重构：
+
+- **后端 X — 上下文聚合**：`MarketContextBuilder` 注入真实字段（`market_data / derivatives_features / chip_features / onchain_features / freshness_breakdown`），修复了历史空字段漏洞；新增 `app/services/macro/scoring_engine.py`（`MacroScoringEngine`）驱动宏观评分；`strategy_unified` 引擎重构（13 个文件，含 `pick_context / verdict_for_node / evidence_confidence / VERDICT_FROM_STATE` 契约）。
+- **后端 Y — 链上数据**：`app/services/onchain/`（6 文件，DefiLlama P0 接通），4 个核心 key（`defi_total_tvl / stablecoin_total_mcap / dex_volume_24h / protocol_fees_24h`），`IndicatorMonitoringService.sync_onchain()` 双轨并行（policy_adapter + 旧 path）。
+- **后端 Z — 数据时效与终局决策**：`freshness_state="due"` 新增；BTC 衍生品 `options_wall_signal` 轴（572 行新模块）；2 小时硬陈旧回退（`btc_derivatives_hard_stale_max_seconds=7200`）；`final_decision` 引入 `market_state_axes` + `trade_permission`；VWAP 成本通道评分加入 `market_strategy_signal_config_v17.json`。
+- **前端**：`pages/strategy.js` 拆分为 11 个子模块（`pages/strategy/{index,adapter,renderOverview,renderNarrative,renderHorizonStack,renderHorizonGovernance,renderMarketOperation,renderTradePlans,renderRiskPanel,renderEventWatch,renderEvidenceTrace}.js`）；4 endpoint 并行 fetch（`/strategy/unified + /monitoring/dashboard + /btc-derivatives/dashboard + /monitoring/macro-overview`），`Promise.allSettled` 兜底；证据追踪改写为自然语言卡；`btc_derivatives.js` 新增 `renderOptionsWallSignal` 区块；置信列统一读 `evidence_confidence`。
+- **测试与验证**：11 个新增 test_*.py；4 张 PNG 截图 + JSON 报告重生成；`python tests/verify_pages.py --pages ai-strategy,monitoring-overview` 双 endpoint 验收。
+- **每日首页预热**：`daily_first_page_prewarm` middleware 在 UTC 日切时按 5 个主页面入队后台任务。
+
+### V1.6.0 — 衍生品数据与 Portable 发布加固
+
+V1.6.0 接入 BTC 衍生品公开数据源，刷新流程改为异步任务回执与缓存读取，
+并引入 SQLite 索引 + gzip JSONL 分区归档、保留期和 5 GB 水位治理。
+Portable 发布改用 staging、运行时数据保留、失败回滚和同步后 Playwright 实例验收。
 
 `V1.5` 系列在 V1.5 监控总览可解释性闭环的基础上，引入了"可解释性 + 性能 + UI 清晰度"三方面的迭代。每个 release 独立可发布、内容自洽；下面的版本号按工作落地顺序排列。
 

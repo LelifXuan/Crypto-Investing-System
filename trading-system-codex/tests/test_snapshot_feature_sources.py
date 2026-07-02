@@ -1,4 +1,4 @@
-"""Acceptance tests for T04: split 5 independent feature sources.
+"""Acceptance tests for T04: split independent feature sources.
 
 The audit found that the same ``direction_metrics`` value was reused for
 ``mtf_trend_bullish/bearish``, ``bullish_structure/bearish_structure`` and
@@ -9,16 +9,16 @@ counted. After the fix each feature family reads from a distinct source:
 * structure -> ``structure_overall`` (BOS / swing / value area)
 * regime_fit -> market regime classifier
 * momentum -> RSI + MACD histogram
-* flow  -> CVD + OI percent + funding-z (with explicit unit normalization)
+* technical risk -> OHLCV divergence risk, not microstructure proxies
 
 These tests pin the independence: changing one source must not affect the
-other four.
+other feature families.
 """
 
 from __future__ import annotations
 
 from app.services.strategy_signal.snapshot_builder import (
-    _build_flow_score,
+    StrategySnapshotBuilder,
     _build_regime_fit,
     _build_structure_score,
     _build_trend_score,
@@ -124,50 +124,65 @@ def test_regime_fit_unknown_defaults_to_neutral() -> None:
     assert range_score == 50
 
 
-def test_flow_score_bullish_cvd_and_oi_in_percent() -> None:
-    bullish, bearish = _build_flow_score(
-        {"cvd_norm": 2.0, "oi_change_pct": 4.0, "funding_zscore": 0.5}
+def test_feature_components_do_not_emit_microstructure_scores() -> None:
+    components = StrategySnapshotBuilder._feature_components(
+        indicators={
+            "ema_20": 110,
+            "ema_20_prev": 108,
+            "ema_50": 105,
+            "ema_200": 100,
+            "adx_14": 30,
+        },
+        structure_overall={"bias": "bullish"},
+        regime="trend",
+        direction_metrics={"bullish": 65.0, "bearish": 35.0},
+        rsi=58.0,
+        macd=1.4,
+        macd_prev=0.9,
+        adx=30.0,
     )
-    assert bullish > 50
-    assert bearish < bullish
+    removed_keys = {
+        "bullish_flow",
+        "bearish_flow",
+        "flow_source",
+        "derivatives_long_confirmation",
+        "derivatives_short_confirmation",
+    }
+    assert not (removed_keys & set(components))
+    assert components["mtf_trend_source"] == "ema+adx+vwap"
+    assert components["structure_source"] == "structure_overall"
+    assert components["momentum_source"] == "rsi+macd"
 
 
-def test_flow_score_normalizes_oi_decimal_to_percent() -> None:
-    """``oi_change_pct = 0.04`` must give the same score as ``4.0``."""
-    bullish_decimal, _ = _build_flow_score({"oi_change_pct": 0.04})
-    bullish_percent, _ = _build_flow_score({"oi_change_pct": 4.0})
-    assert abs(bullish_decimal - bullish_percent) < 0.1
-
-
-def test_flow_score_dilutes_extreme_funding() -> None:
-    quiet, _ = _build_flow_score(
-        {"cvd_norm": 2.0, "oi_change_pct": 4.0, "funding_zscore": 0.0}
+def test_feature_components_keep_momentum_independent_from_direction_score() -> None:
+    base = {
+        "indicators": {
+            "ema_20": 100,
+            "ema_20_prev": 99,
+            "ema_50": 98,
+            "ema_200": 95,
+            "adx_14": 25,
+        },
+        "structure_overall": {"bias": "neutral"},
+        "regime": "trend",
+        "rsi": 62.0,
+        "macd": 1.0,
+        "macd_prev": 0.5,
+        "adx": 25.0,
+    }
+    bullish_direction = StrategySnapshotBuilder._feature_components(
+        **base,
+        direction_metrics={"bullish": 90.0, "bearish": 10.0},
     )
-    crowded, _ = _build_flow_score(
-        {"cvd_norm": 2.0, "oi_change_pct": 4.0, "funding_zscore": 3.0}
+    bearish_direction = StrategySnapshotBuilder._feature_components(
+        **base,
+        direction_metrics={"bullish": 10.0, "bearish": 90.0},
     )
-    assert crowded < quiet
-
-
-def test_flow_score_bearish_when_cvd_and_oi_negative() -> None:
-    bullish, bearish = _build_flow_score(
-        {"cvd_norm": -2.0, "oi_change_pct": -4.0, "funding_zscore": 0.5}
-    )
-    assert bearish > 50
-    assert bullish < bearish
-
-
-def test_flow_score_clamps_to_0_100() -> None:
-    bullish, bearish = _build_flow_score(
-        {"cvd_norm": 100.0, "oi_change_pct": 100.0, "funding_zscore": 0.0}
-    )
-    assert 0 <= bullish <= 100
-    assert 0 <= bearish <= 100
-    bullish_min, bearish_min = _build_flow_score(
-        {"cvd_norm": -100.0, "oi_change_pct": -100.0, "funding_zscore": 0.0}
-    )
-    assert 0 <= bullish_min <= 100
-    assert 0 <= bearish_min <= 100
+    assert bullish_direction["bullish_momentum"] == bearish_direction["bullish_momentum"]
+    assert bullish_direction["bearish_momentum"] == bearish_direction["bearish_momentum"]
+    assert bullish_direction["direction_score_aggregate"] != bearish_direction[
+        "direction_score_aggregate"
+    ]
 
 
 def test_independence_trend_does_not_drive_structure() -> None:
@@ -186,20 +201,3 @@ def test_independence_structure_does_not_drive_regime() -> None:
     _build_structure_score({"bias": "bearish", "bias_score": 20})
     regime_after = _build_regime_fit({"regime": "trend"}, "trend")
     assert regime_baseline == regime_after
-
-
-def test_independence_flow_does_not_drive_momentum() -> None:
-    """The two pairs of inputs (momentum=RSI/MACD, flow=CVD/OI) are independent."""
-    from app.services.strategy_signal.snapshot_builder import (
-        _num,  # local import keeps the suite's import surface clean
-    )
-
-    # The flow helper never reads RSI/MACD, so varying them must not change flow.
-    flow_baseline = _build_flow_score(
-        {"cvd_norm": 1.0, "oi_change_pct": 2.0, "funding_zscore": 0.0}
-    )
-    _num(0)  # touch helper to keep import warm
-    flow_after = _build_flow_score(
-        {"cvd_norm": 1.0, "oi_change_pct": 2.0, "funding_zscore": 0.0}
-    )
-    assert flow_baseline == flow_after

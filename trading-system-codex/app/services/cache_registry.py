@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
@@ -33,6 +34,65 @@ STRATEGY_DEPENDENCY_MAX_STALE_SECONDS = {
     "30d": 86400,
     "1M": 86400,
 }
+
+SOURCE_FRESHNESS_SECONDS = {
+    "mark": 60,
+    "1h": 90 * 60,
+    "4h": 5 * 60 * 60,
+    "1d": 36 * 60 * 60,
+    "1w": 9 * 24 * 60 * 60,
+    "30d": 45 * 24 * 60 * 60,
+    "daily": 3 * 24 * 60 * 60,
+    "weekly": 14 * 24 * 60 * 60,
+    "monthly": 45 * 24 * 60 * 60,
+    "quarterly": 120 * 24 * 60 * 60,
+}
+
+SOURCE_USABLE_STALE_MULTIPLIER = {
+    "mark": 5.0,
+    "1h": 2.0,
+    "4h": 2.0,
+    "1d": 2.0,
+    "1w": 1.2,
+    "30d": 1.2,
+    "daily": 1.5,
+    "weekly": 1.5,
+    "monthly": 1.5,
+    "quarterly": 1.5,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFreshness:
+    state: str
+    age_seconds: int | None
+    fresh_for_seconds: int
+    usable_for_seconds: int
+
+
+def source_freshness(
+    source_ts: datetime | None,
+    frequency: str,
+    *,
+    now: datetime | None = None,
+) -> SourceFreshness:
+    normalized = normalize_timeframe_for_cache(frequency)
+    key = normalized if normalized in SOURCE_FRESHNESS_SECONDS else frequency.lower().strip()
+    fresh_for = SOURCE_FRESHNESS_SECONDS.get(key, SOURCE_FRESHNESS_SECONDS["daily"])
+    multiplier = SOURCE_USABLE_STALE_MULTIPLIER.get(key, 1.5)
+    usable_for = int(fresh_for * multiplier)
+    if source_ts is None:
+        return SourceFreshness("missing", None, fresh_for, usable_for)
+    current = now or datetime.now(UTC)
+    aware_source = source_ts if source_ts.tzinfo else source_ts.replace(tzinfo=UTC)
+    age_seconds = max(0, int((current - aware_source).total_seconds()))
+    if age_seconds <= fresh_for:
+        state = "fresh"
+    elif age_seconds <= usable_for:
+        state = "usable_stale"
+    else:
+        state = "expired"
+    return SourceFreshness(state, age_seconds, fresh_for, usable_for)
 
 
 def analysis_cache_key(
@@ -100,6 +160,18 @@ def strategy_bundle_cache_key(
     )
 
 
+def market_context_cache_key(
+    instrument_id: str,
+    timeframe: str,
+    source_version: str = CACHE_SOURCE_VERSION,
+) -> str:
+    return (
+        "market_context:"
+        f"{normalize_instrument_id(instrument_id)}:"
+        f"{normalize_timeframe_for_cache(timeframe)}:{source_version}"
+    )
+
+
 def monitoring_decision_brief_cache_key(
     instrument_id: str,
     timeframe: str,
@@ -129,6 +201,12 @@ def macro_calendar_cache_key(
     source_version: str = CACHE_SOURCE_VERSION,
 ) -> str:
     return f"macro_calendar:{status or '-'}:{limit}:{source_version}:{event_key or '-'}"
+
+
+def macro_overview_cache_key(
+    source_version: str = CACHE_SOURCE_VERSION,
+) -> str:
+    return f"macro_overview:{source_version}"
 
 
 def market_events_cache_key(
@@ -197,6 +275,7 @@ def ttl_seconds_for_page(page_type: str) -> int:
         "macro": settings.page_snapshot_macro_ttl_seconds,
         "events": settings.page_snapshot_events_ttl_seconds,
         "strategy": settings.page_snapshot_analysis_ttl_seconds,
+        "market_context": settings.page_snapshot_monitoring_ttl_seconds,
     }
     return mapping.get(page_type, settings.page_snapshot_analysis_ttl_seconds)
 

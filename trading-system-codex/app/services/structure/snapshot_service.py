@@ -23,6 +23,7 @@ from app.services.cache_registry import (
     expires_at_for_page,
     structure_bundle_cache_key,
 )
+from app.services.data_freshness import bar_close_freshness
 from app.services.market_data_bundle import MarketDataBundleService
 
 from .classic import ClassicScorer
@@ -491,6 +492,26 @@ class StructureSnapshotService:
             last_ts = last_ts.replace(tzinfo=UTC)
         now = datetime.now(UTC)
         lag_seconds = max(0, int((now - last_ts).total_seconds()))
+        bar_state = bar_close_freshness(timeframe, last_ts, now=now)
+        if bar_state.freshness_state == "fresh":
+            return {
+                "last_candle_ts": last_ts,
+                "freshness_lag_seconds": lag_seconds,
+                "freshness_state": "fresh",
+                "freshness_message": "已基于最新收盘 K 线更新。",
+            }
+        if bar_state.freshness_state == "due":
+            expected = (
+                bar_state.expected_closed_bar_ts.isoformat()
+                if bar_state.expected_closed_bar_ts
+                else "最新"
+            )
+            return {
+                "last_candle_ts": last_ts,
+                "freshness_lag_seconds": lag_seconds,
+                "freshness_state": "due",
+                "freshness_message": f"检测到新收盘 K 线（{expected}），后台正在重建结构快照。",
+            }
         threshold = FRESHNESS_LIMIT_SECONDS.get(timeframe, 30 * 60 * 60)
         if lag_seconds <= threshold:
             state = "fresh"

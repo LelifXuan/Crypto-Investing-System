@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 
 from app.core.decimal_utils import D
 from app.services.macro.cache_store import CacheStore
-from app.services.macro.providers.base import MacroFetchResult
+from app.services.macro.providers.base import MacroFetchPoint, MacroFetchResult
 from app.services.macro.secret_loader import SecretLoader
 from app.services.network.http_client_factory import client_for_source
 
@@ -27,6 +27,49 @@ class BlsMacroProvider:
 
     def _api_key(self) -> str:
         return self.secrets.get("BLS_API_KEY", required=False) or ""
+
+    async def fetch_history(
+        self, source_key: str, *, lookback_points: int = 14
+    ) -> list[MacroFetchPoint]:
+        """Return up to ``lookback_points`` ascending observations for a
+        BLS timeseries. Reuses the same JSON path as ``fetch_latest``
+        but asks for a 3-year window so we have at least 36 monthly
+        observations to trim from.
+        """
+        this_year = date.today().year
+        data, _, _ = await self._fetch_series_json(
+            source_key, str(this_year - 3), str(this_year)
+        )
+        rows = self._normalize_points(data)
+        valid: list[MacroFetchPoint] = []
+        for row in rows:
+            iso_date = row.get("date")
+            raw_value = row.get("value")
+            if not iso_date:
+                continue
+            observation_ts = datetime.fromisoformat(
+                f"{iso_date}T00:00:00+00:00"
+            ).astimezone(UTC)
+            if raw_value in (None, ""):
+                valid.append(
+                    MacroFetchPoint(
+                        observation_ts=observation_ts, value=None, status="missing"
+                    )
+                )
+                continue
+            try:
+                numeric = D(str(raw_value))
+            except Exception:
+                continue
+            valid.append(
+                MacroFetchPoint(
+                    observation_ts=observation_ts, value=numeric, status="ok"
+                )
+            )
+        valid.sort(key=lambda p: p.observation_ts)
+        if not valid:
+            raise ValueError(f"No valid BLS observations for {source_key}")
+        return valid[-lookback_points:]
 
     async def _fetch_series_json(self, series_id: str, startyear: str, endyear: str):
         cache_params = {"series_id": series_id, "startyear": startyear, "endyear": endyear}

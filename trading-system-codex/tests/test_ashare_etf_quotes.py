@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.services.ashare_etf_quotes import (
@@ -114,3 +116,39 @@ async def test_etf_provider_failure_returns_persistent_cached_quotes(tmp_path) -
     assert len(rows) == 7
     assert all(item["status"] == "ok" for item in rows)
     assert all(item["last_price"] == 1.23 for item in rows)
+
+
+@pytest.mark.asyncio
+async def test_etf_normal_read_returns_persistent_close_before_live_refresh(tmp_path) -> None:
+    cache_path = tmp_path / "ashare_etf_quotes.json"
+    seed = AShareETFQuoteService(
+        providers=[SuccessfulProvider()],
+        ttl_seconds=15,
+        stale_cache_seconds=1800,
+        cache_path=cache_path,
+    )
+    await seed.get_quotes(group="all", force=True)
+
+    release = asyncio.Event()
+
+    class SlowProvider(SuccessfulProvider):
+        async def fetch_quotes(self, requested_items):
+            await release.wait()
+            return await super().fetch_quotes(requested_items)
+
+    service = AShareETFQuoteService(
+        providers=[SlowProvider()],
+        ttl_seconds=15,
+        stale_cache_seconds=1800,
+        cache_path=cache_path,
+    )
+    payload = await asyncio.wait_for(
+        service.get_quotes(group="all", force=False),
+        timeout=0.1,
+    )
+
+    assert payload["cache_status"] == "stale"
+    assert payload["freshness_state"] == "usable_stale"
+    assert payload["refresh_enqueued"] is True
+    release.set()
+    await asyncio.sleep(1.1)

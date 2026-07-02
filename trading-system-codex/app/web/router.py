@@ -30,9 +30,9 @@ PAGE_TITLES = {
     "monitoring-overview": "监控总览",
     "market-structure": "形态结构",
     "market-analysis": "技术指标",
-    "alert-center": "告警中心",
     "knowledge-base": "知识百科",
     "ashare-etf": "A股ETF",
+    "btc-derivatives": "BTC 衍生品市场",
     "ai-strategy": "AI策略",
 }
 
@@ -98,7 +98,7 @@ async def indicators_page(request: Request):
 
 @web_router.get("/alerts-page")
 async def alerts_page(request: Request):
-    return render_page(request, PAGE_TITLES["alert-center"], "alert-center")
+    return render_page(request, PAGE_TITLES["ai-strategy"], "ai-strategy")
 
 
 @web_router.get("/knowledge-page")
@@ -114,6 +114,20 @@ async def ashare_etf_page(request: Request):
 @web_router.get("/etf-page")
 async def etf_page(request: Request):
     return render_page(request, PAGE_TITLES["ashare-etf"], "ashare-etf")
+
+
+@web_router.get("/gold-allocation-page")
+async def gold_allocation_page(request: Request):
+    return render_page(request, "黄金配置", "gold-allocation")
+
+
+@web_router.get("/btc-derivatives-page")
+async def btc_derivatives_page(request: Request):
+    return render_page(
+        request,
+        PAGE_TITLES["btc-derivatives"],
+        "btc-derivatives",
+    )
 
 
 @web_router.get("/strategy-page")

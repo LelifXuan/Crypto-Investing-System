@@ -12,27 +12,24 @@ def test_strategy_js_no_generic_trigger_copy():
 
 
 def test_strategy_js_has_trigger_board():
-    source = (Path(__file__).resolve().parents[1] / "app" / "static" / "pages" / "strategy.js").read_text(encoding="utf-8", errors="replace")
-    assert "renderTriggerBoard" in source, "renderTriggerBoard function missing"
-    assert "strategy-trigger-board" in source, "trigger-board CSS class missing in template"
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app" / "static" / "pages" / "strategy" / "renderTradePlans.js").read_text(encoding="utf-8")
+    assert "entry_logic" in source, "V2 trade plans must expose entry logic"
+    assert "invalidation" in source, "V2 trade plans must expose invalidation logic"
+    assert "position_rule" in source, "V2 trade plans must expose position rules"
 
 
 def test_strategy_js_trigger_diagnostics_visible():
-    source = (Path(__file__).resolve().parents[1] / "app" / "static" / "pages" / "strategy.js").read_text(encoding="utf-8", errors="replace")
-    # The trigger diagnostics section should NOT be inside is-hidden
-    idx = source.find("触发门禁诊断")
-    if idx > 0:
-        surrounding = source[max(0, idx - 200):idx + 200]
-        assert "is-hidden" not in surrounding, "Trigger diagnostics still hidden"
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app" / "static" / "pages" / "strategy" / "renderRiskPanel.js").read_text(encoding="utf-8")
+    assert "RISK GATES" in source
+    assert "is-hidden" not in source, "V2 risk gates should be visible by default"
 
 
 def test_strategy_js_plan_conditions_expanded():
-    source = (Path(__file__).resolve().parents[1] / "app" / "static" / "pages" / "strategy.js").read_text(encoding="utf-8", errors="replace")
-    # Verify plan summary no longer uses <details> wrapper
-    idx = source.find("renderPlanSummary")
-    end = source.find("function normalizeCheck", idx)
-    plan_section = source[idx:end] if idx > 0 and end > idx else ""
-    assert "<details>" not in plan_section, "Plan summary still using details wrapper"
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app" / "static" / "pages" / "strategy" / "renderTradePlans.js").read_text(encoding="utf-8")
+    assert "<details>" not in source, "Plan summary still using details wrapper"
 
 
 def test_strategy_generator_returns_blocking_gates():

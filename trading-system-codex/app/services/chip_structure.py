@@ -6,6 +6,7 @@ from typing import Any
 
 from app.repositories.market_repository import MarketRepository
 from app.services.market_data_bundle import MarketDataBundleService
+from app.services.structure.snapshot_service import StructureSnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class ChipStructureService:
 
     async def analyze(self, instrument_id: str, timeframe: str) -> dict[str, Any]:
         normalized_timeframe = self._normalize_timeframe(timeframe)
+        structure_payload = await self._real_structure_payload(instrument_id, normalized_timeframe)
+        if structure_payload is not None:
+            return structure_payload
         candles = await self._load_candles(instrument_id, normalized_timeframe)
         if len(candles) < 20:
             return self._missing_payload(instrument_id, normalized_timeframe, candles)
@@ -163,6 +167,80 @@ class ChipStructureService:
                     "status": "low_confidence",
                     "evidence": [f"分析样本数 {len(candles)} 根。"],
                 }
+            ],
+            "generated_at": generated_at,
+        }
+
+    async def _real_structure_payload(
+        self, instrument_id: str, timeframe: str
+    ) -> dict[str, Any] | None:
+        try:
+            bundle = await StructureSnapshotService(self.repository).get_bundle(
+                instrument_id, timeframe, include_geometry=True
+            )
+        except Exception:
+            return None
+        if bundle.snapshot is None:
+            return None
+        snapshot = bundle.snapshot.model_dump(mode="json")
+        overall = snapshot.get("overall") or {}
+        bias = str(overall.get("overall_bias") or "").lower()
+        score = float(overall.get("overall_score") or overall.get("score") or 50)
+        confidence = float(
+            overall.get("overall_confidence") or overall.get("confidence") or 50
+        )
+        if bias in {"bearish", "short", "down", "weak_bearish"}:
+            signed_score = -abs(score)
+            direction_label = "bearish" if score < 65 else "strong_short"
+        elif bias in {"bullish", "long", "up", "weak_bullish"}:
+            signed_score = abs(score)
+            direction_label = "bullish" if score < 65 else "strong_long"
+        else:
+            signed_score = 0.0
+            direction_label = "neutral"
+        generated_at = datetime.now(timezone.utc)
+        return {
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "state": "ready" if confidence >= 50 else "low_confidence",
+            "state_label": "结构快照可用",
+            "state_reason": "方向来自结构页快照，而不是首尾 K 线 proxy。",
+            "primary_regime": overall.get("regime") or bias or "unknown",
+            "primary_regime_label": overall.get("meaning") or overall.get("regime") or bias,
+            "secondary_regime": "structure_snapshot",
+            "evidence_quality": "structure_snapshot",
+            "evidence_quality_label": "结构快照",
+            "direction_score": round(signed_score, 2),
+            "direction_label": direction_label,
+            "confidence_score": round(confidence, 2),
+            "confidence_label": (
+                "high" if confidence >= 70 else "medium" if confidence >= 50 else "low"
+            ),
+            "execution_score": round(max(35.0, min(80.0, confidence)), 2),
+            "execution_label": "pending",
+            "risk_score": 35.0 if confidence >= 60 else 55.0,
+            "risk_label": "normal" if confidence >= 60 else "elevated",
+            "confidence_cap": round(min(85.0, confidence + 15), 2),
+            "conflict_level": 1 if overall.get("conflict_state") else 0,
+            "position_multiplier": 0.0,
+            "capital_ceiling_pct": 5.0 if confidence < 70 else 10.0,
+            "direction_permission": "observe_only",
+            "recommended_action": "wait_confirmation",
+            "recommended_action_v2": "observe",
+            "risk_gates": ["STRUCTURE_CONFIRMATION_REQUIRED"],
+            "data_quality": {
+                "status": "ready",
+                "score": confidence / 100,
+                "issues": [],
+                "can_analyze": True,
+                "can_alert": confidence >= 60,
+            },
+            "components": {
+                "structure_overall": overall,
+                "structure_cache_state": bundle.cache_state,
+            },
+            "explain": [
+                "最终决策优先使用结构快照；当前仍要求触发确认，不直接升级为开仓命令。",
             ],
             "generated_at": generated_at,
         }

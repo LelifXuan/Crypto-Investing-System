@@ -7,6 +7,7 @@ set "DEV_PYTHON=%WORKSPACE_ROOT%\runtime_dev\.venv\Scripts\python.exe"
 set "APP_RUNTIME_ROOT=%WORKSPACE_ROOT%\runtime_dev\source_runtime"
 set "APP_DISTRIBUTION_MODE=source"
 set "APP_BUNDLE_ROOT=%~dp0"
+if not defined APP_PORT set "APP_PORT=8002"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONPATH=%~dp0;%PYTHONPATH%"
@@ -15,7 +16,7 @@ echo Trading System Source Launcher
 echo Source root: %~dp0
 echo Runtime root: %APP_RUNTIME_ROOT%
 echo Python: %DEV_PYTHON%
-echo Port: 8002
+echo Preferred port: %APP_PORT%
 echo.
 
 if not exist "%DEV_PYTHON%" (
@@ -32,7 +33,8 @@ if not exist "%DEV_PYTHON%" (
   exit /b 1
 )
 
-echo Starting source server at http://127.0.0.1:8002
+echo Starting source server. Preferred URL: http://127.0.0.1:%APP_PORT%
+echo If that port is busy, the launcher will print the fallback URL.
 echo Keep this window open while using the app.
 echo.
 "%DEV_PYTHON%" scripts\tasks.py dev-local

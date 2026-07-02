@@ -4,19 +4,21 @@ import argparse
 import importlib.util
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED_PYTHONS = {(3, 11), (3, 14)}
-DEV_COMMANDS = {"install", "dev", "dev-local", "test", "lint", "check"}
+DEV_COMMANDS = {"install", "dev", "dev-local", "test", "lint", "check", "release-v16"}
 COMMAND_DEPENDENCIES = {
     "dev": ("uvicorn",),
     "dev-local": ("uvicorn",),
     "test": ("pytest",),
     "lint": ("ruff",),
     "check": ("ruff", "pytest"),
+    "release-v16": ("ruff", "pytest", "playwright"),
 }
 
 class TaskError(RuntimeError):
@@ -135,7 +137,48 @@ def run_install() -> None:
     run_step([sys.executable, "-m", "pip", "install", "-e", ".[dev]"])
 
 
+def _port_from_env_or_default(default: int) -> int:
+    raw = os.getenv("APP_PORT")
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise TaskError(f"APP_PORT must be an integer, got {raw!r}.") from exc
+    if not 1 <= port <= 65535:
+        raise TaskError(f"APP_PORT must be between 1 and 65535, got {port}.")
+    return port
+
+
+def _can_bind_localhost(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _select_dev_port(preferred: int, *, fallback_span: int = 20) -> int:
+    for port in range(preferred, min(preferred + fallback_span, 65536)):
+        if _can_bind_localhost(port):
+            return port
+    raise TaskError(
+        f"No available localhost port found in range {preferred}-"
+        f"{min(preferred + fallback_span - 1, 65535)}."
+    )
+
+
 def run_dev(port: int) -> None:
+    requested_port = _port_from_env_or_default(port)
+    selected_port = _select_dev_port(requested_port)
+    if selected_port != requested_port:
+        print(
+            f"Port {requested_port} is unavailable; using {selected_port} instead.",
+            flush=True,
+        )
+    print(f"Starting dev server at http://127.0.0.1:{selected_port}", flush=True)
     run_step(
         [
             sys.executable,
@@ -145,7 +188,7 @@ def run_dev(port: int) -> None:
             "--host",
             "127.0.0.1",
             "--port",
-            str(port),
+            str(selected_port),
             "--reload",
         ]
     )
@@ -205,6 +248,20 @@ def run_build_portable() -> None:
     )
 
 
+def run_release_v16() -> None:
+    run_check()
+    run_step(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/sync_portable_local.ps1",
+        ]
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Project task runner for local Windows-first development."
@@ -222,6 +279,7 @@ def parse_args() -> argparse.Namespace:
             "release-zip",
             "portable-preflight",
             "build-portable",
+            "release-v16",
         ],
     )
     return parser.parse_args()
@@ -244,6 +302,7 @@ def main() -> int:
             "release-zip": run_release_zip,
             "portable-preflight": run_portable_preflight,
             "build-portable": run_build_portable,
+            "release-v16": run_release_v16,
         }[command]()
     except TaskError as exc:
         print(f"error: {exc}", file=sys.stderr)

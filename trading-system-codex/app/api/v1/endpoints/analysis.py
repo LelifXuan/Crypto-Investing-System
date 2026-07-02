@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import CurrentUser, get_db_session, require_roles
 from app.core.timeframes import normalize_timeframe_for_cache
 from app.repositories.market_repository import MarketRepository
-from app.schemas.market import AnalysisBundleRead
+from app.schemas.market import AnalysisBundleRead, PrecomputeHintRequest
 from app.services.analysis_bundle import AnalysisBundleService
+from app.services.precompute import precompute_service
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -21,9 +22,27 @@ async def get_analysis_bundle(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     normalized_timeframe = normalize_timeframe_for_cache(timeframe)
-    return await AnalysisBundleService(MarketRepository(session)).get_bundle(
+    bundle = await AnalysisBundleService(MarketRepository(session)).get_bundle(
         instrument_id, normalized_timeframe, view_window
     )
+    if bundle.cache_state in {"missing", "stale", "error", "updating"} or (
+        bundle.freshness_state in {"due", "expired", "missing"}
+    ):
+        queued = await precompute_service.enqueue_hint(
+            PrecomputeHintRequest(
+                current_page="analysis",
+                instrument_id=instrument_id,
+                timeframe=normalized_timeframe,
+                view_window=view_window,
+                reason="analysis_bundle_read_refresh",
+                visible=True,
+                candidates=["analysis"],
+                priority=3,
+            )
+        )
+        bundle.refresh_enqueued = queued.accepted > 0 or queued.deduped > 0
+        bundle.refresh_task_key = queued.queued_keys[0] if queued.queued_keys else None
+    return bundle
 
 
 @router.post("/refresh", response_model=AnalysisBundleRead)

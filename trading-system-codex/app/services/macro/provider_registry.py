@@ -13,6 +13,7 @@ from app.services.macro.providers.gateio_rwa import GateioRwaMacroProvider
 from app.services.macro.providers.ism import IsmMacroProvider
 from app.services.macro.providers.openexchangerates import OpenExchangeRatesMacroProvider
 from app.services.macro.providers.tiingo import TiingoMacroProvider
+from app.services.macro.providers.tradingeconomics_web import TradingEconomicsWebProvider
 from app.services.macro.providers.treasury import TreasuryMacroProvider
 from app.services.macro.providers.tushare import TushareMacroProvider
 from app.services.macro.providers.twelvedata import TwelveDataMacroProvider
@@ -38,6 +39,7 @@ class MacroProviderRegistry:
             AgushujuMacroProvider(secrets, cache),
             ZhituapiMacroProvider(secrets, cache),
             GateioRwaMacroProvider(secrets, cache),
+            TradingEconomicsWebProvider(secrets, cache),
         ]
 
     def resolve(self, *, source_provider: str, source_kind: str):

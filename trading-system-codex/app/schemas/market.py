@@ -444,6 +444,25 @@ class ChipStructureRead(BaseModel):
     generated_at: datetime
 
 
+class TechnicalRiskDivergenceRead(BaseModel):
+    status: str = "none"
+    evidence_level: str = "technical_proxy"
+    direction: str = "neutral"
+    score: float = 0.0
+    confidence: float = 0.0
+    leaders: list[str] = Field(default_factory=list)
+    strategy_effect: str = "none"
+    recommended_action: str = "observe"
+    summary: str = "未发现有效背离风险。"
+    confirmation: str | None = None
+    invalidation: str | None = None
+    risk_reasons: list[str] = Field(default_factory=list)
+
+
+class TechnicalRiskBundleRead(BaseModel):
+    divergence: TechnicalRiskDivergenceRead | None = None
+
+
 class RiskEvaluationRequest(BaseModel):
     instrument_id: str
     timeframe: str = "1h"
@@ -481,6 +500,11 @@ class MacroOverviewIndicatorRead(BaseModel):
     status: str = "missing"
     fallback_level: str | None = None
     is_scored: bool = False
+    score: int | None = None
+    direction: str | None = None
+    direction_label: str | None = None
+    formula_id: str | None = None
+    score_reason: str | None = None
     score_block_reason: str | None = None
     status_reason: str | None = None
     insight: str
@@ -491,6 +515,8 @@ class MacroOverviewIndicatorRead(BaseModel):
     consensus_value_num: Decimal | None = None
     previous_value_num: Decimal | None = None
     surprise_num: Decimal | None = None
+    transform_applied: str | None = None
+    transform_source: str | None = None
 
 
 class MacroOverviewEventRead(BaseModel):
@@ -543,6 +569,7 @@ class MacroOverviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     layer_contributions: dict[str, float] = Field(default_factory=dict)
     operation_bias: str = "observe"
+    event_window_state: str = "unknown"
     event_window_status: str = ""
     event_window_summary: str = ""
     next_event_title: str | None = None
@@ -554,6 +581,11 @@ class MacroOverviewResponse(BaseModel):
 class BundleMetaRead(BaseModel):
     status: str = "missing"
     cache_state: str = "missing"
+    freshness_state: str = "missing"
+    source_age_seconds: int | None = None
+    refresh_enqueued: bool = False
+    refresh_task_key: str | None = None
+    refresh_completed_at: datetime | None = None
     snapshot_at: datetime | None = None
     data_ts: datetime | None = None
     source_updated_at: datetime | None = None
@@ -581,6 +613,7 @@ class AlertsBundleRead(BundleMetaRead):
     timeframe: str
     chip_structure: ChipStructureRead | None = None
     divergence_summary: DivergenceSummaryRead | None = None
+    technical_risk: TechnicalRiskBundleRead | None = None
     alert_events: list[AlertEventRead] = Field(default_factory=list)
     final_decision: dict = Field(default_factory=dict)
     contract_snapshot: dict = Field(default_factory=dict)

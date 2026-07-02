@@ -1,0 +1,47 @@
+{
+  "per_page": [
+    {
+      "page_id": "ai-strategy",
+      "url": "http://127.0.0.1:8002/strategy-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 107.2,
+      "state": "found:.strategy-v2-page",
+      "screenshot": "tests\\screenshots\\ai-strategy.png",
+      "failed_responses": []
+    },
+    {
+      "page_id": "monitoring-overview",
+      "url": "http://127.0.0.1:8002/monitoring-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 131.4,
+      "state": "found:#monitoring-topbar",
+      "screenshot": "tests\\screenshots\\monitoring-overview.png",
+      "failed_responses": []
+    }
+  ],
+  "spa_switches": [
+    {
+      "page_id": "ai-strategy",
+      "ok": true,
+      "duration_ms": 3.0,
+      "state": "found:.strategy-v2-page"
+    },
+    {
+      "page_id": "monitoring-overview",
+      "ok": true,
+      "duration_ms": 109.2,
+      "state": "found:#monitoring-topbar"
+    }
+  ],
+  "summary": {
+    "per_page_total": 2,
+    "per_page_fail": 0,
+    "spa_total": 2,
+    "spa_fail": 0,
+    "spa_slow": 0
+  }
+}

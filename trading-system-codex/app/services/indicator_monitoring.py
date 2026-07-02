@@ -25,7 +25,11 @@ from app.db.models.market import (
     MacroEventCalendar,
     MacroSourceHealth,
 )
-from app.monitoring.loader import load_alert_rules, load_indicator_catalog, load_refresh_policies
+from app.monitoring.loader import (
+    load_alert_rules,
+    load_indicator_catalog,
+    load_refresh_policies,
+)
 from app.quant.indicators import (
     adx_wilder_series,
     atr_ema_series,
@@ -39,7 +43,11 @@ from app.quant.indicators import (
 )
 from app.repositories.market_repository import MarketRepository
 from app.services.contract_snapshot import ContractSnapshotService
-from app.services.macro.indicator_key_aliases import canonical_macro_key, canonical_provider_key
+from app.services.macro import transforms as macro_transforms
+from app.services.macro.indicator_key_aliases import (
+    canonical_macro_key,
+    canonical_provider_key,
+)
 from app.services.macro.provider_registry import MacroProviderRegistry
 from app.services.market import MarketService
 from app.services.microstructure import (
@@ -48,6 +56,7 @@ from app.services.microstructure import (
     summarize_depth_slippage,
     summarize_open_interest,
 )
+from app.services.onchain.router import OnchainProviderRouter
 
 UTC = timezone.utc
 logger = logging.getLogger(__name__)
@@ -62,7 +71,7 @@ MICROSTRUCTURE_KEYS = {
 
 
 FRESHNESS_DAYS_BY_FREQUENCY = {
-    "intraday": 0.1, "daily": 3, "weekly": 14,
+    "intraday": 0.5, "daily": 3, "weekly": 14,
     "monthly": 45, "quarterly": 120, "fomc": 60, "irregular": 30, "event": 60,
 }
 
@@ -73,7 +82,7 @@ FALLBACK_SYMBOLS = {
     "us_unemployment_rate": {"fred": "UNRATE"},
     "us_10y_yield": {"fred": "DGS10"},
     "us_5y_yield": {"fred": "DGS5", "twelvedata": "DGS5"},
-    "real_yield_5y": {"fred": "DFII5"},
+    "real_yield_5y": {"fred": "DFII5", "tradingeconomics_web": "US 5Y TIPS"},
     "real_yield_10y": {"fred": "DFII10"},
     "us_2y_yield": {"fred": "DGS2"},
     "us_dff": {"fred": "DFF"},
@@ -124,6 +133,7 @@ class IndicatorMonitoringService:
             market_service=self.market_service,
         )
         self.macro_provider_registry = MacroProviderRegistry()
+        self.onchain_provider_router = OnchainProviderRouter()
         self._technical_batch_cache: dict | None = None
 
     def _freshness_days_for_frequency(self, definition) -> float:
@@ -134,9 +144,17 @@ class IndicatorMonitoringService:
         )
         return FRESHNESS_DAYS_BY_FREQUENCY.get(freq, 30.0)
 
-    def _get_fallback_symbols(self, indicator_key: str, primary_symbol: str) -> list[str]:
-        symbols = [primary_symbol]
+    def _get_fallback_symbols(
+        self,
+        indicator_key: str,
+        primary_symbol: str,
+        source_provider: str | None = None,
+    ) -> list[str]:
+        symbols: list[str] = [primary_symbol]
         fb = FALLBACK_SYMBOLS.get(indicator_key, {})
+        provider_symbol = fb.get(source_provider or "")
+        if provider_symbol and provider_symbol not in symbols:
+            symbols.append(provider_symbol)
         for sym in fb.values():
             if sym not in symbols:
                 symbols.append(sym)
@@ -326,12 +344,83 @@ class IndicatorMonitoringService:
         return results
 
     async def sync_onchain(self) -> list[SyncResult]:
-        return [
-            await self.run_policy(policy, trigger_type="manual")
-            for policy in await self.repository.list_monitoring_policies(
-                enabled_only=True, category="onchain"
+        # Strategy layer path: ensure DefiLlama indicator definitions exist,
+        # collect a public snapshot through ``OnchainProviderRouter`` and persist
+        # observations even when no ``IndicatorMonitoringPolicy`` row is
+        # registered for category=onchain.
+        from app.services.onchain.policy_adapter import (
+            collect_via_router,
+            ensure_defillama_definitions,
+            persist_drafts,
+        )
+
+        results: list[SyncResult] = []
+        try:
+            await ensure_defillama_definitions(self.repository)
+            outcome = await collect_via_router(self.onchain_provider_router)
+            written = await persist_drafts(self.repository, outcome.drafts)
+            meta_obs = [
+                IndicatorObservation(
+                    observation_id=f"sync-meta-{__import__('uuid').uuid4().hex[:8]}",
+                    dedupe_key=f"__onchain_defillama__|{outcome.meta['fetched_at']}",
+                    indicator_key="defi_total_tvl",
+                    category="onchain",
+                    observation_ts=datetime.now(UTC),
+                    value_num=None,
+                    value_json={
+                        "meta": True,
+                        "status": outcome.meta["status"],
+                        "missing_keys": outcome.meta["missing_keys"],
+                        "warnings": outcome.meta["warnings"],
+                        "written": written,
+                    },
+                    source_provider="defillama",
+                    source_ref="defillama:__sync_meta__",
+                    source_granularity="daily",
+                    quality_score=Decimal("100"),
+                )
+            ]
+            results.append(
+                SyncResult(
+                    run_id=f"defillama-{outcome.meta['fetched_at']}",
+                    indicator_key="__onchain_defillama__",
+                    rows_written=written,
+                    observations=meta_obs,
+                )
             )
-        ]
+        except Exception as exc:  # noqa: BLE001 - defensive guard, see AGENTS.md §六
+            logger.warning("defillama policy adapter failed: %s", exc, exc_info=True)
+            results.append(
+                SyncResult(
+                    run_id=f"defillama-error-{datetime.now(UTC).isoformat()}",
+                    indicator_key="__onchain_defillama__",
+                    rows_written=0,
+                    observations=[
+                        IndicatorObservation(
+                            observation_id=f"sync-meta-{__import__('uuid').uuid4().hex[:8]}",
+                            dedupe_key="__onchain_defillama__|error",
+                            indicator_key="defi_total_tvl",
+                            category="onchain",
+                            observation_ts=datetime.now(UTC),
+                            value_num=None,
+                            value_json={"meta": True, "error": str(exc)},
+                            source_provider="defillama",
+                            source_ref="defillama:__sync_error__",
+                            source_granularity="daily",
+                            quality_score=Decimal("0"),
+                        )
+                    ],
+                )
+            )
+
+        # Legacy path: still run any registered monitoring policies for parity.
+        for policy in await self.repository.list_monitoring_policies(
+            enabled_only=True, category="onchain"
+        ):
+            results.append(
+                await self.run_policy(policy, trigger_type="manual")
+            )
+        return results
 
     async def sync_technical(
         self,
@@ -848,10 +937,16 @@ class IndicatorMonitoringService:
             freshness_days = self._freshness_days_for_frequency(definition)
             if latest_obs is not None and fresh_in_window(latest_obs, freshness_days) and latest_obs.signal_state != "source_error":
                 return [latest_obs]
-            symbol_fallback = self._get_fallback_symbols(indicator_key, symbol)
+            symbol_fallback = self._get_fallback_symbols(
+                indicator_key,
+                symbol,
+                source_provider,
+            )
             result = None
+            result_provider = None
+            stale_result = None
             last_error = None
-            for sym in symbol_fallback:
+            for index, sym in enumerate(symbol_fallback):
                 try:
                     resolved_provider = (
                         provider
@@ -866,6 +961,22 @@ class IndicatorMonitoringService:
                     fetch_started_at = time_module.perf_counter()
                     try:
                         result = await resolved_provider.fetch_latest(sym)
+                        result_provider = resolved_provider
+                        if not fresh_in_window(result, freshness_days):
+                            stale_result = result
+                            await self._record_macro_source_health(
+                                provider_key=resolved_provider.provider_key,
+                                source_key=sym,
+                                status="stale",
+                                message="latest observation is outside freshness window",
+                                latency_ms=int(
+                                    (time_module.perf_counter() - fetch_started_at) * 1000
+                                ),
+                                payload_json={"indicator_key": indicator_key},
+                            )
+                            if index < len(symbol_fallback) - 1:
+                                result = None
+                                continue
                         await self._record_macro_source_health(
                             provider_key=resolved_provider.provider_key,
                             source_key=sym,
@@ -889,7 +1000,15 @@ class IndicatorMonitoringService:
                 except Exception:
                     continue
 
+            if result is None and stale_result is not None:
+                result = stale_result
+
             if result is not None:
+                value_num, value_json = await self._transform_macro_result(
+                    definition,
+                    result,
+                    result_provider,
+                )
                 country_code = "global" if indicator_key in {"dollar_index", "gold"} else "US"
                 obs = await self._persist_observation(
                     definition=definition,
@@ -897,9 +1016,9 @@ class IndicatorMonitoringService:
                     country_code=country_code,
                     timeframe="1d",
                     observation_ts=result.observation_ts,
-                    value_num=result.value,
-                    value_json=result.metadata or {},
-                    signal_state=self._macro_state(indicator_key, result.value),
+                    value_num=value_num,
+                    value_json=value_json,
+                    signal_state=self._macro_state(indicator_key, value_num),
                     source_provider=(
                         result.source_ref.split(":")[0]
                         if ":" in str(result.source_ref)
@@ -1037,6 +1156,44 @@ class IndicatorMonitoringService:
         )
         return [obs]
 
+    async def _transform_macro_result(self, definition, result, provider):
+        transform = str((definition.calc_params_json or {}).get("transform") or "")
+        metadata = dict(result.metadata or {})
+        if transform not in {"mom_pct", "yoy_pct"} or provider is None:
+            return result.value, metadata
+        fetch_history = getattr(provider, "fetch_history", None)
+        if not callable(fetch_history):
+            return result.value, metadata
+        symbol = str((definition.calc_params_json or {}).get("external_symbol") or "")
+        if not symbol:
+            return result.value, metadata
+        try:
+            history = await fetch_history(symbol, lookback_points=14)
+        except Exception:
+            return result.value, metadata
+        points = [
+            (point.observation_ts, point.value)
+            for point in history
+            if point.observation_ts is not None
+        ]
+        computed = (
+            macro_transforms.compute_mom_pct(points)
+            if transform == "mom_pct"
+            else macro_transforms.compute_yoy_pct(points)
+        )
+        if computed is None:
+            return result.value, metadata
+        value, transformed_at = computed
+        metadata.update(
+            {
+                "raw_value": str(result.value),
+                "transform_applied": transform,
+                "transform_source": f"{symbol}_{transform}",
+                "transformed_at": transformed_at.isoformat(),
+            }
+        )
+        return value, metadata
+
     async def _record_macro_source_health(
         self,
         *,
@@ -1081,19 +1238,89 @@ class IndicatorMonitoringService:
     ) -> list[IndicatorObservation]:
         now = datetime.now(timezone.utc)
         asset_code = policy.asset_code or (definition.supported_assets_json or ["BTC"])[0]
+        if definition.source_provider == "defillama":
+            result = await self.onchain_provider_router.fetch_metric(definition.indicator_key)
+            raw_value = result.get("value")
+            value = Decimal(str(raw_value)) if raw_value is not None else None
+            if value is None:
+                return [
+                    await self._persist_observation(
+                        definition=definition,
+                        run_id=run_id,
+                        observation_ts=now,
+                        value_num=None,
+                        value_json={
+                            "source": "defillama",
+                            "status": result.get("status", "degraded"),
+                            "missing_fields": result.get("missing_fields") or [],
+                            "score_excluded": True,
+                        },
+                        signal_state="degraded",
+                        source_provider="defillama",
+                        source_ref=f"defillama:{definition.indicator_key}",
+                        source_granularity=policy.timeframe or "1d",
+                        asset_code=asset_code,
+                        quality_score=Decimal("0"),
+                    )
+                ]
+            return [
+                await self._persist_observation(
+                    definition=definition,
+                    run_id=run_id,
+                    observation_ts=now,
+                    value_num=value,
+                    value_json={
+                        "value": str(value),
+                        "source": "defillama",
+                        "status": result.get("status", "live"),
+                        "all_metrics": result.get("indicators") or {},
+                    },
+                    signal_state="neutral",
+                    source_provider="defillama",
+                    source_ref=f"defillama:{definition.indicator_key}",
+                    source_granularity=policy.timeframe or "1d",
+                    asset_code=asset_code,
+                    quality_score=Decimal(settings.monitoring_default_quality_score),
+                )
+            ]
+        if not settings.enable_demo_onchain:
+            observation = await self._persist_observation(
+                definition=definition,
+                run_id=run_id,
+                observation_ts=now,
+                value_num=None,
+                value_json={
+                    "source": definition.source_provider,
+                    "status": "degraded",
+                    "missing_reason": "onchain_provider_not_configured",
+                    "score_excluded": True,
+                },
+                signal_state="degraded",
+                source_provider=definition.source_provider,
+                source_ref=f"unavailable:{definition.indicator_key}:{asset_code}",
+                source_granularity=policy.timeframe or "1d",
+                asset_code=asset_code,
+                quality_score=Decimal("0"),
+            )
+            return [observation]
         value = self._demo_onchain_value(definition.indicator_key, asset_code, now)
         observation = await self._persist_observation(
             definition=definition,
             run_id=run_id,
             observation_ts=now,
             value_num=value,
-            value_json={"value": str(value), "source": "demo_onchain"},
+            value_json={
+                "value": str(value),
+                "source": "demo_onchain",
+                "demo_only": True,
+                "score_excluded": True,
+            },
             signal_state=self._onchain_state(definition.indicator_key, value),
             source_provider=definition.source_provider,
             source_ref=f"demo:{definition.indicator_key}:{asset_code}",
             source_granularity=policy.timeframe or "1d",
             asset_code=asset_code,
-            quality_score=Decimal(settings.monitoring_demo_quality_score),
+            quality_score=Decimal("0"),
         )
         return [observation]
 
@@ -1156,7 +1383,9 @@ class IndicatorMonitoringService:
             source_ref=source_ref,
             source_granularity=source_granularity,
             is_preliminary=is_preliminary,
-            quality_score=quality_score or Decimal(settings.monitoring_default_quality_score),
+            quality_score=quality_score
+            if quality_score is not None
+            else Decimal(settings.monitoring_default_quality_score),
             run_id=run_id,
         )
         return await self.repository.add_or_update_observation(observation)
@@ -1165,6 +1394,8 @@ class IndicatorMonitoringService:
         for observation in observations:
             payload = observation.value_json or {}
             if payload.get("is_immature") or payload.get("lookback_ready") is False:
+                continue
+            if payload.get("demo_only") or payload.get("score_excluded"):
                 continue
             rules = await self.repository.list_alert_rules(
                 enabled_only=True, indicator_key=observation.indicator_key

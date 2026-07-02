@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict verifier for the V1.3 Windows true-portable release.
+"""Strict verifier for the V1.6 Windows true-portable release.
 
 Copy this file to:
     scripts/verify_portable_release.py
@@ -37,6 +37,8 @@ from release_common import (  # noqa: E402
     PROJECT_ROOT,
     dump_portable_excludes,
     load_portable_excludes,
+    scan_secret_like_content,
+    scan_secret_text,
 )
 
 REQUIRED_ROOT_FILES = [
@@ -111,6 +113,7 @@ REMEDIATION_MAP: dict[str, str] = {
     "runtime_python_version_invalid": "portable_runtime.lock.json must pin python_version to a 3.11.x release. Edit the lock and rebuild.",
     "stub_runtime_enabled": "Official releases must set PORTABLE_RUNTIME_STUB=0 (or unset) and rebuild the runtime. Fast-test stubs are not allowed for release builds.",
     "manifest_release_type_invalid": "release_manifest.json release_type must be 'embedded_runtime_portable'. Regenerate via build_portable_bundle.py.",
+    "manifest_version_invalid": "release_manifest.json version must match the V1.7.0 package release.",
     "manifest_python_embedded_invalid": "release_manifest.json must set python_embedded=true. Regenerate via build_portable_bundle.py.",
     "manifest_platform_invalid": "release_manifest.json must declare platform=win-x64.",
     "manifest_runtime_path_invalid": "python_runtime_path must be 'runtime_env/python/python.exe' (forward slashes).",
@@ -376,12 +379,20 @@ class Auditor:
                 self.add(
                     "critical",
                     "stub_runtime_enabled",
-                    "portable runtime is still a stub; official V1.3 portable release must have stub_runtime=false",
+                "portable runtime is still a stub; official V1.6 portable release must have stub_runtime=false",
                     "runtime_env/python/portable_runtime.json",
                 )
 
         if manifest:
             self.summary["release_type"] = manifest.get("release_type")
+            self.summary["version"] = manifest.get("version")
+            if manifest.get("version") != "1.7.0":
+                self.add(
+                    "critical",
+                    "manifest_version_invalid",
+                    f"release version must be 1.7.0, got {manifest.get('version')}",
+                    "release_manifest.json",
+                )
             if manifest.get("release_type") != "embedded_runtime_portable":
                 self.add(
                     "critical",
@@ -617,7 +628,8 @@ class Auditor:
         top_level_forbidden = excludes["top_level_dirs"]
         suffixes_forbidden = excludes["suffixes"]
         forbidden: list[str] = []
-        for name in self.reader.list_files():
+        bundle_files = self.reader.list_files()
+        for name in bundle_files:
             norm = name.replace("\\", "/").lstrip("/")
             if norm.startswith("runtime_env/"):
                 continue
@@ -644,6 +656,32 @@ class Auditor:
                 f"portable bundle contains forbidden artifacts: {sample}",
             )
 
+        secret_findings: list[str] = []
+        for name in bundle_files:
+            if not name.endswith(
+                (".env", ".txt", ".json", ".md", ".yaml", ".yml", ".ini", ".toml")
+            ):
+                continue
+            size = self.reader.size(name)
+            if size is None or size > 1_000_000:
+                continue
+            try:
+                text = self.reader.read_bytes(name, limit=1_000_000).decode(
+                    "utf-8", errors="ignore"
+                )
+            except OSError:
+                continue
+            for key, line_number in scan_secret_text(text):
+                secret_findings.append(f"{name}:{line_number}:{key}")
+        self.summary["bundle_secret_like_finding_count"] = len(secret_findings)
+        if secret_findings:
+            sample = ", ".join(secret_findings[:20])
+            self.add(
+                "critical",
+                "secret_like_values_present",
+                f"portable bundle contains non-empty secret-like settings: {sample}",
+            )
+
     def check_repo_hygiene(self, repo: Path | None) -> None:
         if repo is None:
             return
@@ -668,6 +706,24 @@ class Auditor:
                 "source_local_artifact_present",
                 f"source tree contains local artifact; keep it out of release: {item}",
                 item,
+            )
+
+        secret_paths = [
+            path
+            for path in repo.rglob("*")
+            if path.is_file()
+            and not any(part in {".git", ".venv", "runtime_env", "dist"} for part in path.parts)
+            and path.name in {".env", "portable.env", "portable_api.env"}
+        ]
+        secret_findings = scan_secret_like_content(secret_paths)
+        self.summary["source_secret_like_finding_count"] = len(secret_findings)
+        for finding in secret_findings[:20]:
+            rel = str(finding.path.relative_to(repo))
+            self.add(
+                "critical",
+                "source_secret_like_value_present",
+                f"source tree contains non-empty secret-like setting {finding.key} at line {finding.line_number}",
+                rel,
             )
 
         csproj = repo / "tools" / "launcher" / "TradingSystemLauncher.csproj"
