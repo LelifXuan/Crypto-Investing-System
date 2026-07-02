@@ -10,7 +10,7 @@ class StrategyUnifiedRead(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     instrument_id: str
-    generated_at: datetime | str
+    generated_at: datetime | str | None = None
     status: str = "ready"
     refresh_state: str | None = None
     refresh_limitations: list[str] = Field(default_factory=list)
