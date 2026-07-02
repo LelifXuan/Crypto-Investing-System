@@ -2,6 +2,7 @@ import { api } from "../../core/api.js";
 import { appState, getInstrumentMeta, persistState } from "../../core/state.js";
 import {
   emptyState,
+  degradedState,
   errorState,
   escapeHtml,
   formatDateTime,
@@ -170,23 +171,35 @@ async function loadUnifiedStrategy({ force = false } = {}) {
     macro: results[3].status === "rejected" ? results[3].reason?.message || "读取失败" : null,
   };
   if (!dataAccess.unified) {
-    if (status) status.innerHTML = statusBanner("统一策略读取失败，请稍后重试", "error");
+    if (status) status.innerHTML = statusBanner("策略推演暂时不可用，已自动触发后台预热", "warning");
     const content = document.getElementById("strategy-content");
-    if (content) content.innerHTML = errorState("统一策略读取失败，请稍后重试");
+    if (content) content.innerHTML = degradedState(
+      "策略推演暂时不可用",
+      "统一策略服务正在恢复，已自动触发后台预热。"
+    );
+    // Re-trigger prewarm in case the mount-time fire failed
+    api.prewarmStrategy(instrumentId).catch(() => {});
     return;
   }
   if (failed.length === 4) {
-    if (status) status.innerHTML = statusBanner("四个数据源全部失败", "error");
+    if (status) status.innerHTML = statusBanner("所有数据源不可用，已自动触发后台预热", "warning");
     const content = document.getElementById("strategy-content");
-    if (content) content.innerHTML = errorState("四个数据源全部不可用，请稍后重试");
+    if (content) content.innerHTML = degradedState(
+      "所有数据源不可用",
+      "监控、衍生品、宏观、统一策略全部失败。"
+    );
+    api.prewarmStrategy(instrumentId).catch(() => {});
     return;
   }
   const model = normalizeUnifiedStrategy(dataAccess.unified, dataAccess);
   model.data_access = dataAccess;
   model.data_access_failures = dataAccessFailures;
   renderModel(model);
-  if (failed.length === 0) {
+  if (failed.length === 0 && !model.degraded) {
     if (status) status.innerHTML = statusBanner("统一策略推演已更新", "success");
+  } else if (model.degraded) {
+    const components = (model.degraded_components || []).join("、") || "部分组件";
+    if (status) status.innerHTML = statusBanner(`策略已渲染；${components} 降级，后台预热中`, "warning");
   } else {
     if (status) status.innerHTML = statusBanner(`统一策略已更新；${failed.length}/4 数据源不可用`, "warning");
   }
@@ -232,6 +245,8 @@ export async function renderStrategy() {
   attachEvents();
   return {
     mount: async () => {
+      // Fire-and-forget background prewarm (don't await)
+      api.prewarmStrategy(appState.selectedInstrumentId).catch(() => {});
       await loadUnifiedStrategy();
     },
     unmount: async () => {
