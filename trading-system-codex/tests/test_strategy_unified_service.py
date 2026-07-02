@@ -499,3 +499,55 @@ async def test_unified_strategy_event_lock_becomes_first_class_risk(monkeypatch)
     assert payload["unified_state"]["permission"] == "no_trade"
     assert payload["event_watch"]
     assert any(item["category"] == "event" for item in payload["risk_alerts"])
+
+
+@pytest.mark.asyncio
+async def test_build_unified_marks_degraded_when_engine_fails(repository) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.services.strategy_unified.unified_service import UnifiedStrategyService
+
+    service = UnifiedStrategyService(repository)
+    valid_bundle = {"decision": {"direction_confidence": 50}, "status": "ready", "cache_state": "ready"}
+    valid_context = {
+        "timeframe": "1d",
+        "market_data": {},
+        "structure_features": {},
+        "indicator_features": {},
+        "execution_features": {},
+        "macro_features": {},
+        "cache_meta": {"cache_state": "fresh"},
+    }
+    mock_loaded = {
+        "contexts": {
+            "1M": valid_context,
+            "1w": valid_context,
+            "1d": valid_context,
+            "4h": valid_context,
+            "1h": valid_context,
+            "15m": valid_context,
+        },
+        "bundles": {
+            "1M": valid_bundle,
+            "1w": valid_bundle,
+            "1d": valid_bundle,
+            "4h": valid_bundle,
+            "1h": valid_bundle,
+            "15m": valid_bundle,
+        },
+        "refresh_state": "cache_only",
+        "refresh_limitations": [],
+    }
+    with patch.object(service.loader, "load", new=AsyncMock(return_value=mock_loaded)), \
+         patch.object(
+             service.macro_engine,
+             "compute",
+             new=MagicMock(side_effect=RuntimeError("macro engine crashed")),
+         ):
+        payload = await service.build_unified_strategy("btc-usdt-perp")
+
+    assert payload["degraded"] is True
+    assert "macro_regime" in payload["degraded_components"]
+    assert payload["status"] == "degraded"
+    assert "horizon_views" in payload
+    assert "timeframe_stack" in payload

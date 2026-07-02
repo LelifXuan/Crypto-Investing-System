@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
+import logging
 from typing import Any, Mapping
 
 from app.core.timeframes import normalize_instrument_id
@@ -18,6 +19,8 @@ from .narrative import NarrativeRenderer
 from .onchain_regime import OnchainRegimeEngine
 from .risk_gate import UnifiedRiskGateEngine, group_risk_alerts
 from .trade_plan import UnifiedTradePlanEngine
+
+logger = logging.getLogger(__name__)
 
 
 def TIMEFRAME_STACK_LIST() -> list[str]:
@@ -48,54 +51,116 @@ class UnifiedStrategyService:
         force: bool = False,
     ) -> dict[str, Any]:
         instrument = normalize_instrument_id(instrument_id)
+        degraded_components: list[str] = []
+
+        # Load contexts and bundles (data_loader already wraps in try/except)
         loaded = await self.loader.load(instrument, force=force)
         contexts: Mapping[str, Any] = loaded["contexts"]
         bundles: Mapping[str, Mapping[str, Any]] = loaded["bundles"]
-        nodes = self.structure_engine.build_nodes(contexts, bundles)
+
+        # Build nodes (defensive)
+        try:
+            nodes = self.structure_engine.build_nodes(contexts, bundles)
+        except Exception as exc:
+            logger.warning("structure_engine_failed: %s", exc, exc_info=True)
+            nodes = []
+            degraded_components.append("structure")
+
+        # Compute market dimensions, each independent
+        def _safe_dimension(engine, key: str, fallback_dim):
+            try:
+                return engine.compute(contexts)
+            except Exception as exc:
+                logger.warning("%s_engine_failed: %s", key, exc, exc_info=True)
+                degraded_components.append(key)
+                return fallback_dim
+
+        from .contracts import MarketDimension
+        price_structure_fallback = MarketDimension(
+            key="price_structure",
+            label="价格结构",
+            state="MISSING",
+            bias="NEUTRAL",
+            horizon_impact=[],
+            score=50,
+            confidence=0,
+            evidence=[],
+            source_modules=[],
+            freshness="missing",
+            details={"reason": "上游数据缺失"},
+        )
+
         market_dimensions = {
-            "macro_regime": self.macro_engine.compute(contexts),
-            "capital_flow": self.capital_engine.compute(contexts),
-            "derivatives_regime": self.derivatives_engine.compute(contexts),
-            "onchain_regime": self.onchain_engine.compute(contexts),
-            "price_structure": self._price_structure_dimension(nodes),
+            "macro_regime": _safe_dimension(self.macro_engine, "macro_regime", price_structure_fallback),
+            "capital_flow": _safe_dimension(self.capital_engine, "capital_flow", price_structure_fallback),
+            "derivatives_regime": _safe_dimension(self.derivatives_engine, "derivatives_regime", price_structure_fallback),
+            "onchain_regime": _safe_dimension(self.onchain_engine, "onchain_regime", price_structure_fallback),
+            "price_structure": self._safe_price_structure(nodes, price_structure_fallback, degraded_components),
         }
-        horizon_views = self.cross_horizon_engine.build_horizon_views(nodes)
-        governance = self.cross_horizon_engine.build_governance(horizon_views, nodes)
-        risk_alerts = self.risk_gate_engine.build(nodes, market_dimensions)
+
+        # Cross-horizon synthesis (defensive)
+        try:
+            horizon_views = self.cross_horizon_engine.build_horizon_views(nodes)
+            governance = self.cross_horizon_engine.build_governance(horizon_views, nodes)
+        except Exception as exc:
+            logger.warning("cross_horizon_failed: %s", exc, exc_info=True)
+            horizon_views = {}
+            governance = self._empty_governance()
+            degraded_components.append("cross_horizon")
+
+        # Risk gate
+        try:
+            risk_alerts = self.risk_gate_engine.build(nodes, market_dimensions)
+        except Exception as exc:
+            logger.warning("risk_gate_failed: %s", exc, exc_info=True)
+            risk_alerts = []
+            degraded_components.append("risk_gate")
+
         next_check_time = self._next_check_time(contexts)
         unified_state = self.cross_horizon_engine.build_unified_state(
-            horizon_views,
-            governance,
-            [risk.as_dict() for risk in risk_alerts],
-            nodes,
-            next_check_time,
+            horizon_views, governance, [r.as_dict() for r in risk_alerts], nodes, next_check_time,
         )
-        trade_plans = self.trade_plan_engine.build_plans(
-            unified_state,
-            horizon_views,
-            governance,
-            nodes,
-            bundles,
-        )
+
+        # Trade plans
+        try:
+            trade_plans = self.trade_plan_engine.build_plans(
+                unified_state, horizon_views, governance, nodes, bundles,
+            )
+        except Exception as exc:
+            logger.warning("trade_plan_failed: %s", exc, exc_info=True)
+            trade_plans = []
+            degraded_components.append("trade_plan")
+
         market_operation = self._market_operation(market_dimensions, nodes)
-        evidence_trace = self.evidence_builder.build(
-            unified_state,
-            horizon_views,
-            market_dimensions,
-            governance,
-            nodes,
-        )
-        narrative = self.narrative_renderer.render(
-            unified_state,
-            horizon_views,
-            trade_plans,
-            risk_alerts,
-            market_operation,
-        )
+
+        # Evidence trace
+        try:
+            evidence_trace = self.evidence_builder.build(
+                unified_state, horizon_views, market_dimensions, governance, nodes,
+            )
+        except Exception as exc:
+            logger.warning("evidence_builder_failed: %s", exc, exc_info=True)
+            evidence_trace = []
+            degraded_components.append("evidence")
+
+        # Narrative
+        try:
+            narrative = self.narrative_renderer.render(
+                unified_state, horizon_views, trade_plans, risk_alerts, market_operation,
+            )
+        except Exception as exc:
+            logger.warning("narrative_failed: %s", exc, exc_info=True)
+            narrative = {"headline": "", "layers": [], "watchlist": [], "action": "策略推演部分组件异常，等待后台预热。"}
+            degraded_components.append("narrative")
+
+        is_degraded = bool(degraded_components)
         base_payload: dict[str, Any] = {
             "instrument_id": instrument,
             "generated_at": now_iso(),
-            "status": self._payload_status(risk_alerts),
+            "status": "degraded" if is_degraded else self._payload_status(risk_alerts),
+            "degraded": is_degraded,
+            "degraded_components": degraded_components,
+            "prewarm_status": "idle",
             "refresh_state": loaded["refresh_state"],
             "refresh_limitations": loaded["refresh_limitations"],
             "unified_state": unified_state,
@@ -115,6 +180,26 @@ class UnifiedStrategyService:
         base_payload["payload_hash"] = digest
         base_payload["snapshot_key"] = f"{instrument}:{digest}"
         return base_payload
+
+    def _safe_price_structure(self, nodes, fallback_dim, degraded_components):
+        try:
+            return self._price_structure_dimension(nodes)
+        except Exception as exc:
+            logger.warning("price_structure_dimension_failed: %s", exc, exc_info=True)
+            degraded_components.append("price_structure")
+            return fallback_dim
+
+    @staticmethod
+    def _empty_governance():
+        from .contracts import HorizonGovernance
+        return HorizonGovernance(
+            higher_timeframe_constraint={"direction": "NEUTRAL", "rule": "上游数据缺失", "source_timeframes": []},
+            lower_timeframe_driver={"direction": "NEUTRAL", "rule": "上游数据缺失", "source_timeframes": []},
+            position_cap="0%",
+            allowed_sides=[],
+            upgrade_path=[],
+            invalidation_path=[],
+        )
 
     def _market_operation(self, market_dimensions: Mapping[str, Any], nodes: list[Any]) -> dict[str, Any]:
         chain = {
