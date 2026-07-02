@@ -20,7 +20,7 @@ const pageModules = {
   "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "gold-allocation": () => loadPageModule("./pages/gold_allocation.js"),
   "btc-derivatives": () => loadPageModule("./pages/btc_derivatives.js"),
-  "ai-strategy": () => loadPageModule("./pages/strategy.js"),
+  "ai-strategy": () => loadPageModule("./pages/strategy.js?v=narrative-layers"),
 };
 
 const PAGE_TITLES = {

@@ -110,6 +110,24 @@ export function formatChartValue(value, valueFormat = "raw") {
   return numeric.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
 }
 
+function formatXAxisTick(value, labels = []) {
+  const raw = labels?.[value] ?? value;
+  const text = String(raw ?? "");
+  const date = new Date(text);
+  if (!Number.isNaN(date.getTime()) && /T|\d{4}-\d{2}-\d{2}/.test(text)) {
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    return `${month}-${day} ${hour}:${minute}`;
+  }
+  const numeric = finiteChartNumber(text);
+  if (numeric !== null && Math.abs(numeric) >= 1000) {
+    return `$${Math.round(numeric / 1000)}k`;
+  }
+  return text.length > 14 ? `${text.slice(0, 12)}…` : text;
+}
+
 export function buildAdaptiveScaleOptionsForAxes(
   axes = {},
   datasets = [],
@@ -247,7 +265,7 @@ const adaptiveAxisPlugin = {
     if (x) {
       x.ticks.maxTicksLimit = Math.max(
         4,
-        Math.min(12, Math.floor((chart.width || 720) / 90)),
+        Math.min(10, Math.floor((chart.width || 720) / 120)),
       );
     }
   },
@@ -392,7 +410,16 @@ function baseOptions() {
     },
     scales: {
       x: {
-        ticks: { color: "#627078", maxRotation: 0, autoSkip: true, font: { size: 11, weight: "500" } },
+        ticks: {
+          color: "#627078",
+          maxRotation: 0,
+          autoSkip: true,
+          autoSkipPadding: 18,
+          font: { size: 11, weight: "500" },
+          callback(value) {
+            return formatXAxisTick(value, this.chart?.data?.labels || []);
+          },
+        },
         grid: { color: "rgba(23, 34, 39, 0.042)" },
       },
       y: {

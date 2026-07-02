@@ -516,6 +516,19 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 30000,
     });
   },
+  getMarketContext(instrumentId, timeframe, options = {}) {
+    return requestJson("/market-context/snapshot", {
+      params: {
+        instrument_id: instrumentId,
+        timeframe: timeframe === "1M" ? "30d" : timeframe,
+        cache_only: options.cacheOnly ?? true,
+      },
+      ttl: options.force ? 0 : 20,
+      force: options.force ?? false,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
   updateAlertEventStatus(alertEventId, status) {
     invalidateCache("/alerts/events");
     return requestJson(`/alerts/events/${encodeURIComponent(alertEventId)}/status`, {
@@ -589,6 +602,19 @@ export const api = {
       ttl: STRATEGY_CLIENT_TTL_SECONDS[normalizedTimeframe] || 300,
       force: options.force ?? false,
       timeoutMs: options.timeoutMs ?? 12000,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
+  getUnifiedStrategy(instrumentId, options = {}) {
+    return requestJson("/strategy/unified", {
+      params: {
+        instrument_id: instrumentId,
+        force: options.force ? "true" : "false",
+      },
+      ttl: options.force ? 0 : 30,
+      force: options.force ?? false,
+      timeoutMs: options.timeoutMs ?? 15000,
       signal: options.signal,
       retry: 1,
     });

@@ -45,13 +45,13 @@ let filters = {
 
 function number(value, digits = 2) {
   return value === null || value === undefined
-    ? "-"
+    ? "—"
     : formatNumber(Number(value), digits);
 }
 
 function percent(value, digits = 2) {
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? `${formatNumber(numeric * 100, digits)}%` : "-";
+  return Number.isFinite(numeric) ? `${formatNumber(numeric * 100, digits)}%` : "—";
 }
 
 function displayState(value) {
@@ -65,6 +65,8 @@ function displayState(value) {
     failed: "不可用",
     circuit_open: "熔断中",
     unknown: "状态未知",
+    ok: "可用",
+    partial: "部分可用",
   }[value] || "状态未知";
 }
 
@@ -96,17 +98,44 @@ function syncFiltersFromDashboard() {
   };
 }
 
-function renderHero(banner = "") {
+function confidenceLabel(value) {
+  return { high: "高置信度", medium: "中等置信度", low: "低置信度" }[value] || "低置信度";
+}
+
+function heroMarketVerdict() {
+  if (!dashboard) {
+    return "正在读取衍生品快照，等待期货、期权与保护成本证据。";
+  }
+  const blocks = dashboard?.joint_analysis?.inference_blocks || [];
+  const block = (id) => blocks.find((item) => item.id === id) || {};
+  const futures = block("futures");
+  const options = block("options");
+  const hedge = block("hedge_cost");
+  const state = dashboard?.snapshot_state || dashboard?.data_quality?.mode;
+  if (state === "data_insufficient") {
+    return "数据不足，暂不能形成可靠多空判定；先等待真实期货、期权链与保护成本快照。";
+  }
+  const main = futures.conclusion || options.conclusion || "多空暂不明朗";
+  const second = hedge.conclusion && hedge.conclusion !== "保护成本尚待观察"
+    ? `，${hedge.conclusion}`
+    : "";
+  return `${main}${second}。`;
+}
+
+function renderHero({ banner = "", freshness = "" } = {}) {
   return `
     <section class="hero-card btc-derivatives-hero">
       <div>
         <p class="eyebrow">BTC DERIVATIVES COCKPIT</p>
-        <h1>杠杆、波动率与保护决策</h1>
-        <p>观察当前市场的杠杆进入、拥挤程度、保护需求与关键持仓价位迁移。</p>
+        <h1>杠杆、波动率与保护成本</h1>
+        <p>${escapeHtml(heroMarketVerdict())}</p>
       </div>
       <div class="btc-hero-actions">
         <span>${escapeHtml(displayState(dashboard?.snapshot_state || dashboard?.data_quality?.mode))}</span>
-        <button class="button compact" id="btc-refresh" type="button">刷新衍生品快照</button>
+        <div class="btc-refresh-stack">
+          <button class="button compact" id="btc-refresh" type="button">刷新衍生品快照</button>
+          ${freshness ? `<small class="btc-refresh-freshness">${escapeHtml(freshness)}</small>` : ""}
+        </div>
       </div>
     </section>
     ${banner}
@@ -129,7 +158,7 @@ function renderChartToolbar() {
         <span>时间窗口</span>
         <select name="window">
           ${selectOptions(["", "30D", "90D", "180D", "365D"], filters.window, (value) => ({
-            "": "全部图表默认",
+            "": "各图默认窗口",
             "30D": "短期 30D",
             "90D": "中期 90D",
             "180D": "长期 180D",
@@ -140,7 +169,7 @@ function renderChartToolbar() {
       <label>
         <span>到期模式</span>
         <select name="expiry_mode">
-          ${selectOptions(["constant_maturity", "fixed"], filters.expiryMode, (value) => value === "fixed" ? "固定到期日" : "Constant Maturity")}
+          ${selectOptions(["constant_maturity", "fixed"], filters.expiryMode, (value) => value === "fixed" ? "固定到期日" : "恒定期限")}
         </select>
       </label>
       <label>
@@ -166,26 +195,74 @@ function renderChartToolbar() {
 }
 
 function renderDecisionCards() {
-  const cards = dashboard?.cards || [];
-  const confidenceLabel = { high: "高置信度", medium: "中等置信度", low: "低置信度" };
+  const blocks = dashboard?.joint_analysis?.inference_blocks || [];
+  const block = (id) => blocks.find((item) => item.id === id) || {};
+  const cards = (dashboard?.cards || []).length
+    ? dashboard.cards
+    : [
+        {
+          id: "market_state",
+          label: "当前衍生品状态",
+          state: block("futures").tone || "neutral",
+          confidence: block("futures").confidence || dashboard?.joint_analysis?.confidence || "low",
+          conclusion: block("futures").conclusion || "当前数据不足以形成清晰判断",
+          basis: block("futures").basis || [],
+          implication: block("futures").implication || "等待更多有效数据。",
+        },
+        {
+          id: "primary_risk",
+          label: "主要风险",
+          state: block("options").tone || "neutral",
+          confidence: block("options").confidence || dashboard?.joint_analysis?.confidence || "low",
+          conclusion: block("options").conclusion || "当前风险方向尚不清晰",
+          basis: [...(block("options").basis || []), ...(block("key_levels").basis || [])],
+          implication: [block("options").implication, block("key_levels").implication].filter(Boolean).join(" ") || "等待更多有效数据。",
+        },
+        {
+          id: "strategy_implication",
+          label: "策略含义",
+          state: block("hedge_cost").tone || "neutral",
+          confidence: block("hedge_cost").confidence || dashboard?.joint_analysis?.confidence || "low",
+          conclusion: block("hedge_cost").conclusion || "保护成本尚待观察",
+          basis: block("hedge_cost").basis || [],
+          implication: block("hedge_cost").implication || "等待更多有效数据。",
+        },
+      ];
   return `
-    <section class="btc-decision-grid" aria-label="衍生品决策摘要">
+    <section class="btc-decision-grid" aria-label="衍生品结论">
       ${cards.map((card) => `
         <article class="card btc-decision-card" data-state="${escapeHtml(card.state)}">
           <div class="btc-card-kicker">
             <span>${escapeHtml(card.label)}</span>
-            <b>${escapeHtml(confidenceLabel[card.confidence] || "低置信度")}</b>
+            <b>${escapeHtml(confidenceLabel(card.confidence))}</b>
           </div>
           <h2>${escapeHtml(card.conclusion || card.summary)}</h2>
           <p class="btc-decision-label">依据</p>
           <div class="btc-evidence-chips">
             ${(card.basis || []).slice(0, 5).map((item) => `<span>${escapeHtml(item)}</span>`).join("") || "<span>暂无有效依据</span>"}
           </div>
-          <p class="btc-decision-impact"><strong>影响：</strong>${escapeHtml(card.implication || "等待更多有效数据。")}</p>
         </article>
       `).join("")}
     </section>
   `;
+}
+
+function inferenceBlock(id) {
+  return (dashboard?.joint_analysis?.inference_blocks || []).find((block) => block.id === id) || {};
+}
+
+function chartInsight(chartId) {
+  const map = {
+    leverage_pressure_timeline: "杠杆方向",
+    exchange_crowding_snapshot: "交易所拥挤",
+    term_structure: "期限结构",
+    strike_surface: "行权价分布",
+    key_levels_history: "墙位迁移",
+    options_risk_premium_history: riskChartMode === "hedge_cost"
+      ? "保护成本"
+      : "期权情绪",
+  };
+  return map[chartId] || "图表结论";
 }
 
 function chartCard(chartId, layout = {}) {
@@ -194,7 +271,6 @@ function chartCard(chartId, layout = {}) {
   const density = layout.density || "standard";
   const metadata = chart.metadata || {};
   const sourceLabel = (metadata.providers || []).join(" / ");
-  const updatedLabel = metadata.updated_at ? formatDateTime(metadata.updated_at) : "";
   const windowLabel = metadata.actual_window === "current"
     ? "当前横截面"
     : metadata.actual_window || "";
@@ -210,14 +286,13 @@ function chartCard(chartId, layout = {}) {
     <article class="card btc-chart-card btc-card-span-${span} btc-chart-density-${escapeHtml(density)}">
       <div class="btc-chart-head">
         <div>
-          <p class="eyebrow">CHART</p>
+          <p class="eyebrow">图表</p>
           <h2>${escapeHtml(chart.title || chartId)}</h2>
-          ${windowLabel ? `<small>${escapeHtml(windowLabel)} · ${number(metadata.data_points, 0)} 个数据点</small>` : ""}
+          ${windowLabel ? `<small>${escapeHtml(windowLabel)} · ${number(metadata.data_points, 0)} 个数据点${sourceLabel ? ` · 来源 ${escapeHtml(sourceLabel)}` : ""}</small>` : ""}
         </div>
         <div class="btc-chart-head-actions">
-          ${sourceLabel ? `<small>来源 ${escapeHtml(sourceLabel)} · ${escapeHtml(updatedLabel)} · ${escapeHtml(displayState(metadata.quality))}</small>` : ""}
           ${riskModeControls}
-          <span>${chart.status === "ok" ? "可用" : "数据不足"}</span>
+          <p class="btc-chart-insight">${escapeHtml(chartInsight(chartId))}</p>
         </div>
       </div>
       <div class="chart-wrap btc-chart-wrap">
@@ -248,6 +323,21 @@ function fallbackSections() {
   ];
 }
 
+function sectionInterpretation(sectionId) {
+  if (sectionId === "summary") {
+    return inferenceBlock("futures").implication || "当前杠杆层尚未提供明确增量。";
+  }
+  if (sectionId === "futures") {
+    return inferenceBlock("futures").conclusion || "比较交易所拥挤与期限结构。";
+  }
+  if (sectionId === "options") {
+    const options = inferenceBlock("options").conclusion;
+    const levels = inferenceBlock("key_levels").conclusion;
+    return [options, levels].filter(Boolean).join("；") || "观察期权情绪、关键价位与保护成本。";
+  }
+  return "";
+}
+
 function renderChartSections() {
   const sections = dashboard?.chart_layout?.sections || fallbackSections();
   const cards = dashboard?.chart_layout?.cards || {};
@@ -259,7 +349,7 @@ function renderChartSections() {
           <p class="eyebrow">${escapeHtml(section.id)}</p>
           <h2>${escapeHtml(section.title)}</h2>
         </div>
-        ${section.id === "summary" ? "<p>先识别杠杆压力，再检查期限、关键行权价与保护成本。</p>" : ""}
+        <p>${escapeHtml(sectionInterpretation(section.id))}</p>
       </div>
       <div class="btc-dashboard-grid">
         ${(section.charts || [])
@@ -345,6 +435,69 @@ function renderKeyLevelStrip() {
   `;
 }
 
+function renderOptionsWallSignal() {
+  const signal = dashboard?.options?.metrics?.options_wall_signal || {};
+  const levels = signal.levels || {};
+  const rows = [
+    ["call_wall", "Call Wall"],
+    ["put_wall", "Put Wall"],
+    ["max_pain", "Max Pain"],
+  ];
+  const confidence = confidenceLabel(signal.confidence || "low");
+  const status = signal.status_label || signal.summary || "关键价位样本不足";
+  const spotChange = signal.spot_change_pct === null || signal.spot_change_pct === undefined
+    ? "现价变化：历史不足"
+    : `现价变化：昨日 ${money(signal.previous_spot_price)} → 当前 ${money(signal.spot_price)}（${percent(signal.spot_change_pct)}）`;
+  const expiryContext = signal.expiry_context || {};
+  const expiryLabels = (expiryContext.labels || []).join(" · ");
+  const expiryLine = [
+    expiryContext.selected_expiry ? `到期日 ${expiryContext.selected_expiry}` : "",
+    expiryContext.source_dte === null || expiryContext.source_dte === undefined ? "" : `DTE ${expiryContext.source_dte}`,
+    expiryLabels,
+  ].filter(Boolean).join(" · ");
+  return `
+    <section class="card btc-wall-signal-card" data-tone="${escapeHtml(signal.bias || "neutral")}">
+      <div class="btc-section-heading">
+        <div>
+          <p class="eyebrow">期权结构</p>
+          <h2>期权关键价位结构</h2>
+        </div>
+        <p>${escapeHtml(status)} · 置信度：${escapeHtml(confidence)}</p>
+      </div>
+      <div class="btc-wall-signal-context">
+        <span>${escapeHtml(spotChange)}</span>
+        ${expiryLine ? `<span>${escapeHtml(expiryLine)}</span>` : ""}
+      </div>
+      <div class="btc-wall-signal-grid">
+        ${rows.map(([key, label]) => {
+          const item = levels[key] || {};
+          const value = item.value === null || item.value === undefined ? "—" : money(item.value);
+          const previous = item.previous_value === null || item.previous_value === undefined
+            ? "历史不足"
+            : `昨日 ${money(item.previous_value)} → 当前 ${value}`;
+          const distance = item.distance_pct === null || item.distance_pct === undefined
+            ? "距现价：—"
+            : `距现价：${percent(item.distance_pct)}`;
+          const shift = item.shift_pct === null || item.shift_pct === undefined
+            ? "迁移：历史不足"
+            : `迁移：${percent(item.shift_pct)}`;
+          return `
+            <article>
+              <span>${escapeHtml(label)}</span>
+              <strong>${value}</strong>
+              <small>${escapeHtml(previous)}</small>
+              <small>${escapeHtml(distance)} · ${escapeHtml(shift)}</small>
+              <p>${escapeHtml(item.explanation || "当前链数据不足，暂不形成方向判断。")}</p>
+            </article>
+          `;
+        }).join("")}
+      </div>
+      <p class="btc-wall-signal-summary">${escapeHtml(signal.summary || "等待 Call Wall、Put Wall 与 Max Pain 的有效迁移证据。")}</p>
+      ${signal.risk_note ? `<small class="btc-wall-signal-note">${escapeHtml(signal.risk_note)}</small>` : ""}
+    </section>
+  `;
+}
+
 function renderDetailsDrawer() {
   return `
     <details class="btc-details-drawer">
@@ -369,12 +522,11 @@ function renderDetailsDrawer() {
 function renderEvidenceLayer() {
   const analysis = dashboard?.joint_analysis || {};
   const blocks = analysis.inference_blocks || [];
-  const confidenceLabel = { high: "高", medium: "中等", low: "低" };
   return `
     <section class="card btc-evidence-layer">
       <div class="btc-section-heading">
-        <div><p class="eyebrow">MARKET INFERENCE</p><h2>当前市场推定</h2></div>
-        <p>综合置信度：${escapeHtml(confidenceLabel[analysis.confidence] || "低")}</p>
+        <div><p class="eyebrow">市场推定</p><h2>多空证据层</h2></div>
+        <p>综合结论置信度：${escapeHtml(confidenceLabel(analysis.confidence))}</p>
       </div>
       <div class="btc-inference-grid">
         ${blocks.map((block) => `
@@ -383,6 +535,7 @@ function renderEvidenceLayer() {
             <h3>${escapeHtml(block.conclusion || "当前数据不足以形成清晰判断")}</h3>
             <p class="btc-inference-basis"><strong>依据：</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
             <p><strong>影响：</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
+            <small>结论置信度：${escapeHtml(confidenceLabel(block.confidence))}</small>
           </article>
         `).join("")}
       </div>
@@ -394,12 +547,12 @@ function renderEvidenceLayer() {
 function renderHedgePlanner() {
   const context = dashboard?.hedge_context || {};
   return `
-    <section class="btc-section">
+    <section class="btc-bottom-group btc-protection-group">
       <div class="btc-section-heading">
-        <div><p class="eyebrow">FINITE-RISK HEDGE</p><h2>网格与现货保护规划</h2></div>
-        <p>结合当前 IV、关键价位与保护成本，比较有限风险保护和降低敞口。</p>
+        <div><p class="eyebrow">有限风险保护</p><h2>网格与现货保护规划</h2></div>
+        <p>根据当前 IV、关键价位与保护成本，比较有限风险保护和降低敞口。</p>
       </div>
-      <div class="btc-hedge-layout">
+      <div class="btc-bottom-group-body btc-hedge-layout">
         <form class="card btc-hedge-grid" id="btc-hedge-form">
           <label><span>组合类型</span><select name="portfolio_type"><option value="short_grid">空网格</option><option value="long_grid">多网格</option><option value="spot_only">现货</option><option value="neutral_grid">中性网格</option></select></label>
           <label><span>现价</span><input name="spot_price" type="number" min="1" value="${escapeHtml(String(context.spot_price || 61200))}" required></label>
@@ -407,7 +560,7 @@ function renderHedgePlanner() {
           <label><span>网格上沿</span><input name="grid_upper" type="number" min="1" value="62000"></label>
           <label><span>净名义金额 USD</span><input name="net_notional_usd" type="number" min="0" value="5000"></label>
           <label><span>保护预算 USD</span><input name="hedge_budget_usd" type="number" min="0" value="150"></label>
-          <label><span>到期桶</span><select name="preferred_expiry_bucket"><option>30D</option><option selected>60D</option><option>90D</option></select></label>
+          <label><span>到期期限</span><select name="preferred_expiry_bucket"><option>30D</option><option selected>60D</option><option>90D</option></select></label>
           <label><span>有限风险价差</span><select name="allow_debit_spread"><option value="true">允许</option><option value="false">不使用</option></select></label>
           <button class="button" type="submit">生成保护方案</button>
         </form>
@@ -417,55 +570,43 @@ function renderHedgePlanner() {
   `;
 }
 
+function renderAuditGroup() {
+  return `
+    <section class="btc-bottom-group btc-audit-group">
+      <div class="btc-section-heading">
+        <div><p class="eyebrow">明细审计</p><h2>原始市场明细</h2></div>
+        <p>把期货、永续与期权链明细收进可展开区域，供复核和追溯使用。</p>
+      </div>
+      <div class="btc-bottom-group-body">
+        ${renderDetailsDrawer()}
+      </div>
+    </section>
+  `;
+}
+
 function renderHedgePlan() {
   if (!hedgePlan) {
     return `
       <article class="card btc-hedge-result">
-        <p class="eyebrow">PLAN</p>
-        <h2>填写你的现货或网格暴露</h2>
-        <p>系统将根据当前 IV、关键墙位和保护成本，比较买入保护、借记价差与降低网格敞口。</p>
+        <p class="eyebrow">方案</p>
+        <h2>填写现货或网格敞口</h2>
+        <p>系统会比较买入保护、借记价差与降低网格敞口，只输出有限风险动作，不执行下单。</p>
       </article>
     `;
   }
   return `
     <article class="card btc-hedge-result">
-      <p class="eyebrow">PLAN</p>
+      <p class="eyebrow">方案</p>
       <h2>${escapeHtml(hedgePlan.label)}</h2>
       <p>${escapeHtml(hedgePlan.explanation)}</p>
       <div class="btc-plan-metrics">
         <span>建议动作 <b>${escapeHtml(hedgePlan.label)}</b></span>
-        <span>保护区 <b>${escapeHtml(hedgePlan.protection_zone || "-")}</b></span>
+        <span>保护区 <b>${escapeHtml(hedgePlan.protection_zone || "—")}</b></span>
         <span>预计成本 <b>${money(hedgePlan.estimated_premium_usd)}</b></span>
         <span>预算 <b>${hedgePlan.budget_ok === null ? "未判断" : hedgePlan.budget_ok ? "范围内" : "超预算"}</b></span>
       </div>
       ${(hedgePlan.warnings || []).map((item) => `<p class="btc-warning">${escapeHtml(item)}</p>`).join("")}
     </article>
-  `;
-}
-
-function renderDataQuality() {
-  const quality = dashboard?.data_quality || {};
-  const fixtureWarning = quality.mode === "fixture"
-    ? "当前为示例数据，仅用于页面与计算测试，不能用于真实交易判断。"
-    : "";
-  return `
-    <section class="card btc-data-quality">
-      <div class="btc-section-heading">
-        <div><p class="eyebrow">DATA QUALITY</p><h2>数据质量</h2></div>
-        <p>${escapeHtml(quality.status || "data_insufficient")} · ${escapeHtml(quality.mode || "unknown")} · 历史${quality.history_available ? "可用" : "不足"}</p>
-      </div>
-      ${fixtureWarning ? `<p class="btc-fixture-warning">${escapeHtml(fixtureWarning)}</p>` : ""}
-      <details class="btc-quality-details">
-        <summary>查看 Provider、缺失字段与陈旧快照</summary>
-        <div class="btc-quality-grid">
-          <article><h3>Provider</h3><p>${escapeHtml((quality.providers || []).map((item) => item.name).join(" / ") || "无")}</p></article>
-          <article><h3>缺失字段</h3><p>${escapeHtml((quality.missing_fields || []).join(" / ") || "无")}</p></article>
-          <article><h3>陈旧快照</h3><p>${escapeHtml((quality.stale_snapshots || []).join(" / ") || "无")}</p></article>
-        </div>
-        <ul>${(quality.warnings || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      </details>
-      <small>生成时间：${escapeHtml(formatDateTime(dashboard?.generated_at))}</small>
-    </section>
   `;
 }
 
@@ -481,7 +622,7 @@ function renderLiveSourceStatus() {
   return `
     <section class="card btc-data-quality">
       <div class="btc-section-heading">
-        <div><p class="eyebrow">DATA QUALITY</p><h2>数据源状态</h2></div>
+        <div><p class="eyebrow">数据质量</p><h2>数据源状态</h2></div>
         <div class="btc-quality-actions">
           <span class="btc-quality-badge" data-state="${escapeHtml(snapshotState)}">${escapeHtml(displayState(snapshotState))}</span>
           <button id="btc-probe-sources" class="secondary-button" type="button">一键探测数据源</button>
@@ -497,7 +638,7 @@ function renderLiveSourceStatus() {
             ${item.last_error ? `<small class="btc-provider-error">${escapeHtml(item.last_error)}</small>` : ""}
             ${item.circuit_open_until ? `<small>熔断至 ${escapeHtml(formatDateTime(item.circuit_open_until))}</small>` : ""}
           </article>
-        `).join("") || "<p>尚无数据源健康记录，可点击探测。</p>"}
+        `).join("") || "<p>暂无数据源健康记录，可点击探测。</p>"}
       </div>
       <details class="btc-quality-details">
         <summary>查看缺失字段、陈旧快照与方法警告</summary>
@@ -513,10 +654,29 @@ function renderLiveSourceStatus() {
   `;
 }
 
+function renderDataQuality() {
+  return renderLiveSourceStatus();
+}
+
+function renderGovernanceGroup() {
+  return `
+    <section class="btc-bottom-group btc-governance-group">
+      <div class="btc-section-heading">
+        <div><p class="eyebrow">数据与边界</p><h2>数据源状态与方法边界</h2></div>
+        <p>集中查看数据可用性、缺失字段、方法限制和不执行下单的边界。</p>
+      </div>
+      <div class="btc-bottom-group-body btc-governance-grid">
+        ${renderDataQuality()}
+        ${renderMethodNotes()}
+      </div>
+    </section>
+  `;
+}
+
 function renderMethodNotes() {
   return `
     <details class="btc-method-notes">
-      <summary>方法与边界</summary>
+      <summary>风险提示与方法边界</summary>
       <div>
         <p>最大痛点用于观察持仓分布迁移，不作为价格预测。</p>
         <p>期权墙用于观察持仓集中与对冲敏感区，不作为确定支撑或阻力。</p>
@@ -526,25 +686,25 @@ function renderMethodNotes() {
   `;
 }
 
-function renderPageShell(banner = "") {
+function renderPageShell(banner = "", freshness = "") {
   return `
     <div class="btc-derivatives-page">
-      ${renderHero(banner)}
+      ${renderHero({ banner, freshness })}
       ${renderDecisionCards()}
       ${renderChartToolbar()}
       ${renderKeyLevelStrip()}
+      ${renderOptionsWallSignal()}
       ${renderChartSections()}
       ${renderEvidenceLayer()}
       ${renderHedgePlanner()}
-      ${renderDetailsDrawer()}
-      ${renderLiveSourceStatus()}
-      ${renderMethodNotes()}
+      ${renderAuditGroup()}
+      ${renderGovernanceGroup()}
     </div>
   `;
 }
 
 function datasetVisibleInRiskMode(label) {
-  const hedgeCostLabels = new Set(["Call保护成本", "Put保护成本", "借记价差成本"]);
+  const hedgeCostLabels = new Set(["Call 保护成本", "Put 保护成本", "借记价差成本"]);
   return riskChartMode === "hedge_cost"
     ? hedgeCostLabels.has(label)
     : !hedgeCostLabels.has(label);
@@ -595,6 +755,16 @@ function renderCharts() {
   Object.keys(allCharts()).forEach(renderSingleChart);
 }
 
+function updateRiskChartHeaderInsight() {
+  const card = document
+    .querySelector('[data-risk-chart-mode="hedge_cost"]')
+    ?.closest(".btc-chart-card");
+  const insight = card?.querySelector(".btc-chart-insight");
+  if (insight) {
+    insight.textContent = chartInsight("options_risk_premium_history");
+  }
+}
+
 function updateFiltersFromControls(form) {
   const values = new FormData(form);
   filters = {
@@ -637,6 +807,7 @@ function bindEvents() {
           item.dataset.riskChartMode === riskChartMode,
         );
       });
+      updateRiskChartHeaderInsight();
       renderSingleChart("options_risk_premium_history");
     });
   });
@@ -709,7 +880,7 @@ async function loadDashboard({ refresh = false } = {}) {
   requestController?.abort();
   requestController = new AbortController();
   if (!dashboard) {
-    setRoot(`<div class="btc-derivatives-page">${renderHero(statusBanner("正在读取衍生品快照", "loading"))}</div>`);
+    setRoot(`<div class="btc-derivatives-page">${renderHero({ banner: statusBanner("正在读取衍生品快照", "loading") })}</div>`);
   }
   if (refresh) {
     const receipt = await api.refreshBtcDerivativesDashboard(
@@ -729,7 +900,7 @@ async function loadDashboard({ refresh = false } = {}) {
   }
   syncFiltersFromDashboard();
   destroyChartsForPage("btc-derivatives-");
-  setRoot(renderPageShell(refresh ? statusBanner("衍生品快照已刷新", "neutral") : ""));
+  setRoot(renderPageShell("", refresh ? "衍生品快照已刷新" : ""));
   bindEvents();
   renderCharts();
 }
