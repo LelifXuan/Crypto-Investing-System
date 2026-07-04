@@ -121,7 +121,7 @@ function updateKnowledgeContent() {
             <div class="knowledge-section-count">${section.items.length} 项</div>
           </div>
           <div class="knowledge-card-grid">
-            ${section.items.map((item) => renderTermCard(item)).join("")}
+            ${section.items.map((item) => (item.type === "guide" ? renderGuideCard(item) : renderTermCard(item))).join("")}
           </div>
         </article>
       `).join("")
@@ -149,6 +149,8 @@ function updateKnowledgeContent() {
   }
 }
 
+const helpers = { escapeHtml };
+
 function renderTags(values, className = "status-chip chip-neutral") {
   if (!values?.length) return "";
   return `<div class="knowledge-chip-row">${values.map((value) => `<span class="${className}">${escapeHtml(value)}</span>`).join("")}</div>`;
@@ -160,6 +162,68 @@ function renderField(label, value) {
     return `<div class="knowledge-field"><strong>${escapeHtml(label)}</strong><ul>${value.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul></div>`;
   }
   return `<p class="knowledge-field"><strong>${escapeHtml(label)}：</strong>${escapeHtml(value)}</p>`;
+}
+
+function renderGuideCard(item) {
+  const { escapeHtml: esc } = helpers;
+  const guideBadge = `<span class="knowledge-guide-tag">📘 使用指南</span>`;
+  const purposeBlock = item.purpose
+    ? `<section class="knowledge-guide-purpose">
+         <h4>何时用</h4>
+         <p>${esc(item.purpose)}</p>
+       </section>`
+    : "";
+  const whenBlock = item.when_to_use && item.when_to_use.length
+    ? `<section class="knowledge-guide-purpose knowledge-guide-when">
+         <h4>典型场景</h4>
+         <ul>${item.when_to_use.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+       </section>`
+    : "";
+  const walkthroughBlock = item.page_walkthrough && item.page_walkthrough.length
+    ? `<section class="knowledge-guide-walkthrough">
+         <h4>看什么顺序</h4>
+         <ol>${item.page_walkthrough.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+       </section>`
+    : "";
+  const lineageBlock = item.data_lineage && item.data_lineage.length
+    ? `<section class="knowledge-guide-lineage">
+         <h4>数据从哪来</h4>
+         <code>${esc(item.data_lineage.join(" → "))}</code>
+       </section>`
+    : "";
+  const caveatBlock = item.caveats && item.caveats.length
+    ? `<section class="knowledge-guide-caveats">
+         <h4>注意点</h4>
+         <ul>${item.caveats.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+       </section>`
+    : "";
+  const relatedPagesBlock = item.related_pages && item.related_pages.length
+    ? `<section class="knowledge-guide-related">
+         <h4>关联页面</h4>
+         <div class="knowledge-guide-related-chips">
+           ${item.related_pages
+             .map((p) => `<a class="secondary-button" href="/${esc(p)}-page">${esc(p)} →</a>`)
+             .join("")}
+         </div>
+       </section>`
+    : "";
+
+  return `
+    <article class="knowledge-guide-card is-open" id="${esc(item.id)}">
+      <header class="knowledge-guide-header">
+        ${guideBadge}
+        <h3>${esc(item.term)}</h3>
+      </header>
+      <div class="knowledge-guide-body">
+        ${purposeBlock}
+        ${whenBlock}
+        ${walkthroughBlock}
+        ${lineageBlock}
+        ${caveatBlock}
+        ${relatedPagesBlock}
+      </div>
+    </article>
+  `;
 }
 
 function renderTermCard(item) {
@@ -347,7 +411,7 @@ function renderKnowledgeLayout() {
               <div class="knowledge-section-count">${section.items.length} 项</div>
             </div>
             <div class="knowledge-card-grid">
-              ${section.items.map((item) => renderTermCard(item)).join("")}
+              ${section.items.map((item) => (item.type === "guide" ? renderGuideCard(item) : renderTermCard(item))).join("")}
             </div>
           </article>
         `).join("") : `<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽页面、分区、家族、等级过滤。</p></section>`}
