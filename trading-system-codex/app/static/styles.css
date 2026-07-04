@@ -1855,7 +1855,7 @@ body[data-page="macro-calendar"] .monitoring-insight-grid-reverse {
 
 body[data-page="macro-calendar"] #macro-calendar-module {
   display: block;
-  margin-bottom: 34px;
+  margin-bottom: 20px;
 }
 
 body[data-page="macro-calendar"] #macro-calendar-detail {
@@ -5977,7 +5977,7 @@ body[data-page="ai-strategy"] main {
 }
 
 body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface {
-  margin-top: 38px;
+  margin-top: 28px;
 }
 
 .monitoring-topbar {

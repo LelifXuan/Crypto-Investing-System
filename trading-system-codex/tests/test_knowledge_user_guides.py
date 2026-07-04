@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,9 +23,6 @@ def _backend_up() -> bool:
         return False
     finally:
         s.close()
-
-
-import pytest
 
 
 @pytest.fixture
@@ -67,7 +64,7 @@ def test_page_guides_section_visible_and_expanded(base_url):
 
 
 def test_guide_card_callout_blocks_have_distinct_classes(base_url):
-    """Each guide card's 4 callout blocks must use distinct CSS classes (purpose/walkthrough/lineage/caveats)."""
+    """Each guide card's 4 callout blocks must use distinct CSS classes."""
     if not _backend_up():
         pytest.skip("backend not running on :8002")
     from playwright.sync_api import sync_playwright
