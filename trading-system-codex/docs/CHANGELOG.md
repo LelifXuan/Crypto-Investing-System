@@ -89,6 +89,27 @@ AI 策略页重构（X + Y + Z 全栈 + 截图 8 项修复 + 双 endpoint verify
 - 修改 `tests/test_strategy_unified_service.py`：engine 失败标记 degraded_components + per-dimension label 验证。
 - 修改 `tests/conftest.py`：新增 `repository` / `base_url` fixtures。
 
+## V1.7.2 (2026-07-02)
+
+知识百科页扩充 — 增加页面级使用指南。
+
+### 前端
+
+- `app/static/core/knowledge.js` 的 `term()` 工厂新增 7 个 guide-only 字段（`type / purpose / when_to_use / page_walkthrough / data_lineage / caveats / related_pages`），全部 optional，向后兼容
+- 新增 `pageGuidesSection` 段落，含 3 篇首批指南（monitoring-overview / ai-strategy / btc-derivatives）
+- `app/static/pages/knowledge.js` 新增 `renderGuideCard()`，使用 4 色 callout 区块（blue 何时用 / green 看什么 / orange 数据依赖 / red 注意点）并默认展开
+- 顶部 section chip 自动含 "📘 页面使用指南" 快速跳转
+- 新增 `.knowledge-guide-*` CSS 样式（约 80 行）
+
+### 测试
+
+- `tests/test_knowledge_catalog.py` 新增 4 个测试：工厂字段验证、pageGuidesSection 出口、guide 字段完整性、related_pages 引用一致性
+- 新增 `tests/test_knowledge_user_guides.py`：Playwright 验证 guide 卡片 + 4 区块 markup 正确
+
+### 后续（不在本次范围）
+
+- 其余 6 篇指南（market-analysis / market-structure / market-events / macro-calendar / ashare-etf / gold-allocation）可独立追加
+
 ## V1.5.6 (2026-06-09)
 
 监控总览"宏观指标明细"页 4 项口径异常 + 1 项 0% 防御。
