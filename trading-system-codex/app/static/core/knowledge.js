@@ -20,7 +20,7 @@ export const knowledgeLevelFilters = [
   { key: "advanced", label: "高级" },
 ];
 
-function term(id, label, options = {}) {
+export function term(id, label, options = {}) {
   return {
     id,
     term: label,
@@ -42,6 +42,13 @@ function term(id, label, options = {}) {
     page_refs: options.page_refs || ["knowledge-base"],
     related_terms: options.related_terms || [],
     tags: options.tags || [],
+    type: options.type || "term",
+    purpose: options.purpose || "",
+    when_to_use: options.when_to_use || [],
+    page_walkthrough: options.page_walkthrough || [],
+    data_lineage: options.data_lineage || [],
+    caveats: options.caveats || [],
+    related_pages: options.related_pages || [],
   };
 }
 

@@ -187,3 +187,29 @@ def test_btc_derivatives_terms_are_available_to_dashboard_tooltips() -> None:
         assert "btc-derivatives" in terms[label]["page_refs"]
         assert terms[label]["summary"]
         assert terms[label]["risk_note"]
+
+
+def test_term_factory_supports_guide_fields() -> None:
+    """term() must accept and expose guide-only fields without breaking existing ones."""
+    payload = _node(
+        f"""
+import {{ term }} from 'file:///{KNOWLEDGE_PATH.as_posix()}';
+const guide = term('test-guide', 'Test Guide', {{
+  type: 'guide',
+  purpose: 'A test purpose that is long enough',
+  when_to_use: ['first situation', 'second situation'],
+  page_walkthrough: ['step one', 'step two'],
+  data_lineage: ['src1 -> dst1'],
+  caveats: ['caveat one'],
+  related_pages: ['ai-strategy'],
+}});
+console.log(JSON.stringify(guide));
+"""
+    )
+    assert payload["type"] == "guide"
+    assert payload["purpose"].startswith("A test")
+    assert len(payload["when_to_use"]) == 2
+    assert len(payload["page_walkthrough"]) == 2
+    assert payload["data_lineage"] == ["src1 -> dst1"]
+    assert payload["caveats"] == ["caveat one"]
+    assert payload["related_pages"] == ["ai-strategy"]
