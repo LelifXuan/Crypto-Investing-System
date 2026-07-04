@@ -223,3 +223,35 @@ def test_page_guides_section_exposes_three_first_phase_guides():
     item_ids = [item["id"] for item in page_guides["items"]]
     for required_id in ("monitoring-overview", "ai-strategy", "btc-derivatives"):
         assert required_id in item_ids, f"missing guide for {required_id}"
+
+
+def test_page_guides_required_fields_are_populated():
+    """Each type='guide' entry must populate all guide-specific fields with non-trivial content."""
+    sections = _load_knowledge_sections()
+    guides = next(s for s in sections if s["id"] == "page-guides")["items"]
+    assert len(guides) >= 3, "expected at least 3 first-phase guides"
+    for g in guides:
+        assert g.get("type") == "guide", f"{g['id']}: type must be 'guide'"
+        assert len(g.get("purpose", "")) >= 10, f"{g['id']}: purpose too short"
+        assert len(g.get("when_to_use", [])) >= 1, f"{g['id']}: need ≥1 when_to_use"
+        assert len(g.get("page_walkthrough", [])) >= 2, f"{g['id']}: need ≥2 walkthrough steps"
+        assert len(g.get("data_lineage", [])) >= 1, f"{g['id']}: need ≥1 lineage entry"
+        assert len(g.get("caveats", [])) >= 1, f"{g['id']}: need ≥1 caveat"
+        assert len(g.get("related_pages", [])) >= 1, f"{g['id']}: need ≥1 related_page"
+
+
+def test_guide_related_pages_reference_existing_pages():
+    """Each guide's related_pages must reference pages known to the SPA."""
+    valid_pages = {
+        "monitoring-overview", "ai-strategy", "btc-derivatives",
+        "market-analysis", "market-structure", "market-events", "macro-calendar",
+        "alert-center", "knowledge-base", "ashare-etf", "gold-allocation",
+    }
+    sections = _load_knowledge_sections()
+    guides = next(s for s in sections if s["id"] == "page-guides")["items"]
+    bad: list[str] = []
+    for g in guides:
+        for p in g.get("related_pages", []):
+            if p not in valid_pages:
+                bad.append(f"{g['id']} → {p}")
+    assert not bad, f"guide related_pages reference unknown pages: {bad}"
