@@ -213,3 +213,13 @@ console.log(JSON.stringify(guide));
     assert payload["data_lineage"] == ["src1 -> dst1"]
     assert payload["caveats"] == ["caveat one"]
     assert payload["related_pages"] == ["ai-strategy"]
+
+
+def test_page_guides_section_exposes_three_first_phase_guides():
+    """pageGuidesSection must exist and contain monitoring-overview/ai-strategy/btc-derivatives."""
+    sections = _load_knowledge_sections()
+    page_guides = next((s for s in sections if s["id"] == "page-guides"), None)
+    assert page_guides is not None, "page-guides section not found"
+    item_ids = [item["id"] for item in page_guides["items"]]
+    for required_id in ("monitoring-overview", "ai-strategy", "btc-derivatives"):
+        assert required_id in item_ids, f"missing guide for {required_id}"
