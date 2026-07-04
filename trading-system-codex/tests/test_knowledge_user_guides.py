@@ -64,3 +64,26 @@ def test_page_guides_section_visible_and_expanded(base_url):
 
         ctx.close()
         browser.close()
+
+
+def test_guide_card_callout_blocks_have_distinct_classes(base_url):
+    """Each guide card's 4 callout blocks must use distinct CSS classes (purpose/walkthrough/lineage/caveats)."""
+    if not _backend_up():
+        pytest.skip("backend not running on :8002")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={"width": 1366, "height": 900})
+        page = ctx.new_page()
+        page.goto(f"{base_url}/knowledge-page", wait_until="domcontentloaded")
+        page.wait_for_timeout(500)
+
+        first = page.locator(".knowledge-guide-card").first
+        assert first.locator(".knowledge-guide-purpose").count() >= 1
+        assert first.locator(".knowledge-guide-walkthrough").count() >= 1
+        assert first.locator(".knowledge-guide-lineage").count() >= 1
+        assert first.locator(".knowledge-guide-caveats").count() >= 1
+
+        ctx.close()
+        browser.close()
