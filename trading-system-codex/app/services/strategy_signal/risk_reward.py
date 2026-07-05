@@ -51,6 +51,27 @@ def risk_reward_label(rr: float | None) -> str:
     return "盈亏比优秀，但仍需确认目标是否现实"
 
 
+def risk_reward_score_ev(
+    rr: float | None,
+    p_win: float = 0.5,
+) -> float:
+    """EV-based: P(win) × RR × 100, capped 0-100.
+
+    No more 90 ceiling. A 3R trade with 80% win rate scores 240 → 100.
+    A 1R trade with 50% win rate scores 50.
+
+    Args:
+      rr: risk-reward ratio (entry / stop / tp1 already computed upstream).
+      p_win: estimated win probability from setup_probability.
+
+    Returns 0-100.
+    """
+    if rr is None or rr <= 0:
+        return 0
+    ev = p_win * rr * 100
+    return round(max(0, min(100, ev)))
+
+
 def compute_risk_reward(
     direction: str, entry: float | None, stop: float | None, tp1: float | None
 ) -> float | None:
