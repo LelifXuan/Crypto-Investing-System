@@ -899,13 +899,23 @@ function renderAnalysisStatus(message, tone = "neutral", mode = null) {
 }
 
 function renderModeBadge(mode) {
-  if (mode !== "range") return "";
-  return `
-    <div class="status-mode-badge range-mode">
-      <span>📊 区间震荡模式</span>
-      <a class="status-mode-link" href="/structure-page">查看形态结构页 →</a>
-    </div>
-  `;
+  if (mode === "range") {
+    return `
+      <div class="status-mode-badge range-mode">
+        <span>📊 区间震荡模式</span>
+        <a class="status-mode-link" href="/structure-page">查看形态结构页 →</a>
+      </div>
+    `;
+  }
+  if (mode === "transition") {
+    return `
+      <div class="status-mode-badge transition-mode">
+        <span>⚡ 波动率压缩 → 扩张预警</span>
+        <a class="status-mode-link" href="/market-analysis?focus=breakout">关注突破信号 →</a>
+      </div>
+    `;
+  }
+  return "";
 }
 
 function setRefreshBusy(isBusy, label = "刷新分析") {

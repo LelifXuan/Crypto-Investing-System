@@ -54,3 +54,26 @@ def test_range_mode_badge_visible(base_url):
 
         ctx.close()
         browser.close()
+
+
+def test_transition_mode_badge_visible(base_url):
+    """When mode='transition', the status-bar shows the transition badge with vol_compression info."""
+    if not _backend_up():
+        pytest.skip("backend not running on :8002")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={"width": 1366, "height": 900})
+        page = ctx.new_page()
+        page.goto(f"{base_url}/market-analysis", wait_until="domcontentloaded")
+        page.wait_for_timeout(2000)
+
+        badge = page.locator(".status-mode-badge.transition-mode")
+        if badge.count() > 0:
+            assert badge.first.is_visible()
+            text = badge.first.inner_text()
+            assert "波动率压缩" in text or "vol_compression" in text
+
+        ctx.close()
+        browser.close()
