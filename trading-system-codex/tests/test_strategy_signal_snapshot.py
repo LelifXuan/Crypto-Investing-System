@@ -694,3 +694,41 @@ def test_feature_components_populates_vol_compression_and_setup_probability() ->
     # setup_probability must be a finite float in [0, 1]
     assert isinstance(features["setup_probability"], float)
     assert 0.0 <= features["setup_probability"] <= 1.0
+
+
+# --- V1.7.5 scoring_engine.compute() wires EV-based risk_reward ----------
+
+
+def test_compute_uses_risk_reward_score_ev():
+    """scoring_engine.compute() should use the new EV-based rr score (no rr=90 ceiling)."""
+    from app.services.strategy_signal.scoring_engine import DirectionScoringEngine
+
+    # Include ``long_risk_reward`` in the weights so the EV boost is observable
+    # in ``long_score``. Without a weight on the risk-reward sub-score, the
+    # change to ``risk_reward_score_ev`` would not be reflected in the total.
+    config = {
+        "long_weights": {"mtf_trend_bullish": 0.4, "long_risk_reward": 0.2},
+        "short_weights": {},
+        "neutral_weights": {},
+        "data_quality_weights": {},
+    }
+    engine = DirectionScoringEngine(config)
+    snap = {
+        "long_risk_reward": 5.0,  # large RR
+        "short_risk_reward": 0.5,
+        "setup_probability": 0.7,
+        "mtf_trend_bullish": 80,
+        "bullish_structure": 80,
+        "bullish_momentum": 60,
+        "long_propagation": 50,
+        "short_propagation": 50,
+        "vol_compression": 60,
+    }
+    res = engine.compute(snap)
+    # risk_reward_score_ev(5.0, 0.7) = 350 → cap 100.
+    # The OLD code used risk_reward_score(None) = 0 because compute_risk_reward
+    # returns None without entry/stop/tp1, so the old contribution was 0 * 0.2 = 0.
+    # With EV, the contribution is 100 * 0.2 = 20, pushing long_score above 50.
+    expected_min = 80 * 0.4 + 100 * 0.2  # 32 + 20 = 52
+    assert res.long_score != 90  # old cap was 90
+    assert res.long_score >= expected_min  # EV should boost

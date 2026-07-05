@@ -8,6 +8,7 @@ from app.services.strategy_signal.risk_reward import (
     compute_risk_reward,
     number,
     risk_reward_score,
+    risk_reward_score_ev,    # NEW
     round2,
 )
 
@@ -67,9 +68,14 @@ class DirectionScoringEngine:
         )
 
         long_values = dict(snapshot)
-        long_values["long_risk_reward"] = risk_reward_score(rr_long)
+        p_win = snapshot.get("setup_probability", 0.5)
+        long_values["long_risk_reward"] = risk_reward_score_ev(
+            snapshot.get("long_risk_reward"), p_win
+        )
         short_values = dict(snapshot)
-        short_values["short_risk_reward"] = risk_reward_score(rr_short)
+        short_values["short_risk_reward"] = risk_reward_score_ev(
+            snapshot.get("short_risk_reward"), p_win
+        )
 
         raw_long = weighted_score(long_values, self.config["long_weights"])
         raw_short = weighted_score(short_values, self.config["short_weights"])
