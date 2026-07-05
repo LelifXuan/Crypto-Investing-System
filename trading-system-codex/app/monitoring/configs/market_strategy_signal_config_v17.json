@@ -46,6 +46,14 @@
       "long_risk_reward": 0.15,
       "regime_fit_long": 0.15,
       "execution_quality": 0.10
+    },
+    "transition": {
+      "vol_compression": 0.30,
+      "mtf_trend_bullish": 0.15,
+      "bullish_structure": 0.10,
+      "long_risk_reward": 0.20,
+      "regime_fit_long": 0.15,
+      "execution_quality": 0.10
     }
   },
   "short_weights": {
@@ -72,6 +80,14 @@
       "range_structure": 0.30,
       "low_directional_spread": 0.20,
       "short_risk_reward": 0.15,
+      "regime_fit_short": 0.15,
+      "execution_quality": 0.10
+    },
+    "transition": {
+      "vol_compression": 0.30,
+      "mtf_trend_bearish": 0.15,
+      "bearish_structure": 0.10,
+      "short_risk_reward": 0.20,
       "regime_fit_short": 0.15,
       "execution_quality": 0.10
     }
@@ -102,6 +118,7 @@
     "bias_score": 58,
     "setup_score": 66,
     "trigger_score": 72,
+    "ev_threshold": 65,
     "dominant_gap": 18,
     "conflict_both_high": 65,
     "conflict_gap": 15,
