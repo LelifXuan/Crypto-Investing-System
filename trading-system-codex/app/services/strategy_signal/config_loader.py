@@ -158,3 +158,48 @@ def load_strategy_signal_config() -> dict[str, Any]:
             continue
         return _deep_merge(DEFAULT_STRATEGY_SIGNAL_CONFIG, payload)
     return DEFAULT_STRATEGY_SIGNAL_CONFIG
+
+
+def detect_mode(
+    regime: str | None,
+    adx: float | None,
+    asset_class: str | None = "stock",
+    timeframe: str | None = "1d",
+) -> str:
+    """5-layer decision: returns 'trend' | 'range' | 'transition'.
+
+    Used by snapshot_builder to select which per-mode weight table to apply.
+    """
+    regime_norm = str(regime or "").strip().lower()
+    # Layer 1: explicit regime wins
+    if regime_norm in ("trend", "trending"):
+        return "trend"
+    if regime_norm in ("balance", "range", "ranging"):
+        return "range"
+    if regime_norm in ("transition", "shock"):
+        return "transition"
+    # Layer 2: crypto + short TF defaults to range (scalping-friendly)
+    if asset_class == "crypto" and timeframe in ("1h", "15m"):
+        return "range"
+    # Layer 3: ADX drives the decision (when we have meaningful ADX data)
+    adx_value = float(adx) if adx is not None else 0.0
+    if adx_value >= 25:
+        return "trend"
+    if 0 < adx_value < 20:
+        return "range"
+    # Layer 4: ambiguous ADX (20..25) OR no ADX data (None/0) → transition
+    return "transition"
+
+
+def detect_asset_class(instrument_id: str | None) -> str:
+    """Detect 'crypto' vs 'stock' from instrument_id string.
+
+    Defaults to 'stock' when the instrument_id is empty or unrecognized.
+    """
+    if not instrument_id:
+        return "stock"
+    crypto_patterns = ("btc", "eth", "usdt-perp", "btc-usdt", "eth-usdt")
+    inst_lower = instrument_id.lower()
+    if any(p in inst_lower for p in crypto_patterns):
+        return "crypto"
+    return "stock"
