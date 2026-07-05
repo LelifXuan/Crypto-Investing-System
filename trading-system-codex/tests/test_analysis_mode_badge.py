@@ -57,7 +57,8 @@ def test_range_mode_badge_visible(base_url):
 
 
 def test_transition_mode_badge_visible(base_url):
-    """When mode='transition', the status-bar shows the transition badge with vol_compression info."""
+    """When mode='transition', the status-bar shows the transition badge with
+    vol_compression info."""
     if not _backend_up():
         pytest.skip("backend not running on :8002")
     from playwright.sync_api import sync_playwright

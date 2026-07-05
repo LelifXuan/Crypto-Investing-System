@@ -180,7 +180,10 @@ def test_snapshot_uses_transition_mode_weights_when_detected(monkeypatch) -> Non
     )
 
     expected = round(
-        sum({**_RANGE_FEATURES, "vol_compression": 100}.get(k, 0) * w for k, w in transition_weights.items()),
+        sum(
+            {**_RANGE_FEATURES, "vol_compression": 100}.get(k, 0) * w
+            for k, w in transition_weights.items()
+        ),
         2,
     )
     assert snap["long_score"] == expected

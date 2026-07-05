@@ -7,8 +7,7 @@ from app.services.strategy_signal.risk_reward import (
     clamp,
     compute_risk_reward,
     number,
-    risk_reward_score,
-    risk_reward_score_ev,    # NEW
+    risk_reward_score_ev,  # NEW
     round2,
 )
 
