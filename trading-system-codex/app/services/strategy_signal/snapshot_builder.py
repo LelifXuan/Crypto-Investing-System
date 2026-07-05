@@ -158,6 +158,34 @@ def _build_trend_score(indicators: dict[str, Any]) -> tuple[float, float]:
     return clamp(bullish), clamp(bearish)
 
 
+def _compute_vol_compression(
+    bb_width: float | None,
+    bb_width_ma_90: float | None,
+) -> float:
+    """Multi-period percentile rank: current BB-width in 90-day distribution.
+
+    Returns 0-100:
+    - 90+ = extreme compression (BB-width < 50% of 90-day MA)
+    - 50  = neutral (BB-width near MA)
+    - 25  = expansion (BB-width > 1.4 × MA)
+    """
+
+    if not bb_width or not bb_width_ma_90 or bb_width_ma_90 <= 0:
+        return 50.0
+    ratio = bb_width / bb_width_ma_90
+    if ratio < 0.5:
+        return 90.0
+    if ratio < 0.7:
+        return 75.0
+    if ratio < 0.85:
+        return 60.0
+    if ratio < 1.15:
+        return 50.0
+    if ratio < 1.4:
+        return 40.0
+    return 25.0
+
+
 def classify_vwap_cost_channel(
     features: dict[str, Any], config: dict[str, Any] | None = None
 ) -> dict[str, Any]:

@@ -443,3 +443,37 @@ def test_range_mode_weights_are_not_silently_zeroed(monkeypatch) -> None:
     assert snap["long_score"] >= (
         long_contrib_low_directional_spread + long_contrib_risk_reward
     )
+
+
+# --- V1.7.5 volatility compression: multi-period percentile rank ---------
+
+
+def test_vol_compression_score_multi_period_percentile_rank() -> None:
+    """bb_width vs bb_width_ma_90: extreme compression (ratio<0.5) → score 90+.
+
+    The helper is a pure percentile-rank bucketing function. It maps the
+    ratio ``bb_width / bb_width_ma_90`` to a 0..100 score so the snapshot
+    can use it as a sub-score without recomputing the math at the call
+    site. Five valid-ratio buckets plus three missing-data fallbacks.
+    """
+
+    # Extreme compression: bb_width is half of MA → score 90+
+    score = snapshot_builder._compute_vol_compression(bb_width=0.03, bb_width_ma_90=0.07)
+    assert score >= 90
+
+    # Strong compression: ratio < 0.7 → score 75
+    score = snapshot_builder._compute_vol_compression(bb_width=0.05, bb_width_ma_90=0.08)
+    assert score == 75
+
+    # Neutral: ratio in 0.85-1.15 → score 50
+    score = snapshot_builder._compute_vol_compression(bb_width=0.07, bb_width_ma_90=0.07)
+    assert score == 50
+
+    # Expansion: ratio > 1.4 → score 25
+    score = snapshot_builder._compute_vol_compression(bb_width=0.10, bb_width_ma_90=0.07)
+    assert score == 25
+
+    # Missing data → fallback 50
+    assert snapshot_builder._compute_vol_compression(None, 0.07) == 50
+    assert snapshot_builder._compute_vol_compression(0.03, None) == 50
+    assert snapshot_builder._compute_vol_compression(0.0, 0.07) == 50
