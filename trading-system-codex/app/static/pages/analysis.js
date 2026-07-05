@@ -924,7 +924,20 @@ function renderFocusBanner(mode, secondarySeries) {
   if (mode !== "transition") return "";
   if (getFocusMode() !== "breakout") return "";
   const score = computeVolCompressionScore(secondarySeries);
-  if (score === null) return "";
+  if (score === null) {
+    // Show banner with loading state — never return empty here. The page may
+    // load before the analysis bundle is populated, so secondary_indicator_series
+    // is empty and the score cannot be computed yet. The user clicked
+    // ?focus=breakout, so we still need to acknowledge their intent with a
+    // loading-state banner instead of rendering nothing.
+    return `
+      <div class="status-focus-banner" data-focus-banner="breakout" data-state="loading">
+        <h3>⚡ 突破信号关注模式</h3>
+        <p>正在计算 vol_compression…<br>
+        突破信号触发器关注 mt_compression × trend 共同确认。</p>
+      </div>
+    `;
+  }
   let interpretation = "中性区间";
   if (score >= 75) interpretation = "极端压缩 — 扩张预期强";
   else if (score >= 60) interpretation = "压缩明显 — 关注突破";

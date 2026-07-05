@@ -9289,3 +9289,22 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Loading state — used when the analysis bundle has not yet populated
+ * secondary_indicator_series so computeVolCompressionScore returns null.
+ * The user clicked ?focus=breakout and we still acknowledge their intent
+ * with a banner instead of rendering nothing. */
+.status-focus-banner[data-state="loading"] {
+  opacity: 0.85;
+  font-style: italic;
+}
+.status-focus-banner[data-state="loading"]::after {
+  content: "⟳";
+  display: inline-block;
+  margin-left: 8px;
+  animation: vol-compression-spin 1.5s linear infinite;
+}
+@keyframes vol-compression-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
