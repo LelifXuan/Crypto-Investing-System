@@ -186,6 +186,36 @@ def _compute_vol_compression(
     return 25.0
 
 
+def _compute_setup_probability(
+    long_score: float,
+    short_score: float,
+    setup_ready: bool,
+    conflict_score: float,
+    base_prior: float = 0.45,
+) -> float:
+    """Bayesian posterior: P(win | setup, regime) = prior × Π(likelihoods) / Z.
+
+    Returns 0-1 win probability.
+    """
+    likelihoods: list[float] = []
+    if max(long_score, short_score) > 60:
+        likelihoods.append(1.4)
+    if setup_ready:
+        likelihoods.append(1.5)
+    if conflict_score < 30:
+        likelihoods.append(1.3)
+    if max(long_score, short_score) > 75:
+        likelihoods.append(1.6)
+    if conflict_score > 70:
+        likelihoods.append(0.6)
+    if max(long_score, short_score) < 50:
+        likelihoods.append(0.5)
+    posterior = base_prior
+    for lik in likelihoods:
+        posterior *= lik
+    return clamp(posterior, 0.01, 0.99)
+
+
 def classify_vwap_cost_channel(
     features: dict[str, Any], config: dict[str, Any] | None = None
 ) -> dict[str, Any]:

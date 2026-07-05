@@ -477,3 +477,45 @@ def test_vol_compression_score_multi_period_percentile_rank() -> None:
     assert snapshot_builder._compute_vol_compression(None, 0.07) == 50
     assert snapshot_builder._compute_vol_compression(0.03, None) == 50
     assert snapshot_builder._compute_vol_compression(0.0, 0.07) == 50
+
+
+# --- V1.7.5 setup probability: Bayesian posterior --------------------------
+
+
+def test_setup_probability_bayesian_posterior_no_evidence() -> None:
+    """No evidence → P(win) = base_prior (0.45)."""
+    from app.services.strategy_signal import snapshot_builder
+
+    # Scores in the neutral zone (50-60) and conflict_score mid-range (30-70)
+    # so no positive OR negative likelihoods trigger.
+    p = snapshot_builder._compute_setup_probability(
+        long_score=55, short_score=55, setup_ready=False, conflict_score=50
+    )
+    assert p == 0.45  # base_prior only
+
+
+def test_setup_probability_bayesian_posterior_with_strong_setup() -> None:
+    """Multiple positive evidence → P(win) > 0.7."""
+    from app.services.strategy_signal import snapshot_builder
+
+    p = snapshot_builder._compute_setup_probability(
+        long_score=80,  # > 60 → likelihood 1.4
+        short_score=30,
+        setup_ready=True,  # → 1.5
+        conflict_score=20,  # < 30 → 1.3
+    )
+    # posterior = 0.45 * 1.4 * 1.5 * 1.3 ≈ 1.23 → clamped to 0.99
+    assert p > 0.7
+    assert p <= 0.99
+
+
+def test_setup_probability_bayesian_posterior_with_conflict_suppresses() -> None:
+    """Strong conflict → P(win) < 0.45."""
+    from app.services.strategy_signal import snapshot_builder
+
+    p = snapshot_builder._compute_setup_probability(
+        long_score=40, short_score=40, setup_ready=True, conflict_score=80  # > 70 → 0.6
+    )
+    # posterior = 0.45 * 1.5 * 0.6 = 0.405
+    assert p < 0.45
+    assert p >= 0.01
