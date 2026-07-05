@@ -347,7 +347,7 @@
       ]
     },
     "fed_balance_sheet": {
-      "module": "liquidity_credit",
+      "module": "fed_operations",
       "frequency": "weekly",
       "unit": "USD million",
       "sources": [
@@ -358,7 +358,7 @@
       ]
     },
     "reverse_repo": {
-      "module": "liquidity_credit",
+      "module": "fed_operations",
       "frequency": "daily",
       "unit": "USD million",
       "sources": [
@@ -369,7 +369,7 @@
       ]
     },
     "tga": {
-      "module": "liquidity_credit",
+      "module": "fed_operations",
       "frequency": "weekly",
       "unit": "USD million",
       "sources": [
@@ -380,7 +380,7 @@
       ]
     },
     "bank_reserves": {
-      "module": "liquidity_credit",
+      "module": "fed_operations",
       "frequency": "weekly",
       "unit": "USD million",
       "sources": [

@@ -65,7 +65,7 @@ def test_macro_overview_units_for_key_macro_indicators() -> None:
 
 
 @pytest.mark.asyncio
-async def test_macro_overview_returns_six_layers(macro_overview_db, monkeypatch) -> None:
+async def test_macro_overview_returns_seven_layers(macro_overview_db, monkeypatch) -> None:
     async with db_manager.session() as session:
         repo = MarketRepository(session)
         monitoring = IndicatorMonitoringService(repo)
@@ -87,7 +87,7 @@ async def test_macro_overview_returns_six_layers(macro_overview_db, monkeypatch)
             now=datetime(2026, 4, 9, 8, 0, tzinfo=UTC)
         )
 
-    assert len(overview.layers) == 6
+    assert len(overview.layers) == 7
     assert overview.policy_score <= 100
     assert overview.inflation_score <= 100
     assert overview.growth_score <= 100

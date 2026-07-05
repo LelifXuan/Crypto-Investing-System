@@ -78,6 +78,7 @@ LAYER_LABELS = {
     "inflation": "通胀与价格",
     "growth_labor": "增长与就业",
     "liquidity_credit": "流动性与信用",
+    "fed_operations": "Fed 资产负债表操作",
     "cross_asset_confirmation": "跨资产确认",
     "event_window": "事件窗口",
 }
@@ -87,6 +88,7 @@ MODULE_TO_LAYER = {
     "inflation_prices": "inflation",
     "growth_jobs": "growth_labor",
     "liquidity_credit": "liquidity_credit",
+    "fed_operations": "fed_operations",
     "usd_real_rates": "cross_asset_confirmation",
     "cross_asset": "cross_asset_confirmation",
     "event_window": "event_window",
@@ -301,7 +303,19 @@ FALLBACK_LAYERS = (
     ("rates_policy", ("effr", "us02y_yield", "us10y_yield", "us10y_2y_spread")),
     ("inflation", ("cpi_yoy", "core_cpi_yoy", "breakeven_10y", "wti_oil")),
     ("growth_labor", ("nfp", "unemployment_rate", "ism_manufacturing", "ism_services")),
-    ("liquidity_credit", ("hy_spread", "reverse_repo", "financial_conditions")),
+    ("liquidity_credit", ("hy_spread", "m2", "financial_conditions")),
+    (
+        "fed_operations",
+        (
+            "fed_balance_sheet",
+            "bank_reserves",
+            "reverse_repo",
+            "tga",
+            "fed_iorb",
+            "fed_soma_treasury",
+            "fed_on_rrp_rate",
+        ),
+    ),
     ("cross_asset_confirmation", ("dxy", "gold", "vix", "real_yield_5y", "real_yield_10y")),
     ("event_window", ("fomc_event_window",)),
 )
