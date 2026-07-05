@@ -21,24 +21,60 @@
     "execution_quality": 0.1
   },
   "long_weights": {
-    "mtf_trend_bullish": 0.18,
-    "bullish_structure": 0.18,
+    "mtf_trend_bullish": 0.20,
+    "bullish_structure": 0.20,
     "bullish_momentum": 0.16,
-    "volume_proxy_confirmation": 0.1,
-    "divergence_support_long": 0.1,
-    "execution_quality": 0.08,
-    "long_risk_reward": 0.1,
-    "regime_fit_long": 0.1
+    "long_risk_reward": 0.12,
+    "regime_fit_long": 0.14,
+    "execution_quality": 0.10,
+    "range_structure": 0.08
+  },
+  "long_weights_by_mode": {
+    "trend": {
+      "mtf_trend_bullish": 0.22,
+      "bullish_structure": 0.22,
+      "bullish_momentum": 0.18,
+      "long_risk_reward": 0.13,
+      "regime_fit_long": 0.15,
+      "execution_quality": 0.10
+    },
+    "range": {
+      "mtf_trend_bullish": 0.05,
+      "bullish_structure": 0.05,
+      "range_structure": 0.30,
+      "low_directional_spread": 0.20,
+      "long_risk_reward": 0.15,
+      "regime_fit_long": 0.15,
+      "execution_quality": 0.10
+    }
   },
   "short_weights": {
-    "mtf_trend_bearish": 0.18,
-    "bearish_structure": 0.18,
+    "mtf_trend_bearish": 0.20,
+    "bearish_structure": 0.20,
     "bearish_momentum": 0.16,
-    "volume_proxy_confirmation": 0.1,
-    "divergence_support_short": 0.1,
-    "execution_quality": 0.08,
-    "short_risk_reward": 0.1,
-    "regime_fit_short": 0.1
+    "short_risk_reward": 0.12,
+    "regime_fit_short": 0.14,
+    "execution_quality": 0.10,
+    "range_structure": 0.08
+  },
+  "short_weights_by_mode": {
+    "trend": {
+      "mtf_trend_bearish": 0.22,
+      "bearish_structure": 0.22,
+      "bearish_momentum": 0.18,
+      "short_risk_reward": 0.13,
+      "regime_fit_short": 0.15,
+      "execution_quality": 0.10
+    },
+    "range": {
+      "mtf_trend_bearish": 0.05,
+      "bearish_structure": 0.05,
+      "range_structure": 0.30,
+      "low_directional_spread": 0.20,
+      "short_risk_reward": 0.15,
+      "regime_fit_short": 0.15,
+      "execution_quality": 0.10
+    }
   },
   "neutral_weights": {
     "range_structure": 0.25,
