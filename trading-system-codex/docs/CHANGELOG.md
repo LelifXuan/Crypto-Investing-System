@@ -1,5 +1,34 @@
 # Changelog
 
+## V1.7.3 (2026-07-02)
+
+新增 Fed 资产负债表操作层 — 监测"美联储实际在做的事情"，不再只看"嘴上说的"。
+
+### 后端
+
+- `app/monitoring/configs/macro_indicator_api_map.v1.json` 新增 10 个 Fed BS 指标：IORB、ON RRP rate、SOMA Treasury / MBS、SRF 使用、Discount Window、SOMA 平均久期、TGA 4 周净变动、FIMA、QT cap
+- `app/monitoring/configs/macro_scoring_registry.v1.json` 新增 10 个 scoring entry（3 个 `display_only` 用于 SRF/Discount Window/QT cap）
+- `app/services/macro_overview.py` LAYER_LABELS / MODULE_TO_LAYER 新增第 7 层 `fed_operations`（专门追踪 Fed BS 操作）；原 `liquidity_credit` 移出 4 个 BS 指标
+
+### 前端
+
+- `app/static/core/macro_derived.js` 新文件：`computeNetLiquidity()` — 运行时计算 Reserves - RRP - TGA（crypto 牛熊分水岭）
+- `app/static/core/knowledge.js` 新增 4 个词条：fed_balance_sheet_operations / iorb_corridor / net_liquidity / standing_repo_facility
+
+### 测试
+
+- `tests/test_fed_operations_layer.py` 新增 3 个测试：scoring coverage / layer 存在 / 知识词条存在
+- `tests/test_indicator_monitoring.py` 新增 1 个测试：api_map coverage
+- `tests/test_knowledge_catalog.py` 新增 1 个测试：fed_operations 词条存在
+
+### 后续（不在本次范围）
+
+- 监控总览页面渲染 fed_operations layer + net_liquidity 卡片的具体实现（plan 范围之外，可单独跟进）
+- BTFP/SRF 启用/停用自动检测（需要 Fed 公告解析）
+- 历史回放图表（高级功能）
+- `_layer_contributions` 权重重分配（让 fed_operations 计入 total_score）
+- `test_macro_coverage_audit` 测试中 "unknown fed_operations indicators" 警告（需要把新 indicator 注册到 coverage whitelist）
+
 ## V1.7 (2026-07-02)
 
 AI 策略页重构（X + Y + Z 全栈 + 截图 8 项修复 + 双 endpoint verify_pages）。
