@@ -269,3 +269,12 @@ def test_fed_operations_knowledge_entries_present():
     }
     missing = required - set(all_ids)
     assert not missing, f"missing knowledge entries: {missing}"
+
+
+def test_v175_knowledge_entries_present():
+    """2 new V1.7.5 entries: volatility_compression, bayesian_setup_probability."""
+    sections = _load_knowledge_sections()
+    all_ids = {item["id"] for s in sections for item in s["items"]}
+    required = {"volatility_compression", "bayesian_setup_probability"}
+    missing = required - all_ids
+    assert not missing, f"missing knowledge entries: {missing}"
