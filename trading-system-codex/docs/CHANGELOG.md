@@ -1,5 +1,42 @@
 # Changelog
 
+## V1.7.5 (2026-07-02)
+
+技术指标页评分系统升级 — 解决 3 个根本性缺口：波动率压缩检测、EV 评估、非线性权重交互。
+
+### 后端
+
+- `app/services/strategy_signal/snapshot_builder.py` 新增 `_compute_vol_compression()`（多周期 percentile rank: bb_width / bb_width_ma_90）和 `_compute_setup_probability()`（Bayesian posterior: prior × Π(likelihoods) / Z）
+- `app/services/strategy_signal/snapshot_builder.py` 在 transition 模式应用 multiplicative gate（vol_compression / 100 作为 0-1 乘子影响 raw_long/short）
+- `app/services/strategy_signal/risk_reward.py` 新增 `risk_reward_score_ev()`：基于 P(win) × RR × 100（不再有 rr=90 封顶）
+- `app/services/strategy_signal/scoring_engine.py` `compute()` 使用 `risk_reward_score_ev`（用 setup_probability 计算 EV）
+- `app/services/strategy_signal/strategy_generator.py` `trigger_state` 用 `ev_score`（P(win) × RR × 100）替代旧的 `min_rr_trade` 硬门
+- `app/monitoring/configs/market_strategy_signal_config_v17.json` 新增 `transition` mode weights（vol_compression 0.30 主导）+ `ev_threshold: 65`
+
+### 前端
+
+- `app/static/pages/analysis.js` 新增 transition mode badge：⚡ 波动率压缩 → 扩张预警 + 跳链到 /market-analysis?focus=breakout
+- `app/static/styles.css` 新增 `.status-mode-badge.transition-mode` amber 样式
+
+### 测试
+
+- `tests/test_strategy_signal_snapshot.py` 新增 3 个测试（vol_compression, setup_probability, transition gate）
+- `tests/test_risk_reward.py` 新增 6 个测试（EV-based 评分）
+- `tests/test_strategy_decision_rules.py` 更新（trigger_state 用 ev_score）
+- `tests/test_strategy_no_microstructure.py` 新增（验证 transition 权重存在）
+- `tests/test_knowledge_catalog.py` 新增（2 个 V1.7.5 词条）
+- `tests/test_analysis_mode_badge.py` 更新（transition badge 渲染验证）
+
+### 知识
+
+- 2 个新词条：volatility_compression（多周期 percentile rank）、bayesian_setup_probability（Bayesian posterior）
+
+### 后续（不在本次范围）
+
+- likelihoods 改为基于 setup_outcome 表的历史胜率 lookup
+- trigger_state 在 transition 模式使用动态 ev_threshold
+- 完全历史 percentile 计算（当前用 5 档 bucket 近似）
+
 ## V1.7.4 (2026-07-02)
 
 技术指标页引入 regime 感知的双模式评分 — 震荡市不再产生假信号，改为引导到形态结构页进行高抛低吸分析。
