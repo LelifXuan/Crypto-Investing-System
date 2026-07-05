@@ -738,7 +738,7 @@
       "indicator_key": "fed_soma_mbs",
       "aliases": [
         "soma_mbs",
-        "wshomcb"
+        "wsfseaml"
       ],
       "formula_id": "direct_linear",
       "unit": "USD billions",
@@ -810,7 +810,7 @@
       "aliases": [
         "tga_net_change_4w"
       ],
-      "formula_id": "direct_linear",
+      "formula_id": "inverse_linear",
       "unit": "USD billions",
       "thresholds": {
         "low": -100,
