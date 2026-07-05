@@ -322,11 +322,13 @@ class StrategyGenerator:
                 "entry_mode": trend_follow.get("entry_mode"),
             }
 
+        ev_threshold = th.get("ev_threshold", 65)
+        ev_score = snapshot.get("setup_probability", 0.5) * (rr or 0) * 100
         if (
             side_score >= th["trigger_score"]
             and setup_ready
             and trigger_ready
-            and (rr or 0) >= th["min_rr_trade"]
+            and ev_score >= ev_threshold
         ):
             return {
                 "state": f"{side.upper()}_TRIGGERED",

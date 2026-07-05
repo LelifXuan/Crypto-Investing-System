@@ -134,6 +134,40 @@ def test_v16_triggered_state_requires_ready_trigger_and_rr():
     assert decision["strategy_state"] == "LONG_TRIGGERED"
 
 
+def test_trigger_state_uses_ev_score():
+    """Trigger condition now uses ev_score (p_win * rr * 100) instead of just rr threshold.
+
+    With V1.7.5 the trigger fires only when ev_score = setup_probability * rr * 100
+    is >= ev_threshold (65). A low setup_probability must suppress the trigger
+    even when rr alone is high enough to clear the old min_rr_trade gate.
+    """
+    # rr = (103 - 100) / (100 - 98) = 1.5 (just at min_rr_trade); old code would
+    # accept this. With setup_probability=0.4, ev_score = 0.4 * 1.5 * 100 = 60
+    # which is below ev_threshold=65, so the new trigger must NOT fire.
+    snapshot = _snapshot(
+        mtf_trend_bullish=100,
+        bullish_structure=100,
+        bullish_momentum=100,
+        execution_quality=100,
+        regime_fit_long=100,
+        mtf_trend_bearish=0,
+        bearish_structure=0,
+        bearish_momentum=0,
+        regime_fit_short=0,
+        long_setup_ready=True,
+        long_trigger_ready=True,
+        long_entry=100,
+        long_stop=98,
+        long_tp1=103,
+        long_tp2=106,
+        setup_probability=0.4,
+    )
+
+    decision = _decision(snapshot)
+
+    assert decision["strategy_state"] != "LONG_TRIGGERED"
+
+
 def test_v16_blocks_high_conflict_market():
     # V1.7.4: weights no longer include volume_proxy_confirmation / divergence_support_*.
     # The conflict threshold (conflict_both_high=65) requires both sides to climb
