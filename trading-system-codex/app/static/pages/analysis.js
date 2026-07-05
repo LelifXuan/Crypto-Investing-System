@@ -887,7 +887,68 @@ function scheduleBundleRetry(token = activeRenderToken) {
   }, 4000);
 }
 
-function renderAnalysisStatus(message, tone = "neutral", mode = null) {
+function getFocusMode() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("focus");
+  } catch (error) {
+    return null;
+  }
+}
+
+function computeVolCompressionScore(secondarySeries) {
+  // Mirror the V1.7.5 backend mapping (`_compute_vol_compression`) using the
+  // BB-width series the analysis bundle already exposes, so we can render a
+  // meaningful focus banner on the client without a backend change.
+  const series = secondarySeries?.bbands_width;
+  if (!Array.isArray(series) || series.length < 5) return null;
+  const numeric = series.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (numeric.length < 5) return null;
+  const window = Math.min(90, numeric.length - 1);
+  const tail = numeric.slice(-1 - window);
+  const baselineWindow = tail.slice(0, Math.max(1, tail.length - 1));
+  if (baselineWindow.length === 0) return null;
+  const baseline = baselineWindow.reduce((sum, value) => sum + value, 0) / baselineWindow.length;
+  const latest = numeric[numeric.length - 1];
+  if (!baseline || baseline <= 0) return null;
+  const ratio = latest / baseline;
+  if (ratio < 0.5) return 90;
+  if (ratio < 0.7) return 75;
+  if (ratio < 0.85) return 60;
+  if (ratio < 1.15) return 50;
+  if (ratio < 1.4) return 40;
+  return 25;
+}
+
+function renderFocusBanner(mode, secondarySeries) {
+  if (mode !== "transition") return "";
+  if (getFocusMode() !== "breakout") return "";
+  const score = computeVolCompressionScore(secondarySeries);
+  if (score === null) return "";
+  let interpretation = "中性区间";
+  if (score >= 75) interpretation = "极端压缩 — 扩张预期强";
+  else if (score >= 60) interpretation = "压缩明显 — 关注突破";
+  else if (score >= 40) interpretation = "常态波动";
+  else interpretation = "扩张中 — 突破已发生";
+  return `
+    <div class="status-focus-banner" data-focus-banner="breakout">
+      <h3>⚡ 突破信号关注模式</h3>
+      <p>当前 vol_compression = <strong>${score}</strong>（${interpretation}）。
+      压缩 → 扩张预期：触发器关注 mt_compression × trend 共同确认。</p>
+    </div>
+  `;
+}
+
+function scrollTransitionBadgeIntoView() {
+  if (getFocusMode() !== "breakout") return;
+  // Defer until after the badge is painted so smooth-scroll lands correctly.
+  window.requestAnimationFrame(() => {
+    const badge = document.querySelector(".status-mode-badge.transition-mode");
+    if (badge) badge.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function renderAnalysisStatus(message, tone = "neutral", mode = null, secondarySeries = null) {
   const el = document.getElementById("analysis-statusbar");
   if (!el) return;
   const badge = renderModeBadge(mode);
@@ -895,7 +956,8 @@ function renderAnalysisStatus(message, tone = "neutral", mode = null) {
     el.innerHTML = statusBanner(message, tone);
     return;
   }
-  el.innerHTML = `${statusBanner(message, tone)}${badge}`;
+  el.innerHTML = `${statusBanner(message, tone)}${badge}${renderFocusBanner(mode, secondarySeries)}`;
+  scrollTransitionBadgeIntoView();
 }
 
 function renderModeBadge(mode) {
@@ -951,7 +1013,8 @@ async function loadAll(force = false, token = activeRenderToken) {
   const minCandles = minCandlesFor(appState.selectedTimeframe);
   let liveFetched = false;
   let bundleMode = null;
-  renderAnalysisStatus("正在读取缓存", "loading", bundleMode);
+  let bundleSecondary = null;
+  renderAnalysisStatus("正在读取缓存", "loading", bundleMode, bundleSecondary);
   setRefreshBusy(true, force ? "计算中" : "读取中");
   if (force) {
     invalidateCache("/marketdata/candles");
@@ -967,6 +1030,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       { force, signal: abortController.signal },
     );
     bundleMode = bundle?.mode ?? null;
+    bundleSecondary = bundle?.secondary_indicator_series || null;
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
       await scheduleIdlePrecompute({
@@ -986,7 +1050,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     if (force || shouldAutoFetch) {
       autoFetchKeys.add(fetchKey);
       liveFetched = true;
-      renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading", bundleMode);
+      renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading", bundleMode, bundleSecondary);
       setRefreshBusy(true, "拉取中");
       const livePayload = await api.getCandles(
         appState.selectedInstrumentId,
@@ -998,7 +1062,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       allCandles = normalizeOhlcCandles(livePayload.candles || []);
       invalidateCache("/marketdata/candles");
       candlesPayload = livePayload;
-      renderAnalysisStatus("正在计算指标", "loading", bundleMode);
+      renderAnalysisStatus("正在计算指标", "loading", bundleMode, bundleSecondary);
       setRefreshBusy(true, "计算中");
       try {
         await api.refreshTechnical(appState.selectedInstrumentId, appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe, {
@@ -1035,6 +1099,7 @@ async function loadAll(force = false, token = activeRenderToken) {
           bundle.status === "stale" ? "快照可用，但可能略滞后；后台正在准备最新数据" : "暂无快照，已加入预计算队列",
           bundle.status === "stale" ? "warning" : "loading",
           bundleMode,
+          bundleSecondary,
         );
         scheduleBundleRetry(token);
         return {
@@ -1049,7 +1114,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       document.getElementById("analysis-signal-cards").innerHTML = emptyState(
         "暂无快照，已加入预计算队列",
       );
-      renderAnalysisStatus("暂无快照，后台准备中", "loading", bundleMode);
+      renderAnalysisStatus("暂无快照，后台准备中", "loading", bundleMode, bundleSecondary);
       return {
         status: "missing",
         data: { candles: [], mark: markPayload, bundle },
@@ -1244,6 +1309,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : liveFetched ? "数据已就绪" : "",
       allCandles.length < minCandles ? "warning" : "success",
       bundleMode,
+      bundleSecondary,
     );
     return {
       status: bundle.status || "ready",
@@ -1265,7 +1331,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     document.getElementById("analysis-mark-updated").textContent = "-";
     document.getElementById("analysis-mark-next").textContent = "请手动刷新";
     document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
-    renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode);
+    renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode, bundleSecondary);
     return { status: "error", data: null, refreshed: liveFetched, error };
   } finally {
     if (isRunActive(token)) setRefreshBusy(false);

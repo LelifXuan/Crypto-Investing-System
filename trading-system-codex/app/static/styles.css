@@ -9267,3 +9267,25 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-weight: 600;
   text-decoration: underline;
 }
+
+/* Focus banner (V1.7.5 fix) — rendered when ?focus=breakout is set and the
+ * current bundle mode is ``transition``. Highlights the vol_compression
+ * context the link target promised instead of just reloading the same page. */
+.status-focus-banner {
+  margin: 12px 0;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(255, 235, 130, 0.35), rgba(255, 200, 100, 0.25));
+  border: 1px solid rgba(214, 165, 42, 0.55);
+  border-radius: 8px;
+  color: #6b4f12;
+}
+.status-focus-banner h3 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.status-focus-banner p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}

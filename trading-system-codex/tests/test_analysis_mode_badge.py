@@ -78,3 +78,65 @@ def test_transition_mode_badge_visible(base_url):
 
         ctx.close()
         browser.close()
+
+
+def test_focus_breakout_banner_visible(base_url):
+    """When ?focus=breakout is in the URL AND mode='transition', a focus
+    banner appears explaining the vol_compression context."""
+    if not _backend_up():
+        pytest.skip("backend not running on :8002")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={"width": 1366, "height": 900})
+        page = ctx.new_page()
+        page.goto(
+            f"{base_url}/market-analysis?focus=breakout",
+            wait_until="domcontentloaded",
+        )
+        page.wait_for_timeout(2000)
+
+        # Without the transition badge we cannot compute vol_compression, so
+        # the banner is intentionally absent. This matches the spec ("only if
+        # focus=breakout and we're in transition mode").
+        badge = page.locator(".status-mode-badge.transition-mode")
+        if badge.count() == 0:
+            ctx.close()
+            browser.close()
+            pytest.skip("backend is not currently in transition mode")
+
+        banner = page.locator(".status-focus-banner[data-focus-banner='breakout']")
+        assert banner.count() == 1
+        assert banner.first.is_visible()
+        text = banner.first.inner_text()
+        assert "突破信号关注模式" in text
+        assert "vol_compression" in text
+
+        # The URL must keep focus=breakout so the user can refresh and still
+        # see the banner.
+        assert "focus=breakout" in page.url
+
+        ctx.close()
+        browser.close()
+
+
+def test_focus_breakout_banner_absent_without_param(base_url):
+    """When ?focus=breakout is NOT in the URL, no focus banner is rendered,
+    even when the transition badge is present (regression guard)."""
+    if not _backend_up():
+        pytest.skip("backend not running on :8002")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={"width": 1366, "height": 900})
+        page = ctx.new_page()
+        page.goto(f"{base_url}/market-analysis", wait_until="domcontentloaded")
+        page.wait_for_timeout(2000)
+
+        banner = page.locator(".status-focus-banner")
+        assert banner.count() == 0
+
+        ctx.close()
+        browser.close()
