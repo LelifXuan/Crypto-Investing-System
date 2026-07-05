@@ -65,6 +65,7 @@ async def test_seed_defaults_loads_catalog_and_rules(monitoring_db) -> None:
         definitions = await repo.list_indicator_definitions(enabled_only=True)
         policies = await repo.list_monitoring_policies(enabled_only=True)
         rules = await repo.list_alert_rules(enabled_only=True)
+        nfp_events = await repo.list_macro_events(event_key="us_nfp", limit=20)
 
     assert any(item.category == "technical" for item in definitions)
     assert any(item.category == "macro" for item in definitions)
@@ -72,6 +73,10 @@ async def test_seed_defaults_loads_catalog_and_rules(monitoring_db) -> None:
     assert any(item.indicator_key == "ema_20" for item in policies)
     assert any(item.indicator_key == "real_yield_5y" for item in policies)
     assert any(item.rule_key == "macro_fomc_pre_window" for item in rules)
+    assert nfp_events
+    assert all(item.provider_key == "bls" for item in nfp_events)
+    assert all(item.importance == "high" for item in nfp_events)
+    assert all(item.scheduled_at.hour in {12, 13} for item in nfp_events)
 
 
 @pytest.mark.asyncio
@@ -269,6 +274,64 @@ async def test_sync_macro_creates_observations(monitoring_db, monkeypatch) -> No
     assert runs
     assert any(item.indicator_key == "us_dff" for item in observations)
     assert any(item.indicator_key == "fomc_event_window" for item in observations)
+
+
+@pytest.mark.asyncio
+async def test_nfp_calendar_release_fetches_series_and_updates_calendar(
+    monitoring_db, monkeypatch
+) -> None:
+    async with db_manager.session() as session:
+        repo = MarketRepository(session)
+        service = IndicatorMonitoringService(repo)
+        await service.seed_defaults()
+        definition = await repo.get_indicator_definition("us_nfp")
+        policies = await repo.list_monitoring_policies(enabled_only=True, category="macro")
+        policy = next(item for item in policies if item.indicator_key == "us_nfp")
+
+        bls_provider = service.macro_provider_registry.resolve(
+            source_provider="bls",
+            source_kind="raw_series",
+        )
+        fred_provider = service.macro_provider_registry.resolve(
+            source_provider="fred",
+            source_kind="raw_series",
+        )
+
+        async def failing_bls_history(*_args, **_kwargs):
+            raise RuntimeError("BLS unavailable")
+
+        class FakePoint:
+            def __init__(self, observation_ts: datetime, value: Decimal) -> None:
+                self.observation_ts = observation_ts
+                self.value = value
+                self.status = "ok"
+
+        async def fake_fred_history(symbol: str, *, lookback_points: int = 4):
+            assert symbol == "PAYEMS"
+            assert lookback_points == 4
+            return [
+                FakePoint(datetime(2026, 4, 1, tzinfo=UTC), Decimal("159500")),
+                FakePoint(datetime(2026, 5, 1, tzinfo=UTC), Decimal("159650")),
+            ]
+
+        monkeypatch.setattr(bls_provider, "fetch_history", failing_bls_history)
+        monkeypatch.setattr(fred_provider, "fetch_history", fake_fred_history)
+
+        observations = await service._sync_macro_definition(definition, policy, "run-nfp")
+        nfp_events = await repo.list_macro_events(event_key="us_nfp", limit=20)
+        event = next((item for item in nfp_events if item.source_ref == "fred:PAYEMS"), None)
+
+    assert observations
+    latest = observations[0]
+    assert latest.indicator_key == "us_nfp"
+    assert latest.value_num == Decimal("150")
+    assert latest.source_provider == "fred"
+    assert latest.value_json["transform"] == "mom_change"
+    assert latest.value_json["policy_link"] == "NFP affects Fed rate-cut/hike expectations"
+    assert event is not None
+    assert event.actual_value_num == Decimal("150")
+    assert event.source_ref == "fred:PAYEMS"
+    assert event.payload_json["policy_sensitivity"] == "fed_rate_expectations"
 
 
 @pytest.mark.asyncio
@@ -547,3 +610,27 @@ async def test_sync_technical_reuses_shared_candle_and_contract_fetches(
 
     assert candle_calls == 1
     assert contract_calls == 1
+
+
+def test_macro_indicator_api_map_contains_fed_operations_indicators() -> None:
+    """api_map must declare all 10 new fed_operations indicators."""
+    import json
+    from pathlib import Path
+
+    api_map_path = Path("app/monitoring/configs/macro_indicator_api_map.v1.json")
+    data = json.loads(api_map_path.read_text(encoding="utf-8"))
+    required_keys = {
+        "fed_iorb",
+        "fed_on_rrp_rate",
+        "fed_soma_treasury",
+        "fed_soma_mbs",
+        "fed_srf_usage",
+        "fed_discount_window",
+        "fed_soma_avg_duration",
+        "fed_tga_net_change_4w",
+        "fed_fima",
+        "fed_qt_cap",
+    }
+    actual_keys = set(data["indicators"].keys())
+    missing = required_keys - actual_keys
+    assert not missing, f"missing fed_operations indicators: {missing}"

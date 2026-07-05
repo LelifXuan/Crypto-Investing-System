@@ -618,6 +618,117 @@
           "symbol": "159201.SZ"
         }
       ]
+    },
+    "fed_iorb": {
+      "module": "fed_operations",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "IORB"
+        }
+      ]
+    },
+    "fed_on_rrp_rate": {
+      "module": "fed_operations",
+      "frequency": "daily",
+      "unit": "%",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "RRPONTSYAWARD"
+        }
+      ]
+    },
+    "fed_soma_treasury": {
+      "module": "fed_operations",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "WSHOMCB"
+        }
+      ]
+    },
+    "fed_soma_mbs": {
+      "module": "fed_operations",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "PLACEHOLDER_fed_soma_mbs"
+        }
+      ]
+    },
+    "fed_srf_usage": {
+      "module": "fed_operations",
+      "frequency": "daily",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "RPTSYD"
+        }
+      ]
+    },
+    "fed_discount_window": {
+      "module": "fed_operations",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "WLCFLPCL"
+        }
+      ]
+    },
+    "fed_soma_avg_duration": {
+      "module": "fed_operations",
+      "frequency": "weekly",
+      "unit": "years",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "PLACEHOLDER_fed_soma_avg_duration"
+        }
+      ]
+    },
+    "fed_tga_net_change_4w": {
+      "module": "fed_operations",
+      "frequency": "weekly",
+      "unit": "USD million",
+      "transform": "weekly_diff_rolling_4w",
+      "sources": [
+        {
+          "source": "fred_derived",
+          "symbol": "WTREGEN"
+        }
+      ]
+    },
+    "fed_fima": {
+      "module": "fed_operations",
+      "frequency": "daily",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "fred",
+          "symbol": "PLACEHOLDER_fed_fima"
+        }
+      ]
+    },
+    "fed_qt_cap": {
+      "module": "fed_operations",
+      "frequency": "monthly",
+      "unit": "USD million",
+      "sources": [
+        {
+          "source": "PLACEHOLDER_fed_qt_cap",
+          "symbol": "PLACEHOLDER_fed_qt_cap"
+        }
+      ]
     }
   }
 }
