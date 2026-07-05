@@ -149,8 +149,16 @@ def test_snapshot_uses_trend_mode_weights_when_detected(monkeypatch) -> None:
     assert delta == pytest.approx(4.4, abs=1e-9)
 
 
-def test_snapshot_falls_back_to_flat_weights_for_transition_mode(monkeypatch) -> None:
-    """When mode has no per-mode entry, fall back to flat ``long_weights``."""
+def test_snapshot_uses_transition_mode_weights_when_detected(monkeypatch) -> None:
+    """V1.7.4 + V1.7.5: transition mode uses its own per-mode weight table
+    and applies the multiplicative ``vol_compression / 100`` gate.
+
+    Earlier versions fell back to the flat ``long_weights`` table because no
+    ``long_weights_by_mode['transition']`` entry existed; V1.7.4 added the
+    transition table and V1.7.5 added the vol_compression gate. To make the
+    expected value deterministic we set ``vol_compression = 100`` (no gate
+    suppression) and verify the score equals the per-mode weighted sum.
+    """
 
     monkeypatch.setattr(
         snapshot_builder, "detect_mode", lambda *a, **kw: "transition"
@@ -160,10 +168,10 @@ def test_snapshot_falls_back_to_flat_weights_for_transition_mode(monkeypatch) ->
     )
 
     config = load_strategy_signal_config()
-    long_weights = config["long_weights"]
+    transition_weights = config["long_weights_by_mode"]["transition"]
 
     snap = StrategySnapshotBuilder._build_snapshot(
-        features=dict(_RANGE_FEATURES),
+        features={**_RANGE_FEATURES, "vol_compression": 100},
         regime="transition",
         adx=22.0,
         instrument_id="btc-usdt-perp",
@@ -172,7 +180,7 @@ def test_snapshot_falls_back_to_flat_weights_for_transition_mode(monkeypatch) ->
     )
 
     expected = round(
-        sum(_RANGE_FEATURES.get(k, 0) * w for k, w in long_weights.items()),
+        sum({**_RANGE_FEATURES, "vol_compression": 100}.get(k, 0) * w for k, w in transition_weights.items()),
         2,
     )
     assert snap["long_score"] == expected
@@ -519,3 +527,170 @@ def test_setup_probability_bayesian_posterior_with_conflict_suppresses() -> None
     # posterior = 0.45 * 1.5 * 0.6 = 0.405
     assert p < 0.45
     assert p >= 0.01
+
+
+# --- V1.7.5 transition multiplicative gate on vol_compression -------------
+
+
+def test_transition_mode_uses_multiplicative_gate_on_vol_compression(monkeypatch) -> None:
+    """In transition mode, raw_long is multiplied by vol_compression / 100.
+
+    Without high vol_compression, the gate reduces transition-mode long_score.
+    The distinctive signature of a *multiplicative* gate (vs. just a linear
+    weight on vol_compression) is that ``vol_compression = 0`` collapses the
+    score to 0 even though other sub-scores are positive.
+    """
+
+    monkeypatch.setattr(
+        snapshot_builder, "detect_mode", lambda *a, **kw: "transition"
+    )
+    monkeypatch.setattr(
+        snapshot_builder, "detect_asset_class", lambda *a, **kw: "stock"
+    )
+
+    features_base = {
+        "mtf_trend_bullish": 80,
+        "bullish_structure": 80,
+        "bullish_momentum": 60,
+        "long_risk_reward": 70,
+        "regime_fit_long": 60,
+        "execution_quality": 70,
+        "mtf_trend_bearish": 30,
+        "bearish_structure": 30,
+        "bearish_momentum": 40,
+        "short_risk_reward": 70,
+        "regime_fit_short": 60,
+        "range_structure": 50,
+        "low_directional_spread": 50,
+    }
+    # vol_compression = 0 → multiplier = 0.0 → score must collapse to 0.
+    # (A purely linear weight on vol_compression would leave the rest of
+    # the weighted sum intact; this only goes to 0 under a multiplicative gate.)
+    snap_zero = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base, "vol_compression": 0},
+        regime="transition",
+        adx=22.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    assert snap_zero["long_score"] == pytest.approx(0.0, abs=1e-9)
+    assert snap_zero["short_score"] == pytest.approx(0.0, abs=1e-9)
+
+    # vol_compression = 100 → multiplier = 1.0 → no gate suppression,
+    # score reflects the underlying weighted sum.
+    snap_full = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base, "vol_compression": 100},
+        regime="transition",
+        adx=22.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    assert snap_full["long_score"] > 0
+
+    # Higher vol_compression must produce a strictly higher long_score.
+    snap_low = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base, "vol_compression": 50},
+        regime="transition",
+        adx=22.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    snap_high = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base, "vol_compression": 90},
+        regime="transition",
+        adx=22.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    assert snap_high["long_score"] > snap_low["long_score"]
+    assert snap_full["long_score"] > snap_high["long_score"] > snap_low["long_score"] > 0
+
+
+def test_multiplicative_gate_only_applies_in_transition_mode(monkeypatch) -> None:
+    """The vol_compression multiplier is gated to transition mode.
+
+    In trend and range mode, varying vol_compression must NOT change the
+    long_score — the multiplicative gate is transition-specific.
+    """
+
+    features_base = {
+        "mtf_trend_bullish": 80,
+        "bullish_structure": 80,
+        "bullish_momentum": 60,
+        "long_risk_reward": 70,
+        "regime_fit_long": 60,
+        "execution_quality": 70,
+        "vol_compression": 50,
+    }
+
+    # In trend mode, vol_compression must be ignored by the scoring gate.
+    monkeypatch.setattr(snapshot_builder, "detect_mode", lambda *a, **kw: "trend")
+    monkeypatch.setattr(
+        snapshot_builder, "detect_asset_class", lambda *a, **kw: "crypto"
+    )
+    snap_trend_low = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base},
+        regime="trend",
+        adx=30.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    snap_trend_high = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base, "vol_compression": 90},
+        regime="trend",
+        adx=30.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    assert snap_trend_low["long_score"] == snap_trend_high["long_score"]
+
+    # In range mode, vol_compression must also be ignored by the scoring gate.
+    monkeypatch.setattr(snapshot_builder, "detect_mode", lambda *a, **kw: "range")
+    snap_range_low = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base},
+        regime="range",
+        adx=15.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    snap_range_high = StrategySnapshotBuilder._build_snapshot(
+        features={**features_base, "vol_compression": 90},
+        regime="range",
+        adx=15.0,
+        instrument_id="btc-usdt-perp",
+        timeframe="1d",
+    )
+    assert snap_range_low["long_score"] == snap_range_high["long_score"]
+
+
+def test_feature_components_populates_vol_compression_and_setup_probability() -> None:
+    """`_feature_components` populates `vol_compression` and `setup_probability`.
+
+    Both fields must be present in the features dict after the V1.7.5 wiring
+    so downstream consumers (snapshot, strategy generator) can read them
+    without recomputing the math.
+    """
+
+    features = _call_feature_components(
+        indicators={
+            "ema_20": 100.0,
+            "ema_50": 95.0,
+            "ema_200": 90.0,
+            "ema_20_prev": 99.0,
+            "rsi_14": 55.0,
+            "macd_hist": 0.5,
+            "macd_hist_prev": 0.2,
+            "adx_14": 18.0,
+            "natr_14": 2.0,
+            "bb_width": 0.05,
+            "bb_width_ma_90": 0.07,
+        },
+    )
+
+    assert "vol_compression" in features
+    assert "setup_probability" in features
+    # 0.05 / 0.07 ≈ 0.714 → strong compression bucket (ratio < 0.85) → score 60
+    assert features["vol_compression"] == pytest.approx(60.0, abs=1e-9)
+    # setup_probability must be a finite float in [0, 1]
+    assert isinstance(features["setup_probability"], float)
+    assert 0.0 <= features["setup_probability"] <= 1.0

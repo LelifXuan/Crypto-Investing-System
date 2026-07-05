@@ -828,7 +828,7 @@ class StrategySnapshotBuilder:
 
         # Direction-score kept in the snapshot as a labeled aggregate, not as
         # a re-source for trend/structure/regime (T04).
-        return {
+        features: dict[str, Any] = {
             "mtf_trend_bullish": trend_bullish,
             "mtf_trend_bearish": trend_bearish,
             "mtf_trend_source": "ema+adx+vwap",
@@ -851,6 +851,31 @@ class StrategySnapshotBuilder:
                 rr_long is not None or rr_short is not None
             ) else "neutral_default",
         }
+        # V1.7.5: surface vol_compression (bb_width vs bb_width_ma_90 percentile
+        # rank) and setup_probability (Bayesian posterior) on the features dict
+        # so the transition-mode multiplicative gate and downstream consumers
+        # (strategy generator, terminal summary) can read them directly.
+        # ``_compute_vol_compression`` falls back to 50 when ``bb_width_ma_90``
+        # is missing — same neutral fallback the helper exposes for tests.
+        features["vol_compression"] = _compute_vol_compression(
+            bb_width=_num(indicators.get("bb_width")),
+            bb_width_ma_90=_num(indicators.get("bb_width_ma_90")) or None,
+        )
+        # Setup-ready proxy mirrors the ``long_setup_ready`` rule applied later
+        # in ``build()`` (``direction_metrics.bullish >= 58``). Conflict score
+        # is not surfaced through ``_feature_components`` yet, so we fall back
+        # to 50 (neutral) — Bayesian posterior with no negative evidence.
+        setup_ready = direction_metrics.get("bullish", 0.0) >= 58
+        conflict_score = 50.0
+        features["setup_ready"] = setup_ready
+        features["conflict_score"] = conflict_score
+        features["setup_probability"] = _compute_setup_probability(
+            long_score=trend_bullish + struct_bullish,
+            short_score=trend_bearish + struct_bearish,
+            setup_ready=setup_ready,
+            conflict_score=conflict_score,
+        )
+        return features
 
     @staticmethod
     def _compute_mode_aware_scores(
@@ -894,6 +919,19 @@ class StrategySnapshotBuilder:
         raw_long = weighted_score(feature_dict, long_weights)
         raw_short = weighted_score(feature_dict, short_weights)
         neutral_score = weighted_score(feature_dict, neutral_weights)
+
+        # V1.7.5 transition multiplicative gate: scale the long/short scores
+        # by ``vol_compression / 100`` so an extended squeeze (low bb_width
+        # relative to its 90-day MA) dampens the directional signal in
+        # transition mode where neither trend nor range weights are reliable.
+        # Without sufficient volatility compression the gate suppresses both
+        # sides symmetrically — neutral_score is left alone because the gate
+        # only gates directional commitment, not the do-nothing baseline.
+        if mode == "transition":
+            vol_compression_score = _num(feature_dict.get("vol_compression"), 50.0)
+            vol_factor = clamp(vol_compression_score / 100.0, 0.0, 1.0)
+            raw_long = raw_long * vol_factor
+            raw_short = raw_short * vol_factor
 
         return {
             "mode": mode,
