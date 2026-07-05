@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.strategy_signal.config_loader import DEFAULT_STRATEGY_SIGNAL_CONFIG
+from app.services.strategy_signal.config_loader import load_strategy_signal_config
 from app.services.strategy_signal.scoring_engine import DirectionScoringEngine
 from app.services.strategy_signal.strategy_generator import StrategyGenerator
 
@@ -19,14 +19,11 @@ def _snapshot(**overrides):
         "mtf_trend_bullish": 82,
         "bullish_structure": 80,
         "bullish_momentum": 76,
-        "volume_proxy_confirmation": 75,
-        "divergence_support_long": 70,
         "execution_quality": 78,
         "regime_fit_long": 78,
         "mtf_trend_bearish": 25,
         "bearish_structure": 22,
         "bearish_momentum": 30,
-        "divergence_support_short": 30,
         "regime_fit_short": 24,
         "range_structure": 25,
         "low_adx": 15,
@@ -55,7 +52,7 @@ def _snapshot(**overrides):
 
 
 def _decision(snapshot):
-    config = DEFAULT_STRATEGY_SIGNAL_CONFIG
+    config = load_strategy_signal_config()
     scores = DirectionScoringEngine(config).compute(snapshot)
     return StrategyGenerator(config).build_decision(snapshot, scores)
 
@@ -64,7 +61,11 @@ def test_v16_generates_market_long_signal_without_position_context():
     decision = _decision(_snapshot())
 
     assert decision["strategy_bias"] == "long"
+    # V1.7.4: weights no longer include volume_proxy_confirmation / divergence_support_long;
+    # the rescaled long_score lands in [bias_score, setup_score) under these fixtures, so
+    # the strategy may settle in LONG_BIAS before lower-TF confirmation arrives.
     assert decision["strategy_state"] in {
+        "LONG_BIAS",
         "WAIT_LONG_CONFIRMATION",
         "WAIT_LOWER_TF_CONFIRMATION",
         "LONG_TRIGGERED",
@@ -84,13 +85,10 @@ def test_v16_generates_short_signal_when_market_evidence_is_bearish():
         mtf_trend_bullish=20,
         bullish_structure=24,
         bullish_momentum=25,
-        volume_proxy_confirmation=76,
-        divergence_support_long=25,
         regime_fit_long=20,
         mtf_trend_bearish=84,
         bearish_structure=82,
         bearish_momentum=78,
-        divergence_support_short=74,
         regime_fit_short=80,
         long_setup_ready=False,
         long_trigger_ready=False,
@@ -101,7 +99,10 @@ def test_v16_generates_short_signal_when_market_evidence_is_bearish():
     decision = _decision(snapshot)
 
     assert decision["strategy_bias"] == "short"
+    # V1.7.4: drop in the 20% contribution from the removed sub-scores means the
+    # rescaled short_score may sit in [bias_score, setup_score) before confirmation.
     assert decision["strategy_state"] in {
+        "SHORT_BIAS",
         "WAIT_SHORT_CONFIRMATION",
         "WAIT_LOWER_TF_CONFIRMATION",
         "SHORT_TRIGGERED",
@@ -115,14 +116,11 @@ def test_v16_triggered_state_requires_ready_trigger_and_rr():
         mtf_trend_bullish=100,
         bullish_structure=100,
         bullish_momentum=100,
-        volume_proxy_confirmation=100,
-        divergence_support_long=100,
         execution_quality=100,
         regime_fit_long=100,
         mtf_trend_bearish=0,
         bearish_structure=0,
         bearish_momentum=0,
-        divergence_support_short=0,
         regime_fit_short=0,
         long_setup_ready=True,
         long_trigger_ready=True,
@@ -137,18 +135,20 @@ def test_v16_triggered_state_requires_ready_trigger_and_rr():
 
 
 def test_v16_blocks_high_conflict_market():
+    # V1.7.4: weights no longer include volume_proxy_confirmation / divergence_support_*.
+    # The conflict threshold (conflict_both_high=65) requires both sides to climb
+    # slightly higher under the rescaled flat weights, so we boost the directional
+    # sub-scores vs the V1.6 fixture while keeping the conflict geometry.
     snapshot = _snapshot(
-        mtf_trend_bullish=82,
-        bullish_structure=82,
-        bullish_momentum=80,
-        volume_proxy_confirmation=78,
-        divergence_support_long=74,
-        regime_fit_long=78,
-        mtf_trend_bearish=80,
-        bearish_structure=80,
-        bearish_momentum=78,
-        divergence_support_short=74,
-        regime_fit_short=78,
+        mtf_trend_bullish=90,
+        bullish_structure=90,
+        bullish_momentum=88,
+        regime_fit_long=85,
+        execution_quality=90,
+        mtf_trend_bearish=90,
+        bearish_structure=90,
+        bearish_momentum=88,
+        regime_fit_short=85,
         long_setup_ready=True,
         short_setup_ready=True,
     )

@@ -19,7 +19,6 @@ from app.services.strategy_signal import snapshot_builder
 from app.services.strategy_signal.config_loader import load_strategy_signal_config
 from app.services.strategy_signal.snapshot_builder import StrategySnapshotBuilder
 
-
 # Sub-score values used across the mode-aware tests. They are picked so that
 # the weighted contribution of each key is easy to verify by hand and the
 # mode-specific tables produce clearly different totals.

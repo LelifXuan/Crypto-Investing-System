@@ -1,5 +1,33 @@
 # Changelog
 
+## V1.7.4 (2026-07-02)
+
+技术指标页引入 regime 感知的双模式评分 — 震荡市不再产生假信号，改为引导到形态结构页进行高抛低吸分析。
+
+### 后端
+
+- `app/services/strategy_signal/config_loader.py` 新增 `detect_mode()`（5 层决策：regime → asset_class+TF → ADX → fallback）和 `detect_asset_class()`（crypto/stock 检测）
+- `app/monitoring/configs/market_strategy_signal_config_v17.json` 重构权重结构：新增 `long_weights_by_mode` / `short_weights_by_mode` 字典（trend / range 两种模式）；删除 `volume_proxy_confirmation` 和 `divergence_support_*`（两个 sub-score 实际贡献为 0，浪费 20% 权重）
+- `app/services/strategy_signal/snapshot_builder.py` 在 `build()` 中检测 mode 后选择对应权重集
+- `app/services/analysis_bundle.py` 在 payload 顶层新增 `mode` 字段
+
+### 前端
+
+- `app/static/pages/analysis.js` 新增 `renderModeBadge()`；mode=range 时在状态条显示 "📊 区间震荡模式" + 跳链到 /structure-page
+- `app/static/styles.css` 新增 `.status-mode-badge` amber 样式
+
+### 测试
+
+- `tests/test_regime_mode_detection.py` 新增 14 个测试
+- `tests/test_strategy_signal_snapshot.py` 新增 6 个测试
+- `tests/test_analysis_mode_badge.py` 新增 1 个 Playwright 测试
+- `tests/test_strategy_no_microstructure.py` 等更新以适配新权重结构
+
+### 后续（不在本次范围）
+
+- 形态结构页计算模块审计（目前已有 `rectangle_range` 模式识别）
+- 完整 mode 权重动态调整（根据波动率 / 持仓量自适应）
+
 ## V1.7.3 (2026-07-02)
 
 新增 Fed 资产负债表操作层 — 监测"美联储实际在做的事情"，不再只看"嘴上说的"。

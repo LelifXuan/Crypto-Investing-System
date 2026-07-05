@@ -42,8 +42,9 @@ def test_strategy_config_has_no_microstructure_weights() -> None:
     for key in forbidden:
         assert key not in serialized
     assert "technical_risk_availability" in config["data_quality_weights"]
-    assert "divergence_support_long" in config["long_weights"]
-    assert "divergence_support_short" in config["short_weights"]
+    # V1.7.4: range_structure replaces divergence_support_* in long_weights / short_weights
+    assert "range_structure" in config["long_weights"]
+    assert "range_structure" in config["short_weights"]
 
 
 def test_strategy_generator_blocks_chasing_when_divergence_opposes_bias() -> None:
