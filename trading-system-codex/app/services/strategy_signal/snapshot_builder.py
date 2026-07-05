@@ -21,7 +21,12 @@ from app.services.strategy_signal.config_loader import (
     detect_mode,
     load_strategy_signal_config,
 )
-from app.services.strategy_signal.risk_reward import clamp, round2
+from app.services.strategy_signal.risk_reward import (
+    clamp,
+    compute_risk_reward,
+    risk_reward_score,
+    round2,
+)
 from app.services.strategy_signal.scoring_engine import weighted_score
 from app.services.strategy_signal.setup_lifecycle import normalize_direction_metrics
 from app.services.technical_risk import build_divergence_risk, score_divergence_for_snapshot
@@ -610,6 +615,26 @@ class StrategySnapshotBuilder:
                         macd=macd,
                         macd_prev=macd_prev,
                         adx=adx,
+                        long_entry=long_entry,
+                        long_stop=_num(
+                            levels.get("structure_invalid_long"),
+                            long_entry - atr * 1.6,
+                        ),
+                        long_tp1=(
+                            float(resistance)
+                            if resistance is not None
+                            else price + atr * 2.2
+                        ),
+                        short_entry=short_entry,
+                        short_stop=_num(
+                            levels.get("structure_invalid_short"),
+                            short_entry + atr * 1.6,
+                        ),
+                        short_tp1=(
+                            float(support)
+                            if support is not None
+                            else price - atr * 2.2
+                        ),
                     ),
                     regime=structure_overall.get("regime"),
                     adx=adx,
@@ -705,6 +730,12 @@ class StrategySnapshotBuilder:
         macd: float,
         macd_prev: float,
         adx: float,
+        long_entry: float | None = None,
+        long_stop: float | None = None,
+        long_tp1: float | None = None,
+        short_entry: float | None = None,
+        short_stop: float | None = None,
+        short_tp1: float | None = None,
     ) -> dict[str, float]:
         """Combine strategy features from trend, structure, regime and momentum."""
 
@@ -720,6 +751,23 @@ class StrategySnapshotBuilder:
         bearish_momentum = clamp(
             50.0 + max(0.0, 50.0 - rsi) * 1.3 + max(0.0, macd_prev - macd) * 3.0
         )
+        # V1.7.4 audit fix: low_directional_spread and *_risk_reward sub-scores
+        # are weighted at 0.20 + 0.15 + 0.15 = 0.50 (50%) of the range-mode
+        # long/short score in market_strategy_signal_config_v17.json. Without
+        # these values the call to ``weighted_score`` falls back to 0 via
+        # ``dict.get(key, 0)``, silently zeroing half the range-mode signal.
+        # Build them from raw inputs that are always available at the call
+        # site and fall back to 50 (neutral) when input data is incomplete.
+        bullish_component = direction_metrics.get("bullish", 0.0)
+        bearish_component = direction_metrics.get("bearish", 0.0)
+        directional_gap = abs(bullish_component - bearish_component)
+        low_directional_spread = clamp(100.0 - directional_gap)
+
+        rr_long = compute_risk_reward("long", long_entry, long_stop, long_tp1)
+        rr_short = compute_risk_reward("short", short_entry, short_stop, short_tp1)
+        long_risk_reward = risk_reward_score(rr_long) if rr_long is not None else 50.0
+        short_risk_reward = risk_reward_score(rr_short) if rr_short is not None else 50.0
+
         # Direction-score kept in the snapshot as a labeled aggregate, not as
         # a re-source for trend/structure/regime (T04).
         return {
@@ -738,6 +786,12 @@ class StrategySnapshotBuilder:
             "momentum_source": "rsi+macd",
             "direction_score_aggregate": direction_metrics["bullish"]
             - direction_metrics["bearish"],
+            "low_directional_spread": low_directional_spread,
+            "long_risk_reward": long_risk_reward,
+            "short_risk_reward": short_risk_reward,
+            "risk_reward_source": "entries+stops+tps" if (
+                rr_long is not None or rr_short is not None
+            ) else "neutral_default",
         }
 
     @staticmethod
