@@ -6,8 +6,8 @@
 
 ### 后端
 
-- `app/monitoring/configs/macro_indicator_api_map.v1.json` 新增 10 个 Fed BS 指标：IORB、ON RRP rate、SOMA Treasury / MBS、SRF 使用、Discount Window、SOMA 平均久期、TGA 4 周净变动、FIMA、QT cap
-- `app/monitoring/configs/macro_scoring_registry.v1.json` 新增 10 个 scoring entry（3 个 `display_only` 用于 SRF/Discount Window/QT cap）
+- `app/monitoring/configs/macro_indicator_api_map.v1.json` 新增 7 个 Fed BS 指标：IORB、ON RRP rate、SOMA Treasury / MBS、SRF 使用、Discount Window、TGA 4 周净变动（FIMA / SOMA 平均久期 / QT cap 经 FRED 验证后移除）
+- `app/monitoring/configs/macro_scoring_registry.v1.json` 新增 7 个 scoring entry（3 个 `display_only` 用于 SRF/Discount Window）
 - `app/services/macro_overview.py` LAYER_LABELS / MODULE_TO_LAYER 新增第 7 层 `fed_operations`（专门追踪 Fed BS 操作）；原 `liquidity_credit` 移出 4 个 BS 指标
 
 ### 前端

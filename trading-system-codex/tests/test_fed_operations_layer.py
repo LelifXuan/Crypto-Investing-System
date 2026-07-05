@@ -17,8 +17,8 @@ def test_scoring_registry_covers_fed_operations_indicators():
     scored_keys = {entry["indicator_key"] for entry in data["indicators"]}
     required = {
         "fed_iorb", "fed_on_rrp_rate", "fed_soma_treasury", "fed_soma_mbs",
-        "fed_srf_usage", "fed_discount_window", "fed_soma_avg_duration",
-        "fed_tga_net_change_4w", "fed_fima", "fed_qt_cap",
+        "fed_srf_usage", "fed_discount_window",
+        "fed_tga_net_change_4w",
     }
     missing = required - scored_keys
     assert not missing, f"missing scoring entries: {missing}"
@@ -49,8 +49,8 @@ def test_macro_overview_has_fed_operations_layer():
     moved_indicators = {"fed_balance_sheet", "bank_reserves", "reverse_repo", "tga"}
     new_indicators = {
         "fed_iorb", "fed_on_rrp_rate", "fed_soma_treasury", "fed_soma_mbs",
-        "fed_srf_usage", "fed_discount_window", "fed_soma_avg_duration",
-        "fed_tga_net_change_4w", "fed_fima", "fed_qt_cap",
+        "fed_srf_usage", "fed_discount_window",
+        "fed_tga_net_change_4w",
     }
     fed_indicators = by_module.get("fed_operations", set())
     missing_moved = moved_indicators - fed_indicators

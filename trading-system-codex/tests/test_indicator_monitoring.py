@@ -613,7 +613,7 @@ async def test_sync_technical_reuses_shared_candle_and_contract_fetches(
 
 
 def test_macro_indicator_api_map_contains_fed_operations_indicators() -> None:
-    """api_map must declare all 10 new fed_operations indicators."""
+    """api_map must declare all 7 new fed_operations indicators."""
     import json
     from pathlib import Path
 
@@ -626,10 +626,7 @@ def test_macro_indicator_api_map_contains_fed_operations_indicators() -> None:
         "fed_soma_mbs",
         "fed_srf_usage",
         "fed_discount_window",
-        "fed_soma_avg_duration",
         "fed_tga_net_change_4w",
-        "fed_fima",
-        "fed_qt_cap",
     }
     actual_keys = set(data["indicators"].keys())
     missing = required_keys - actual_keys
