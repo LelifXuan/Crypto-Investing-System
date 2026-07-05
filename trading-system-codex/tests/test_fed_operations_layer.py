@@ -25,7 +25,7 @@ def test_scoring_registry_covers_fed_operations_indicators():
 
 
 def test_macro_overview_has_fed_operations_layer():
-    """LAYER_LABELS must include fed_operations as a 7th layer; indicators must be wired via MODULE_TO_LAYER + JSON config."""
+    """LAYER_LABELS includes fed_operations as 7th layer; wired via MODULE_TO_LAYER."""
     from app.services.macro_overview import LAYER_LABELS, MODULE_TO_LAYER
 
     assert "fed_operations" in LAYER_LABELS, (
@@ -55,7 +55,8 @@ def test_macro_overview_has_fed_operations_layer():
     fed_indicators = by_module.get("fed_operations", set())
     missing_moved = moved_indicators - fed_indicators
     missing_new = new_indicators - fed_indicators
-    assert not missing_moved, f"moved BS indicators missing from fed_operations module: {missing_moved}"
+    msg = "moved BS indicators missing from fed_operations module: {}"
+    assert not missing_moved, msg.format(missing_moved)
     assert not missing_new, f"new fed_operations indicators missing: {missing_new}"
 
 

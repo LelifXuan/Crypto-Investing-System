@@ -258,7 +258,7 @@ def test_guide_related_pages_reference_existing_pages():
 
 
 def test_fed_operations_knowledge_entries_present():
-    """4 new entries: iorb_corridor, net_liquidity, fed_balance_sheet_operations, standing_repo_facility."""
+    """4 new entries: iorb_corridor, net_liquidity, fed_bs, srf."""
     sections = _load_knowledge_sections()
     all_ids = [item["id"] for s in sections for item in s["items"]]
     required = {
