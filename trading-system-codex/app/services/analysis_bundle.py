@@ -20,8 +20,59 @@ from app.services.page_snapshot_cache import (
     cache_status,
     expires_at_for_page,
 )
+from app.services.strategy_signal.config_loader import detect_asset_class, detect_mode
 
 UTC = timezone.utc
+
+
+def _extract_latest_adx(adx_series) -> float | None:
+    """Pull the latest non-null ADX value from a series of numbers."""
+    if not isinstance(adx_series, list) or not adx_series:
+        return None
+    for value in reversed(adx_series):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        return numeric
+    return None
+
+
+def _compute_payload_mode(payload: dict) -> tuple[str, str]:
+    """Derive ``mode`` / ``asset_class`` from a freshly built payload.
+
+    Used by both :meth:`get_bundle` (read path) and :meth:`refresh_bundle`
+    (write path) so the frontend can render the regime badge consistently
+    regardless of which code path produced the page-snapshot cache.
+    """
+    instrument_id = str(payload.get("instrument_id") or "")
+    timeframe = str(payload.get("timeframe") or "")
+    final_decision = payload.get("final_decision") or {}
+    components = final_decision.get("components") if isinstance(final_decision, dict) else {}
+    structure_overall = (
+        components.get("structure_overall")
+        if isinstance(components, dict)
+        else None
+    )
+    if not isinstance(structure_overall, dict):
+        structure_overall = {}
+    secondary = payload.get("secondary_indicator_series") or {}
+    adx_value = _extract_latest_adx(secondary.get("adx_14"))
+    regime = (
+        structure_overall.get("regime")
+        or final_decision.get("chip_regime")
+        or ""
+    )
+    asset_class = detect_asset_class(instrument_id)
+    mode = detect_mode(
+        regime=regime if isinstance(regime, str) else "",
+        adx=adx_value if adx_value is not None else 20,
+        asset_class=asset_class,
+        timeframe=timeframe,
+    )
+    return mode, asset_class
+
+
 WINDOW_PROFILES = {
     "1h": {
         "short": {"visibleBars": 96, "calcBars": 360},
@@ -82,6 +133,10 @@ class AnalysisBundleService:
             if bar_state.freshness_state in {"fresh", "due", "missing"}
             else freshness.state
         )
+        mode_payload = dict(payload)
+        mode_payload.setdefault("instrument_id", instrument_id)
+        mode_payload.setdefault("timeframe", timeframe)
+        mode, asset_class = _compute_payload_mode(mode_payload)
         return AnalysisBundleRead.model_validate(
             {
                 "instrument_id": instrument_id,
@@ -93,6 +148,8 @@ class AnalysisBundleService:
                 "core_indicator_series": payload.get("core_indicator_series", {}),
                 "secondary_indicator_series": payload.get("secondary_indicator_series", {}),
                 "final_decision": payload.get("final_decision", {}),
+                "mode": mode,
+                "asset_class": asset_class,
                 "status": "ready" if status == "fresh" else status,
                 "cache_state": status,
                 "freshness_state": freshness_state,
@@ -196,6 +253,11 @@ class AnalysisBundleService:
             "secondary_indicator_series": secondary_indicator_series,
             "final_decision": final_decision,
         }
+        mode, asset_class = _compute_payload_mode(
+            {**payload, "instrument_id": instrument_id, "timeframe": normalized_timeframe}
+        )
+        payload["mode"] = mode
+        payload["asset_class"] = asset_class
         cost_ms = int((time.perf_counter() - started) * 1000)
         cache = await self.repository.upsert_page_snapshot_cache(
             cache_key=analysis_cache_key(instrument_id, normalized_timeframe, limit),
@@ -224,6 +286,8 @@ class AnalysisBundleService:
                 "core_indicator_series": core_indicator_series,
                 "secondary_indicator_series": secondary_indicator_series,
                 "final_decision": final_decision,
+                "mode": mode,
+                "asset_class": asset_class,
                 "status": "ready",
                 "cache_state": "fresh",
                 "freshness_state": source_freshness(

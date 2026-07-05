@@ -606,6 +606,8 @@ class AnalysisBundleRead(BundleMetaRead):
     core_indicator_series: dict = Field(default_factory=dict)
     secondary_indicator_series: dict = Field(default_factory=dict)
     final_decision: dict = Field(default_factory=dict)
+    mode: str | None = None
+    asset_class: str | None = None
 
 
 class AlertsBundleRead(BundleMetaRead):

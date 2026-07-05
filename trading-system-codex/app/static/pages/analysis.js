@@ -887,9 +887,25 @@ function scheduleBundleRetry(token = activeRenderToken) {
   }, 4000);
 }
 
-function renderAnalysisStatus(message, tone = "neutral") {
+function renderAnalysisStatus(message, tone = "neutral", mode = null) {
   const el = document.getElementById("analysis-statusbar");
-  if (el) el.innerHTML = statusBanner(message, tone);
+  if (!el) return;
+  const badge = renderModeBadge(mode);
+  if (!badge) {
+    el.innerHTML = statusBanner(message, tone);
+    return;
+  }
+  el.innerHTML = `${statusBanner(message, tone)}${badge}`;
+}
+
+function renderModeBadge(mode) {
+  if (mode !== "range") return "";
+  return `
+    <div class="status-mode-badge range-mode">
+      <span>📊 区间震荡模式</span>
+      <a class="status-mode-link" href="/structure-page">查看形态结构页 →</a>
+    </div>
+  `;
 }
 
 function setRefreshBusy(isBusy, label = "刷新分析") {
@@ -924,7 +940,8 @@ async function loadAll(force = false, token = activeRenderToken) {
   const fetchKey = `${appState.selectedInstrumentId}:${appState.selectedTimeframe}`;
   const minCandles = minCandlesFor(appState.selectedTimeframe);
   let liveFetched = false;
-  renderAnalysisStatus("正在读取缓存", "loading");
+  let bundleMode = null;
+  renderAnalysisStatus("正在读取缓存", "loading", bundleMode);
   setRefreshBusy(true, force ? "计算中" : "读取中");
   if (force) {
     invalidateCache("/marketdata/candles");
@@ -939,6 +956,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       appState.selectedViewWindow,
       { force, signal: abortController.signal },
     );
+    bundleMode = bundle?.mode ?? null;
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
       await scheduleIdlePrecompute({
@@ -958,7 +976,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     if (force || shouldAutoFetch) {
       autoFetchKeys.add(fetchKey);
       liveFetched = true;
-      renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading");
+      renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading", bundleMode);
       setRefreshBusy(true, "拉取中");
       const livePayload = await api.getCandles(
         appState.selectedInstrumentId,
@@ -970,7 +988,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       allCandles = normalizeOhlcCandles(livePayload.candles || []);
       invalidateCache("/marketdata/candles");
       candlesPayload = livePayload;
-      renderAnalysisStatus("正在计算指标", "loading");
+      renderAnalysisStatus("正在计算指标", "loading", bundleMode);
       setRefreshBusy(true, "计算中");
       try {
         await api.refreshTechnical(appState.selectedInstrumentId, appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe, {
@@ -1006,6 +1024,7 @@ async function loadAll(force = false, token = activeRenderToken) {
         renderAnalysisStatus(
           bundle.status === "stale" ? "快照可用，但可能略滞后；后台正在准备最新数据" : "暂无快照，已加入预计算队列",
           bundle.status === "stale" ? "warning" : "loading",
+          bundleMode,
         );
         scheduleBundleRetry(token);
         return {
@@ -1020,7 +1039,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       document.getElementById("analysis-signal-cards").innerHTML = emptyState(
         "暂无快照，已加入预计算队列",
       );
-      renderAnalysisStatus("暂无快照，后台准备中", "loading");
+      renderAnalysisStatus("暂无快照，后台准备中", "loading", bundleMode);
       return {
         status: "missing",
         data: { candles: [], mark: markPayload, bundle },
@@ -1214,6 +1233,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     renderAnalysisStatus(
       allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : liveFetched ? "数据已就绪" : "",
       allCandles.length < minCandles ? "warning" : "success",
+      bundleMode,
     );
     return {
       status: bundle.status || "ready",
@@ -1235,7 +1255,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     document.getElementById("analysis-mark-updated").textContent = "-";
     document.getElementById("analysis-mark-next").textContent = "请手动刷新";
     document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
-    renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger");
+    renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode);
     return { status: "error", data: null, refreshed: liveFetched, error };
   } finally {
     if (isRunActive(token)) setRefreshBusy(false);
