@@ -986,7 +986,7 @@ function renderModeBadge(mode) {
     return `
       <div class="status-mode-badge transition-mode">
         <span>⚡ 波动率压缩 → 扩张预警</span>
-        <a class="status-mode-link" href="/market-analysis?focus=breakout">关注突破信号 →</a>
+        <a class="status-mode-link" href="/indicators-page?focus=breakout">关注突破信号 →</a>
       </div>
     `;
   }
