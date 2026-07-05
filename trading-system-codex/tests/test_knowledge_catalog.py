@@ -255,3 +255,17 @@ def test_guide_related_pages_reference_existing_pages():
             if p not in valid_pages:
                 bad.append(f"{g['id']} → {p}")
     assert not bad, f"guide related_pages reference unknown pages: {bad}"
+
+
+def test_fed_operations_knowledge_entries_present():
+    """4 new entries: iorb_corridor, net_liquidity, fed_balance_sheet_operations, standing_repo_facility."""
+    sections = _load_knowledge_sections()
+    all_ids = [item["id"] for s in sections for item in s["items"]]
+    required = {
+        "iorb_corridor",
+        "net_liquidity",
+        "fed_balance_sheet_operations",
+        "standing_repo_facility",
+    }
+    missing = required - set(all_ids)
+    assert not missing, f"missing knowledge entries: {missing}"
