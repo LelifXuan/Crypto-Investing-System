@@ -16,8 +16,13 @@ from app.services.cache_registry import (
 )
 from app.services.market_context import MarketContextBuilder
 from app.services.monitoring_dashboard import MonitoringDashboardService
-from app.services.strategy_signal.config_loader import load_strategy_signal_config
-from app.services.strategy_signal.risk_reward import clamp
+from app.services.strategy_signal.config_loader import (
+    detect_asset_class,
+    detect_mode,
+    load_strategy_signal_config,
+)
+from app.services.strategy_signal.risk_reward import clamp, round2
+from app.services.strategy_signal.scoring_engine import weighted_score
 from app.services.strategy_signal.setup_lifecycle import normalize_direction_metrics
 from app.services.technical_risk import build_divergence_risk, score_divergence_for_snapshot
 
@@ -595,15 +600,22 @@ class StrategySnapshotBuilder:
                 "multi_timeframe_availability": 80 if final_decision else 55,
                 "macro_event_availability": 100 if macro_status else 60,
                 **divergence_scores,
-                **self._feature_components(
-                    indicators=indicators,
-                    structure_overall=structure_overall,
+                **self._build_snapshot(
+                    features=self._feature_components(
+                        indicators=indicators,
+                        structure_overall=structure_overall,
+                        regime=structure_overall.get("regime"),
+                        direction_metrics=direction_metrics,
+                        rsi=rsi,
+                        macd=macd,
+                        macd_prev=macd_prev,
+                        adx=adx,
+                    ),
                     regime=structure_overall.get("regime"),
-                    direction_metrics=direction_metrics,
-                    rsi=rsi,
-                    macd=macd,
-                    macd_prev=macd_prev,
                     adx=adx,
+                    instrument_id=instrument,
+                    timeframe=tf,
+                    config=config,
                 ),
                 "low_volume_confirmation": 50,
                 "low_adx": max(0, 60 - adx),
@@ -726,6 +738,96 @@ class StrategySnapshotBuilder:
             "momentum_source": "rsi+macd",
             "direction_score_aggregate": direction_metrics["bullish"]
             - direction_metrics["bearish"],
+        }
+
+    @staticmethod
+    def _compute_mode_aware_scores(
+        feature_dict: dict[str, Any],
+        *,
+        regime: str | None,
+        adx: float | None,
+        instrument_id: str | None,
+        timeframe: str | None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Compute long/short/neutral scores using per-mode weight tables.
+
+        Returns the active ``mode`` (``trend`` | ``range`` | ``transition``)
+        plus the asset class, the three weighted scores and a copy of the
+        weights that were actually used. The mode detection uses the same
+        :func:`detect_mode` / :func:`detect_asset_class` helpers as the rest
+        of the pipeline so a given (regime, adx, asset_class, timeframe)
+        tuple always maps to the same weight table here and downstream.
+
+        The mode-specific dict is preferred over the flat ``long_weights`` /
+        ``short_weights`` block; when no per-mode entry exists for the active
+        mode (e.g. ``transition``) the function falls back to the flat
+        weights so the system never silently drops a sub-score.
+        """
+
+        cfg = config if config is not None else load_strategy_signal_config()
+        asset_class = detect_asset_class(instrument_id)
+        mode = detect_mode(
+            regime=regime,
+            adx=adx,
+            asset_class=asset_class,
+            timeframe=timeframe,
+        )
+        long_weights_by_mode = cfg.get("long_weights_by_mode") or {}
+        long_weights = long_weights_by_mode.get(mode) or cfg.get("long_weights") or {}
+        short_weights_by_mode = cfg.get("short_weights_by_mode") or {}
+        short_weights = short_weights_by_mode.get(mode) or cfg.get("short_weights") or {}
+        neutral_weights = cfg.get("neutral_weights") or {}
+
+        raw_long = weighted_score(feature_dict, long_weights)
+        raw_short = weighted_score(feature_dict, short_weights)
+        neutral_score = weighted_score(feature_dict, neutral_weights)
+
+        return {
+            "mode": mode,
+            "asset_class": asset_class,
+            "long_score": round2(raw_long),
+            "short_score": round2(raw_short),
+            "neutral_score": round2(neutral_score),
+            "long_weights": dict(long_weights),
+            "short_weights": dict(short_weights),
+        }
+
+    @staticmethod
+    def _build_snapshot(
+        *,
+        features: dict[str, Any],
+        regime: str | None,
+        adx: float | None,
+        instrument_id: str | None,
+        timeframe: str | None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a scored snapshot dict from pre-computed feature values.
+
+        This is the sync helper the public :meth:`build` calls once the
+        heavier async dependency fetches have been resolved; it is also the
+        test seam used by ``tests/test_strategy_signal_snapshot.py`` so the
+        mode-aware weight selection can be exercised without touching the DB.
+        """
+
+        scored = StrategySnapshotBuilder._compute_mode_aware_scores(
+            features,
+            regime=regime,
+            adx=adx,
+            instrument_id=instrument_id,
+            timeframe=timeframe,
+            config=config,
+        )
+        return {
+            **features,
+            "mode": scored["mode"],
+            "asset_class": scored["asset_class"],
+            "long_score": scored["long_score"],
+            "short_score": scored["short_score"],
+            "neutral_score": scored["neutral_score"],
+            "long_weights": scored["long_weights"],
+            "short_weights": scored["short_weights"],
         }
 
     @staticmethod
