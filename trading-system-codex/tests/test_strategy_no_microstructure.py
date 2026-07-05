@@ -47,6 +47,19 @@ def test_strategy_config_has_no_microstructure_weights() -> None:
     assert "range_structure" in config["short_weights"]
 
 
+def test_transition_mode_weights_in_config() -> None:
+    """The new 'transition' mode weights must be present and include vol_compression."""
+    config = json.loads(
+        (ROOT / "app/monitoring/configs/market_strategy_signal_config_v17.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "transition" in config["long_weights_by_mode"]
+    assert "vol_compression" in config["long_weights_by_mode"]["transition"]
+    assert "transition" in config["short_weights_by_mode"]
+    assert "vol_compression" in config["short_weights_by_mode"]["transition"]
+
+
 def test_strategy_generator_blocks_chasing_when_divergence_opposes_bias() -> None:
     config = json.loads(
         (ROOT / "app/monitoring/configs/market_strategy_signal_config_v17.json").read_text(
