@@ -9212,3 +9212,32 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Regime mode badge (V1.7.4) — technical indicator page */
+.status-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 12px 0;
+  background: rgba(255, 215, 130, 0.18);
+  border: 1px solid rgba(214, 138, 42, 0.35);
+  border-radius: 8px;
+  color: #5a4612;
+  font-size: 14px;
+  font-weight: 500;
+}
+.status-mode-badge.range-mode::before {
+  content: "📊";
+  font-size: 18px;
+  margin-right: 4px;
+}
+.status-mode-badge .status-mode-link {
+  margin-left: auto;
+  color: #8a4d10;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.status-mode-badge .status-mode-link:hover {
+  color: #6b3a0d;
+}
