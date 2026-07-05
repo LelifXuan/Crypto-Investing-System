@@ -679,6 +679,184 @@
       "bullish_label": "???",
       "bearish_label": "???",
       "neutral_label": "???"
+    },
+    {
+      "indicator_key": "fed_iorb",
+      "aliases": [
+        "iorb",
+        "interest_on_reserve_balances"
+      ],
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 4.0,
+        "high": 5.5
+      },
+      "higher_value_bias": "bearish_for_risk_assets",
+      "scoring_policy": "scored",
+      "bullish_label": "Fed 利率走廊上限宽松",
+      "bearish_label": "Fed 利率走廊上限偏紧",
+      "neutral_label": "IORB 处于走廊中性区间"
+    },
+    {
+      "indicator_key": "fed_on_rrp_rate",
+      "aliases": [
+        "on_rrp_rate",
+        "reverse_repo_rate"
+      ],
+      "formula_id": "inverse_linear",
+      "unit": "%",
+      "thresholds": {
+        "low": 4.0,
+        "high": 5.5
+      },
+      "higher_value_bias": "bearish_for_risk_assets",
+      "scoring_policy": "scored",
+      "bullish_label": "Fed 利率走廊下限宽松",
+      "bearish_label": "Fed 利率走廊下限偏紧",
+      "neutral_label": "ON RRP 处于走廊中性区间"
+    },
+    {
+      "indicator_key": "fed_soma_treasury",
+      "aliases": [
+        "soma_treasury",
+        "wshomcb"
+      ],
+      "formula_id": "direct_linear",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": 2500,
+        "high": 5000
+      },
+      "higher_value_bias": "bullish_for_risk_assets",
+      "scoring_policy": "scored",
+      "bullish_label": "SOMA 国债持仓扩张中",
+      "bearish_label": "SOMA 国债持仓收缩中",
+      "neutral_label": "SOMA 国债持仓稳定"
+    },
+    {
+      "indicator_key": "fed_soma_mbs",
+      "aliases": [
+        "soma_mbs",
+        "wshomcb"
+      ],
+      "formula_id": "direct_linear",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": 1500,
+        "high": 2800
+      },
+      "higher_value_bias": "bullish_for_risk_assets",
+      "scoring_policy": "scored",
+      "bullish_label": "SOMA MBS 持仓扩张中",
+      "bearish_label": "SOMA MBS 持仓收缩中",
+      "neutral_label": "SOMA MBS 持仓稳定"
+    },
+    {
+      "indicator_key": "fed_srf_usage",
+      "aliases": [
+        "srf",
+        "standing_repo_facility"
+      ],
+      "formula_id": "display_only",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": 0,
+        "high": 50
+      },
+      "higher_value_bias": "bearish_for_risk_assets",
+      "scoring_policy": "display_only",
+      "bullish_label": "回购工具未被使用",
+      "bearish_label": "SRF 使用上升（流动性紧张）",
+      "neutral_label": "SRF 使用处于正常区间"
+    },
+    {
+      "indicator_key": "fed_discount_window",
+      "aliases": [
+        "discount_window",
+        "dpdcbs"
+      ],
+      "formula_id": "display_only",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": 0,
+        "high": 30
+      },
+      "higher_value_bias": "bearish_for_risk_assets",
+      "scoring_policy": "display_only",
+      "bullish_label": "贴现窗口借款正常",
+      "bearish_label": "贴现窗口借款上升（银行压力）",
+      "neutral_label": "贴现窗口借款处于低位"
+    },
+    {
+      "indicator_key": "fed_soma_avg_duration",
+      "aliases": [
+        "soma_avg_duration"
+      ],
+      "formula_id": "direct_linear",
+      "unit": "years",
+      "thresholds": {
+        "low": 6.0,
+        "high": 8.5
+      },
+      "higher_value_bias": "neutral",
+      "scoring_policy": "scored",
+      "bullish_label": "SOMA 持仓久期偏长",
+      "bearish_label": "SOMA 持仓久期偏短",
+      "neutral_label": "SOMA 持仓久期处于中位"
+    },
+    {
+      "indicator_key": "fed_tga_net_change_4w",
+      "aliases": [
+        "tga_net_change_4w"
+      ],
+      "formula_id": "direct_linear",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": -100,
+        "high": 100
+      },
+      "higher_value_bias": "bearish_for_risk_assets",
+      "scoring_policy": "scored",
+      "bullish_label": "TGA 净减少（流动性注入）",
+      "bearish_label": "TGA 净增加（流动性抽出）",
+      "neutral_label": "TGA 四周净变化处于中性区间"
+    },
+    {
+      "indicator_key": "fed_fima",
+      "aliases": [
+        "fima",
+        "foreign_repo_pool"
+      ],
+      "formula_id": "direct_linear",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": 0,
+        "high": 100
+      },
+      "higher_value_bias": "neutral",
+      "scoring_policy": "scored",
+      "bullish_label": "外国央行在 Fed 大量存款",
+      "bearish_label": "外国央行在 Fed 减少存款",
+      "neutral_label": "FIMA 余额处于中性水平"
+    },
+    {
+      "indicator_key": "fed_qt_cap",
+      "aliases": [
+        "qt_cap",
+        "treasury_runoff"
+      ],
+      "formula_id": "display_only",
+      "unit": "USD billions",
+      "thresholds": {
+        "low": 0,
+        "high": 95
+      },
+      "higher_value_bias": "bearish_for_risk_assets",
+      "scoring_policy": "display_only",
+      "bullish_label": "QT 节奏低于上限（宽松）",
+      "bearish_label": "QT 节奏接近上限（偏紧）",
+      "neutral_label": "QT 节奏接近上限中性区间"
     }
   ]
 }
