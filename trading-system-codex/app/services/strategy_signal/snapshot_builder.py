@@ -22,6 +22,7 @@ from app.services.strategy_signal.config_loader import (
     load_strategy_signal_config,
 )
 from app.services.strategy_signal.risk_reward import (
+    _percentile_rank,
     clamp,
     compute_risk_reward,
     risk_reward_score,
@@ -184,6 +185,34 @@ def _compute_vol_compression(
     if ratio < 1.4:
         return 40.0
     return 25.0
+
+
+def _compute_momentum_at_scale(
+    *,
+    rsi: float | None,
+    macd_hist: float | None,
+    macd_prev: float | None,
+    rsi_history: list[float] | None,
+) -> tuple[float, float]:
+    """Compute momentum sub-score at a single time scale.
+
+    Returns (bullish, bearish) each in [0, 100]. RSI percentile rank over
+    ``rsi_history`` (default 90-bar window) replaces absolute RSI value.
+    MACD histogram delta adds direction-aware bias. Falls back to (50, 50)
+    when inputs are missing.
+    """
+
+    if rsi is None or macd_hist is None or macd_prev is None:
+        return 50.0, 50.0
+
+    rsi_pct = _percentile_rank(rsi_history, rsi)
+    macd_delta_bull = max(0.0, float(macd_hist) - float(macd_prev)) * 3.0
+    macd_delta_bear = max(0.0, float(macd_prev) - float(macd_hist)) * 3.0
+
+    raw_bullish = 50.0 + (rsi_pct - 50.0) * 0.85 + macd_delta_bull
+    raw_bearish = 50.0 + (100.0 - rsi_pct) * 0.85 + macd_delta_bear
+
+    return clamp(raw_bullish), clamp(raw_bearish)
 
 
 def _compute_setup_probability(

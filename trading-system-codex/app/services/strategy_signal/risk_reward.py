@@ -99,6 +99,9 @@ def _percentile_rank(history: list[float] | None, current: float | None) -> floa
         current_f = float(current)
     except (TypeError, ValueError):
         return 50.0
-    below_or_equal = sum(1 for x in history if x is not None and x <= current_f)
-    pct = below_or_equal / len(history) * 100
+    valid = [x for x in history if x is not None]
+    if not valid:
+        return 50.0
+    below_or_equal = sum(1 for x in valid if x <= current_f)
+    pct = below_or_equal / len(valid) * 100
     return clamp(pct, 0.0, 100.0)
