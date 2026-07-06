@@ -27,32 +27,37 @@ from app.services.strategy_signal.snapshot_builder import StrategySnapshotBuilde
 _RANGE_FEATURES = {
     "mtf_trend_bullish": 80,
     "bullish_structure": 80,
-    "bullish_momentum": 60,
+    "momentum_short": 60,        # replaces bullish_momentum role (trend weight)
+    "momentum_mid": 60,          # range mode only retains momentum_mid
+    "momentum_long": 60,
     "long_risk_reward": 70,
     "regime_fit_long": 40,
     "execution_quality": 70,
     "range_structure": 80,
     "low_directional_spread": 60,
+    "funding_pressure_long": 50,  # new V1.7.6 (neutral funding)
 }
 
 
 def test_snapshot_uses_range_mode_weights_when_detected(monkeypatch) -> None:
     """When ``detect_mode`` returns ``range``, snapshot applies range weights.
 
-    Range-mode ``long_weights_by_mode['range']``::
+    V1.7.6 range-mode ``long_weights_by_mode['range']``::
 
         mtf_trend_bullish 0.05
         bullish_structure 0.05
-        range_structure    0.30
+        momentum_mid      0.10
+        long_risk_reward  0.10
+        regime_fit_long   0.08
+        execution_quality 0.05
+        range_structure   0.30
         low_directional_spread 0.20
-        long_risk_reward   0.15
-        regime_fit_long    0.15
-        execution_quality  0.10
+        funding_pressure_long  0.07
 
     With the values from ``_RANGE_FEATURES`` the expected total is::
 
-        80*0.05 + 80*0.05 + 80*0.30 + 60*0.20
-        + 70*0.15 + 40*0.15 + 70*0.10 = 67.5
+        80*0.05 + 80*0.05 + 60*0.10 + 70*0.10 + 40*0.08 + 70*0.05
+        + 80*0.30 + 60*0.20 + 50*0.07 = 67.2
     """
 
     monkeypatch.setattr(snapshot_builder, "detect_mode", lambda *a, **kw: "range")
@@ -69,13 +74,15 @@ def test_snapshot_uses_range_mode_weights_when_detected(monkeypatch) -> None:
     )
 
     expected = round(
-        80 * 0.05
-        + 80 * 0.05
-        + 70 * 0.15
-        + 40 * 0.15
-        + 70 * 0.10
-        + 80 * 0.30
-        + 60 * 0.20,
+        80 * 0.05    # mtf_trend_bullish
+        + 80 * 0.05  # bullish_structure
+        + 60 * 0.10  # momentum_mid (range mode only keeps momentum_mid)
+        + 70 * 0.10  # long_risk_reward
+        + 40 * 0.08  # regime_fit_long
+        + 70 * 0.05  # execution_quality
+        + 80 * 0.30  # range_structure
+        + 60 * 0.20  # low_directional_spread
+        + 50 * 0.07, # funding_pressure_long (neutral)
         2,
     )
     assert snap["long_score"] == expected
@@ -83,8 +90,8 @@ def test_snapshot_uses_range_mode_weights_when_detected(monkeypatch) -> None:
     assert snap["asset_class"] == "crypto"
 
     # In range mode the mtf_trend_bullish weight is 0.05, so increasing it
-    # from 80 -> 100 only nudges the long_score by 1.0 (not the 4.4 a trend
-    # table would add with weight 0.22). This pinpoints which weight table
+    # from 80 -> 100 only nudges the long_score by 1.0 (not the 4.0 a trend
+    # table would add with weight 0.20). This pinpoints which weight table
     # was actually applied.
     high_trend = StrategySnapshotBuilder._build_snapshot(
         features={**_RANGE_FEATURES, "mtf_trend_bullish": 100},
@@ -101,14 +108,17 @@ def test_snapshot_uses_range_mode_weights_when_detected(monkeypatch) -> None:
 def test_snapshot_uses_trend_mode_weights_when_detected(monkeypatch) -> None:
     """When ``detect_mode`` returns ``trend``, snapshot applies trend weights.
 
-    Trend-mode ``long_weights_by_mode['trend']``::
+    V1.7.6 trend-mode ``long_weights_by_mode['trend']``::
 
-        mtf_trend_bullish 0.22
-        bullish_structure 0.22
-        bullish_momentum  0.18
+        mtf_trend_bullish 0.20
+        bullish_structure 0.20
+        momentum_short    0.06
+        momentum_mid      0.06
+        momentum_long     0.05
         long_risk_reward  0.13
-        regime_fit_long   0.15
+        regime_fit_long   0.13
         execution_quality 0.10
+        funding_pressure_long 0.07
     """
 
     monkeypatch.setattr(snapshot_builder, "detect_mode", lambda *a, **kw: "trend")
@@ -125,19 +135,22 @@ def test_snapshot_uses_trend_mode_weights_when_detected(monkeypatch) -> None:
     )
 
     expected = round(
-        80 * 0.22
-        + 80 * 0.22
-        + 60 * 0.18
-        + 70 * 0.13
-        + 40 * 0.15
-        + 70 * 0.10,
+        80 * 0.20    # mtf_trend_bullish
+        + 80 * 0.20  # bullish_structure
+        + 60 * 0.06  # momentum_short
+        + 60 * 0.06  # momentum_mid
+        + 60 * 0.05  # momentum_long
+        + 70 * 0.13  # long_risk_reward
+        + 40 * 0.13  # regime_fit_long
+        + 70 * 0.10  # execution_quality
+        + 50 * 0.07, # funding_pressure_long (neutral)
         2,
     )
     assert snap["long_score"] == expected
     assert snap["mode"] == "trend"
 
     # Increasing mtf_trend_bullish from 80 -> 100 changes the score by
-    # 20 * 0.22 = 4.4 in trend mode (vs 1.0 in range mode).
+    # 20 * 0.20 = 4.0 in trend mode (vs 1.0 in range mode).
     high_trend = StrategySnapshotBuilder._build_snapshot(
         features={**_RANGE_FEATURES, "mtf_trend_bullish": 100},
         regime="trend",
@@ -146,7 +159,7 @@ def test_snapshot_uses_trend_mode_weights_when_detected(monkeypatch) -> None:
         timeframe="1d",
     )
     delta = high_trend["long_score"] - snap["long_score"]
-    assert delta == pytest.approx(4.4, abs=1e-9)
+    assert delta == pytest.approx(4.0, abs=1e-9)
 
 
 def test_snapshot_uses_transition_mode_weights_when_detected(monkeypatch) -> None:
@@ -191,7 +204,11 @@ def test_snapshot_uses_transition_mode_weights_when_detected(monkeypatch) -> Non
 
 
 def test_snapshot_short_score_uses_mode_aware_short_weights(monkeypatch) -> None:
-    """Mirror coverage for short side: range-mode shrinks trend bear weight."""
+    """Mirror coverage for short side: range-mode shrinks trend bear weight.
+
+    V1.7.6 short range-mode weights mirror the long side with ``_bearish``
+    suffix and ``funding_pressure_short`` instead of ``funding_pressure_long``.
+    """
 
     monkeypatch.setattr(snapshot_builder, "detect_mode", lambda *a, **kw: "range")
     monkeypatch.setattr(
@@ -201,12 +218,13 @@ def test_snapshot_short_score_uses_mode_aware_short_weights(monkeypatch) -> None
     short_features = {
         "mtf_trend_bearish": 80,
         "bearish_structure": 80,
-        "bearish_momentum": 60,
+        "momentum_mid_bearish": 60,
         "short_risk_reward": 70,
         "regime_fit_short": 40,
         "execution_quality": 70,
         "range_structure": 80,
         "low_directional_spread": 60,
+        "funding_pressure_short": 50,
     }
     snap = StrategySnapshotBuilder._build_snapshot(
         features=short_features,
@@ -217,13 +235,15 @@ def test_snapshot_short_score_uses_mode_aware_short_weights(monkeypatch) -> None
     )
 
     expected = round(
-        80 * 0.05
-        + 80 * 0.05
-        + 70 * 0.15
-        + 40 * 0.15
-        + 70 * 0.10
-        + 80 * 0.30
-        + 60 * 0.20,
+        80 * 0.05    # mtf_trend_bearish
+        + 80 * 0.05  # bearish_structure
+        + 60 * 0.10  # momentum_mid_bearish
+        + 70 * 0.10  # short_risk_reward
+        + 40 * 0.08  # regime_fit_short
+        + 70 * 0.05  # execution_quality
+        + 80 * 0.30  # range_structure
+        + 60 * 0.20  # low_directional_spread
+        + 50 * 0.07, # funding_pressure_short (neutral)
         2,
     )
     assert snap["short_score"] == expected
@@ -568,13 +588,17 @@ def test_transition_mode_uses_multiplicative_gate_on_vol_compression(monkeypatch
     features_base = {
         "mtf_trend_bullish": 80,
         "bullish_structure": 80,
-        "bullish_momentum": 60,
+        "momentum_short": 60,
+        "momentum_mid": 60,
+        "momentum_long": 60,
         "long_risk_reward": 70,
         "regime_fit_long": 60,
         "execution_quality": 70,
         "mtf_trend_bearish": 30,
         "bearish_structure": 30,
-        "bearish_momentum": 40,
+        "momentum_short_bearish": 40,
+        "momentum_mid_bearish": 40,
+        "momentum_long_bearish": 40,
         "short_risk_reward": 70,
         "regime_fit_short": 60,
         "range_structure": 50,
@@ -633,7 +657,9 @@ def test_multiplicative_gate_only_applies_in_transition_mode(monkeypatch) -> Non
     features_base = {
         "mtf_trend_bullish": 80,
         "bullish_structure": 80,
-        "bullish_momentum": 60,
+        "momentum_short": 60,
+        "momentum_mid": 60,
+        "momentum_long": 60,
         "long_risk_reward": 70,
         "regime_fit_long": 60,
         "execution_quality": 70,
