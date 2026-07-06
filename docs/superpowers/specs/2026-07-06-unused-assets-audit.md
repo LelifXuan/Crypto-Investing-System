@@ -83,27 +83,28 @@
 
 > 上述 6 个是**真正需要用户决策**的（每条 = "建 UI" 或 "删 endpoint" 二选一）。
 
-## 3. CSS 孤儿类分类（来自域 C 报告）
+## 3. CSS 孤儿类分类（来自域 C 报告 — 二次复核后修正）
 
 | 处置 | 数量 | 估算行数 |
 |---|---|---|
-| 🟢 **可安全删除** | **261 个类** | **~5,500 行**（~59% of styles.css） |
+| 🟢 **可安全删除** | **~209 个类** | **~4,400 行**（~47% of styles.css） |
 | 🟡 **已知即将启用（黄金 V2 spec）** | 24 个 | 0 额外 |
 | 🟠 **可能是别名/兼容** | 4 个 | 0 额外 |
 | 🔴 **暂时保留** | 0 个 | — |
+| 🎁 **styles-v15.css 全删（额外）** | 95 个 | 629 行（100% 孤儿） |
 
-**按前缀统计 🟢 可删**：
+**按前缀统计 🟢 可删**（二次复核后修正）：
 
 | 前缀 | 数量 | 备注 |
 |---|---|---|
-| `.macro-` | 60 | 大量 V1 命名错配（如 `.macro-month-grid` vs 实际用的 `.calendar-grid`） |
-| `.strategy-` | 56 | 全部 V1 类（V1.7 已迁 V2 命名） |
-| `.structure-` | 42 | V1 detail/diagnostics 全死 |
-| `.monitoring-` | 25 | `.monitoring-pane*` V1 命名（V2 用 `panel`） |
-| `.analysis-` | 25 | V1 残留 |
-| `.etf-` | 24 | 剔除动态生成的 `.etf-positive/-negative` |
-| `.btc-` | 16 | 旧版密度变体（实际由后端 chart_layout 注入） |
-| `.gold-` | 13 | 其他（非 V2 spec 启用） |
+| `.macro-` | 46 | 大量 V1 命名错配（`.macro-month-grid` vs 实际用 `.calendar-grid`） |
+| `.strategy-` | 47 | V1 命名（V1.7 已迁 V2 命名），剔除 `.strategy-plan-card`（OR 兼容保留） |
+| `.structure-` | 28 | V1 detail/diagnostics 全死（其他 LIVE 类被 structure.js 实际使用） |
+| `.monitoring-` | 24 | `.monitoring-pane*` V1 命名（V2 用 `panel`） |
+| `.analysis-` | 22 | V1 残留（剔除 `.analysis-hero-card/-top/-chart-grid`） |
+| `.etf-` | 21 | 保留动态生成类（`.etf-state-color--*` / `.etf-positive/-negative`） |
+| `.btc-` | 8 | 旧版密度变体（实际由后端 chart_layout 注入） |
+| `.gold-` | 13 | V1 残留（非 V2 spec 启用的） |
 
 **关键发现 1：宏观日历整组命名错配**
 - `styles.css:683-820` 定义 `.macro-month-grid/.macro-month-day.*` 整组
@@ -150,22 +151,27 @@
 
 ### 🟢 第 1 梯队 — 立即清理（纯收益，零风险）
 
-**子项 1A — 死代码删除**（2-3 小时）
+**子项 1A — 死代码删除**（2-3 小时）— **用户暂缓**
 - 删 7 个 service（保留 `data_quality.py` 等带测试的 2 个到子项 1B 处理）
 - 删 13 个孤儿 endpoint
 - 改对应的 `__init__.py` 导出
 - 改对应的 `api/router.py` 装配
 - 跑全套 pytest 验证
 
-**子项 1B — 测试与死代码同步**（1 小时）
+**子项 1B — 测试与死代码同步**（1 小时）— **用户暂缓**
 - 同步删除 `tests/test_data_quality_and_decision.py` 和 `tests/test_chip_structure.py` 中对 `data_quality.py` 的 import
 - 删除 `data_quality.py` 和 `macro/healthcheck.py`
 - 跑测试
 
-**子项 1C — CSS 孤儿类清理**（2-3 小时）
-- 删 261 个孤儿类（~5,500 行）
-- **保留**：黄金 V2 spec 启用的 24 个、OR 兼容 selector 中的活类（`.strategy-plan-card`）、动态生成类
+**子项 1C — CSS 孤儿类清理**（2-3 小时）— **用户已批准**
+- 删 ~209 个孤儿类（~4,400 行，styles.css 9310 → ~4900）
+- **保留**：黄金 V2 spec 启用的 24 个、OR 兼容 selector 中的活类（`.strategy-plan-card`）、动态生成类（`.btc-card-span-*` / `.btc-chart-density-*` / `.etf-state-color--*` / `.macro-diff-*`）
 - 跑静态分析 + 视觉冒烟（开每个 page 走一遍）
+
+**子项 1D — styles-v15.css 100% 孤儿**（30 分钟，可与 1C 合并）— **额外收益**
+- 删 `app/static/styles-v15.css` (629 行)
+- 删 `app/templates/page.html:9` 的 link 引用
+- 删 `app/static/main.js:128-130` 的 ensureStylesheetOnce 加载逻辑
 
 ### 🟡 第 2 梯队 — 启用资产（4-8 小时，分多次 PR）
 
