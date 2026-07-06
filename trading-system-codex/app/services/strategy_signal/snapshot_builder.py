@@ -676,6 +676,13 @@ class StrategySnapshotBuilder:
                 missing_inputs.append(f"{key}:{state}")
         missing_input_penalties = self._missing_input_penalties(missing_inputs)
 
+        # V1.7.6 Task 10: hoist funding_state to a local so both
+        # ``_feature_components`` (funding_pressure slots) and the snapshot's
+        # ``funding_crowding_score`` consume the same source. V2 derivatives
+        # wiring is the follow-up Task 10b; default ``None`` keeps the
+        # degraded fallback (0.0) so behavior is unchanged in production.
+        funding_state: str | None = None
+
         snapshot: dict[str, Any] = {
             "instrument_id": instrument,
             "symbol": instrument,
@@ -758,7 +765,7 @@ class StrategySnapshotBuilder:
                         # V1.7.6 Layer B: V2 derivatives_regime wiring is
                         # Task 10. Until then, pass None so funding_pressure
                         # slots degrade to neutral via weighted_score_skip.
-                        funding_state=None,
+                        funding_state=funding_state,
                         long_entry=long_entry,
                         long_stop=_num(
                             levels.get("structure_invalid_long"),
@@ -793,7 +800,7 @@ class StrategySnapshotBuilder:
                 "event_risk_score": 85
                 if macro_status in {"block", "event_wait", "risk_off"}
                 else 20,
-                "funding_crowding_score": 0,
+                "funding_crowding_score": _remap_funding_crowding(funding_state),
                 "late_entry_risk_score": risk_score,
                 "conflict_score": min(100, conflict_level * 20),
                 "long_setup_ready": direction_metrics["bullish"] >= 58,

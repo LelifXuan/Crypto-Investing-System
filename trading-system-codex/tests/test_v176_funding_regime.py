@@ -169,3 +169,13 @@ def test_neutral_weights_unchanged():
     assert nw["low_directional_spread"] == 0.15
     assert nw["high_conflict_score"] == 0.10
     assert nw["event_uncertainty"] == 0.10
+
+
+# --- V1.7.6 Task 10: hardcoded ``funding_crowding_score: 0`` reconnected ---
+
+
+def test_remap_funding_crowding_replace_at_snapshot_py710():
+    """Sanity check: _remap_funding_crowding maps positive_hot → 80.0 (not 0)."""
+    assert _remap_funding_crowding("positive_hot") == 80.0
+    assert _remap_funding_crowding("neutral") == 20.0
+    assert _remap_funding_crowding(None) == 0.0  # preserve dead-zero behavior in degraded path
