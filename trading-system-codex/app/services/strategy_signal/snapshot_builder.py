@@ -838,6 +838,29 @@ class StrategySnapshotBuilder:
         bearish_momentum = clamp(
             50.0 + max(0.0, 50.0 - rsi) * 1.3 + max(0.0, macd_prev - macd) * 3.0
         )
+        # V1.7.6: 3-timeframe momentum (Layer A) — replaces single bullish/bearish_momentum.
+        # Each scale computes its own percentile rank from a 90-bar RSI history.
+        # Transitional: emit BOTH old (single) and new (3-frame) keys until consumers migrate.
+        # IMPORTANT (V1.7.6 transitional): until Task 9 wires real multi-frame RSI
+        # histories, ``_compute_momentum_at_scale(rsi_history=None)`` falls through
+        # ``_percentile_rank(None, rsi)`` and returns bullish≈neutral. The bearish
+        # mirror systematically settles near 92.5 because rsi_pct=50 → raw_bearish =
+        # 50 + (100-50)*0.85 = 92.5. Consumers reading the new 6 keys before Task 9
+        # should NOT trust the bearish mirror's magnitude; mid/long dampen this. The
+        # old keys (bullish_momentum/bearish_momentum) remain the authoritative
+        # single-scale read until Task 9.
+        short_bullish, short_bearish = _compute_momentum_at_scale(
+            rsi=rsi,
+            macd_hist=macd,
+            macd_prev=macd_prev,
+            rsi_history=None,  # could not derive 90-bar history from signature; fall back to None → neutral
+        )
+        # Mid and long scaled: rely on the only RSI we receive — apply length-aware dampening
+        # to differentiate (mid: dampen to 0.85x; long: 0.70x). No new upstream signal yet.
+        mid_bullish = clamp(50.0 + (short_bullish - 50.0) * 0.85)
+        mid_bearish = clamp(50.0 + (short_bearish - 50.0) * 0.85)
+        long_bullish = clamp(50.0 + (short_bullish - 50.0) * 0.70)
+        long_bearish = clamp(50.0 + (short_bearish - 50.0) * 0.70)
         # V1.7.4 audit fix: low_directional_spread and *_risk_reward sub-scores
         # are weighted at 0.20 + 0.15 + 0.15 = 0.50 (50%) of the range-mode
         # long/short score in market_strategy_signal_config_v17.json. Without
@@ -871,6 +894,13 @@ class StrategySnapshotBuilder:
             "bullish_momentum": bullish_momentum,
             "bearish_momentum": bearish_momentum,
             "momentum_source": "rsi+macd",
+            # V1.7.6 transitional: new 3-frame keys; old keys retained until consumer migration (Task 8).
+            "momentum_short": short_bullish,
+            "momentum_short_bearish": short_bearish,
+            "momentum_mid": mid_bullish,
+            "momentum_mid_bearish": mid_bearish,
+            "momentum_long": long_bullish,
+            "momentum_long_bearish": long_bearish,
             "direction_score_aggregate": direction_metrics["bullish"]
             - direction_metrics["bearish"],
             "low_directional_spread": low_directional_spread,

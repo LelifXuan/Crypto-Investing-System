@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from app.services.strategy_signal.risk_reward import _percentile_rank
 
 
@@ -124,3 +126,76 @@ def test_compute_momentum_at_scale_clamped_to_0_100():
     )
     assert 0.0 <= bullish <= 100.0
     assert 0.0 <= bearish <= 100.0
+
+
+from app.services.strategy_signal.snapshot_builder import StrategySnapshotBuilder
+
+
+def test_feature_components_emits_six_momentum_keys():
+    """All 6 new momentum keys present in features dict."""
+    features = StrategySnapshotBuilder._feature_components(
+        indicators={"ema_20": 100, "adx_14": 25},
+        structure_overall={"bias": "neutral"},
+        regime="transition",
+        direction_metrics={"bullish": 60.0, "bearish": 40.0},
+        rsi=58.0,
+        macd=1.0,
+        macd_prev=0.5,
+        adx=25.0,
+    )
+    for key in (
+        "momentum_short",
+        "momentum_short_bearish",
+        "momentum_mid",
+        "momentum_mid_bearish",
+        "momentum_long",
+        "momentum_long_bearish",
+    ):
+        assert key in features, f"missing key {key}"
+
+
+@pytest.mark.xfail(reason="transitional — old keys retained until Task 9 wiring. Test passes after V1.7.6 Task 9.", strict=False)
+def test_feature_components_does_not_emit_old_momentum_keys():
+    """TRANSITIONAL: passes after Task 9 deletes old keys; fails by design until then."""
+    features = StrategySnapshotBuilder._feature_components(
+        indicators={"ema_20": 100, "adx_14": 25},
+        structure_overall={"bias": "neutral"},
+        regime="trend",
+        direction_metrics={"bullish": 60.0, "bearish": 40.0},
+        rsi=58.0,
+        macd=1.0,
+        macd_prev=0.5,
+        adx=25.0,
+    )
+    for key in ("bullish_momentum", "bearish_momentum", "momentum_source"):
+        assert key not in features, f"old key {key} should be removed"
+
+
+def test_feature_components_three_frame_momentum_independent_from_direction_metrics():
+    """Changing direction_metrics does not affect any momentum sub-score."""
+    base_kwargs = dict(
+        indicators={"ema_20": 100, "ema_20_prev": 99, "ema_50": 98, "ema_200": 95, "adx_14": 25},
+        structure_overall={"bias": "neutral"},
+        regime="trend",
+        rsi=62.0,
+        macd=1.0,
+        macd_prev=0.5,
+        adx=25.0,
+    )
+    bullish = StrategySnapshotBuilder._feature_components(
+        **base_kwargs,
+        direction_metrics={"bullish": 90.0, "bearish": 10.0},
+    )
+    bearish = StrategySnapshotBuilder._feature_components(
+        **base_kwargs,
+        direction_metrics={"bullish": 10.0, "bearish": 90.0},
+    )
+    for key in (
+        "momentum_short",
+        "momentum_short_bearish",
+        "momentum_mid",
+        "momentum_mid_bearish",
+        "momentum_long",
+        "momentum_long_bearish",
+    ):
+        assert bullish[key] == bearish[key], f"{key} depends on direction_metrics"
