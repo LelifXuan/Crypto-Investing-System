@@ -96,3 +96,76 @@ def test_weighted_score_skip_clamps_to_0_100():
     weights = {"a": 1.0}
     result = weighted_score_skip(values, weights)
     assert 0.0 <= result <= 100.0
+
+
+# --- V1.7.6 weight-table sanity (3-TF momentum + funding regime) ---
+
+
+import pytest
+
+from app.services.strategy_signal.config_loader import (
+    DEFAULT_STRATEGY_SIGNAL_CONFIG,
+    load_strategy_signal_config,
+)
+
+
+def test_weight_tables_sum_to_one_all_modes():
+    """Flat, Trend, Range, Transition × {long, short} all sum to exactly 1.00."""
+    config = load_strategy_signal_config()
+    long_weights = config["long_weights"]
+    long_mode = config["long_weights_by_mode"]
+    short_weights = config["short_weights"]
+    short_mode = config["short_weights_by_mode"]
+
+    for name, weights in [
+        ("long_flat", long_weights),
+        ("long_trend", long_mode["trend"]),
+        ("long_range", long_mode["range"]),
+        ("long_transition", long_mode["transition"]),
+        ("short_flat", short_weights),
+        ("short_trend", short_mode["trend"]),
+        ("short_range", short_mode["range"]),
+        ("short_transition", short_mode["transition"]),
+    ]:
+        s = sum(weights.values())
+        assert abs(s - 1.0) < 0.005, f"{name} sum = {s}, expected 1.00"
+
+
+def test_trend_long_weights_has_three_momentum_frames():
+    """Trend mode has 3 distinct momentum sub-scores summing to ~0.17."""
+    config = load_strategy_signal_config()
+    weights = config["long_weights_by_mode"]["trend"]
+    short_w = weights.get("momentum_short", 0)
+    mid_w = weights.get("momentum_mid", 0)
+    long_w = weights.get("momentum_long", 0)
+    assert short_w > 0 and mid_w > 0 and long_w > 0
+    assert abs((short_w + mid_w + long_w) - 0.17) < 0.01
+
+
+def test_transition_long_weights_has_vol_compression_and_momentum_short():
+    """Transition keeps vol_compression 0.30, adds momentum_short 0.15."""
+    config = load_strategy_signal_config()
+    weights = config["long_weights_by_mode"]["transition"]
+    assert weights.get("vol_compression") == pytest.approx(0.30)
+    assert weights.get("momentum_short") == pytest.approx(0.15)
+
+
+def test_range_long_weights_keeps_only_momentum_mid():
+    """Range mode has momentum_mid 0.10, no momentum_short / momentum_long."""
+    config = load_strategy_signal_config()
+    weights = config["long_weights_by_mode"]["range"]
+    assert weights.get("momentum_mid") == pytest.approx(0.10)
+    assert "momentum_short" not in weights or weights["momentum_short"] == 0
+    assert "momentum_long" not in weights or weights["momentum_long"] == 0
+
+
+def test_neutral_weights_unchanged():
+    """V1.7.6 leaves V1.7.5 neutral weights alone."""
+    config = load_strategy_signal_config()
+    nw = config["neutral_weights"]
+    assert nw["range_structure"] == 0.25
+    assert nw["low_adx"] == 0.20
+    assert nw["low_volume_confirmation"] == 0.20
+    assert nw["low_directional_spread"] == 0.15
+    assert nw["high_conflict_score"] == 0.10
+    assert nw["event_uncertainty"] == 0.10

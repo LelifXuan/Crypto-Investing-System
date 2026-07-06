@@ -6,6 +6,18 @@
     "setup_lifecycle_engine": "setup-lifecycle-v1.7",
     "review_engine": "review-engine-v0.3"
   },
+  "momentum_scale_definitions": {
+    "short": { "rsi_lookback": 5, "macd_lookback": 5, "description": "近 5 根 K 线" },
+    "mid":   { "rsi_lookback": 20, "macd_lookback": 20, "description": "近 20 根 K 线" },
+    "long":  { "rsi_lookback": 60, "macd_lookback": 60, "description": "近 60 根 K 线" }
+  },
+  "momentum_percentile_window": 90,
+  "funding_regime_mapping": {
+    "positive_hot":   { "funding_pressure_long": 15, "funding_pressure_short": 85, "funding_crowding_score": 80 },
+    "negative_hot":   { "funding_pressure_long": 85, "funding_pressure_short": 15, "funding_crowding_score": 80 },
+    "neutral":        { "funding_pressure_long": 50, "funding_pressure_short": 50, "funding_crowding_score": 20 },
+    "missing":        { "funding_pressure_long": null, "funding_pressure_short": null, "funding_crowding_score": 0 }
+  },
   "timeframe_mapping": {
     "1w": "1d",
     "1d": "4h",
@@ -21,75 +33,95 @@
     "execution_quality": 0.1
   },
   "long_weights": {
-    "mtf_trend_bullish": 0.20,
-    "bullish_structure": 0.20,
-    "bullish_momentum": 0.16,
+    "mtf_trend_bullish": 0.18,
+    "bullish_structure": 0.18,
+    "momentum_short": 0.06,
+    "momentum_mid": 0.05,
+    "momentum_long": 0.05,
     "long_risk_reward": 0.12,
-    "regime_fit_long": 0.14,
+    "regime_fit_long": 0.13,
     "execution_quality": 0.10,
-    "range_structure": 0.08
+    "range_structure": 0.06,
+    "funding_pressure_long": 0.07
   },
   "long_weights_by_mode": {
     "trend": {
-      "mtf_trend_bullish": 0.22,
-      "bullish_structure": 0.22,
-      "bullish_momentum": 0.18,
+      "mtf_trend_bullish": 0.20,
+      "bullish_structure": 0.20,
+      "momentum_short": 0.06,
+      "momentum_mid": 0.06,
+      "momentum_long": 0.05,
       "long_risk_reward": 0.13,
-      "regime_fit_long": 0.15,
-      "execution_quality": 0.10
+      "regime_fit_long": 0.13,
+      "execution_quality": 0.10,
+      "funding_pressure_long": 0.07
     },
     "range": {
       "mtf_trend_bullish": 0.05,
       "bullish_structure": 0.05,
+      "momentum_mid": 0.10,
+      "long_risk_reward": 0.10,
+      "regime_fit_long": 0.08,
+      "execution_quality": 0.05,
       "range_structure": 0.30,
       "low_directional_spread": 0.20,
-      "long_risk_reward": 0.15,
-      "regime_fit_long": 0.15,
-      "execution_quality": 0.10
+      "funding_pressure_long": 0.07
     },
     "transition": {
       "vol_compression": 0.30,
-      "mtf_trend_bullish": 0.15,
+      "mtf_trend_bullish": 0.10,
       "bullish_structure": 0.10,
-      "long_risk_reward": 0.20,
-      "regime_fit_long": 0.15,
-      "execution_quality": 0.10
+      "momentum_short": 0.15,
+      "long_risk_reward": 0.15,
+      "regime_fit_long": 0.05,
+      "execution_quality": 0.05,
+      "funding_pressure_long": 0.10
     }
   },
   "short_weights": {
-    "mtf_trend_bearish": 0.20,
-    "bearish_structure": 0.20,
-    "bearish_momentum": 0.16,
+    "mtf_trend_bearish": 0.18,
+    "bearish_structure": 0.18,
+    "momentum_short_bearish": 0.06,
+    "momentum_mid_bearish": 0.05,
+    "momentum_long_bearish": 0.05,
     "short_risk_reward": 0.12,
-    "regime_fit_short": 0.14,
+    "regime_fit_short": 0.13,
     "execution_quality": 0.10,
-    "range_structure": 0.08
+    "range_structure": 0.06,
+    "funding_pressure_short": 0.07
   },
   "short_weights_by_mode": {
     "trend": {
-      "mtf_trend_bearish": 0.22,
-      "bearish_structure": 0.22,
-      "bearish_momentum": 0.18,
+      "mtf_trend_bearish": 0.20,
+      "bearish_structure": 0.20,
+      "momentum_short_bearish": 0.06,
+      "momentum_mid_bearish": 0.06,
+      "momentum_long_bearish": 0.05,
       "short_risk_reward": 0.13,
-      "regime_fit_short": 0.15,
-      "execution_quality": 0.10
+      "regime_fit_short": 0.13,
+      "execution_quality": 0.10,
+      "funding_pressure_short": 0.07
     },
     "range": {
       "mtf_trend_bearish": 0.05,
       "bearish_structure": 0.05,
+      "momentum_mid_bearish": 0.10,
+      "short_risk_reward": 0.10,
+      "regime_fit_short": 0.08,
+      "execution_quality": 0.05,
       "range_structure": 0.30,
       "low_directional_spread": 0.20,
-      "short_risk_reward": 0.15,
-      "regime_fit_short": 0.15,
-      "execution_quality": 0.10
+      "funding_pressure_short": 0.07
     },
     "transition": {
       "vol_compression": 0.30,
-      "mtf_trend_bearish": 0.15,
+      "mtf_trend_bearish": 0.10,
       "bearish_structure": 0.10,
-      "short_risk_reward": 0.20,
-      "regime_fit_short": 0.15,
-      "execution_quality": 0.10
+      "momentum_short_bearish": 0.15,
+      "short_risk_reward": 0.15,
+      "regime_fit_short": 0.05,
+      "execution_quality": 0.05,
+      "funding_pressure_short": 0.10
     }
   },
   "neutral_weights": {
