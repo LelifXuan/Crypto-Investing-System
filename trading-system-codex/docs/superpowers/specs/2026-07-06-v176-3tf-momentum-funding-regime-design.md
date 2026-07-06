@@ -238,19 +238,21 @@ No schema validator changes needed (additive).
 
 ### 2.8 Caller chain update (Deletion Cascade)
 
-Deleting `bullish_momentum` / `bearish_momentum` / `momentum_source` requires updating **9 source files** + **2 build artifacts**:
+Deleting `bullish_momentum` / `bearish_momentum` / `momentum_source` requires updating **11 files** (5 source + 6 test) + **1 config** + **2 build artifacts**:
 
 | File | Update required |
 |---|---|
 | `app/services/strategy_signal/snapshot_builder.py` | Remove emission + update `_feature_components` signature to accept 3-frame RSI/MACD inputs |
 | `app/services/strategy_signal/scoring_engine.py` | No direct read; reads via `weighted_score(snapshot, weights)` so behavior cascades naturally |
-| `app/services/strategy_signal/confidence_dimensions.py` | Likely reads `bullish_momentum` / `bearish_momentum` — replace with max-of-3 frame variant |
-| `app/services/strategy_signal/setup_lifecycle.py` | Likely reads momentum keys — replace with mapped values from new keys |
+| `app/services/strategy_signal/confidence_dimensions.py` | Reads `bullish_momentum` / `bearish_momentum` — replace with `max(momentum_short, momentum_mid, momentum_long)` (consumers want a single "momentum" signal) |
+| `app/services/strategy_signal/setup_lifecycle.py` | Reads momentum keys — replace with mapped values from new keys |
 | `app/services/strategy_signal/strategy_generator.py` | If reads momentum keys — replace |
+| `app/services/strategy_signal/config_loader.py` | `DEFAULT_STRATEGY_SIGNAL_CONFIG` has `bullish_momentum: 0.16` / `bearish_momentum: 0.16` (lines 34, 44) — remove and update `flatten_default_weights` consumers |
+| `app/monitoring/configs/market_strategy_signal_config_v17.json` | Lines 26, 36, 72 reference `bullish_momentum` — remove and replace with new keys + new weight tables per §2.6 |
 | `tests/test_snapshot_feature_sources.py` | Add `not in {bullish_momentum, bearish_momentum, momentum_source}` assertion; update independence test inputs |
 | `tests/test_strategy_decision_rules.py` | Update fixture: replace `bullish_momentum: 60` etc. with `momentum_short: 60` `momentum_mid: 60` `momentum_long: 60` |
 | `tests/test_strategy_no_microstructure.py` | Same fixture update |
-| `tests/test_strategy_signal_snapshot.py` | Same fixture update |
+| `tests/test_strategy_signal_snapshot.py` | Same fixture update + add new weight-sum tests |
 | `tests/test_strategy_setup_lifecycle_v17.py` | Same fixture update (if applicable) |
 | `tests/test_confidence_dimensions.py` | Same fixture update |
 | `dist/portable_bundle/...` (mirror copies after each release) | Mechanical rebuild post-merge |
