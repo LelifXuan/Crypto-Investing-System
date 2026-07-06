@@ -1,5 +1,44 @@
 # Changelog
 
+## V1.7.6 (2026-07-06)
+
+3-TF 动量 + Funding Regime 子分升级 — 拆掉单尺度动量，新增 3 个独立时间尺度动量（5/20/60 K 线），并把 V2 funding_state 接入成 `funding_pressure_long/short` 子分，重新激活一直硬编码为 0 的 `funding_crowding_score`。
+
+### 后端
+
+- `app/services/strategy_signal/risk_reward.py` 新增 `_percentile_rank(history, current)` helper：处理空 history / None / 非数值输入时返回 50，结果钳制 0-100。
+- `app/services/strategy_signal/snapshot_builder.py` 新增 `_compute_momentum_at_scale(lookback_candles, ...)`：按 `momentum_scale_definitions`（short=5 / mid=20 / long=60 根 K 线）独立计算 RSI + MACD + percentile rank 子分。`build()` 在 `_feature_components` 透传 3 个新键 `momentum_short / momentum_mid / momentum_long`（旧 `bullish_momentum / bearish_momentum` 键删除）。
+- `app/services/strategy_signal/snapshot_builder.py` 新增 `_compute_funding_pressure(derivatives_regime)`：从 V2 `derivatives_regime.funding_state` 映射到 `funding_pressure_long / funding_pressure_short / funding_degraded`；当 V2 缺失时输出 None + `funding_degraded=True`，下层降级归一化。
+- `app/services/strategy_signal/snapshot_builder.py` 新增 `_remap_funding_crowding(derivatives_regime)`：替换原来 `snapshot_builder.py:710` 的硬编码 `0` 调用 `funding_crowding_score=0`，现在真正由 V2 `funding_state` 映射（positive_hot / negative_hot → 80；neutral → 20；missing → 0）。
+- `app/services/strategy_signal/scoring_engine.py` 新增 `weighted_score_skip(weights, slots, min_required=0.5)`：slots 缺失时跳过缺失 slot 并对剩余权重做归一化；当总和不足 `min_required` 时回退 50。`compute()` 在 funding_pressure 缺失路径使用此函数。
+- `app/services/strategy_signal/config_loader.py` 删除 `DEFAULT_STRATEGY_SIGNAL_CONFIG` 中硬编码的旧 momentum 键，注释指向 JSON 加载路径。
+- `app/services/strategy_signal/confidence_dimensions.py` / `setup_lifecycle.py` / `strategy_generator.py` 等下游 consumers：把对 `bullish_momentum / bearish_momentum` 的读取替换为新 6 键（取 max 形成等价动量代表）。
+- `app/monitoring/configs/market_strategy_signal_config_v17.json`：
+  - 新增 `momentum_scale_definitions`（short / mid / long 三个 lookback）+ `funding_regime_mapping`（4 种 funding_state → 3 个 output）。
+  - 重构权重表：删除旧 `long_weights / short_weights`；新增 `long_weights_by_mode / short_weights_by_mode`，3 模式（trend / range / transition）× {long, short}，每行 sum = 1.00。
+  - `funding_pressure_long` 权重纳入所有 3 个 long 模式（0.07-0.10），`funding_pressure_short` 纳入所有 3 个 short 模式。
+
+### 修复
+
+- `funding_crowding_score` 之前在 `snapshot_builder.py:710` 硬编码为 0，导致 `scoring_engine._long_penalty` 永远不会触发。现已接通 V2 funding_state 映射（hot → 80 / neutral → 20），crowding penalty 真正生效。
+
+### 测试
+
+- 新增 `tests/test_v176_3timeframe_momentum.py`（15 测试）：`_percentile_rank` 8 个边界（空 / None / 中位 / 极端高 / 极端低 / 钳制 / 非数值 / 内部 None）+ `_compute_momentum_at_scale` 4 个 + `_feature_components` 3 个（6 键 emit / 旧键不再 emit / 3 帧动量独立于方向指标）。
+- 新增 `tests/test_v176_funding_regime.py`（18 测试）：funding_pressure 4 个（positive_hot / negative_hot / neutral / missing-degraded）+ remap 4 个 + `weighted_score_skip` 4 个（all present / one missing renormalize / all none → 50 / clamp）+ weight tables 4 个（sum=1.00 / trend 三动量 / transition 含 vol_compression+momentum_short / range 只留 momentum_mid / neutral 旧权重保留）+ replace-at-snapshot-py710。
+- 修改 `tests/test_strategy_decision_rules.py` / `tests/test_strategy_no_microstructure.py` / `tests/test_strategy_signal_snapshot.py` / `tests/test_strategy_setup_lifecycle_v17.py` / `tests/test_confidence_dimensions.py`：fixture 从旧 `bullish_momentum / bearish_momentum` 迁移到 6 个新键（fixes 7 个 baseline 失败）。
+- 修改 `tests/test_snapshot_feature_sources.py`：新增 `test_old_momentum_keys_deleted` 断言 + 强化动量独立性测试。
+
+### 已知降级
+
+- `funding_pressure_long/short` 在 V2 上游缺失时返回 None + `funding_degraded=True`，`weighted_score_skip` 自动归一化剩余权重（funding slot 贡献 0），最终输出仍落在 0-100 区间。`funding_crowding_score` 此时回到 0（中性），与 `_long_penalty` 的 0 等价。
+- `_percentile_rank` 当前基于 5 档 bucket 近似（V1.7.5 限制保留），未来可改为完全历史 percentile。
+
+### 后续（不在本次范围）
+
+- `funding_regime_mapping` 与 V2 `derivatives_regime.funding_state` 的 vocabulary 同步（当前 V2 直接给出 positive_hot / negative_hot / neutral 三态）。
+- `_percentile_rank` 改成完全历史（不近似）。
+
 ## V1.7.5 (2026-07-02)
 
 技术指标页评分系统升级 — 解决 3 个根本性缺口：波动率压缩检测、EV 评估、非线性权重交互。
