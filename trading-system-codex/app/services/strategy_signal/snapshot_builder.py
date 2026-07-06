@@ -245,6 +245,49 @@ def _compute_setup_probability(
     return clamp(posterior, 0.01, 0.99)
 
 
+# V1.7.6 funding regime mapping per derivatives_regime.derive funding_state.
+_FUNDING_PRESSURE_MAP: dict[str, tuple[float, float]] = {
+    "positive_hot": (15.0, 85.0),   # (long, short)
+    "negative_hot": (85.0, 15.0),
+    "neutral": (50.0, 50.0),
+}
+_FUNDING_CROWDING_MAP: dict[str, float] = {
+    "positive_hot": 80.0,
+    "negative_hot": 80.0,
+    "neutral": 20.0,
+}
+
+
+def _compute_funding_pressure(
+    funding_state: str | None,
+) -> tuple[float | None, float | None, bool]:
+    """Map V2 derivatives_regime.funding_state to (long, short, degraded).
+
+    Returns (None, None, True) when state is missing or unrecognized. Per
+    decision B1 in the V1.7.6 spec, callers should skip weighted-score slots
+    and renormalize when degraded.
+    """
+    if funding_state is None or not isinstance(funding_state, str):
+        return None, None, True
+    normalized = funding_state.strip().lower()
+    if normalized in _FUNDING_PRESSURE_MAP:
+        long_v, short_v = _FUNDING_PRESSURE_MAP[normalized]
+        return long_v, short_v, False
+    return None, None, True
+
+
+def _remap_funding_crowding(funding_state: str | None) -> float:
+    """Map V2 funding_state to funding_crowding_score for the existing penalty.
+
+    Missing or unrecognized states → 0 (preserves dead-zero behavior so legacy
+    penalty terms remain no-op when V2 is unavailable).
+    """
+    if funding_state is None or not isinstance(funding_state, str):
+        return 0.0
+    normalized = funding_state.strip().lower()
+    return _FUNDING_CROWDING_MAP.get(normalized, 0.0)
+
+
 def classify_vwap_cost_channel(
     features: dict[str, Any], config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
