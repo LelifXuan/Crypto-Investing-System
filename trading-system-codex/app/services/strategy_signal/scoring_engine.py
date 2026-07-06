@@ -44,6 +44,33 @@ def weighted_score(values: dict[str, Any], weights: dict[str, float]) -> float:
     return clamp(sum(clamp(values.get(key, 0)) * weight for key, weight in weights.items()))
 
 
+def weighted_score_skip(
+    values: dict[str, Any], weights: dict[str, float]
+) -> float:
+    """Variant of weighted_score that skips slots with None values.
+
+    Used by V1.7.6 funding_pressure slots when V2 derivatives_regime is
+    degraded. The remaining slots are renormalized so the total weight
+    contribution equals sum(weights.values()), avoiding score inflation.
+
+    Returns 50.0 if all slots are None (degraded fallback).
+    """
+    used_pairs: list[tuple[float, float]] = []
+    target_weight_sum = sum(weights.values())
+    for key, weight in weights.items():
+        value = values.get(key)
+        if value is None:
+            continue
+        used_pairs.append((clamp(value), weight))
+    if not used_pairs:
+        return 50.0
+    used_weight_sum = sum(w for _, w in used_pairs)
+    if used_weight_sum <= 0:
+        return 50.0
+    raw = sum(v * w for v, w in used_pairs) / used_weight_sum * target_weight_sum
+    return clamp(raw)
+
+
 class DirectionScoringEngine:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
