@@ -433,7 +433,13 @@ def evaluate_strong_trend_follow(
         breakout = bool(
             snapshot.get("breakout_up") or snapshot.get("levels", {}).get("breakout_up")
         )
-        momentum = clamp(snapshot.get("bullish_momentum"))
+        momentum = clamp(
+            max(
+                snapshot.get("momentum_short", 50.0),
+                snapshot.get("momentum_mid", 50.0),
+                snapshot.get("momentum_long", 50.0),
+            )
+        )
         flow = clamp(
             max(
                 to_float(snapshot.get("volume_proxy_confirmation")),
@@ -451,7 +457,13 @@ def evaluate_strong_trend_follow(
         breakout = bool(
             snapshot.get("breakout_down") or snapshot.get("levels", {}).get("breakout_down")
         )
-        momentum = clamp(snapshot.get("bearish_momentum"))
+        momentum = clamp(
+            max(
+                snapshot.get("momentum_short_bearish", 50.0),
+                snapshot.get("momentum_mid_bearish", 50.0),
+                snapshot.get("momentum_long_bearish", 50.0),
+            )
+        )
         flow = clamp(
             max(
                 to_float(snapshot.get("volume_proxy_confirmation")),

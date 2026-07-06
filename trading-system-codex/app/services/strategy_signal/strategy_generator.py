@@ -707,8 +707,20 @@ class StrategyGenerator:
             },
             {
                 "name": "动量与成交",
-                "long_score": round2(snapshot.get("bullish_momentum")),
-                "short_score": round2(snapshot.get("bearish_momentum")),
+                "long_score": round2(
+                    max(
+                        snapshot.get("momentum_short", 50.0),
+                        snapshot.get("momentum_mid", 50.0),
+                        snapshot.get("momentum_long", 50.0),
+                    )
+                ),
+                "short_score": round2(
+                    max(
+                        snapshot.get("momentum_short_bearish", 50.0),
+                        snapshot.get("momentum_mid_bearish", 50.0),
+                        snapshot.get("momentum_long_bearish", 50.0),
+                    )
+                ),
                 "detail": "参考 RSI、MACD、ADX、OBV 与成交量确认。",
             },
             {
@@ -737,13 +749,13 @@ class StrategyGenerator:
         keys = [
             "mtf_trend_bullish",
             "bullish_structure",
-            "bullish_momentum",
+            "momentum_short",  # V1.7.6: per-frame momentum (was bullish_momentum)
             "volume_proxy_confirmation",
             "divergence_support_long",
             "execution_quality",
             "mtf_trend_bearish",
             "bearish_structure",
-            "bearish_momentum",
+            "momentum_short_bearish",  # V1.7.6: per-frame momentum (was bearish_momentum)
             "divergence_support_short",
             "range_structure",
             "low_adx",
