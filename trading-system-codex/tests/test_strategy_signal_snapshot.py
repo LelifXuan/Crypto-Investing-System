@@ -291,8 +291,16 @@ def test_snapshot_uses_real_config_weights(monkeypatch) -> None:
 
 
 def _call_feature_components(**overrides: Any) -> dict[str, Any]:
-    """Invoke ``StrategySnapshotBuilder._feature_components`` with sane defaults."""
+    """Invoke ``StrategySnapshotBuilder._feature_components`` with sane defaults.
 
+    V1.7.6: pass the single available RSI/MACD into all three frames so the
+    helper stays compatible with the new signature. Real multi-frame RSI is a
+    follow-up; tests pin the transitional behaviour here.
+    """
+
+    rsi_value = overrides.pop("rsi", 55.0)
+    macd_value = overrides.pop("macd", 0.5)
+    macd_prev_value = overrides.pop("macd_prev", 0.2)
     kwargs: dict[str, Any] = {
         "indicators": {
             "ema_20": 100.0,
@@ -313,10 +321,16 @@ def _call_feature_components(**overrides: Any) -> dict[str, Any]:
             "raw": 10.0,
             "scale": "signed",
         },
-        "rsi": 55.0,
-        "macd": 0.5,
-        "macd_prev": 0.2,
         "adx": 18.0,
+        "rsi_short": rsi_value,
+        "rsi_mid": rsi_value,
+        "rsi_long": rsi_value,
+        "macd_short": macd_value,
+        "macd_mid": macd_value,
+        "macd_long": macd_value,
+        "macd_prev_short": macd_prev_value,
+        "macd_prev_mid": macd_prev_value,
+        "macd_prev_long": macd_prev_value,
     }
     kwargs.update(overrides)
     return StrategySnapshotBuilder._feature_components(**kwargs)

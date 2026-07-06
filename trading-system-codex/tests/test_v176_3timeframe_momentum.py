@@ -138,10 +138,16 @@ def test_feature_components_emits_six_momentum_keys():
         structure_overall={"bias": "neutral"},
         regime="transition",
         direction_metrics={"bullish": 60.0, "bearish": 40.0},
-        rsi=58.0,
-        macd=1.0,
-        macd_prev=0.5,
         adx=25.0,
+        rsi_short=58.0,
+        rsi_mid=58.0,
+        rsi_long=58.0,
+        macd_short=1.0,
+        macd_mid=1.0,
+        macd_long=1.0,
+        macd_prev_short=0.5,
+        macd_prev_mid=0.5,
+        macd_prev_long=0.5,
     )
     for key in (
         "momentum_short",
@@ -154,21 +160,30 @@ def test_feature_components_emits_six_momentum_keys():
         assert key in features, f"missing key {key}"
 
 
-@pytest.mark.xfail(reason="transitional — old keys retained until Task 9 wiring. Test passes after V1.7.6 Task 9.", strict=False)
 def test_feature_components_does_not_emit_old_momentum_keys():
-    """TRANSITIONAL: passes after Task 9 deletes old keys; fails by design until then."""
+    """V1.7.6 Task 9: old single-scale keys removed; only the 3-frame keys remain."""
     features = StrategySnapshotBuilder._feature_components(
         indicators={"ema_20": 100, "adx_14": 25},
         structure_overall={"bias": "neutral"},
         regime="trend",
         direction_metrics={"bullish": 60.0, "bearish": 40.0},
-        rsi=58.0,
-        macd=1.0,
-        macd_prev=0.5,
         adx=25.0,
+        rsi_short=58.0,
+        rsi_mid=58.0,
+        rsi_long=58.0,
+        macd_short=1.0,
+        macd_mid=1.0,
+        macd_long=1.0,
+        macd_prev_short=0.5,
+        macd_prev_mid=0.5,
+        macd_prev_long=0.5,
     )
-    for key in ("bullish_momentum", "bearish_momentum", "momentum_source"):
+    # V1.7.6: old single-scale momentum keys are removed.
+    for key in ("bullish_momentum", "bearish_momentum"):
         assert key not in features, f"old key {key} should be removed"
+    # ``momentum_source`` is retained but its value changes to the V1.7.6
+    # 3-frame label; the V1.7.5 "rsi+macd" label must never reappear.
+    assert features.get("momentum_source") == "rsi[14]+macd_hist,5-20-60-frame-reuse"
 
 
 def test_feature_components_three_frame_momentum_independent_from_direction_metrics():
@@ -177,10 +192,16 @@ def test_feature_components_three_frame_momentum_independent_from_direction_metr
         indicators={"ema_20": 100, "ema_20_prev": 99, "ema_50": 98, "ema_200": 95, "adx_14": 25},
         structure_overall={"bias": "neutral"},
         regime="trend",
-        rsi=62.0,
-        macd=1.0,
-        macd_prev=0.5,
         adx=25.0,
+        rsi_short=62.0,
+        rsi_mid=62.0,
+        rsi_long=62.0,
+        macd_short=1.0,
+        macd_mid=1.0,
+        macd_long=1.0,
+        macd_prev_short=0.5,
+        macd_prev_mid=0.5,
+        macd_prev_long=0.5,
     )
     bullish = StrategySnapshotBuilder._feature_components(
         **base_kwargs,

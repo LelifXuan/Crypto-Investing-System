@@ -741,10 +741,24 @@ class StrategySnapshotBuilder:
                         structure_overall=structure_overall,
                         regime=structure_overall.get("regime"),
                         direction_metrics=direction_metrics,
-                        rsi=rsi,
-                        macd=macd,
-                        macd_prev=macd_prev,
                         adx=adx,
+                        # V1.7.6: 3-frame momentum. Multi-frame RSI history is
+                        # a follow-up; reuse the single available RSI(14) and
+                        # MACD histogram across all three frames so the
+                        # public contract is stable now (Layer A transitional).
+                        rsi_short=rsi,
+                        rsi_mid=rsi,
+                        rsi_long=rsi,
+                        macd_short=macd,
+                        macd_mid=macd,
+                        macd_long=macd,
+                        macd_prev_short=macd_prev,
+                        macd_prev_mid=macd_prev,
+                        macd_prev_long=macd_prev,
+                        # V1.7.6 Layer B: V2 derivatives_regime wiring is
+                        # Task 10. Until then, pass None so funding_pressure
+                        # slots degrade to neutral via weighted_score_skip.
+                        funding_state=None,
                         long_entry=long_entry,
                         long_stop=_num(
                             levels.get("structure_invalid_long"),
@@ -856,10 +870,20 @@ class StrategySnapshotBuilder:
         structure_overall: dict[str, Any],
         regime: str | None,
         direction_metrics: dict[str, float],
-        rsi: float,
-        macd: float,
-        macd_prev: float,
         adx: float,
+        rsi_short: float | None,
+        rsi_mid: float | None,
+        rsi_long: float | None,
+        macd_short: float | None,
+        macd_mid: float | None,
+        macd_long: float | None,
+        macd_prev_short: float | None,
+        macd_prev_mid: float | None,
+        macd_prev_long: float | None,
+        rsi_history_short: list[float] | None = None,
+        rsi_history_mid: list[float] | None = None,
+        rsi_history_long: list[float] | None = None,
+        funding_state: str | None = None,
         long_entry: float | None = None,
         long_stop: float | None = None,
         long_tp1: float | None = None,
@@ -867,43 +891,41 @@ class StrategySnapshotBuilder:
         short_stop: float | None = None,
         short_tp1: float | None = None,
     ) -> dict[str, float]:
-        """Combine strategy features from trend, structure, regime and momentum."""
+        """Combine strategy features from trend, structure, regime and momentum.
+
+        V1.7.6: replaces the single ``bullish_momentum`` / ``bearish_momentum``
+        keys with three independent time-frame momentum sub-scores (Layer A)
+        plus funding regime sub-scores (Layer B). Real multi-frame RSI history
+        is a follow-up; this iteration reuses the single available RSI(14)
+        across all three frames so the public contract is stable now.
+        """
 
         trend_bullish, trend_bearish = _build_trend_score(indicators)
         struct_bullish, struct_bearish = _build_structure_score(structure_overall)
         regime_long, regime_short, range_score = _build_regime_fit(structure_overall, regime)
-        # Momentum still derives from RSI / MACD; capped to a sensible 0..100
-        # band because the audit flagged the previous raw-add formula as
-        # able to escape the 0..100 range.
-        bullish_momentum = clamp(
-            50.0 + max(0.0, rsi - 50.0) * 1.3 + max(0.0, macd - macd_prev) * 3.0
-        )
-        bearish_momentum = clamp(
-            50.0 + max(0.0, 50.0 - rsi) * 1.3 + max(0.0, macd_prev - macd) * 3.0
-        )
-        # V1.7.6: 3-timeframe momentum (Layer A) — replaces single bullish/bearish_momentum.
-        # Each scale computes its own percentile rank from a 90-bar RSI history.
-        # Transitional: emit BOTH old (single) and new (3-frame) keys until consumers migrate.
-        # IMPORTANT (V1.7.6 transitional): until Task 9 wires real multi-frame RSI
-        # histories, ``_compute_momentum_at_scale(rsi_history=None)`` falls through
-        # ``_percentile_rank(None, rsi)`` and returns bullish≈neutral. The bearish
-        # mirror systematically settles near 92.5 because rsi_pct=50 → raw_bearish =
-        # 50 + (100-50)*0.85 = 92.5. Consumers reading the new 6 keys before Task 9
-        # should NOT trust the bearish mirror's magnitude; mid/long dampen this. The
-        # old keys (bullish_momentum/bearish_momentum) remain the authoritative
-        # single-scale read until Task 9.
+
+        # V1.7.6 Layer A: three independent time-frame momentum sub-scores.
+        # Each frames differs by RSI/MACD window length and percentile history;
+        # in this iteration we reuse the single available RSI(14) across all
+        # three frames (history unavailable → neutral percentile behavior).
         short_bullish, short_bearish = _compute_momentum_at_scale(
-            rsi=rsi,
-            macd_hist=macd,
-            macd_prev=macd_prev,
-            rsi_history=None,  # could not derive 90-bar history from signature; fall back to None → neutral
+            rsi=rsi_short,
+            macd_hist=macd_short,
+            macd_prev=macd_prev_short,
+            rsi_history=rsi_history_short,
         )
-        # Mid and long scaled: rely on the only RSI we receive — apply length-aware dampening
-        # to differentiate (mid: dampen to 0.85x; long: 0.70x). No new upstream signal yet.
-        mid_bullish = clamp(50.0 + (short_bullish - 50.0) * 0.85)
-        mid_bearish = clamp(50.0 + (short_bearish - 50.0) * 0.85)
-        long_bullish = clamp(50.0 + (short_bullish - 50.0) * 0.70)
-        long_bearish = clamp(50.0 + (short_bearish - 50.0) * 0.70)
+        mid_bullish, mid_bearish = _compute_momentum_at_scale(
+            rsi=rsi_mid,
+            macd_hist=macd_mid,
+            macd_prev=macd_prev_mid,
+            rsi_history=rsi_history_mid,
+        )
+        long_bullish, long_bearish = _compute_momentum_at_scale(
+            rsi=rsi_long,
+            macd_hist=macd_long,
+            macd_prev=macd_prev_long,
+            rsi_history=rsi_history_long,
+        )
         # V1.7.4 audit fix: low_directional_spread and *_risk_reward sub-scores
         # are weighted at 0.20 + 0.15 + 0.15 = 0.50 (50%) of the range-mode
         # long/short score in market_strategy_signal_config_v17.json. Without
@@ -934,16 +956,14 @@ class StrategySnapshotBuilder:
             "regime_fit_short": regime_short,
             "regime_source": str(regime or structure_overall.get("regime") or "unknown"),
             "range_structure": range_score,
-            "bullish_momentum": bullish_momentum,
-            "bearish_momentum": bearish_momentum,
-            "momentum_source": "rsi+macd",
-            # V1.7.6 transitional: new 3-frame keys; old keys retained until consumer migration (Task 8).
+            # V1.7.6: 3-timeframe momentum sub-scores (Layer A)
             "momentum_short": short_bullish,
             "momentum_short_bearish": short_bearish,
             "momentum_mid": mid_bullish,
             "momentum_mid_bearish": mid_bearish,
             "momentum_long": long_bullish,
             "momentum_long_bearish": long_bearish,
+            "momentum_source": "rsi[14]+macd_hist,5-20-60-frame-reuse",
             "direction_score_aggregate": direction_metrics["bullish"]
             - direction_metrics["bearish"],
             "low_directional_spread": low_directional_spread,
@@ -953,6 +973,24 @@ class StrategySnapshotBuilder:
                 rr_long is not None or rr_short is not None
             ) else "neutral_default",
         }
+        # V1.7.6 Layer B: funding regime sub-scores from V2 derivatives_regime.
+        # When ``funding_state`` is missing or unrecognized the helper returns
+        # (None, None, True); ``DirectionScoringEngine.compute`` uses
+        # ``weighted_score_skip`` so these slots degrade gracefully (skip +
+        # renormalize remaining slots) instead of silently zeroing the
+        # funding contribution. Real V2 wiring is Task 10.
+        funding_long, funding_short, funding_degraded = _compute_funding_pressure(
+            funding_state
+        )
+        features["funding_pressure_long"] = funding_long
+        features["funding_pressure_short"] = funding_short
+        features["funding_degraded"] = funding_degraded
+        features["funding_source"] = (
+            "derivatives_regime" if not funding_degraded else "missing"
+        )
+        features["funding_regime_state"] = (
+            funding_state if funding_state is not None else "missing"
+        )
         # V1.7.5: surface vol_compression (bb_width vs bb_width_ma_90 percentile
         # rank) and setup_probability (Bayesian posterior) on the features dict
         # so the transition-mode multiplicative gate and downstream consumers

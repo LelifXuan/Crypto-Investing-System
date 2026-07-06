@@ -136,10 +136,16 @@ def test_feature_components_do_not_emit_microstructure_scores() -> None:
         structure_overall={"bias": "bullish"},
         regime="trend",
         direction_metrics={"bullish": 65.0, "bearish": 35.0},
-        rsi=58.0,
-        macd=1.4,
-        macd_prev=0.9,
         adx=30.0,
+        rsi_short=58.0,
+        rsi_mid=58.0,
+        rsi_long=58.0,
+        macd_short=1.4,
+        macd_mid=1.4,
+        macd_long=1.4,
+        macd_prev_short=0.9,
+        macd_prev_mid=0.9,
+        macd_prev_long=0.9,
     )
     removed_keys = {
         "bullish_flow",
@@ -147,14 +153,24 @@ def test_feature_components_do_not_emit_microstructure_scores() -> None:
         "flow_source",
         "derivatives_long_confirmation",
         "derivatives_short_confirmation",
+        # V1.7.6: old single-scale momentum keys removed.
+        "bullish_momentum",
+        "bearish_momentum",
     }
     assert not (removed_keys & set(components))
     assert components["mtf_trend_source"] == "ema+adx+vwap"
     assert components["structure_source"] == "structure_overall"
-    assert components["momentum_source"] == "rsi+macd"
+    assert components["momentum_source"] == "rsi[14]+macd_hist,5-20-60-frame-reuse"
 
 
 def test_feature_components_keep_momentum_independent_from_direction_score() -> None:
+    """V1.7.6: 3-frame momentum sub-scores are independent from direction_metrics.
+
+    Mirrors the V1.7.4 T04 contract using the new V1.7.6 3-frame keys
+    (``momentum_short``/``momentum_mid``/``momentum_long`` and their bearish
+    mirrors). The single-scale ``bullish_momentum`` / ``bearish_momentum``
+    keys are removed in V1.7.6 — we verify the new keys instead.
+    """
     base = {
         "indicators": {
             "ema_20": 100,
@@ -165,10 +181,16 @@ def test_feature_components_keep_momentum_independent_from_direction_score() -> 
         },
         "structure_overall": {"bias": "neutral"},
         "regime": "trend",
-        "rsi": 62.0,
-        "macd": 1.0,
-        "macd_prev": 0.5,
         "adx": 25.0,
+        "rsi_short": 62.0,
+        "rsi_mid": 62.0,
+        "rsi_long": 62.0,
+        "macd_short": 1.0,
+        "macd_mid": 1.0,
+        "macd_long": 1.0,
+        "macd_prev_short": 0.5,
+        "macd_prev_mid": 0.5,
+        "macd_prev_long": 0.5,
     }
     bullish_direction = StrategySnapshotBuilder._feature_components(
         **base,
@@ -178,8 +200,18 @@ def test_feature_components_keep_momentum_independent_from_direction_score() -> 
         **base,
         direction_metrics={"bullish": 10.0, "bearish": 90.0},
     )
-    assert bullish_direction["bullish_momentum"] == bearish_direction["bullish_momentum"]
-    assert bullish_direction["bearish_momentum"] == bearish_direction["bearish_momentum"]
+    # V1.7.6 3-frame keys must be identical regardless of direction_metrics.
+    for key in (
+        "momentum_short",
+        "momentum_short_bearish",
+        "momentum_mid",
+        "momentum_mid_bearish",
+        "momentum_long",
+        "momentum_long_bearish",
+    ):
+        assert bullish_direction[key] == bearish_direction[key], (
+            f"{key} depends on direction_metrics"
+        )
     assert bullish_direction["direction_score_aggregate"] != bearish_direction[
         "direction_score_aggregate"
     ]
