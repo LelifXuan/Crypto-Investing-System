@@ -32,6 +32,8 @@ def _snapshot(**overrides):
         "range_structure": 25,
         "low_adx": 15,
         "low_volume_confirmation": 35,
+        "funding_pressure_long": 50.0,
+        "funding_pressure_short": 50.0,
         "funding_crowding_score": 20,
         "opposite_divergence_risk_score": 10,
         "late_entry_risk_score": 20,

@@ -103,8 +103,11 @@ class DirectionScoringEngine:
             snapshot.get("short_risk_reward"), p_win
         )
 
-        raw_long = weighted_score(long_values, self.config["long_weights"])
-        raw_short = weighted_score(short_values, self.config["short_weights"])
+        # V1.7.6: weighted_score_skip handles degraded funding slots
+        # (when V2 derivatives_regime is missing) by skipping None values
+        # and renormalizing remaining slots to original weight sum.
+        raw_long = weighted_score_skip(long_values, self.config["long_weights"])
+        raw_short = weighted_score_skip(short_values, self.config["short_weights"])
         long_penalty = self._long_penalty(snapshot)
         short_penalty = self._short_penalty(snapshot)
 
