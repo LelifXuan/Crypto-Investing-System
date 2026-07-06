@@ -82,3 +82,23 @@ def compute_risk_reward(
     if direction == "short" and stop > entry:
         return (entry - tp1) / max(stop - entry, 1e-9)
     return None
+
+
+def _percentile_rank(history: list[float] | None, current: float | None) -> float:
+    """Return percentile rank of `current` against `history` as 0..100.
+
+    Returns 50.0 for empty history, None current, or NaN current.
+    """
+    if not history:
+        return 50.0
+    if current is None:
+        return 50.0
+    if current != current:  # NaN check
+        return 50.0
+    try:
+        current_f = float(current)
+    except (TypeError, ValueError):
+        return 50.0
+    below_or_equal = sum(1 for x in history if x is not None and x <= current_f)
+    pct = below_or_equal / len(history) * 100
+    return clamp(pct, 0.0, 100.0)
