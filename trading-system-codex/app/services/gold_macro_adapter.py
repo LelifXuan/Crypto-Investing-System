@@ -195,7 +195,19 @@ def _gold_macro_snapshot(macro: dict) -> dict:
         return None
 
     def value_of(ind: dict | None) -> float | None:
-        return ind.get("value_num") if ind else None
+        if not ind:
+            return None
+        raw = ind.get("value_num")
+        if raw is None:
+            return None
+        # Defensive casting: value_num may come as str from MacroOverviewService when
+        # numeric transform failed; try float, fall back to None.
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
 
     real_yield = find("real_yield_5y") or find("real_yield_10y")
     dxy = find("dxy") or find("dollar_index")
@@ -291,9 +303,11 @@ def _gold_macro_snapshot(macro: dict) -> dict:
                 "threshold_high": None,
                 "status": "missing",
             }
-        bias, reason = bias_fn(ind.get("value_num"))
+        # Use value_of() to coerce string → float defensively (MacroOverviewService may pass str)
+        raw_value = value_of(ind)
+        bias, reason = bias_fn(raw_value)
         return {
-            "value": ind.get("value_num"),
+            "value": raw_value,
             "unit": ind.get("unit", ""),
             "display_label": ind.get("display_label", fallback_label),
             "source": ind.get("source_provider", ""),

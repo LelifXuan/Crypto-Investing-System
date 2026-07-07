@@ -85,3 +85,31 @@ def test_gold_macro_snapshot_liquidity_shock_detection():
     assert snapshot["vix"]["bias"] == "bearish"  # 流动性冲击下 VIX 急升 ≠ 避险
     assert snapshot["dxy"]["bias"] == "bearish"
     assert "流动性冲击" in snapshot["vix"]["bias_reason"]
+
+def test_gold_macro_snapshot_handles_string_value_num():
+    """回归测试：value_num 为字符串时不应抛 TypeError（生产 MacroOverviewService 可能传字符串）。"""
+    macro = _make_macro([
+        {"indicator_key": "vix", "value_num": "30.5", "unit": "index",
+         "display_label": "VIX", "source_provider": "fred", "status": "ok"},
+        {"indicator_key": "dxy", "value_num": "106.2", "unit": "index",
+         "display_label": "DXY", "source_provider": "fred", "status": "ok"},
+        {"indicator_key": "real_yield_5y", "value_num": "2.3", "unit": "%",
+         "display_label": "5Y", "source_provider": "fred", "status": "ok"},
+    ])
+    snapshot = _gold_macro_snapshot(macro)
+    assert snapshot["vix"]["value"] == 30.5
+    assert snapshot["dxy"]["value"] == 106.2
+    assert snapshot["real_yield_10y"]["value"] == 2.3
+    # 流动性冲击仍能触发（用数字比较）
+    assert snapshot["_diagnostics"]["liquidity_shock_detected"] is True
+
+
+def test_gold_macro_snapshot_handles_invalid_value_num():
+    """回归测试：value_num 完全无效（非数字字符串）应被识别为 missing 而非崩溃。"""
+    macro = _make_macro([
+        {"indicator_key": "vix", "value_num": "N/A", "unit": "index",
+         "display_label": "VIX", "source_provider": "fred", "status": "ok"},
+    ])
+    snapshot = _gold_macro_snapshot(macro)
+    assert snapshot["vix"]["value"] is None
+    assert snapshot["vix"]["bias"] == "missing"
