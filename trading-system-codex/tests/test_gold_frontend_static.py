@@ -6,6 +6,7 @@ PAGE = Path("app/static/pages/gold_allocation.js")
 API = Path("app/static/core/api.js")
 MAIN = Path("app/static/main.js")
 TEMPLATE = Path("app/templates/page.html")
+STYLES = Path("app/static/styles.css")
 
 
 def _source() -> str:
@@ -106,3 +107,70 @@ def test_gold_page_hides_mojibake_and_forbidden_trading_copy() -> None:
     assert 'statusBanner("success"' not in source
     assert "diagnostics.reused_indicators.join" not in source
     assert "diagnostics.computed_derived_indicators.join" not in source
+
+
+def test_gold_v2_macro_strip_renders() -> None:
+    """验证 4 个宏观卡相关 CSS 类已声明。"""
+    css = STYLES.read_text(encoding="utf-8")
+    assert ".gold-macro-strip" in css
+    assert ".gold-macro-card" in css
+    assert css.count("gold-bias-chip") >= 1
+
+
+def test_gold_v2_decision_grid_class_exists() -> None:
+    """验证决策带相关 CSS 类。"""
+    css = STYLES.read_text(encoding="utf-8")
+    assert ".gold-decision-grid" in css
+    assert ".gold-decision-card" in css
+
+
+def test_gold_v2_bottom_group_container() -> None:
+    """验证二级容器存在。"""
+    css = STYLES.read_text(encoding="utf-8")
+    assert ".gold-bottom-group" in css
+    assert "border-radius: 18px" in css
+
+
+def test_gold_v2_liquidity_shock_banner() -> None:
+    """验证流动性冲击警告类。"""
+    css = STYLES.read_text(encoding="utf-8")
+    assert ".gold-liquidity-shock-banner" in css
+
+
+def test_gold_js_macro_strip_function() -> None:
+    """验证 4 宏观卡组件函数已定义。"""
+    js = _source()
+    assert "function renderMacroStrip" in js
+    assert "function renderMacroCard" in js
+    assert "real_yield_10y" in js
+    assert "gold_macro_snapshot" in js
+
+
+def test_gold_js_9_segments() -> None:
+    """验证 9 段渲染函数都已定义。"""
+    js = _source()
+    for fn in [
+        "renderShell",
+        "renderDecisionGrid",
+        "renderMacroStrip",
+        "renderModuleSection",
+        "renderModuleCard",
+        "renderChartSection",
+        "renderMarketPanel",
+        "renderStrategyPanel",
+        "renderSettingsCard",
+        "renderDiagnostics",
+        "renderIndicatorSection",
+        "renderGovernanceSection",
+    ]:
+        assert f"function {fn}" in js, f"missing function {fn}"
+
+
+def test_gold_js_bias_label_function() -> None:
+    """验证 5 档多空标签映射函数。"""
+    js = _source()
+    assert "function biasLabel" in js
+    assert "强势看多" in js
+    assert "看多" in js
+    assert "看空" in js
+    assert "强势看空" in js
