@@ -1,7 +1,7 @@
 # 黄金配置页 V2 设计 (gold-allocation-page-v2)
 
 > 状态：方案B（推荐方案）— 用户已批准
-> 日期：2026-07-06
+> 日期：2026-07-06（初版）/ 2026-07-07（V2 修订：多空标签 + 宏观指标 + 设计语言）
 > 作者：ZCode + 用户
 > 关联版本：v1.7.x 当前分支
 
@@ -24,6 +24,21 @@
 2. **7 个模块证据卡默认展开**，每个模块给出 score / confidence / data_quality / headline / facts / interpretation / warnings
 3. **1-2 个趋势图表**（XAUT 价格回撤、央行净购金 / ETF 资金流）
 4. **执行层（DCA + 加仓）保留为页内子区块**，不破坏用户日常操作
+
+## 2.1 修订动因（2026-07-07）
+
+初版 spec 完成后，用户对实际页面截图提出 3 个具体反馈，本节专门纳入：
+
+| 反馈 | 现状问题 | 修订方向 |
+|---|---|---|
+| **① 标签语义错位** | 核心/派生指标卡右上角显示"可用/偏低/偏高"——这是**数据状态**（值是否在阈值内），用户期望看到的是**多空判断**（市场方向） | 后端 `_status_for_value()` 增加 `bias` 字段，前端渲染**5 档多空标签**：强势看多 / 看多 / 中性 / 看空 / 强势看空 |
+| **② 缺失宏观指标** | 黄金作为宏观资产，但页面完全没有 TIPS 实际利率、DXY、CPI 同比、VIX 这些直接影响黄金价格的因素 | 新增**4 个核心宏观指标卡**，复用后端 `MacroOverviewService` 已有数据（不需新增后端逻辑） |
+| **③ 设计语言不统一** | 当前 `.gold-v3-*` 视觉密度比 BTC 衍生品页低 ~70%（信息单元 15 vs 50+）；chip 仅单色，无 bottom-group 二级容器，无状态色调，叙事层级浅 | 全页改用 **BTC 衍生品页式 9 段递进**：Hero 决策带 → 工具栏 → 关键价位 → 图表 → 证据层 → 配置/执行 → 明细 → 治理。chip 改 4 色变量（bullish/bearish/warning/accent），新增 `.gold-bottom-group` 二级容器 |
+
+修订范围：
+- **后端**：扩展 `_indicator_card()` 输出多空语义字段；`_macro_card()` 在响应顶层新增 `gold_macro_snapshot`（4 指标原始值 + bias）
+- **前端**：重写 `gold_allocation.js`（468 → ~1100-1300 行）；启用既有 24 个 `.gold-*` 类 + 新增 4 个二级容器/状态色类
+- **设计语言**：完全沿用 BTC 衍生品页的 9 段递进叙事
 
 ## 3. 非目标 (Out of Scope)
 
@@ -61,39 +76,81 @@ let latestPlan = null;         // /gold/execution-plan 响应
 // 既有：localStorage 状态、controller、debounceTimer 保留
 ```
 
-### 4.3 页面布局（沿用 BTC 衍生品页式）
+### 4.3 页面布局（沿用 BTC 衍生品页式 9 段递进）
+
+> **设计原则**：完全贴齐 BTC 衍生品页的视觉密度与叙事层级。9 段递进（hero 决策 → 数据图表 → 推断块 → 工具规划 → 数据治理），而非初版的 4 段并列。
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│  Hero: 黄金配置 V2 工作台       [刷新 V2] [刷新基本面]      │
-│  eyebrow: GOLD ALLOCATION                                    │
-│  副标题: 多模块加权评分 + 长期目标区间 + 执行工作台          │
-├────────────────────────────────────────────────────────────┤
-│  V2 决策带 (.gold-decision-header)                           │
-│  ┌────────┬────────┬────────┬────────┬────────┬────────┐    │
-│  │总评分  │目标区间│当前权重 │ 状态  │建议金额│主指令  │    │
-│  └────────┴────────┴────────┴────────┴────────┴────────┘    │
-│  推理步骤 (.gold-decision-metrics)  + 风险提示 (warnings)   │
-├────────────────────────────────────────────────────────────┤
-│  趋势图表 (1-2 张) — 复用 renderChart()                     │
-│  XAUT 30日价格 + 60日回撤线 | 央行净购金 12m vs 3m           │
-├────────────────────────────────────────────────────────────┤
-│  7 个模块卡 (.gold-module-card 网格)                          │
-│  宏观货币 / 官方储备 / 供给刚性 / 组合对冲 / 流动性 / 衍生品 │
-│  / XAUT  — 默认全部展开                                      │
-│  每卡：headline + facts[] + interpretation + warnings +     │
-│        data_quality chip + score 仪表                        │
-├────────────────────────────────────────────────────────────┤
-│  基本面快照 (.gold-market-panel) — 来自 /gold/fundamentals  │
-│  央行净购金 | ETF 资金流 | 期货 OI | COT 净多 | 供给平衡     │
-├────────────────────────────────────────────────────────────┤
-│  已有：XAUT 代理行情 + 代数化执行策略 (黄金坑)               │
-├────────────────────────────────────────────────────────────┤
-│  已有：执行子区块（参数表单 + 系统诊断）                     │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ ① Hero (.gold-v3-hero, 类比 .btc-derivatives-hero)             │
+│   eyebrow: GOLD ALLOCATION V2                                   │
+│   h1: 黄金宏观与配置工作台                                       │
+│   副文: 多模块加权评分 + 宏观信号 + 长期目标区间 + 执行计划       │
+│   右侧: [状态 pill: bullish/bearish/neutral] + [刷新 V2] + freshness│
+├─────────────────────────────────────────────────────────────────┤
+│ ② 决策带 (.gold-decision-grid, 类比 .btc-decision-grid)         │
+│   3 张 decision card (min-height 230px):                         │
+│   - 宏观环境 (.gold-decision-card[data-tone="bullish"])         │
+│       结论 + 置信度 + 5 张 evidence-chip (TIPS/DXY/CPI/VIX/...) │
+│   - 配置建议 (.gold-decision-card[data-tone="..."])             │
+│       目标区间 + 低/达标/超配 + 月度动作                          │
+│   - 执行计划 (.gold-decision-card[data-tone="..."])             │
+│       今日 DCA + 黄金坑状态 + 冷却中/触发中/就绪                  │
+├─────────────────────────────────────────────────────────────────┤
+│ ③ 4 个核心宏观指标 (.gold-macro-strip, 类比 .btc-level-strip)   │
+│   4 张 .gold-macro-card (min-height 220px):                     │
+│   ┌────────────┬────────────┬────────────┬────────────┐         │
+│   │ TIPS 5Y    │ DXY        │ CPI YoY    │ VIX        │         │
+│   │ 1.85%      │ 103.5      │ 2.7%       │ 18.4       │         │
+│   │ [看多]     │ [看空]     │ [中性]     │ [中性]     │         │
+│   │ 实际利率   │ 美元指数    │ 美国CPI    │ 波动率     │         │
+│   │ 距离 4W: -│ vs 4W: -   │ 距离上期:  │ 当前档位:  │         │
+│   └────────────┴────────────┴────────────┴────────────┘         │
+├─────────────────────────────────────────────────────────────────┤
+│ ④ 7 模块证据卡 (.gold-module-section, 类比 .btc-inference-grid) │
+│   每张 article (data-tone):                                     │
+│   - 宏观货币 | 官方储备 | 供给刚性 | 组合对冲 | 流动性 | 衍生品 | XAUT │
+│   - 每卡: score + confidence + data_quality + 5 个 evidence-chip │
+├─────────────────────────────────────────────────────────────────┤
+│ ⑤ 图表区 (.gold-chart-sections)                                │
+│   2 张图:                                                        │
+│   - XAUT 关键指标 (7D/30D/60D 回撤 + NATR, 类比 .btc-chart-card)│
+│   - 基本面快照 (央行净购金 12m vs 3m, ETF 1m, 类比 .btc-chart-card)│
+├─────────────────────────────────────────────────────────────────┤
+│ ⑥ XAUT 代理行情 + 黄金坑结构 (.gold-bottom-group, 类比 .btc-bottom-group)│
+│   - 左侧: .gold-market-panel (XAUT 价格 + 7D/30D)               │
+│   - 右侧: .gold-strategy-panel (代数化公式 + n×x + 触发条件)     │
+├─────────────────────────────────────────────────────────────────┤
+│ ⑦ 执行子区块 (.gold-bottom-group)                              │
+│   - 左: .gold-settings-card (本地参数表单)                      │
+│   - 右: .gold-system-card (K 线/指标/诊断)                      │
+├─────────────────────────────────────────────────────────────────┤
+│ ⑧ 核心 + 派生指标卡 (.gold-indicator-layout)                  │
+│   2 张 section × 4-8 张 indicator card, 每卡右上角改为          │
+│   "强势看多/看多/中性/看空/强势看空" 5 档多空标签                │
+├─────────────────────────────────────────────────────────────────┤
+│ ⑨ 数据治理 (.gold-bottom-group, 折叠 .gold-details-drawer)    │
+│   - 报价状态 + K 线数量 + 缺失字段 + 数据源健康                  │
+│   - 类比 .btc-quality-details / .btc-method-notes 折叠面板       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.4 CSS 类映射（既有、不新增）
+**叙事递进（9 段）**：
+1. **状态**（Hero） — 一句话告诉你现在怎样
+2. **结论**（决策带 3 卡） — 宏观/配置/执行三件事的判定
+3. **输入**（4 个宏观） — 影响宏观结论的 4 个原始信号
+4. **证据**（7 模块） — 长期配置的 7 维拆解
+5. **数据**（图表） — 趋势与历史
+6. **结构**（XAUT + 黄金坑） — 当下行情 + 触发结构
+7. **执行**（执行子区块） — 日常纪律
+8. **细节**（核心/派生指标） — 单点深度
+9. **治理**（数据健康） — 可信度
+
+对比初版的 4 段并列：信息单元从 15 → ~50；叙事从"分块堆叠" → "由浅入深"。
+
+### 4.4 CSS 类映射（既有 + 复用 + 新增）
+
+#### A. 启用既有未用的 24 个 `.gold-*` 类（来自初版 spec，本轮未变）
 
 | 区块 | 既有类 | 来源 |
 | --- | --- | --- |
@@ -103,44 +160,330 @@ let latestPlan = null;         // /gold/execution-plan 响应
 | 证据布局 | `.gold-evidence-layout`, `.gold-evidence-primary`, `.gold-evidence-secondary`, `.gold-driver-section` | 7941-7963 |
 | 行情卡 | `.gold-market-panel`, `.gold-market-head`, `.gold-market-values`, `.gold-window-grid` | 7965-8013 |
 | 诊断 | `.gold-diagnostics-card` | 7880 |
-| 既有执行区 | `.gold-v3-*`, `.gold-formula-*`, `.gold-execution-*` | 8158+ 保留 |
+| 既有执行区（保留） | `.gold-v3-*`, `.gold-formula-*`, `.gold-execution-*` | 8158+ |
 
-### 4.5 模块卡渲染规范
+#### B. 复用 BTC 衍生品页既有 `.btc-*` 设计模式（前端样式约定）
+- `data-state="bullish|bearish|neutral"` / `data-tone` 属性驱动 chip 颜色
+- 4 色变量（继承 BTC 既有定义，**不新增 CSS 变量**）：`--bullish #0f766e` / `--bearish #c35a1d` / `--warning #b7791f` / `--accent #0f766e`
+- `.btc-bottom-group` 二级容器模式（圆角 18 / 阴影 / 半透明白底）
+- `.btc-evidence-chip` / `.btc-chart-insight` 小标签
+- `.btc-warning` 左侧 3px 警告边条
+- `.btc-details-drawer` 折叠面板
+
+#### C. 新增 4 个黄金页专用 CSS 类（**新增行 ≤ 30**）
+
+| 新增类 | 用途 | 行数估计 |
+|---|---|---|
+| `.gold-bottom-group` | 二级容器（圆角 18 + 阴影 + 半透明白底） | 6 行 |
+| `.gold-decision-grid` | 3 列决策带网格 | 4 行 |
+| `.gold-decision-card` | 单个决策卡（min-height 230px） | 8 行 |
+| `.gold-macro-strip` | 4 列宏观指标条 | 4 行 |
+| `.gold-macro-card` | 单个宏观卡（min-height 220px） | 8 行 |
+| `.gold-bias-strong-bullish` / `.gold-bias-bullish` / `.gold-bias-neutral` / `.gold-bias-bearish` / `.gold-bias-strong-bearish` | 5 档多空 chip 颜色（5 × 6 行） | 30 行 |
+| `.gold-warning` | 左侧 3px 警告边条（复用 BTC 模式） | 6 行 |
+
+**总计新增 ≤ 70 行**。其余视觉完全沿用 BTC 既有 `.btc-*` 变量与样式。
+
+### 4.5 模块卡渲染规范（强化多空标签）
 
 每个模块从 `allocation.drivers[<key>]` 取（`build_gold_allocation_plan.drivers` 已是 dict）。
 
+#### 4.5.1 后端改造：`_indicator_card()` 增加 `bias` 字段
+
+`app/services/gold_dca_dip.py:332-339` 现有 `_status_for_value()` 返回数据语义：
+```python
+def _status_for_value(value, *, lower=None, upper=None) -> str:
+    if value is None: return "数据不足"
+    if lower is not None and value <= lower: return "偏低"
+    if upper is not None and value >= upper: return "偏高"
+    return "可用"
+```
+
+**改造**：拆为两个并行函数：
+
+```python
+def _status_for_value(value, *, lower=None, upper=None) -> str:
+    """数据语义（保留旧字段给 diagnostic 使用）"""
+    # 现有逻辑
+
+def _bias_for_indicator(key: str, value: float | None, *, lower=None, upper=None) -> str:
+    """多空语义（5 档：strong_bullish / bullish / neutral / bearish / strong_bearish）
+
+    判定规则：
+    - value 为 None → missing
+    - 指标不在 bullish_low/bearish_low 集合内 → neutral（默认中性）
+    - bullish_low 集合（越低越看多黄金）：
+      rsi_14 / cci_20 / percent_b
+    - bearish_low 集合（越低越看空黄金）：
+      close_vs_ema20_pct / close_vs_ema50_pct / return_7d / return_14d /
+      drawdown_from_30d_high / drawdown_from_60d_high
+    - 无阈值（lower=None and upper=None）→ neutral
+    - 强档阈值：lower*0.7 / upper*1.3
+    """
+    if value is None: return "missing"
+    bullish_low = {"rsi_14", "cci_20", "percent_b"}
+    bearish_low = {"close_vs_ema20_pct", "close_vs_ema50_pct", "return_7d", "return_14d",
+                   "drawdown_from_30d_high", "drawdown_from_60d_high"}
+    if lower is None and upper is None: return "neutral"
+    if key in bullish_low:
+        if lower is not None and value <= lower * 0.7: return "strong_bullish"
+        if lower is not None and value <= lower: return "bullish"
+        if upper is not None and value >= upper * 1.3: return "strong_bearish"
+        if upper is not None and value >= upper: return "bearish"
+        return "neutral"
+    if key in bearish_low:
+        if lower is not None and value <= lower * 0.7: return "strong_bearish"
+        if lower is not None and value <= lower: return "bearish"
+        if upper is not None and value >= upper * 1.3: return "strong_bullish"
+        if upper is not None and value >= upper: return "bullish"
+        return "neutral"
+    return "neutral"
+```
+
+**关键约束**：
+- `ema_20 / ema_50 / ema_200 / atr_14 / natr_14` 等**无方向语义的指标** → **统一返回 `neutral`**，不参与多空判断（这些指标仅作为"技术状态"展示，不映射多空）
+- 实际有方向语义的指标共 9 个：`rsi_14 / cci_20 / percent_b` + 6 个 bearish_low
+- `natr_14` 不在 bullish_low（先前误列已删除；NATR 越高波动越大，但对黄金无明确方向语义，留 neutral）
+
+`_indicator_card()` 输出新增 `bias` 字段：
+```python
+return {
+    "key": key, "label": label, "value": value,
+    "display_value": _format_card_value(value, unit, digits),
+    "unit": unit,
+    "status": _status_for_value(value, lower=lower, upper=upper),  # 数据语义（保留）
+    "bias": _bias_for_indicator(key, value, lower=lower, upper=upper),  # 多空语义（新增）
+    "note": note,
+}
+```
+
+#### 4.5.2 前端映射（5 档 → 中文标签 + CSS 类）
+
+| `bias` 字段 | 中文标签 | CSS 类 | 颜色变量 |
+|---|---|---|---|
+| `strong_bullish` | 强势看多 | `.gold-bias-strong-bullish` | `--bullish-strong` (待定) |
+| `bullish` | 看多 | `.gold-bias-bullish` | `--bullish` |
+| `neutral` | 中性 | `.gold-bias-neutral` | `--muted` |
+| `bearish` | 看空 | `.gold-bias-bearish` | `--bearish` |
+| `strong_bearish` | 强势看空 | `.gold-bias-strong-bearish` | `--bearish-strong` (待定) |
+| `missing` | 数据不足 | `.gold-bias-missing` | `--warning` |
+
+#### 4.5.3 `renderIndicatorCard` 修改
+
 ```javascript
-function renderModuleCard(card) {
-  // card: {key, title, score, confidence, state, data_quality, headline, facts, interpretation, warnings, window_views, allocation_effect}
+function renderIndicatorCard(card) {
   return `
-    <article class="gold-module-card" data-module="${card.key}">
-      <header class="gold-module-head">
-        <h3>${card.title}</h3>
-        <span class="chip chip--${card.state}">${stateLabel(card.state)}</span>
-      </header>
-      <div class="gold-module-score">
-        <b>${card.score}</b>
-        <small>置信度 ${(card.confidence * 100).toFixed(0)}% · ${qualityLabel(card.data_quality)}</small>
+    <article class="gold-indicator-card" data-bias="${card.bias}">
+      <div>
+        <strong>${escapeHtml(card.label || "指标")}</strong>
+        <span class="gold-bias-chip gold-bias-${escapeHtml(card.bias)}">${biasLabel(card.bias)}</span>
       </div>
-      <p class="gold-module-headline">${card.headline}</p>
-      <ul class="gold-module-facts">
-        ${card.facts.map(f => `<li>${f}</li>`).join('')}
-      </ul>
-      <details class="gold-module-detail">
-        <summary>解读与窗口</summary>
-        <p>${card.interpretation}</p>
-        ${renderWindowViews(card.window_views)}
-        ${card.warnings.length ? `<ul class="gold-module-warnings">${card.warnings.map(w => `<li>${w}</li>`).join('')}</ul>` : ''}
-      </details>
+      <b>${escapeHtml(card.display_value || "-")}</b>
+      <small>${escapeHtml(card.note || "")}</small>
+    </article>
+  `;
+}
+
+function biasLabel(bias) {
+  return {
+    strong_bullish: "强势看多",
+    bullish: "看多",
+    neutral: "中性",
+    bearish: "看空",
+    strong_bearish: "强势看空",
+    missing: "数据不足",
+  }[bias] || "中性";
+}
+```
+
+### 4.6 4 个核心宏观指标（新增段落）
+
+#### 4.6.1 后端暴露：`gold_macro_snapshot`
+
+`/gold/allocation` 端点（`gold.py:174-193`）目前已经调用 `_macro_payload(repo)` 但**不暴露 layer_map 给前端**。
+
+**改造**：`app/services/gold_allocation_engine.py` 的 `AllocationPlan.to_dict()` 或 `build_gold_allocation_plan()` 返回值新增字段：
+
+```python
+gold_macro_snapshot = {
+    "tips_5y": {
+        "value": 1.85,           # 从 macro.layer_map.cross_asset_confirmation.indicators[?].key="real_yield_5y"
+        "unit": "%",
+        "display_label": "美国5年期通胀保值国债收益率",
+        "source": "fred",
+        "observation_ts": "2026-07-05",
+        "delta_4w": -0.12,        # 从 real_rate_delta_4w / 派生
+        "bias": "bullish",        # 多空语义（新增）
+        "threshold_low": 0.5,     # scoring registry
+        "threshold_high": 2.8,
+        "status": "ok",
+    },
+    "dxy": { "value": 103.5, "unit": "index", "display_label": "美元指数DXY", ... },
+    "cpi_yoy": { "value": 2.7, "unit": "%", "display_label": "美国CPI同比", ... },
+    "vix": { "value": 18.4, "unit": "index", "display_label": "VIX波动率", ... },
+}
+```
+
+**改造点**：
+- `gold_allocation_engine.py:1073-1090` 返回 `AllocationPlan` 时追加 `gold_macro_snapshot` 字段
+- `gold_macro_adapter.py:104-170` 的 `macro_overview_to_gold_macro()` 新增 `_gold_macro_snapshot()` 函数，从 `result["layer_map"]` 提取 4 个指标的 value_num 和 status，并计算 `bias`
+- 多空语义判断（黄金视角）：
+  - **TIPS** 越低 → 黄金机会成本越低 → **看多**（`<0.5% bullish`, `>2.8% bearish`）
+  - **DXY** 越低 → 美元弱 → 黄金以美元计价上涨 → **看多**（`<98 bullish`, `>108 bearish`）
+  - **CPI YoY** 适度通胀利好 → **看多**（`2-5% bullish`, `>5% 或 <0% bearish`）
+  - **VIX** 越高 → 风险厌恶 → 黄金避险 → **看多**（`>28 strong_bullish`, `<15 bearish`）
+
+**判断函数**：
+```python
+def _gold_macro_snapshot(macro: dict) -> dict:
+    """从 macro layer_map 提取 4 个核心宏观指标 + 计算黄金视角的多空 bias。"""
+    layer_map = (macro or {}).get("layer_map") or {}
+    indicators_by_layer = {
+        layer["layer_key"]: layer.get("indicators", [])
+        for layer in (macro or {}).get("layers", [])
+        if isinstance(layer, dict)
+    }
+    flat_indicators = [ind for ind_list in indicators_by_layer.values() for ind in ind_list]
+
+    def find(indicator_key: str) -> dict | None:
+        for ind in flat_indicators:
+            if ind.get("indicator_key") == indicator_key:
+                return ind
+        return None
+
+    def bias_for_tips(value):  # 越低越看多
+        if value is None: return "missing"
+        if value <= 0.5: return "strong_bullish"
+        if value <= 1.5: return "bullish"
+        if value >= 2.8: return "strong_bearish"
+        if value >= 2.0: return "bearish"
+        return "neutral"
+    def bias_for_dxy(value):  # 越低越看多
+        if value is None: return "missing"
+        if value <= 98: return "strong_bullish"
+        if value <= 102: return "bullish"
+        if value >= 108: return "strong_bearish"
+        if value >= 105: return "bearish"
+        return "neutral"
+    def bias_for_cpi(value):  # 适度看多
+        if value is None: return "missing"
+        if 2.0 <= value <= 4.0: return "bullish"
+        if value > 5.0 or value < 1.0: return "bearish"
+        return "neutral"
+    def bias_for_vix(value):  # 越高越看多
+        if value is None: return "missing"
+        if value >= 28: return "strong_bullish"
+        if value >= 22: return "bullish"
+        if value <= 12: return "strong_bearish"
+        if value <= 15: return "bearish"
+        return "neutral"
+
+    tips = find("real_yield_5y")
+    dxy = find("dxy") or find("dollar_index")
+    cpi = find("cpi_yoy")
+    vix = find("vix")
+
+    return {
+        "tips_5y": {**({"value": tips["value_num"]} if tips else {}),
+                    "unit": tips.get("unit", "%") if tips else "%",
+                    "display_label": tips.get("display_label", "美国5年实际利率") if tips else "",
+                    "source": tips.get("source_provider", "") if tips else "",
+                    "bias": bias_for_tips(tips["value_num"]) if tips else "missing",
+                    "status": tips.get("status", "missing") if tips else "missing"},
+        "dxy": {...类似...},
+        "cpi_yoy": {...类似...},
+        "vix": {...类似...},
+    }
+```
+
+#### 4.6.2 前端渲染：4 张宏观卡
+
+```javascript
+function renderMacroStrip(snapshot) {
+  if (!snapshot) return "";
+  const items = [
+    {key: "tips_5y", label: "TIPS 5Y", value: snapshot.tips_5y},
+    {key: "dxy", label: "DXY", value: snapshot.dxy},
+    {key: "cpi_yoy", label: "CPI 同比", value: snapshot.cpi_yoy},
+    {key: "vix", label: "VIX", value: snapshot.vix},
+  ];
+  return `
+    <section class="gold-bottom-group">
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">MACRO INPUTS</p>
+          <h2>宏观输入</h2>
+          <p class="section-summary">直接影响黄金价格的 4 个宏观信号。</p>
+        </div>
+      </div>
+      <div class="gold-macro-strip">
+        ${items.map(item => renderMacroCard(item.label, item.value)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderMacroCard(label, macro) {
+  if (!macro || macro.status === "missing") {
+    return `
+      <article class="gold-macro-card" data-status="missing">
+        <div>
+          <strong>${label}</strong>
+          <span class="gold-bias-chip gold-bias-missing">数据不足</span>
+        </div>
+        <b>—</b>
+        <small>${macro?.display_label || ""}</small>
+      </article>
+    `;
+  }
+  return `
+    <article class="gold-macro-card">
+      <div>
+        <strong>${label}</strong>
+        <span class="gold-bias-chip gold-bias-${macro.bias}">${biasLabel(macro.bias)}</span>
+      </div>
+      <b>${formatNumber(macro.value, 2)}${macro.unit || ""}</b>
+      <small>${macro.display_label} · 来源 ${macro.source}</small>
     </article>
   `;
 }
 ```
 
-`state` → 中文标签映射：
-- `supportive` / `strong_support` → 支撑
-- `headwind` / `tight` / `selloff_watch` / `crowded` / `volatile` → 风险
-- `neutral` / `normal` / `loose` / `low_hedge_need` / `moderate_hedge_need` / `high_hedge_need` / `watch` / `missing` → 中性 / 缺失
+### 4.7 状态色板（5 档多空 + 4 档数据状态）
+
+#### 4.7.1 多空 chip（5 档，CSS 类名与 `.gold-bias-X` 对应）
+
+```css
+.gold-bias-chip {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.gold-bias-strong-bullish { background: var(--bullish-soft, rgba(15,118,110,0.18)); color: var(--bullish, #0f766e); }
+.gold-bias-bullish       { background: rgba(15,118,110,0.10); color: var(--bullish, #0f766e); }
+.gold-bias-neutral       { background: var(--accent-soft); color: var(--muted-strong); }
+.gold-bias-bearish       { background: rgba(195,90,29,0.10); color: var(--bearish, #c35a1d); }
+.gold-bias-strong-bearish{ background: rgba(195,90,29,0.18); color: var(--bearish, #c35a1d); }
+.gold-bias-missing       { background: rgba(183,121,31,0.10); color: var(--warning, #b7791f); }
+```
+
+#### 4.7.2 卡片 data-tone（继承 BTC 模式）
+
+`.gold-decision-card[data-tone="bullish"]` / `[data-tone="bearish"]` / `[data-tone="neutral"]` 沿用 BTC 页同款 4 色边框/背景变量，**不新增 CSS 变量**。
+
+#### 4.7.3 二级容器（bottom-group）
+
+```css
+.gold-bottom-group {
+  padding: 22px;
+  border: 1px solid rgba(15,118,110,0.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.32);
+  box-shadow: 0 18px 48px rgba(23,37,34,0.05);
+}
+```
 
 ### 4.6 趋势图表
 
