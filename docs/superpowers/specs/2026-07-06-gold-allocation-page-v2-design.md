@@ -32,7 +32,7 @@
 | 反馈 | 现状问题 | 修订方向 |
 |---|---|---|
 | **① 标签语义错位** | 核心/派生指标卡右上角显示"可用/偏低/偏高"——这是**数据状态**（值是否在阈值内），用户期望看到的是**多空判断**（市场方向） | 后端 `_status_for_value()` 增加 `bias` 字段，前端渲染**5 档多空标签**：强势看多 / 看多 / 中性 / 看空 / 强势看空 |
-| **② 缺失宏观指标** | 黄金作为宏观资产，但页面完全没有 TIPS 实际利率、DXY、CPI 同比、VIX 这些直接影响黄金价格的因素 | 新增**4 个核心宏观指标卡**，复用后端 `MacroOverviewService` 已有数据（不需新增后端逻辑） |
+| **② 缺失宏观指标** | 黄金作为宏观资产，但页面完全没有实际利率(TIPS yield)、DXY、CPI 同比、VIX 这些直接影响黄金价格的因素 | 新增**4 个核心宏观指标卡**（real_yield_10y / DXY / CPI YoY / VIX），复用后端 `MacroOverviewService` 已有数据（不需新增后端逻辑） |
 | **③ 设计语言不统一** | 当前 `.gold-v3-*` 视觉密度比 BTC 衍生品页低 ~70%（信息单元 15 vs 50+）；chip 仅单色，无 bottom-group 二级容器，无状态色调，叙事层级浅 | 全页改用 **BTC 衍生品页式 9 段递进**：Hero 决策带 → 工具栏 → 关键价位 → 图表 → 证据层 → 配置/执行 → 明细 → 治理。chip 改 4 色变量（bullish/bearish/warning/accent），新增 `.gold-bottom-group` 二级容器 |
 
 修订范围：
@@ -91,7 +91,7 @@ let latestPlan = null;         // /gold/execution-plan 响应
 │ ② 决策带 (.gold-decision-grid, 类比 .btc-decision-grid)         │
 │   3 张 decision card (min-height 230px):                         │
 │   - 宏观环境 (.gold-decision-card[data-tone="bullish"])         │
-│       结论 + 置信度 + 5 张 evidence-chip (TIPS/DXY/CPI/VIX/...) │
+│       结论 + 置信度 + 5 张 evidence-chip (实际利率/DXY/CPI/VIX/...) │
 │   - 配置建议 (.gold-decision-card[data-tone="..."])             │
 │       目标区间 + 低/达标/超配 + 月度动作                          │
 │   - 执行计划 (.gold-decision-card[data-tone="..."])             │
@@ -100,7 +100,8 @@ let latestPlan = null;         // /gold/execution-plan 响应
 │ ③ 4 个核心宏观指标 (.gold-macro-strip, 类比 .btc-level-strip)   │
 │   4 张 .gold-macro-card (min-height 220px):                     │
 │   ┌────────────┬────────────┬────────────┬────────────┐         │
-│   │ TIPS 5Y    │ DXY        │ CPI YoY    │ VIX        │         │
+│   │ 实际利率    │ DXY        │ CPI YoY    │ VIX        │         │
+│   │ (TIPS yield)│ 美元指数   │ 美国CPI    │ 波动率     │         │
 │   │ 1.85%      │ 103.5      │ 2.7%       │ 18.4       │         │
 │   │ [看多]     │ [看空]     │ [中性]     │ [中性]     │         │
 │   │ 实际利率   │ 美元指数    │ 美国CPI    │ 波动率     │         │
@@ -306,15 +307,16 @@ function biasLabel(bias) {
 
 ```python
 gold_macro_snapshot = {
-    "tips_5y": {
+    "real_yield_10y": {
         "value": 1.85,           # 从 macro.layer_map.cross_asset_confirmation.indicators[?].key="real_yield_5y"
         "unit": "%",
-        "display_label": "美国5年期通胀保值国债收益率",
+        "display_label": "美国10年期实际利率 (TIPS yield)",
         "source": "fred",
         "observation_ts": "2026-07-05",
-        "delta_4w": -0.12,        # 从 real_rate_delta_4w / 派生
-        "bias": "bullish",        # 多空语义（新增）
-        "threshold_low": 0.5,     # scoring registry
+        "delta_4w": -0.12,
+        "bias": "bearish",        # 黄金视角多空语义
+        "bias_reason": "实际利率 1.85% 处于中性区间，但方向中性偏空",
+        "threshold_low": 0.5,
         "threshold_high": 2.8,
         "status": "ok",
     },
@@ -326,71 +328,215 @@ gold_macro_snapshot = {
 
 **改造点**：
 - `gold_allocation_engine.py:1073-1090` 返回 `AllocationPlan` 时追加 `gold_macro_snapshot` 字段
-- `gold_macro_adapter.py:104-170` 的 `macro_overview_to_gold_macro()` 新增 `_gold_macro_snapshot()` 函数，从 `result["layer_map"]` 提取 4 个指标的 value_num 和 status，并计算 `bias`
-- 多空语义判断（黄金视角）：
-  - **TIPS** 越低 → 黄金机会成本越低 → **看多**（`<0.5% bullish`, `>2.8% bearish`）
-  - **DXY** 越低 → 美元弱 → 黄金以美元计价上涨 → **看多**（`<98 bullish`, `>108 bearish`）
-  - **CPI YoY** 适度通胀利好 → **看多**（`2-5% bullish`, `>5% 或 <0% bearish`）
-  - **VIX** 越高 → 风险厌恶 → 黄金避险 → **看多**（`>28 strong_bullish`, `<15 bearish`）
+- `gold_macro_adapter.py:104-170` 的 `macro_overview_to_gold_macro()` 新增 `_gold_macro_snapshot()` 函数
+- **指标命名修正**：黄金配置页用 `real_yield_10y`（10 年期 TIPS yield），不是 `real_yield_5y`。语义上是"通胀调整后的实际利率"，是黄金机会成本的核心代理。系统里不叫 "TIPS"，因为 TIPS 是资产本身，实际参与判断的是 yield/利率水平。
+- 阈值 low/high 仍取 `macro_scoring_registry.v1.json`（real_yield_5y 条目）— 5Y/10Y 在判断黄金方向上结论一致（实际利率越高越压制黄金），阈值可比但需在 spec 中显式声明。
 
-**判断函数**：
+#### 4.6.2 黄金视角 vs 风险资产视角的方向关系（用户专业修正）
 
-> **阈值来源说明**：4 个指标的 `low/high` 阈值（0.5/2.8, 98/108, 2/5, 15/28）**直接来自项目自有配置 `app/monitoring/configs/macro_scoring_registry.v1.json`** — 这是项目官方已经在 `macro/scoring_engine.py` 使用的评分阈值。spec 不引入新数字。
->
-> 但配置里的 `higher_value_bias="bearish_for_risk_assets"` 是**针对风险资产**的视角；我们这里要**对黄金重新解读方向**：
-> - TIPS 低 / DXY 低 → 美元弱 → 黄金（USD 计价）涨 → **看多**
-> - CPI 适度（2-4%）→ 抗通胀 → 黄金 **看多**；CPI 过高/过低 → 央行政策风险 → **看空**
-> - VIX 高 → 风险厌恶 → 黄金避险 → **看多**
-        return "neutral"
-    def bias_for_dxy(value):  # 越低越看多
-        if value is None: return "missing"
-        if value <= 98: return "strong_bullish"
-        if value <= 102: return "bullish"
-        if value >= 108: return "strong_bearish"
-        if value >= 105: return "bearish"
-        return "neutral"
-    def bias_for_cpi(value):  # 适度看多
-        if value is None: return "missing"
-        if 2.0 <= value <= 4.0: return "bullish"
-        if value > 5.0 or value < 1.0: return "bearish"
-        return "neutral"
-    def bias_for_vix(value):  # 越高越看多
-        if value is None: return "missing"
-        if value >= 28: return "strong_bullish"
-        if value >= 22: return "bullish"
-        if value <= 12: return "strong_bearish"
-        if value <= 15: return "bearish"
-        return "neutral"
+**核心结论表**：
 
-    tips = find("real_yield_5y")
+| 指标 | 风险资产视角 | 黄金视角 | 方向关系 |
+|---|---|---|---|
+| **real_yield_10y** (TIPS yield) | 上升压制风险资产估值 | **上升提高黄金机会成本，压制黄金**（黄金不产生利息，实际利率越高，债券等有息资产吸引力越强，黄金相对吸引力下降） | **一致偏空** |
+| **DXY** | 美元走强代表流动性收紧，压制风险资产 | **美元走强通常压制美元计价黄金**（World Gold Council 把美元和债券收益率列为黄金"机会成本"驱动） | **一致偏空**（**危机例外**：若 DXY 上行来自全球避险/美元荒且 VIX 急升，黄金短期先受流动性抛售压制，后看避险买盘是否回流） |
+| **CPI YoY** | 上升通常提高紧缩预期，压制风险资产 | **不固定**：取决于实际利率 — 实际利率下行偏多，实际利率上行偏空 | **不固定**（CPI × RealYield × DXY 二维判断） |
+| **VIX** | 上升代表风险厌恶，压制风险资产 | **正常风险厌恶支持黄金（反向）**；**流动性冲击下先不直接看多**（VIX 急升 + DXY 急升 + RealYield 上行 = 卖流动性补保证金） | **通常反向**（**流动性冲击例外**） |
+
+#### 4.6.3 阈值与判断函数
+
+**阈值来源说明**：4 个指标的 `low/high` 阈值（0.5/2.8, 98/108, 2/5, 15/28）**直接来自项目自有配置 `app/monitoring/configs/macro_scoring_registry.v1.json`** — 这是项目官方已经在 `macro/scoring_engine.py` 使用的评分阈值。spec 不引入新数字。
+
+**关键事实**：配置里 `higher_value_bias="bearish_for_risk_assets"` 是**针对风险资产**视角。黄金作为反风险资产，**4 个指标中 2 个需要反转方向判断**：
+
+| 指标 | registry 方向（风险资产） | 黄金方向 | 处理 |
+|---|---|---|---|
+| real_yield_10y | high = bearish_for_risk_assets | high = bearish_for_gold | **一致**，直接用阈值 |
+| DXY | high = bearish_for_risk_assets | high = bearish_for_gold | **一致**，直接用阈值 |
+| CPI YoY | high = bearish_for_risk_assets | **不固定**（取决于 real_yield + DXY） | **二维判断表**（见下） |
+| VIX | high = bearish_for_risk_assets | **反向**（正常避险）+ 例外（流动性冲击） | **反转阈值 + 状态机判断** |
+
+#### 4.6.4 CPI 二维判断表（黄金视角）
+
+CPI 不是单调函数。CPI 与 RealYield、DXY 组合产生不同判断：
+
+| CPI 状态 | RealYield | DXY | 黄金判断 | 备注 |
+|---|---|---|---|---|
+| CPI 上行，Fed 被动落后 | **下行** | **不强** | **看多黄金** | 通胀利好 + 利率压力小 + 美元不强势 |
+| CPI 上行，市场定价更高利率 | **上行** | **上行** | **看空黄金** | 紧缩预期 + 实际利率上行 + 美元走强 |
+| CPI 温和回落，降息预期增强 | **下行** | **走弱** | **看多黄金** | 降息预期利好 |
+| CPI 快速下行，衰退风险升温 | 不确定 | 可能上行 | **等待 VIX / DXY / ETF 确认** | 不输出单方向 bias |
+
+**实现**：CPI 的 bias 输出 `bullish/bearish/neutral` 三档 + `bias_reason` 字段说明判断依据；不输出 5 档（强档留给单指标）。
+
+#### 4.6.5 VIX 状态机判断（黄金视角）
+
+| VIX 状态 | 其他条件 | 黄金判断 |
+|---|---|---|
+| VIX 温和上升 (15-22) | 任意 | **看多黄金**（避险属性增强） |
+| VIX 急升 (>28) | DXY 不强 + RealYield 不上行 | **强势看多黄金** |
+| VIX 急升 (>28) | DXY 急升 + RealYield 上行 | **流动性冲击模式：先看空（黄金被卖补保证金），待压力缓和后回到避险逻辑** |
+| VIX 低 (<15) | 任意 | 中性 / 看空（无避险需求） |
+
+#### 4.6.6 DXY 危机例外
+
+| DXY 状态 | 其他条件 | 黄金判断 |
+|---|---|---|
+| DXY 走强（>105） | VIX 平稳 | **看空黄金** |
+| DXY 走强（>105） | VIX 急升（>25）+ RealYield 上行 | **流动性冲击模式：先看空黄金**（美元荒） |
+| DXY 走强（>105） | VIX 急升但 RealYield 下行 | **不一致**：黄金短期受压制，但若美元压力缓和后回流避险买盘，重新评估 |
+
+#### 4.6.7 完整判断函数
+
+```python
+def _gold_macro_snapshot(macro: dict) -> dict:
+    """从 macro layer_map 提取 4 个核心宏观指标 + 计算黄金视角的多空 bias。
+    
+    重要：以下 bias 计算**仅针对黄金视角**，不复用 registry 的 risk-assets bias。
+    
+    阈值来源: app/monitoring/configs/macro_scoring_registry.v1.json
+    方向重写: 本 spec 4.6.2-4.6.6 节定义
+    """
+    layer_map = (macro or {}).get("layer_map") or {}
+    indicators_by_layer = {
+        layer["layer_key"]: layer.get("indicators", [])
+        for layer in (macro or {}).get("layers", [])
+        if isinstance(layer, dict)
+    }
+    flat_indicators = [ind for ind_list in indicators_by_layer.values() for ind in ind_list]
+
+    def find(indicator_key: str) -> dict | None:
+        for ind in flat_indicators:
+            if ind.get("indicator_key") == indicator_key:
+                return ind
+        return None
+
+    # === 指标取值 ===
+    real_yield = find("real_yield_5y") or find("real_yield_10y")  # 优先 10Y；fallback 5Y
     dxy = find("dxy") or find("dollar_index")
     cpi = find("cpi_yoy")
     vix = find("vix")
 
+    def value_of(ind: dict | None) -> float | None:
+        return ind.get("value_num") if ind else None
+
+    ry_val = value_of(real_yield)
+    dxy_val = value_of(dxy)
+    cpi_val = value_of(cpi)
+    vix_val = value_of(vix)
+
+    # === 流动性冲击检测（VIX 急升 + DXY 急升 + RealYield 上行） ===
+    # 用于修正 VIX/DXY 在危机阶段的方向判断
+    liquidity_shock = (
+        vix_val is not None and vix_val >= 25 and
+        dxy_val is not None and dxy_val >= 105 and
+        ry_val is not None and ry_val >= 2.0
+    )
+
+    # === real_yield_10y 方向: high = bearish_for_gold (一致) ===
+    def bias_for_real_yield(value):
+        if value is None: return ("missing", "数据不足")
+        # 阈值: low=0.5, high=2.8 (from registry real_yield_5y)
+        if value <= 0.5: return ("strong_bullish", "实际利率低于 0.5%，持有黄金机会成本极低，强烈支持黄金")
+        if value <= 1.5: return ("bullish", "实际利率处于低位，债券吸引力弱，利好黄金")
+        if value >= 2.8: return ("strong_bearish", "实际利率高于 2.8%，持有黄金机会成本高，强烈压制黄金")
+        if value >= 2.0: return ("bearish", "实际利率偏高，债券吸引力上升，压制黄金")
+        return ("neutral", "实际利率处于中性区间")
+
+    # === DXY 方向: high = bearish_for_gold (一致 + 危机例外) ===
+    def bias_for_dxy(value):
+        if value is None: return ("missing", "数据不足")
+        if liquidity_shock:
+            return ("bearish", "DXY 走强叠加 VIX 急升，流动性冲击模式：黄金短期先被卖补保证金")
+        if value <= 98: return ("strong_bullish", "美元指数极弱，黄金 USD 计价上涨空间打开")
+        if value <= 102: return ("bullish", "美元偏弱，支撑黄金")
+        if value >= 108: return ("strong_bearish", "美元极强，强势压制黄金")
+        if value >= 105: return ("bearish", "美元走强，压制黄金")
+        return ("neutral", "美元处于中性区间")
+
+    # === CPI 二维判断（结合 real_yield + dxy）===
+    def bias_for_cpi(value):
+        if value is None: return ("missing", "数据不足")
+        # CPI 上行 + RealYield 下行 + DXY 不强 → 看多
+        if value >= 2.5 and ry_val is not None and ry_val < 1.5:
+            if dxy_val is None or dxy_val < 105:
+                return ("bullish", "CPI 偏高但实际利率下行 / 美元不强 → 抗通胀需求支撑黄金")
+        # CPI 上行 + RealYield 上行 + DXY 上行 → 看空
+        if value >= 3.0 and ry_val is not None and ry_val >= 2.0:
+            if dxy_val is not None and dxy_val >= 105:
+                return ("bearish", "CPI 高位 + 实际利率上行 + 美元走强，紧缩周期压制黄金")
+        # CPI 温和回落 + RealYield 下行 + DXY 走弱 → 看多（降息预期）
+        if 1.5 <= value < 2.5 and ry_val is not None and ry_val < 1.5:
+            if dxy_val is None or dxy_val < 105:
+                return ("bullish", "CPI 温和回落 + 实际利率下行 + 美元不强，降息预期支撑黄金")
+        # CPI 快速下行（CPI < 1.0）+ 衰退风险 → 等待确认
+        if value < 1.0:
+            return ("neutral", "CPI 快速下行，衰退风险升温，需结合 VIX/DXY/ETF 流向确认（不输出单方向）")
+        # 其它中性情形
+        return ("neutral", "CPI 处于中性区间，需结合其他宏观信号综合判断")
+
+    # === VIX 方向: 反向 (normal) + 流动性冲击例外 ===
+    def bias_for_vix(value):
+        if value is None: return ("missing", "数据不足")
+        if liquidity_shock:
+            # 流动性冲击下 VIX 急升不代表避险买盘
+            return ("bearish", "VIX 急升叠加 DXY 走强 + 实际利率上行 → 流动性冲击模式，黄金先被卖补保证金，待压力缓和后回到避险逻辑")
+        if value >= 28: return ("strong_bullish", "VIX 急升，市场风险厌恶强烈，黄金避险属性显著")
+        if value >= 22: return ("bullish", "VIX 上升，避险需求支撑黄金")
+        if value <= 12: return ("strong_bearish", "VIX 极低，市场过度乐观，避险需求缺失")
+        if value <= 15: return ("bearish", "VIX 偏低，避险需求不足")
+        return ("neutral", "VIX 处于中性区间")
+
+    def build(ind, bias_fn, fallback_label):
+        if not ind:
+            return {"value": None, "unit": "%" if "yield" in str(ind) else "",
+                    "display_label": fallback_label, "source": "",
+                    "bias": "missing", "bias_reason": "数据不足",
+                    "status": "missing"}
+        bias, reason = bias_fn(ind.get("value_num"))
+        return {
+            "value": ind.get("value_num"),
+            "unit": ind.get("unit", ""),
+            "display_label": ind.get("display_label", fallback_label),
+            "source": ind.get("source_provider", ""),
+            "observation_ts": ind.get("observation_ts", ""),
+            "bias": bias,
+            "bias_reason": reason,    # 新增字段：人类可读的判断依据
+            "threshold_low": 0.5 if "yield" in str(ind) else None,
+            "threshold_high": 2.8 if "yield" in str(ind) else None,
+            "status": ind.get("status", "unknown"),
+        }
+
     return {
-        "tips_5y": {**({"value": tips["value_num"]} if tips else {}),
-                    "unit": tips.get("unit", "%") if tips else "%",
-                    "display_label": tips.get("display_label", "美国5年实际利率") if tips else "",
-                    "source": tips.get("source_provider", "") if tips else "",
-                    "bias": bias_for_tips(tips["value_num"]) if tips else "missing",
-                    "status": tips.get("status", "missing") if tips else "missing"},
-        "dxy": {...类似...},
-        "cpi_yoy": {...类似...},
-        "vix": {...类似...},
+        "real_yield_10y": build(real_yield, bias_for_real_yield, "美国10年期实际利率 (TIPS yield)"),
+        "dxy": build(dxy, bias_for_dxy, "美元指数 DXY"),
+        "cpi_yoy": build(cpi, bias_for_cpi, "美国 CPI 同比"),
+        "vix": build(vix, bias_for_vix, "VIX 波动率"),
+        "_diagnostics": {
+            "liquidity_shock_detected": liquidity_shock,
+            "liquidity_shock_definition": "VIX>=25 AND DXY>=105 AND RealYield>=2.0",
+        },
     }
 ```
 
-#### 4.6.2 前端渲染：4 张宏观卡
+**关键设计**：
+1. **新增 `bias_reason` 字段**：每张宏观卡不仅显示 5 档标签，还显示**人类可读的判断依据**（如 "CPI 偏高但实际利率下行 → 抗通胀需求支撑黄金"），让用户理解为什么这样判断
+2. **`_diagnostics` 字段**：响应顶层暴露流动性冲击检测结果，前端可据此切换"危机模式"视觉（如 hero 加红色边条）
+3. **`real_yield_5y` 与 `real_yield_10y` 兼容**：优先取 10Y，fallback 到 5Y（如果 10Y 数据缺失）
+
+#### 4.6.8 前端渲染：4 张宏观卡（含 bias_reason 显示）
 
 ```javascript
 function renderMacroStrip(snapshot) {
   if (!snapshot) return "";
   const items = [
-    {key: "tips_5y", label: "TIPS 5Y", value: snapshot.tips_5y},
-    {key: "dxy", label: "DXY", value: snapshot.dxy},
+    {key: "real_yield_10y", label: "实际利率 (TIPS yield)", value: snapshot.real_yield_10y},
+    {key: "dxy", label: "DXY 美元指数", value: snapshot.dxy},
     {key: "cpi_yoy", label: "CPI 同比", value: snapshot.cpi_yoy},
-    {key: "vix", label: "VIX", value: snapshot.vix},
+    {key: "vix", label: "VIX 波动率", value: snapshot.vix},
   ];
+  // 若 liquidity_shock_detected，hero 加红边
+  const liquidityShock = snapshot._diagnostics?.liquidity_shock_detected;
   return `
     <section class="gold-bottom-group">
       <div class="section-head compact">
@@ -421,13 +567,14 @@ function renderMacroCard(label, macro) {
     `;
   }
   return `
-    <article class="gold-macro-card">
+    <article class="gold-macro-card" data-bias="${macro.bias}">
       <div>
         <strong>${label}</strong>
         <span class="gold-bias-chip gold-bias-${macro.bias}">${biasLabel(macro.bias)}</span>
       </div>
       <b>${formatNumber(macro.value, 2)}${macro.unit || ""}</b>
       <small>${macro.display_label} · 来源 ${macro.source}</small>
+      <p class="gold-macro-reason">${macro.bias_reason || ""}</p>
     </article>
   `;
 }
@@ -469,7 +616,7 @@ function renderMacroCard(label, macro) {
 }
 ```
 
-### 4.6 趋势图表
+### 4.8 趋势图表
 
 #### 图 1: XAUT 关键指标快照（单点 + 变化）
 - **数据源**: `/gold/market-state` 返回的 `price` / `ret_1d` / `ret_7d` / `ret_30d` / `drawdown_60d` / `natr_14` / `above_ma50` / `above_ma200`
