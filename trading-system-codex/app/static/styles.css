@@ -9308,3 +9308,125 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ============================================
+   Gold V2 多空 chip (5 档 + missing)
+   ============================================ */
+.gold-bias-chip {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  display: inline-block;
+}
+.gold-bias-strong-bullish {
+  background: rgba(15, 118, 110, 0.18);
+  color: #0b5f58;
+}
+.gold-bias-bullish {
+  background: rgba(15, 118, 110, 0.10);
+  color: #0f766e;
+}
+.gold-bias-neutral {
+  background: rgba(98, 112, 120, 0.10);
+  color: #4b5961;
+}
+.gold-bias-bearish {
+  background: rgba(195, 90, 29, 0.10);
+  color: #c35a1d;
+}
+.gold-bias-strong-bearish {
+  background: rgba(195, 90, 29, 0.18);
+  color: #8c3a10;
+}
+.gold-bias-missing {
+  background: rgba(183, 121, 31, 0.10);
+  color: #b7791f;
+}
+
+/* ============================================
+   Gold V2 二级容器 (沿用 BTC bottom-group 模式)
+   ============================================ */
+.gold-bottom-group {
+  padding: 22px;
+  border: 1px solid rgba(15, 118, 110, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 18px 48px rgba(23, 37, 34, 0.05);
+}
+
+/* ============================================
+   Gold V2 决策带 3 列网格
+   ============================================ */
+.gold-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.gold-decision-card {
+  min-height: 230px;
+  padding: 18px 20px;
+  border: 1px solid rgba(15, 118, 110, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.gold-decision-card[data-tone="bullish"] {
+  border-color: rgba(15, 118, 110, 0.30);
+  background: rgba(15, 118, 110, 0.04);
+}
+.gold-decision-card[data-tone="bearish"] {
+  border-color: rgba(195, 90, 29, 0.30);
+  background: rgba(195, 90, 29, 0.04);
+}
+.gold-decision-card[data-tone="neutral"] {
+  border-color: rgba(183, 121, 31, 0.30);
+  background: rgba(183, 121, 31, 0.04);
+}
+
+/* ============================================
+   Gold V2 4 宏观卡
+   ============================================ */
+.gold-macro-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.gold-macro-card {
+  min-height: 220px;
+  padding: 18px;
+  border: 1px solid rgba(15, 118, 110, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.gold-macro-card[data-bias^="strong_bullish"],
+.gold-macro-card[data-bias="bullish"] {
+  border-color: rgba(15, 118, 110, 0.30);
+}
+.gold-macro-card[data-bias^="strong_bearish"],
+.gold-macro-card[data-bias="bearish"] {
+  border-color: rgba(195, 90, 29, 0.30);
+}
+.gold-macro-card[data-bias="missing"] {
+  border-color: rgba(183, 121, 31, 0.30);
+  background: rgba(183, 121, 31, 0.04);
+}
+.gold-macro-reason {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+/* ============================================
+   Gold V2 流动性冲击警告 (hero 边条)
+   ============================================ */
+.gold-liquidity-shock-banner {
+  padding: 12px 16px;
+  border-left: 3px solid #c35a1d;
+  background: rgba(195, 90, 29, 0.06);
+  border-radius: 4px;
+  font-size: 13px;
+  color: #8c3a10;
+  margin: 0 0 18px 0;
+}
