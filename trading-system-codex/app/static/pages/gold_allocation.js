@@ -324,6 +324,58 @@ function biasLabel(bias) {
   }[bias] || "中性";
 }
 
+function renderMacroStrip(snapshot) {
+  if (!snapshot) return "";
+  const items = [
+    { key: "real_yield_10y", label: "实际利率 (TIPS yield)", value: snapshot.real_yield_10y },
+    { key: "dxy", label: "DXY 美元指数", value: snapshot.dxy },
+    { key: "cpi_yoy", label: "CPI 同比", value: snapshot.cpi_yoy },
+    { key: "vix", label: "VIX 波动率", value: snapshot.vix },
+  ];
+  const liquidityShock = snapshot._diagnostics?.liquidity_shock_detected;
+  return `
+    <section class="gold-bottom-group" data-section="macro-strip">
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">MACRO INPUTS</p>
+          <h2>宏观输入</h2>
+          <p class="section-summary">直接影响黄金价格的 4 个宏观信号 (real_yield_10y / DXY / CPI YoY / VIX)。</p>
+        </div>
+      </div>
+      ${liquidityShock ? '<div class="gold-liquidity-shock-banner">⚠ 流动性冲击模式：VIX 急升 + DXY 走强 + 实际利率上行，短期黄金先被卖补保证金。</div>' : ""}
+      <div class="gold-macro-strip">
+        ${items.map((item) => renderMacroCard(item.label, item.value)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderMacroCard(label, macro) {
+  if (!macro || macro.status === "missing") {
+    return `
+      <article class="gold-macro-card" data-status="missing" data-bias="missing">
+        <div>
+          <strong>${escapeHtml(label)}</strong>
+          <span class="gold-bias-chip gold-bias-missing">数据不足</span>
+        </div>
+        <b>—</b>
+        <small>${escapeHtml(macro?.display_label || "")}</small>
+      </article>
+    `;
+  }
+  return `
+    <article class="gold-macro-card" data-bias="${escapeHtml(macro.bias || "neutral")}">
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        <span class="gold-bias-chip gold-bias-${escapeHtml(macro.bias || "neutral")}">${biasLabel(macro.bias)}</span>
+      </div>
+      <b>${formatNumber(macro.value, 2)}${escapeHtml(macro.unit || "")}</b>
+      <small>${escapeHtml(macro.display_label)} · 来源 ${escapeHtml(macro.source)}</small>
+      <p class="gold-macro-reason">${escapeHtml(macro.bias_reason || "")}</p>
+    </article>
+  `;
+}
+
 function renderSettingsCard(state) {
   return `
     <section class="card gold-settings-card">
