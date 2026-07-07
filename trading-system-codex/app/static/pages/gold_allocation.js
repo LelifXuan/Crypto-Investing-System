@@ -6,6 +6,7 @@ const STORAGE_KEY = "gold_execution_v3_settings";
 let controller = null;
 let latestPlan = null;
 let latestMarket = null;
+let latestAllocation = null;
 let debounceTimer = null;
 
 const DEFAULT_STATE = {
@@ -159,35 +160,171 @@ function persistTriggeredDipState(plan, currentState) {
 }
 
 function renderShell(state, banner = "") {
+  const allocation = latestAllocation;
+  const macro = allocation?.gold_macro_snapshot;
+  const liquidityShock = macro?._diagnostics?.liquidity_shock_detected;
   return `
-    <section class="hero-card gold-v3-hero">
+    <section class="hero-card gold-v3-hero" ${liquidityShock ? 'data-tone="bearish"' : ""}>
       <div>
-        <p class="eyebrow">GOLD EXECUTION</p>
-        <h1>黄金配置</h1>
-        <p>长期持有执行工作台：用 x 表示基础定投，用 n × x 表示黄金坑固定加仓。</p>
+        <p class="eyebrow">GOLD ALLOCATION V2</p>
+        <h1>黄金宏观与配置工作台</h1>
+        <p>多模块加权评分 + 宏观信号 + 长期目标区间 + 执行计划。</p>
       </div>
       <button class="button compact" id="gold-reload-xaut" type="button">刷新 XAUT</button>
     </section>
     ${banner}
+    ${liquidityShock ? '<div class="gold-liquidity-shock-banner">⚠ 检测到流动性冲击（VIX≥25 + DXY≥105 + 实际利率≥2.0%），黄金短期承压，长期避险逻辑待恢复。</div>' : ""}
+
     <div class="gold-v3-layout">
-      <section class="gold-top-grid">
-        ${renderStrategyPanel(state)}
-        ${renderMarketPanel()}
+      <!-- ② 决策带 (3 张 decision card) -->
+      ${renderDecisionGrid(allocation)}
+
+      <!-- ③ 4 个核心宏观指标 -->
+      ${renderMacroStrip(macro)}
+
+      <!-- ④ 7 模块证据卡 -->
+      ${renderModuleSection(allocation)}
+
+      <!-- ⑤ 图表区 -->
+      ${renderChartSection(allocation)}
+
+      <!-- ⑥ XAUT 代理行情 + 黄金坑结构 -->
+      <section class="gold-bottom-group">
+        <div class="gold-top-grid">
+          ${renderMarketPanel()}
+          ${renderStrategyPanel(state)}
+        </div>
       </section>
-      <section class="gold-formula-grid">
-        ${renderFormulaCard("日常定投 x", "x", "每日纪律项", latestPlan?.daily_dca, money(baseAmount(state)))}
-        ${renderFormulaCard("黄金坑 n × x", "n × x", "超跌事件固定项", latestPlan?.dip_add, `${formatNumber(numberOr(state.dipMultiplier), 2)} × x`)}
-        ${renderTotalCard(state)}
+
+      <!-- ⑦ 执行子区块 -->
+      <section class="gold-bottom-group">
+        <div class="gold-bottom-grid">
+          ${renderSettingsCard(state)}
+          ${renderDiagnostics()}
+        </div>
       </section>
+
+      <!-- ⑧ 核心 + 派生指标卡 -->
       <section class="gold-indicator-layout">
         ${renderIndicatorSection("核心指标", latestPlan?.diagnostics?.core_indicator_cards || [], "8 项核心指标用于复核日线样本和基础技术状态。")}
         ${renderIndicatorSection("派生指标", latestPlan?.diagnostics?.derived_indicator_cards || [], "6 项派生指标用于判断回撤、偏离和触发质量。")}
       </section>
-      <section class="gold-bottom-grid">
-        ${renderSettingsCard(state)}
-        ${renderDiagnostics()}
-      </section>
+
+      <!-- ⑨ 数据治理 -->
+      ${renderGovernanceSection()}
     </div>
+  `;
+}
+
+function renderDecisionGrid(allocation) {
+  if (!allocation) {
+    return `
+      <section class="gold-bottom-group">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">DECISIONS</p>
+            <h2>决策带</h2>
+            <p class="section-summary">正在加载 V2 决策。</p>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+  const score = allocation.allocation_score ?? 50;
+  const tone = score >= 60 ? "bullish" : score <= 40 ? "bearish" : "neutral";
+  return `
+    <section class="gold-bottom-group">
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">DECISIONS</p>
+          <h2>决策带</h2>
+          <p class="section-summary">宏观环境 / 配置建议 / 执行计划。</p>
+        </div>
+      </div>
+      <div class="gold-decision-grid">
+        <article class="gold-decision-card" data-tone="${tone}">
+          <p class="eyebrow">宏观环境</p>
+          <h3>综合评分 ${score}</h3>
+          <p>${escapeHtml(allocation.decision_summary || "")}</p>
+        </article>
+        <article class="gold-decision-card" data-tone="${tone}">
+          <p class="eyebrow">配置建议</p>
+          <h3>${escapeHtml(allocation.allocation_state)}</h3>
+          <p>${escapeHtml(allocation.primary_instruction || "")}</p>
+          <small>目标区间 ${formatNumber((allocation.target_range?.min || 0) * 100, 1)}% – ${formatNumber((allocation.target_range?.max || 0) * 100, 1)}%</small>
+        </article>
+        <article class="gold-decision-card" data-tone="${tone}">
+          <p class="eyebrow">执行计划</p>
+          <h3>本月建议 ${money(allocation.suggested_this_month)}</h3>
+          <p>${escapeHtml(allocation.reasoning_steps?.[0] || "")}</p>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderModuleSection(allocation) {
+  if (!allocation?.module_cards) return "";
+  return `
+    <section class="gold-bottom-group">
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">MODULES</p>
+          <h2>7 模块证据卡</h2>
+          <p class="section-summary">宏观货币 / 官方储备 / 供给刚性 / 组合对冲 / 流动性 / 衍生品 / XAUT。</p>
+        </div>
+      </div>
+      <div class="gold-decision-grid">
+        ${allocation.module_cards.map(renderModuleCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderChartSection(allocation) {
+  // 简化为占位 — 真正的图表实现可在后续任务中扩展
+  return `
+    <section class="gold-bottom-group">
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">CHARTS</p>
+          <h2>图表区</h2>
+          <p class="section-summary">XAUT 关键指标 + 基本面快照。</p>
+        </div>
+      </div>
+      <div class="gold-macro-strip">
+        <article class="gold-macro-card">
+          <strong>XAUT 关键指标</strong>
+          <p class="gold-macro-reason">图表组件占位。XAUT 价格 / 7D-30D 变化 / 60D 回撤 / NATR 等可在 V2.1 实施。</p>
+        </article>
+        <article class="gold-macro-card">
+          <strong>基本面快照</strong>
+          <p class="gold-macro-reason">图表组件占位。央行净购金 / ETF 流量等可在 V2.1 实施。</p>
+        </article>
+        <article class="gold-macro-card" data-status="placeholder">
+          <strong>占位 3</strong>
+          <p class="gold-macro-reason">—</p>
+        </article>
+        <article class="gold-macro-card" data-status="placeholder">
+          <strong>占位 4</strong>
+          <p class="gold-macro-reason">—</p>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderGovernanceSection() {
+  return `
+    <section class="gold-bottom-group">
+      <details class="btc-details-drawer">
+        <summary>数据治理与可信度</summary>
+        <div class="gold-card-metrics">
+          <article><span>报价状态</span><b>${escapeHtml(latestMarket?.data_quality_note || "—")}</b></article>
+          <article><span>K 线数量</span><b>${escapeHtml(String(latestPlan?.diagnostics?.candle_count ?? "-"))}</b></article>
+        </div>
+      </details>
+    </section>
   `;
 }
 
