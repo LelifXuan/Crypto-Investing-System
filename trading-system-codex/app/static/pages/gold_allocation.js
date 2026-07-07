@@ -648,6 +648,14 @@ async function loadExecutionPlan({ forceMarket = false, preserveShell = false } 
       console.warn("XAUT market state unavailable", error);
     }
   }
+  // 新增：拉取 V2 配置计划（包含 gold_macro_snapshot + module_cards）
+  try {
+    latestAllocation = await api.getGoldAllocation({ signal: controller.signal });
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.warn("V2 gold allocation unavailable", error);
+    }
+  }
   latestPlan = await api.planGoldExecution(payloadFromState(state), { signal: controller.signal });
   state = persistTriggeredDipState(latestPlan, state);
   setRoot(renderShell(state, statusBanner("黄金执行计划已生成", "neutral")));
