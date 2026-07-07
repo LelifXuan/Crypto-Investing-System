@@ -168,3 +168,150 @@ def macro_overview_to_gold_macro(payload: Any) -> dict[str, Any]:
     )
 
     return result
+
+
+def _gold_macro_snapshot(macro: dict) -> dict:
+    """从 macro layer_map 提取 4 个核心宏观指标 + 计算黄金视角的多空 bias。
+
+    重要：以下 bias 计算**仅针对黄金视角**，不复用 registry 的 risk-assets bias。
+
+    阈值来源: app/monitoring/configs/macro_scoring_registry.v1.json
+    方向重写: 见 V2 spec §4.6.2-4.6.6
+    """
+    layer_map = (macro or {}).get("layer_map") or {}
+    indicators_by_layer = {
+        layer["layer_key"]: layer.get("indicators", [])
+        for layer in (macro or {}).get("layers", [])
+        if isinstance(layer, dict)
+    }
+    flat_indicators = [
+        ind for ind_list in indicators_by_layer.values() for ind in ind_list
+    ]
+
+    def find(indicator_key: str) -> dict | None:
+        for ind in flat_indicators:
+            if ind.get("indicator_key") == indicator_key:
+                return ind
+        return None
+
+    def value_of(ind: dict | None) -> float | None:
+        return ind.get("value_num") if ind else None
+
+    real_yield = find("real_yield_5y") or find("real_yield_10y")
+    dxy = find("dxy") or find("dollar_index")
+    cpi = find("cpi_yoy")
+    vix = find("vix")
+
+    ry_val = value_of(real_yield)
+    dxy_val = value_of(dxy)
+    cpi_val = value_of(cpi)
+    vix_val = value_of(vix)
+
+    # 流动性冲击检测
+    liquidity_shock = (
+        vix_val is not None and vix_val >= 25
+        and dxy_val is not None and dxy_val >= 105
+        and ry_val is not None and ry_val >= 2.0
+    )
+
+    def bias_for_real_yield(value):
+        if value is None:
+            return ("missing", "数据不足")
+        if value <= 0.5:
+            return ("strong_bullish", "实际利率低于 0.5%，持有黄金机会成本极低，强烈支持黄金")
+        if value <= 1.5:
+            return ("bullish", "实际利率处于低位，债券吸引力弱，利好黄金")
+        if value >= 2.8:
+            return ("strong_bearish", "实际利率高于 2.8%，持有黄金机会成本高，强烈压制黄金")
+        if value >= 2.0:
+            return ("bearish", "实际利率偏高，债券吸引力上升，压制黄金")
+        return ("neutral", "实际利率处于中性区间")
+
+    def bias_for_dxy(value):
+        if value is None:
+            return ("missing", "数据不足")
+        if liquidity_shock:
+            return ("bearish", "DXY 走强叠加 VIX 急升，流动性冲击模式：黄金短期先被卖补保证金")
+        if value <= 98:
+            return ("strong_bullish", "美元指数极弱，黄金 USD 计价上涨空间打开")
+        if value <= 102:
+            return ("bullish", "美元偏弱，支撑黄金")
+        if value >= 108:
+            return ("strong_bearish", "美元极强，强势压制黄金")
+        if value >= 105:
+            return ("bearish", "美元走强，压制黄金")
+        return ("neutral", "美元处于中性区间")
+
+    def bias_for_cpi(value):
+        if value is None:
+            return ("missing", "数据不足")
+        # CPI 上行 + RealYield 下行 + DXY 不强 → 看多
+        if value >= 2.5 and ry_val is not None and ry_val < 1.5:
+            if dxy_val is None or dxy_val < 105:
+                return ("bullish", "CPI 偏高但实际利率下行 / 美元不强 → 抗通胀需求支撑黄金")
+        # CPI 上行 + RealYield 上行 + DXY 上行 → 看空
+        if value >= 3.0 and ry_val is not None and ry_val >= 2.0:
+            if dxy_val is not None and dxy_val >= 105:
+                return ("bearish", "CPI 高位 + 实际利率上行 + 美元走强，紧缩周期压制黄金")
+        # CPI 温和回落 + RealYield 下行 + DXY 走弱 → 看多（降息预期）
+        if 1.5 <= value < 2.5 and ry_val is not None and ry_val < 1.5:
+            if dxy_val is None or dxy_val < 105:
+                return ("bullish", "CPI 温和回落 + 实际利率下行 + 美元不强，降息预期支撑黄金")
+        # CPI 快速下行 → 等待确认
+        if value < 1.0:
+            return ("neutral", "CPI 快速下行，衰退风险升温，需结合 VIX/DXY/ETF 流向确认（不输出单方向）")
+        return ("neutral", "CPI 处于中性区间，需结合其他宏观信号综合判断")
+
+    def bias_for_vix(value):
+        if value is None:
+            return ("missing", "数据不足")
+        if liquidity_shock:
+            return ("bearish", "VIX 急升叠加 DXY 走强 + 实际利率上行 → 流动性冲击模式，黄金先被卖补保证金，待压力缓和后回到避险逻辑")
+        if value >= 28:
+            return ("strong_bullish", "VIX 急升，市场风险厌恶强烈，黄金避险属性显著")
+        if value >= 22:
+            return ("bullish", "VIX 上升，避险需求支撑黄金")
+        if value <= 12:
+            return ("strong_bearish", "VIX 极低，市场过度乐观，避险需求缺失")
+        if value <= 15:
+            return ("bearish", "VIX 偏低，避险需求不足")
+        return ("neutral", "VIX 处于中性区间")
+
+    def build(ind, bias_fn, fallback_label):
+        if not ind:
+            return {
+                "value": None,
+                "unit": "",
+                "display_label": fallback_label,
+                "source": "",
+                "observation_ts": "",
+                "bias": "missing",
+                "bias_reason": "数据不足",
+                "threshold_low": None,
+                "threshold_high": None,
+                "status": "missing",
+            }
+        bias, reason = bias_fn(ind.get("value_num"))
+        return {
+            "value": ind.get("value_num"),
+            "unit": ind.get("unit", ""),
+            "display_label": ind.get("display_label", fallback_label),
+            "source": ind.get("source_provider", ""),
+            "observation_ts": ind.get("observation_ts", ""),
+            "bias": bias,
+            "bias_reason": reason,
+            "threshold_low": 0.5 if "yield" in ind.get("indicator_key", "") else None,
+            "threshold_high": 2.8 if "yield" in ind.get("indicator_key", "") else None,
+            "status": ind.get("status", "unknown"),
+        }
+
+    return {
+        "real_yield_10y": build(real_yield, bias_for_real_yield, "美国10年期实际利率 (TIPS yield)"),
+        "dxy": build(dxy, bias_for_dxy, "美元指数 DXY"),
+        "cpi_yoy": build(cpi, bias_for_cpi, "美国 CPI 同比"),
+        "vix": build(vix, bias_for_vix, "VIX 波动率"),
+        "_diagnostics": {
+            "liquidity_shock_detected": liquidity_shock,
+            "liquidity_shock_definition": "VIX>=25 AND DXY>=105 AND RealYield>=2.0",
+        },
+    }
