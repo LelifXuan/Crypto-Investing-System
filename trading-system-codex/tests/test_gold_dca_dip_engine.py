@@ -202,3 +202,39 @@ def test_execution_plan_does_not_expose_forbidden_trading_actions() -> None:
     }
     for token in forbidden:
         assert token not in rendered
+
+
+from app.services.gold_dca_dip import _bias_for_indicator
+
+
+def test_bias_for_indicator_none_returns_missing():
+    assert _bias_for_indicator("rsi_14", None, lower=30, upper=70) == "missing"
+
+
+def test_bias_for_indicator_no_threshold_returns_neutral():
+    # ema_20/ema_50/ema_200/atr_14/natr_14 没有 lower/upper
+    assert _bias_for_indicator("ema_20", 4138.26) == "neutral"
+
+
+def test_bias_for_indicator_rsi_bullish_low():
+    # rsi_14 ∈ bullish_low: 越低越看多
+    assert _bias_for_indicator("rsi_14", 20, lower=30, upper=70) == "strong_bullish"
+    assert _bias_for_indicator("rsi_14", 28, lower=30, upper=70) == "bullish"
+    assert _bias_for_indicator("rsi_14", 50, lower=30, upper=70) == "neutral"
+
+
+def test_bias_for_indicator_rsi_bearish_high():
+    assert _bias_for_indicator("rsi_14", 91, lower=30, upper=70) == "strong_bearish"
+    assert _bias_for_indicator("rsi_14", 75, lower=30, upper=70) == "bearish"
+
+
+def test_bias_for_indicator_drawdown_bearish_low():
+    # drawdown_from_60d_high ∈ bearish_low: 越低越看空
+    # value=-0.15 (15% 回撤), lower=-0.08 → strong_bearish
+    assert _bias_for_indicator("drawdown_from_60d_high", -0.15, lower=-0.08) == "strong_bearish"
+    assert _bias_for_indicator("drawdown_from_60d_high", -0.09, lower=-0.08) == "bearish"
+
+
+def test_bias_for_indicator_unknown_key_no_threshold():
+    # 未知 key + 无阈值 → neutral
+    assert _bias_for_indicator("custom_unknown", 50.0) == "neutral"

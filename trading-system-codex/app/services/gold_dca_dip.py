@@ -329,6 +329,56 @@ def _format_card_value(value: float | bool | None, unit: str, digits: int) -> st
     return f"{value:.{digits}f}"
 
 
+def _bias_for_indicator(key: str, value: float | None, *, lower: float | None = None, upper: float | None = None) -> str:
+    """多空语义（5 档：strong_bullish / bullish / neutral / bearish / strong_bearish）。
+
+    判定规则：
+    - value 为 None → missing
+    - 指标不在 bullish_low/bearish_low 集合内 → neutral（默认中性）
+    - bullish_low 集合（越低越看多黄金）：
+      rsi_14 / cci_20 / percent_b
+    - bearish_low 集合（越低越看空黄金）：
+      close_vs_ema20_pct / close_vs_ema50_pct / return_7d / return_14d /
+      drawdown_from_30d_high / drawdown_from_60d_high
+    - 无阈值（lower=None and upper=None）→ neutral
+    - 强档阈值：lower*0.7 / upper*1.3
+    """
+    if value is None:
+        return "missing"
+    bullish_low = {"rsi_14", "cci_20", "percent_b"}
+    bearish_low = {
+        "close_vs_ema20_pct", "close_vs_ema50_pct",
+        "return_7d", "return_14d",
+        "drawdown_from_30d_high", "drawdown_from_60d_high",
+    }
+    if lower is None and upper is None:
+        return "neutral"
+    # 强档阈值：向 strong 方向再延伸 30%（lower>=0 时 *0.7；lower<0 时 *1.3）
+    strong_lower = lower * (0.7 if (lower is None or lower >= 0) else 1.3)
+    strong_upper = upper * 1.3 if upper is not None else None
+    if key in bullish_low:
+        if lower is not None and value <= strong_lower:
+            return "strong_bullish"
+        if lower is not None and value <= lower:
+            return "bullish"
+        if upper is not None and value >= strong_upper:
+            return "strong_bearish"
+        if upper is not None and value >= upper:
+            return "bearish"
+        return "neutral"
+    if key in bearish_low:
+        if lower is not None and value <= strong_lower:
+            return "strong_bearish"
+        if lower is not None and value <= lower:
+            return "bearish"
+        if upper is not None and value >= strong_upper:
+            return "strong_bullish"
+        if upper is not None and value >= upper:
+            return "bullish"
+        return "neutral"
+    return "neutral"
+
+
 def _status_for_value(value: float | bool | None, *, lower: float | None = None, upper: float | None = None) -> str:
     if value is None:
         return "数据不足"
@@ -358,6 +408,7 @@ def _indicator_card(
         "display_value": _format_card_value(value, unit, digits),
         "unit": unit,
         "status": _status_for_value(value, lower=lower, upper=upper),
+        "bias": _bias_for_indicator(key, value, lower=lower, upper=upper),
         "note": note,
     }
 
