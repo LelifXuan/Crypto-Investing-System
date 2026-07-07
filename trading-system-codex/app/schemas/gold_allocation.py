@@ -74,6 +74,7 @@ class GoldAllocationPlanResponse(BaseModel):
     summary: str
     risk_notes: list[str]
     asset_impact_summary: dict[str, str]
+    gold_macro_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
 class GoldQuoteInput(BaseModel):

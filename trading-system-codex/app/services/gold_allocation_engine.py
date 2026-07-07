@@ -5,6 +5,8 @@ import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Mapping
 
+from app.services.gold_macro_adapter import _gold_macro_snapshot
+
 DataQuality = Literal["direct", "partial", "proxy", "missing"]
 AllocationEffect = Literal["increase", "maintain", "pause", "split_add", "reduce", "watch"]
 
@@ -105,6 +107,7 @@ class AllocationPlan:
     warnings: list[str]
     drivers: dict[str, Any]
     asset_impact_summary: dict[str, str]
+    macro_payload: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -126,6 +129,7 @@ class AllocationPlan:
                 "summary": self.decision_summary,
                 "risk_notes": list(self.warnings),
                 "action": _legacy_action(self.allocation_state, self.execution_style),
+                "gold_macro_snapshot": _gold_macro_snapshot(self.macro_payload or {}),
             }
         )
         return data
@@ -1087,4 +1091,5 @@ def build_gold_allocation_plan(
         warnings=warnings,
         drivers={card["key"]: card for card in module_cards},
         asset_impact_summary={"gold": decision_summary},
+        macro_payload=macro,
     )

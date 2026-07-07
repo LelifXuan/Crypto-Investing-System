@@ -392,3 +392,38 @@ def test_liquidity_and_derivatives_have_daily_weekly_windows() -> None:
 def test_invalid_total_value_is_rejected() -> None:
     with pytest.raises(ValueError, match="total"):
         build_gold_allocation_plan(_portfolio(total_portfolio_value=0))
+
+
+def test_build_gold_allocation_plan_includes_gold_macro_snapshot():
+    """验证 AllocationPlan.to_dict() 输出包含 gold_macro_snapshot 字段。"""
+    plan_dict = _build_test_plan().to_dict()
+    assert "gold_macro_snapshot" in plan_dict
+    assert "real_yield_10y" in plan_dict["gold_macro_snapshot"]
+    assert "dxy" in plan_dict["gold_macro_snapshot"]
+    assert "cpi_yoy" in plan_dict["gold_macro_snapshot"]
+    assert "vix" in plan_dict["gold_macro_snapshot"]
+    assert "_diagnostics" in plan_dict["gold_macro_snapshot"]
+
+
+def _build_test_plan():
+    """构造最小可用 AllocationPlan 用于测试"""
+    from app.services.gold_allocation_engine import AllocationPlan
+    return AllocationPlan(
+        allocation_state="within_range",
+        allocation_score=60.0,
+        target_range={"min": 0.05, "max": 0.12},
+        current_weight=0.08,
+        gap_to_target_min=0.0,
+        gap_above_target_max=0.0,
+        suggested_this_month=100.0,
+        execution_style="maintain",
+        primary_instruction="保持当前配置",
+        decision_summary="测试场景",
+        reasoning_steps=["测试"],
+        module_cards=[],
+        data_quality={"confidence": 0.8, "missing_modules": [], "partial_modules": [], "proxy_modules": []},
+        warnings=[],
+        drivers={},
+        asset_impact_summary={"gold": "测试"},
+        macro_payload={},  # 空 macro 也能正常序列化
+    )
