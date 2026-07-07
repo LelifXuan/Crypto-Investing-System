@@ -281,6 +281,19 @@ function renderModuleSection(allocation) {
   `;
 }
 
+function renderModuleCard(card) {
+  if (!card) return "";
+  const tone = card.score >= 60 ? "bullish" : card.score <= 40 ? "bearish" : "neutral";
+  return `
+    <article class="gold-decision-card" data-tone="${tone}" data-module="${escapeHtml(card.key || "")}">
+      <p class="eyebrow">${escapeHtml(card.title || "")}</p>
+      <h3>评分 ${escapeHtml(String(card.score ?? "—"))}</h3>
+      <p>${escapeHtml(card.headline || "")}</p>
+      <small>置信度 ${Math.round((card.confidence || 0) * 100)}% · ${escapeHtml(card.data_quality || "—")}</small>
+    </article>
+  `;
+}
+
 function renderChartSection(allocation) {
   // 简化为占位 — 真正的图表实现可在后续任务中扩展
   return `
