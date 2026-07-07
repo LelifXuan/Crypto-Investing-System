@@ -334,29 +334,13 @@ gold_macro_snapshot = {
   - **VIX** 越高 → 风险厌恶 → 黄金避险 → **看多**（`>28 strong_bullish`, `<15 bearish`）
 
 **判断函数**：
-```python
-def _gold_macro_snapshot(macro: dict) -> dict:
-    """从 macro layer_map 提取 4 个核心宏观指标 + 计算黄金视角的多空 bias。"""
-    layer_map = (macro or {}).get("layer_map") or {}
-    indicators_by_layer = {
-        layer["layer_key"]: layer.get("indicators", [])
-        for layer in (macro or {}).get("layers", [])
-        if isinstance(layer, dict)
-    }
-    flat_indicators = [ind for ind_list in indicators_by_layer.values() for ind in ind_list]
 
-    def find(indicator_key: str) -> dict | None:
-        for ind in flat_indicators:
-            if ind.get("indicator_key") == indicator_key:
-                return ind
-        return None
-
-    def bias_for_tips(value):  # 越低越看多
-        if value is None: return "missing"
-        if value <= 0.5: return "strong_bullish"
-        if value <= 1.5: return "bullish"
-        if value >= 2.8: return "strong_bearish"
-        if value >= 2.0: return "bearish"
+> **阈值来源说明**：4 个指标的 `low/high` 阈值（0.5/2.8, 98/108, 2/5, 15/28）**直接来自项目自有配置 `app/monitoring/configs/macro_scoring_registry.v1.json`** — 这是项目官方已经在 `macro/scoring_engine.py` 使用的评分阈值。spec 不引入新数字。
+>
+> 但配置里的 `higher_value_bias="bearish_for_risk_assets"` 是**针对风险资产**的视角；我们这里要**对黄金重新解读方向**：
+> - TIPS 低 / DXY 低 → 美元弱 → 黄金（USD 计价）涨 → **看多**
+> - CPI 适度（2-4%）→ 抗通胀 → 黄金 **看多**；CPI 过高/过低 → 央行政策风险 → **看空**
+> - VIX 高 → 风险厌恶 → 黄金避险 → **看多**
         return "neutral"
     def bias_for_dxy(value):  # 越低越看多
         if value is None: return "missing"
