@@ -538,7 +538,7 @@ function renderSettingsCard(state) {
       </div>
       <div class="gold-settings-grid">
         ${renderNumberInput("dailyDcaAmount", "基础定投 x", state.dailyDcaAmount, "1")}
-        ${renderNumberInput("dipMultiplier", "黄金坑系数 n", state.dipMultiplier, "0.1")}
+        ${renderNumberInput("dipMultiplier", "黄金坑系数 n (黄金坑 n × x)", state.dipMultiplier, "0.1")}
         ${renderNumberInput("availableCash", "可用现金", state.availableCash, "1")}
         ${renderNumberInput("cooldownDays", "冷却天数", state.cooldownDays, "1")}
         ${renderDateInput("lastDipAddDate", "上次加仓日期", state.lastDipAddDate)}
