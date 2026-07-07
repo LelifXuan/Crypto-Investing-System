@@ -302,15 +302,26 @@ function renderIndicatorSection(title, cards, summary) {
 
 function renderIndicatorCard(card) {
   return `
-    <article class="gold-indicator-card">
+    <article class="gold-indicator-card" data-bias="${escapeHtml(card.bias || "neutral")}">
       <div>
         <strong>${escapeHtml(card.label || "指标")}</strong>
-        <span>${escapeHtml(card.status || "待确认")}</span>
+        <span class="gold-bias-chip gold-bias-${escapeHtml(card.bias || "neutral")}">${biasLabel(card.bias)}</span>
       </div>
       <b>${escapeHtml(card.display_value || "-")}</b>
       <small>${escapeHtml(card.note || "")}</small>
     </article>
   `;
+}
+
+function biasLabel(bias) {
+  return {
+    strong_bullish: "强势看多",
+    bullish: "看多",
+    neutral: "中性",
+    bearish: "看空",
+    strong_bearish: "强势看空",
+    missing: "数据不足",
+  }[bias] || "中性";
 }
 
 function renderSettingsCard(state) {
