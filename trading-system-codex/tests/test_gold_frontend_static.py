@@ -131,6 +131,16 @@ def test_gold_v2_bottom_group_container() -> None:
     assert "border-radius: 18px" in css
 
 
+def test_gold_v2_strong_bias_class_uses_underscore() -> None:
+    """验证强档 chip class 使用下划线（与后端 enum 一致，避免 CSS/JS mismatch）。"""
+    css = STYLES.read_text(encoding="utf-8")
+    assert ".gold-bias-strong_bullish" in css
+    assert ".gold-bias-strong_bearish" in css
+    # 同时确认连字符版不存在（避免未来漂移）
+    assert ".gold-bias-strong-bullish" not in css
+    assert ".gold-bias-strong-bearish" not in css
+
+
 def test_gold_v2_liquidity_shock_banner() -> None:
     """验证流动性冲击警告类。"""
     css = STYLES.read_text(encoding="utf-8")

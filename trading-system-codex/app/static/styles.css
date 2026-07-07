@@ -9320,7 +9320,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   letter-spacing: 0.02em;
   display: inline-block;
 }
-.gold-bias-strong-bullish {
+.gold-bias-strong_bullish {
   background: rgba(15, 118, 110, 0.18);
   color: #0b5f58;
 }
@@ -9336,7 +9336,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background: rgba(195, 90, 29, 0.10);
   color: #c35a1d;
 }
-.gold-bias-strong-bearish {
+.gold-bias-strong_bearish {
   background: rgba(195, 90, 29, 0.18);
   color: #8c3a10;
 }
