@@ -185,28 +185,6 @@ function renderGuideCard(item) {
          <ol>${item.page_walkthrough.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
        </section>`
     : "";
-  const lineageBlock = item.data_lineage && item.data_lineage.length
-    ? `<section class="knowledge-guide-lineage">
-         <h4>数据从哪来</h4>
-         <code>${esc(item.data_lineage.join(" → "))}</code>
-       </section>`
-    : "";
-  const caveatBlock = item.caveats && item.caveats.length
-    ? `<section class="knowledge-guide-caveats">
-         <h4>注意点</h4>
-         <ul>${item.caveats.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
-       </section>`
-    : "";
-  const relatedPagesBlock = item.related_pages && item.related_pages.length
-    ? `<section class="knowledge-guide-related">
-         <h4>关联页面</h4>
-         <div class="knowledge-guide-related-chips">
-           ${item.related_pages
-             .map((p) => `<a class="secondary-button" href="/${esc(p)}-page">${esc(p)} →</a>`)
-             .join("")}
-         </div>
-       </section>`
-    : "";
 
   return `
     <article class="knowledge-guide-card is-open" id="${esc(item.id)}">
@@ -218,9 +196,6 @@ function renderGuideCard(item) {
         ${purposeBlock}
         ${whenBlock}
         ${walkthroughBlock}
-        ${lineageBlock}
-        ${caveatBlock}
-        ${relatedPagesBlock}
       </div>
     </article>
   `;
