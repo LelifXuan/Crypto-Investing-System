@@ -1169,14 +1169,7 @@ const macroItems = [
 ];
 
 const dataQualityItems = [
-  term("stale_data", "Stale Data / 数据滞后", {
-    aliases: ["stale"],
-    family: "quality",
-    summary: "数据滞后表示本地快照可用，但已经落后于最新源数据。",
-    how_to_use: "可以阅读旧结果，但不要把它当作最新交易依据。页面应显示 stale/updating 状态。",
-    page_refs: ["market-analysis", "market-structure", "alert-center"],
-    tags: ["quality"],
-  }),
+  ),
   term("cache_state", "Cache State / 缓存状态", {
     aliases: ["fresh", "stale", "missing", "updating", "error"],
     family: "quality",
@@ -1206,20 +1199,8 @@ const dataQualityItems = [
     page_refs: ["market-analysis"],
     tags: ["quality"],
   }),
-  term("source_availability", "Source Availability / 数据源可用性", {
-    family: "quality",
-    summary: "数据源可用性说明 Gate.io、宏观或事件源是否能返回数据。",
-    how_to_use: "数据源不可用时，页面应读本地快照并显示降级，而不是阻塞渲染。",
-    page_refs: ["monitoring-overview"],
-    tags: ["quality"],
-  }),
-  term("data_freshness", "Data Freshness / 数据新鲜度", {
-    family: "quality",
-    summary: "数据新鲜度衡量最新源数据距离当前时间有多远。",
-    how_to_use: "高频页面看分钟级新鲜度，结构和宏观页面可接受更长延迟。",
-    page_refs: ["market-analysis", "market-structure"],
-    tags: ["quality"],
-  }),
+  ),
+  ),
   term("mvrv", "MVRV / 市值实现价值比", {
     family: "onchain",
     summary: "MVRV 比较市场市值和链上实现价值，用于观察周期估值。",
@@ -1257,16 +1238,7 @@ const dataQualityItems = [
     page_refs: ["monitoring-overview", "alert-center"],
     tags: ["onchain", "quality"],
   }),
-  term("portable_proxy_detection", "Portable Proxy Detection / 便携版代理自动发现", {
-    family: "network",
-    level: "basic",
-    summary: "便携版启动时自动识别本机代理，使境外数据源在不同电脑上无需手动配置。",
-    definition: "系统按环境变量、Windows 系统代理、WinHTTP 设置和常见本地端口依次探测代理并自动配置 httpx。",
-    how_to_use: "数据源联通检查会显示 proxy_detected，无需用户手动设置 HTTPS_PROXY。",
-    risk_note: "不得在日志或前端显示带用户名、密码的代理地址。",
-    page_refs: ["monitoring-overview", "knowledge-base"],
-    tags: ["proxy", "portable", "network"],
-  }),
+  ),
   term("macro_seed_cache", "Macro Seed Cache / 宏观种子缓存", {
     family: "cache",
     level: "basic",
@@ -1296,25 +1268,8 @@ const dataQualityItems = [
     page_refs: ["monitoring-overview", "knowledge-base"],
     tags: ["score", "quality"],
   }),
-  term("api_healthcheck", "API Healthcheck / 数据源健康检查", {
-    family: "quality",
-    level: "basic",
-    summary: "检查各数据源连通性、鉴权、限流和代理状态。",
-    how_to_use: "当宏观页低置信度时，先看 healthcheck 区分 auth_missing/rate_limited/source_error/proxy_required。",
-    risk_note: "healthcheck 不得泄露 API key 前后缀或代理密码。",
-    page_refs: ["monitoring-overview", "knowledge-base"],
-    tags: ["healthcheck", "source"],
-  }),
-  term("source_priority_chain", "Source Priority Chain / 数据源优先链", {
-    family: "data-source",
-    level: "intermediate",
-    summary: "定义每个指标从主源、备源、缓存到占位的读取顺序。",
-    definition: "例如 CPI：BLS live → FRED fallback → runtime cache → seed cache → placeholder。",
-    how_to_use: "每个指标明细行应显示当前命中的 source 和 fallback_level。",
-    risk_note: "备源口径可能不同，必须记录 source_symbol。",
-    page_refs: ["monitoring-overview", "knowledge-base"],
-    tags: ["source", "fallback"],
-  }),
+  ),
+  ),
   term("macro_never_empty_contract", "Macro Never Empty Contract / 宏观永不空契约", {
     family: "quality",
     level: "advanced",
@@ -1380,17 +1335,7 @@ const etfItems = [
       "风险因素包括：政策转向、融资成本上升、大宗商品价格剧烈波动、长周期资本开支周期拐点。",
     ].join("\n"),
   }),
-  term("ashare_etf_quote_source", "A股ETF行情源", {
-    aliases: ["ETF quote source", "Eastmoney", "A股ETF数据源"],
-    category: "ashare-etf",
-    family: "data-source",
-    level: "basic",
-    page_refs: ["ashare-etf", "monitoring-overview"],
-    tags: ["data-source"],
-    summary: "A股ETF页使用独立行情源读取近实时价格，不走 Gate.io，也不进入 Crypto 技术指标链路。",
-    definition: "该行情源只负责返回固定 ETF universe 的最新价、涨跌幅、成交量、成交额和报价时间。provider 失败时保留行项目，并显示暂不可用。",
-    how_to_use: "优先检查来源状态和报价时间。若状态为使用缓存或暂不可用，页面仍可作为列表参考，但不要把价格当作最新行情。",
-  }),
+  ),
   term("etf_vs_perp_spot", "ETF vs 永续合约/现货", {
     aliases: ["ETF vs Perp", "ETF vs Spot", "ETF和永续合约区别"],
     category: "ashare-etf",
