@@ -24,7 +24,15 @@ from app.services.gold_dca_dip import (
     normalize_candle,
     now_utc,
 )
-from app.services.gold_macro_adapter import macro_overview_to_gold_macro
+from app.services.gold_macro_adapter import _gold_macro_snapshot, macro_overview_to_gold_macro
+from app.schemas.gold_v3 import (
+    GoldContractRef,
+    GoldIndicatorConfirmation,
+    GoldSignalLight,
+    GoldSpotDca,
+    GoldV3AllocationResponse,
+)
+from app.services.gold_derivatives import GoldDerivativesService
 from app.services.goldhub_data import GoldhubDataService
 from app.services.macro_overview import MacroOverviewService
 from app.services.xaut_market_state import XAUT_INSTRUMENT_ID, XautMarketStateService
@@ -191,3 +199,171 @@ async def get_gold_allocation(
         market=await _market_state(repo),
     )
     return GoldAllocationPlanResponse.model_validate(plan.to_dict())
+
+
+@router.get("/v3/allocation", response_model=GoldV3AllocationResponse)
+async def get_gold_v3_allocation(
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> GoldV3AllocationResponse:
+    """V3 gold allocation — simplified two-layer model."""
+    repo = _repository(session)
+    macro_payload = await _macro_payload(repo)
+    market_state = await _market_state(repo)
+    macro_snapshot = _gold_macro_snapshot(macro_payload or {})
+
+    # ── Build 3 signal lights ──
+    _SIGNAL_LIGHT_META = {
+        "real_yield_10y": ("实际利率", "TIPS 10Y"),
+        "dxy": ("美元指数", "DXY"),
+        "vix": ("波动率", "VIX"),
+    }
+    signals = []
+    for key in ("real_yield_10y", "dxy", "vix"):
+        data = macro_snapshot.get(key, {})
+        label, code = _SIGNAL_LIGHT_META.get(key, (key, key.upper()))
+        signals.append(GoldSignalLight(
+            key=key,
+            label=data.get("display_label", label),
+            code=code,
+            value=data.get("value"),
+            unit=data.get("unit", ""),
+            bias=data.get("bias", "missing"),
+            bias_label={
+                "strong_bullish": "强势看多", "bullish": "看多",
+                "neutral": "中性", "bearish": "看空",
+                "strong_bearish": "强势看空", "missing": "数据不足",
+            }.get(data.get("bias", "missing"), "中性"),
+            bias_reason=data.get("bias_reason", ""),
+            source=data.get("source", ""),
+        ))
+
+    # ── Spot summary ──
+    bearish_count = sum(1 for s in signals if s.bias in {"bearish", "strong_bearish"})
+    bullish_count = sum(1 for s in signals if s.bias in {"bullish", "strong_bullish"})
+    if bearish_count >= 2:
+        spot_summary = "⚠ 偏谨慎 — 宏观逆风，建议维持基础定投不追高"
+    elif bullish_count >= 2:
+        spot_summary = "✅ 偏积极 — 宏观友好，可考虑适当增加定投"
+    else:
+        spot_summary = "➖ 中性 — 宏观不形成方向性约束，按既定纪律执行"
+
+    liquidity_shock = macro_snapshot.get("_diagnostics", {}).get("liquidity_shock_detected", False)
+
+    # ── Spot DCA ──
+    current_weight = 10_000 / 200_000  # 0.05, matching existing V2 default
+    tips_val = macro_snapshot.get("real_yield_10y", {}).get("value")
+    dxy_val = macro_snapshot.get("dxy", {}).get("value")
+
+    # Target range from TIPS + DXY
+    if tips_val is not None and tips_val <= 0.5:
+        target_min, target_max = 0.10, 0.15
+    elif tips_val is not None and tips_val <= 1.5:
+        if dxy_val is not None and dxy_val >= 105:
+            target_min, target_max = 0.05, 0.08
+        else:
+            target_min, target_max = 0.08, 0.12
+    elif tips_val is not None and tips_val < 2.0:
+        target_min, target_max = 0.05, 0.08
+    elif tips_val is not None and tips_val < 2.8:
+        if dxy_val is not None and dxy_val >= 108:
+            target_min, target_max = 0.03, 0.05
+        else:
+            target_min, target_max = 0.05, 0.08
+    else:
+        target_min, target_max = 0.0, 0.03
+
+    weight_state = "underweight" if current_weight < target_min else (
+        "overweight" if current_weight > target_max else "within_range"
+    )
+    if current_weight <= target_min + 0.005:
+        weight_state = "at_min"
+
+    base_amount = 500.0
+    dip_multiplier = 2.0
+
+    # Macro gate
+    tips_ok = tips_val is not None and tips_val < 2.8
+    dxy_ok = dxy_val is None or dxy_val < 108
+    macro_gate_passed = tips_ok and dxy_ok
+
+    # Drawdown trigger
+    drawdown_60d = market_state.get("drawdown_60d")
+    drawdown_threshold = 0.08
+    drawdown_triggered = drawdown_60d is not None and abs(drawdown_60d) >= drawdown_threshold
+
+    # Indicator confirmations
+    vol_z = market_state.get("volume_zscore")
+    confirmations = [
+        GoldIndicatorConfirmation(label="RSI(14)", value=None, display="—", condition="≤40", passed=False),
+        GoldIndicatorConfirmation(label="布林位置", value=None, display="—", condition="≤0.2", passed=False),
+        GoldIndicatorConfirmation(label="距EMA20", value=None, display="—", condition="≤-2%", passed=False),
+        GoldIndicatorConfirmation(label="CCI(20)", value=None, display="—", condition="≤-80", passed=False),
+        GoldIndicatorConfirmation(
+            label="成交量", value=vol_z,
+            display=f"Z={vol_z:.1f}" if vol_z is not None else "—",
+            condition="Z≥1.5", passed=(vol_z is not None and vol_z >= 1.5),
+        ),
+    ]
+    confirmations_passed = sum(1 for c in confirmations if c.passed)
+
+    # Recommendation
+    if not macro_gate_passed:
+        recommended = 0.0
+        reason = "暂停定投（宏观门禁关闭：利率过高或美元过强）"
+    elif drawdown_triggered and confirmations_passed >= 3:
+        recommended = base_amount + base_amount * dip_multiplier
+        reason = f"基础定投 + 加仓（回撤触发 + 指标确认 {confirmations_passed}/5）"
+    elif drawdown_triggered:
+        recommended = base_amount
+        reason = f"基础定投（加仓未触发：指标确认 {confirmations_passed}/5 不满足）"
+    else:
+        recommended = base_amount
+        reason = "基础定投（回撤未触发）"
+
+    spot = GoldSpotDca(
+        current_weight=current_weight,
+        target_min=target_min,
+        target_max=target_max,
+        weight_state=weight_state,
+        base_amount=base_amount,
+        dip_multiplier=dip_multiplier,
+        macro_gate_passed=macro_gate_passed,
+        macro_gate_reason=f"TIPS<2.8%{' AND DXY<108' if dxy_ok else ' BUT DXY≥108'}",
+        drawdown_triggered=drawdown_triggered,
+        drawdown_60d=drawdown_60d,
+        drawdown_threshold=drawdown_threshold,
+        indicator_confirmations=confirmations,
+        confirmations_passed=confirmations_passed,
+        confirmations_required=3,
+        recommended_amount=round(recommended, 2),
+        recommendation_reason=reason,
+    )
+
+    contract = GoldContractRef(
+        price=market_state.get("price"),
+        above_ma50=market_state.get("above_ma50"),
+        ma50_value=market_state.get("sma_50"),
+        above_ma200=market_state.get("above_ma200"),
+        ma200_value=market_state.get("sma_200"),
+        drawdown_60d=drawdown_60d,
+        natr_14=market_state.get("natr_14"),
+        volume_zscore=market_state.get("volume_zscore"),
+        updated_at=market_state.get("updated_at") or "",
+    )
+
+    return GoldV3AllocationResponse(
+        signals=signals,
+        spot_summary=spot_summary,
+        liquidity_shock_detected=liquidity_shock,
+        spot=spot,
+        contract=contract,
+    )
+
+
+@router.get("/derivatives")
+async def get_gold_derivatives(
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> dict:
+    """Gate.io OI/funding rate + local COT snapshot."""
+    return await GoldDerivativesService().build_snapshot()
