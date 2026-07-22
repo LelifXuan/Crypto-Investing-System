@@ -18,9 +18,9 @@ const pageModules = {
   "knowledge-base": () => loadPageModule("./pages/knowledge.js"),
   "cn-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
-  "gold-allocation": () => loadPageModule("./pages/gold_allocation.js"),
+  "gold-allocation": () => loadPageModule("./pages/gold_v3.js"),
   "btc-derivatives": () => loadPageModule("./pages/btc_derivatives.js"),
-  "ai-strategy": () => loadPageModule("./pages/strategy.js?v=narrative-layers"),
+  "ai-strategy": () => loadPageModule("./pages/strategy.js?v=trade-4h-v1"),
 };
 
 const PAGE_TITLES = {
@@ -180,7 +180,7 @@ async function boot() {
     module.renderAlerts ||
     module.renderKnowledge ||
     module.renderAshareEtf ||
-    module.renderGoldAllocation ||
+    module.renderGoldV3 ||
     module.renderBtcDerivatives ||
     module.renderStrategy;
   if (typeof renderPage !== "function") {
