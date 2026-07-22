@@ -195,3 +195,47 @@ def test_gold_macro_snapshot_dxy_found_in_layer_map_only():
     assert result["dxy"]["value"] == 120.4
     assert result["dxy"]["bias"] != "missing"
     assert result["dxy"]["source"] == "fred_public_csv"
+
+
+def test_gold_macro_snapshot_cpi_resolves_via_us_cpi_yoy_alias():
+    """CPI should be found when stored as 'us_cpi_yoy' in layers."""
+    from app.services.gold_macro_adapter import _gold_macro_snapshot
+
+    macro = {
+        "layers": [
+            {
+                "layer_key": "inflation",
+                "indicators": [
+                    {
+                        "indicator_key": "us_cpi_yoy",
+                        "value_num": 2.7,
+                        "unit": "%",
+                        "display_label": "美国CPI同比",
+                        "source_provider": "fred_public_csv",
+                        "observation_ts": "2026-06-18T00:00:00",
+                    },
+                    {
+                        "indicator_key": "real_yield_5y",
+                        "value_num": 1.0,
+                        "unit": "%",
+                        "display_label": "5Y Real Yield",
+                        "source_provider": "fred",
+                        "observation_ts": "2026-06-18T00:00:00",
+                    },
+                    {
+                        "indicator_key": "dxy",
+                        "value_num": 100.0,
+                        "unit": "index",
+                        "display_label": "DXY",
+                        "source_provider": "fred",
+                        "observation_ts": "2026-06-18T00:00:00",
+                    },
+                ],
+            }
+        ],
+        "layer_map": {},
+    }
+    result = _gold_macro_snapshot(macro)
+    assert result["cpi_yoy"]["value"] == 2.7
+    assert result["cpi_yoy"]["bias"] == "bullish"
+    assert result["cpi_yoy"]["source"] == "fred_public_csv"
