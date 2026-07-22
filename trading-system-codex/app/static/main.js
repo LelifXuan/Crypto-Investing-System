@@ -18,7 +18,7 @@ const pageModules = {
   "knowledge-base": () => loadPageModule("./pages/knowledge.js"),
   "cn-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
-  "gold-allocation": () => loadPageModule("./pages/gold_v3.js"),
+  "gold-allocation": () => loadPageModule("./pages/gold_v4.js"),
   "btc-derivatives": () => loadPageModule("./pages/btc_derivatives.js"),
   "ai-strategy": () => loadPageModule("./pages/strategy.js?v=trade-4h-v1"),
 };
@@ -180,7 +180,7 @@ async function boot() {
     module.renderAlerts ||
     module.renderKnowledge ||
     module.renderAshareEtf ||
-    module.renderGoldV3 ||
+    module.renderGoldV4 ||
     module.renderBtcDerivatives ||
     module.renderStrategy;
   if (typeof renderPage !== "function") {
