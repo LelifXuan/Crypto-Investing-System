@@ -240,6 +240,23 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 12000,
     });
   },
+
+  // ── Gold V3 ──
+
+  getGoldV3Allocation(options = {}) {
+    return requestJson("/gold/v3/allocation", {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 10000,
+    });
+  },
+
+  getGoldDerivatives(options = {}) {
+    return requestJson("/gold/derivatives", {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 10000,
+    });
+  },
+
   getBtcDerivativesDashboard(query = {}, options = {}) {
     return requestJson("/btc-derivatives/dashboard", {
       params: {
@@ -607,13 +624,14 @@ export const api = {
     });
   },
   getUnifiedStrategy(instrumentId, options = {}) {
+    const backendForce = options.forceBuild ?? options.force ?? false;
     return requestJson("/strategy/unified", {
       params: {
         instrument_id: instrumentId,
-        force: options.force ? "true" : "false",
+        force: backendForce ? "true" : "false",
       },
-      ttl: options.force ? 0 : 30,
-      force: options.force ?? false,
+      ttl: backendForce || options.bypassCache ? 0 : 30,
+      force: options.bypassCache ?? options.force ?? false,
       timeoutMs: options.timeoutMs ?? 15000,
       signal: options.signal,
       retry: 1,
