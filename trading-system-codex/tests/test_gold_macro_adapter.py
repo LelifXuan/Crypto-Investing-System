@@ -113,3 +113,85 @@ def test_gold_macro_snapshot_handles_invalid_value_num():
     snapshot = _gold_macro_snapshot(macro)
     assert snapshot["vix"]["value"] is None
     assert snapshot["vix"]["bias"] == "missing"
+
+
+def test_gold_macro_snapshot_dxy_resolves_via_dollar_index_alias():
+    """DXY should be found when stored as 'dollar_index' in layers."""
+    from app.services.gold_macro_adapter import _gold_macro_snapshot
+
+    macro = {
+        "layers": [
+            {
+                "layer_key": "cross_asset_confirmation",
+                "indicators": [
+                    {
+                        "indicator_key": "dollar_index",
+                        "value_num": 120.4,
+                        "unit": "index",
+                        "display_label": "美元指数 DXY",
+                        "source_provider": "fred_public_csv",
+                        "observation_ts": "2026-06-18T00:00:00",
+                    }
+                ],
+            }
+        ],
+        "layer_map": {},
+    }
+    result = _gold_macro_snapshot(macro)
+    assert result["dxy"]["value"] == 120.4
+    assert result["dxy"]["bias"] != "missing"
+    assert result["dxy"]["source"] == "fred_public_csv"
+
+
+def test_gold_macro_snapshot_dxy_found_when_keyed_as_dxy():
+    """DXY should also work when stored directly as 'dxy'."""
+    from app.services.gold_macro_adapter import _gold_macro_snapshot
+
+    macro = {
+        "layers": [
+            {
+                "layer_key": "cross_asset_confirmation",
+                "indicators": [
+                    {
+                        "indicator_key": "dxy",
+                        "value_num": 97.0,
+                        "unit": "index",
+                        "display_label": "DXY",
+                        "source_provider": "fred_public_csv",
+                        "observation_ts": "2026-06-18T00:00:00",
+                    }
+                ],
+            }
+        ],
+        "layer_map": {},
+    }
+    result = _gold_macro_snapshot(macro)
+    assert result["dxy"]["value"] == 97.0
+    assert result["dxy"]["bias"] == "strong_bullish"  # 97.0 <= 98
+
+
+def test_gold_macro_snapshot_dxy_found_in_layer_map_only():
+    """DXY should be found when only present in layer_map (not layers)."""
+    from app.services.gold_macro_adapter import _gold_macro_snapshot
+
+    macro = {
+        "layers": [],
+        "layer_map": {
+            "cross_asset_confirmation": {
+                "indicators": [
+                    {
+                        "indicator_key": "dollar_index",
+                        "value_num": 120.4,
+                        "unit": "index",
+                        "display_label": "美元指数 DXY",
+                        "source_provider": "fred_public_csv",
+                        "observation_ts": "2026-06-18T00:00:00",
+                    }
+                ]
+            }
+        },
+    }
+    result = _gold_macro_snapshot(macro)
+    assert result["dxy"]["value"] == 120.4
+    assert result["dxy"]["bias"] != "missing"
+    assert result["dxy"]["source"] == "fred_public_csv"

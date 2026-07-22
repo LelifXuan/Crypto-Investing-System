@@ -184,6 +184,12 @@ def _gold_macro_snapshot(macro: dict) -> dict:
         for layer in (macro or {}).get("layers", [])
         if isinstance(layer, dict)
     }
+    # Also collect indicators from layer_map (MacroOverviewResponse serialization)
+    for key, layer in layer_map.items():
+        if key not in indicators_by_layer:
+            layer_indicators = layer.get("indicators", [])
+            if layer_indicators:
+                indicators_by_layer[key] = layer_indicators
     flat_indicators = [
         ind for ind_list in indicators_by_layer.values() for ind in ind_list
     ]
@@ -211,7 +217,7 @@ def _gold_macro_snapshot(macro: dict) -> dict:
 
     real_yield = find("real_yield_5y") or find("real_yield_10y")
     dxy = find("dxy") or find("dollar_index")
-    cpi = find("cpi_yoy")
+    cpi = find("cpi_yoy") or find("us_cpi_yoy")
     vix = find("vix")
 
     ry_val = value_of(real_yield)
