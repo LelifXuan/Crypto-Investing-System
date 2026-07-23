@@ -82,7 +82,7 @@ REAL_CONTENT_SELECTORS = {
     "monitoring-overview": ["#monitoring-topbar", ".monitoring-summary-surface"],
     "market-analysis": [".analysis-hero-grid", ".analysis-chart-grid"],
     "market-structure": [".structure-page"],
-    "market-events": [".event-card", "#market-events-root"],
+    "market-events": [".events-feed-shell", ".events-feed-card", "#market-events-root"],
     "macro-calendar": ["#macro-statusbar", "#macro-summary-cards"],
     # alert-center was removed; /alerts-page now routes to ai-strategy (see app/web/router.py).
     "alert-center": [".strategy-unified-overview", ".strategy-decision-audit"],
