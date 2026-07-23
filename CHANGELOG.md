@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## v1.8.0 (2026-07-23)
+
+### 知识百科 chip 压缩
+
+- **前端**：术语卡"出现在 X 个页面"的多 chip 簇改为单行 `i N 页可用 ▾` 触发器 + hover/focus 弹出 popover（每页 + 一句话用途）。`app/static/pages/knowledge.js` 的 `renderPageRefsBadge()` 重写；CSS-only 交互；新增 `KNOWLEDGE_PAGE_NOTE` 映射。`app/static/styles.css` 新增 `.knowledge-page-refs*` 块。
+- **测试**：`tests/test_knowledge_catalog.py` 新增 3 个静态断言（compact trigger、无 SPA 链接泄漏、per-page notes）。
+- **验证**：`python tests/verify_pages.py` 11/11 cold-load + 10/10 SPA switch 通过，0 console/page errors。
+
+### 版本号统一
+
+- **架构**：以 `app/__version__ = "1.8.0"` 为单一来源；`config.py` / `paths.py` 改为 import 而非硬编码；`pyproject.toml` 作为 packaging release authority，由 `tests/test_version_consistency.py` 钉住与 `app.__version__` 一致。
+- **文档**：`.env.example` / `README.md` / `CHANGELOG.md` 全部对齐到 1.8.0。
+
 ## v1.7.1 (2026-07-07)
 
 ### 黄金配置页 V2 升级
