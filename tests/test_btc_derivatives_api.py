@@ -243,6 +243,12 @@ async def test_live_dashboard_get_path_is_read_only_and_single_build() -> None:
         def append(self, **kwargs) -> None:
             raise AssertionError("GET dashboard must not write archive")
 
+        def read_records(self, **kwargs) -> list[dict]:
+            # Live dashboard read path consumes key-level history from the
+            # archive but never writes; the test asserts the GET path is
+            # read-only. An empty list is a valid response shape.
+            return []
+
     class Collector:
         def __init__(self) -> None:
             self.cache = Cache()

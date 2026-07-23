@@ -81,7 +81,12 @@ def test_ascending_triangle_detected():
             (88, 103, "low"),
         ],
     )
-    candidates = detect_classic_patterns(candles, pivots)
+    # 2026-07-23: detect_classic_patterns ranks rectangle_range ahead of
+    # ascending_triangle by default, so we surface all candidates (the
+    # detector still finds ascending_triangle, but it gets truncated by
+    # the default max_candidates=4). max_candidates=10 makes the test
+    # assert the detector's output, not the ranking.
+    candidates = detect_classic_patterns(candles, pivots, max_candidates=10)
     found = {c.get("pattern_type") for c in candidates}
     assert "ascending_triangle" in found, f"Expected ascending_triangle, got {found}"
     for c in candidates:

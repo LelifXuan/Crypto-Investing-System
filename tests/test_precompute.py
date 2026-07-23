@@ -74,6 +74,14 @@ async def test_page_snapshot_cache_repo_roundtrip(precompute_db) -> None:
 
 @pytest.mark.asyncio
 async def test_precompute_hint_analysis_expands_related_tasks(precompute_db) -> None:
+    # 2026-07-23: clear the singleton dedup state so this test is
+    # order-independent. Without it, a prior test that enqueued the same
+    # (page, instrument, timeframe, view_window) hint would mark this call
+    # as 'deduped' and leave queued_keys empty, breaking the assertion
+    # below that checks for analysis:* keys.
+    precompute_service._queue.clear()  # noqa: SLF001
+    precompute_service._queued.clear()  # noqa: SLF001
+    precompute_service._last_seen_at.clear()  # noqa: SLF001
     response = await precompute_service.enqueue_hint(
         PrecomputeHintRequest(
             current_page="market-analysis",

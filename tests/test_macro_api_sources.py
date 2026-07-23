@@ -15,12 +15,15 @@ class FakeProvider:
 
 
 def test_api_source_configs_are_present() -> None:
-    api_sources = Path("app/monitoring/configs/api_sources.v1.json")
+    # 2026-07-23: api_sources.v1.json was retired alongside the portable
+    # build and replaced by macro_data_sources.v2.json (added the data
+    # sources previously split across the api_sources and api_map files).
+    data_sources = Path("app/monitoring/configs/macro_data_sources.v2.json")
     indicator_map = Path("app/monitoring/configs/macro_indicator_api_map.v1.json")
 
-    assert api_sources.exists()
+    assert data_sources.exists()
     assert indicator_map.exists()
-    assert json.loads(api_sources.read_text(encoding="utf-8"))["version"] == "api_sources_v1"
+    assert json.loads(data_sources.read_text(encoding="utf-8"))["version"] == "macro_data_sources_v2"
     assert (
         json.loads(indicator_map.read_text(encoding="utf-8"))["version"]
         == "macro_indicator_api_map_v1"
