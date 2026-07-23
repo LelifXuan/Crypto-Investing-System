@@ -5,6 +5,7 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app import __version__
 from app.core.paths import app_paths, bootstrap_runtime_environment
 
 bootstrap_runtime_environment()
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = Field(default="Trading System API", alias="APP_NAME")
-    app_version: str = Field(default="1.8.0", alias="APP_VERSION")
+    app_version: str = Field(default=__version__, alias="APP_VERSION")
     app_env: str = Field(default="dev", alias="APP_ENV")
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")

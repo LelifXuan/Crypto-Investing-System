@@ -31,8 +31,14 @@ def test_settings_app_version_defaults_to_app_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runtime surface (Settings.app_version, no env override) must equal
-    app.__version__. This is the strongest guard against drift."""
+    app.__version__. This is the strongest guard against drift.
+
+    Note: ``_env_file=None`` is passed to skip the developer-local ``.env``
+    so the test isolates the field default from any leaked environment
+    override (``monkeypatch.delenv`` cannot un-set values that pydantic-
+    settings reads directly from the dotenv file).
+    """
     monkeypatch.delenv("APP_VERSION", raising=False)
     from app.core.config import Settings
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.app_version == __version__

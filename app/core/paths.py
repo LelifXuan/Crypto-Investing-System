@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from app import __version__ as _APP_VERSION
+
 
 @dataclass(frozen=True, slots=True)
 class AppPaths:
@@ -80,7 +82,7 @@ def bootstrap_runtime_environment() -> AppPaths:
         manifest_path.write_text(
             json.dumps(
                 {
-                    "app_version": "1.8.0",
+                    "app_version": _APP_VERSION,
                     "bundle_root": app_paths.bundle_root.as_posix(),
                     "runtime_root": app_paths.runtime_root.as_posix(),
                     "release_root": app_paths.release_root.as_posix(),
