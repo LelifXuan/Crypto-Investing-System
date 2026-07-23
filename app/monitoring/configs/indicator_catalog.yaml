@@ -2176,7 +2176,10 @@ indicators:
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: WSHOMCB
+    # WSHOTSL = FRED "Securities Held Outright: U.S. Treasury Securities",
+    # weekly, USD millions. See https://fred.stlouisfed.org/series/WSHOTSL.
+    # Was previously WSHOMCB (which is actually MBS, not Treasury).
+    external_symbol: WSHOTSL
   supported_assets:
   - global
   supported_timeframes:

@@ -648,7 +648,8 @@
       "sources": [
         {
           "source": "fred",
-          "symbol": "WSHOMCB"
+          "symbol": "WSHOTSL",
+          "_note": "WSHOTSL = 'Securities Held Outright: U.S. Treasury Securities' (FRED, weekly, USD M). See https://fred.stlouisfed.org/series/WSHOTSL. Was previously WSHOMCB (which is actually MBS, not Treasury)."
         }
       ]
     },

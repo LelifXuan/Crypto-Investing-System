@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
-import pytest
-import yaml
-
+import yaml  # noqa: I001
 
 REPO = Path(__file__).resolve().parents[1]
 API_MAP_PATH = REPO / "app" / "monitoring" / "configs" / "macro_indicator_api_map.v1.json"
@@ -69,6 +67,51 @@ def test_fed_soma_mbs_symbol_consistent() -> None:
     assert api_symbol == catalog_symbol, (
         f"Symbol drift: API map says {api_symbol!r}, catalog says "
         f"{catalog_symbol!r}. They must agree."
+    )
+
+
+def test_fed_soma_treasury_symbol_consistent() -> None:
+    """fed_soma_treasury must use the same FRED series ID in both the API map
+    and the indicator catalog. The canonical series is WSHOTSL
+    (Securities Held Outright: U.S. Treasury Securities, weekly, USD M).
+
+    Historical bug: this indicator previously pointed at WSHOMCB, which is
+    actually the *Mortgage-Backed Securities* series — the same value got
+    mislabeled as both Treasury and MBS until 2026-07-23 when this test
+    and the config fix landed together. The canonical WSHOTSL is the
+    direct Treasury analog of WSHOMCB.
+    """
+    api_map = _load_api_map()
+    catalog = _load_catalog()
+
+    api_entry = api_map["fed_soma_treasury"]
+    api_symbol = api_entry["sources"][0]["symbol"]
+    assert api_symbol == "WSHOTSL", (
+        f"macro_indicator_api_map.v1.json fed_soma_treasury.sources[0].symbol "
+        f"is {api_symbol!r}; expected 'WSHOTSL' "
+        f"(WSHOMCB is the MBS series, not Treasury)"
+    )
+
+    catalog_entry = _find_catalog_entry(catalog, "fed_soma_treasury")
+    catalog_symbol = catalog_entry["calc_params"]["external_symbol"]
+    assert catalog_symbol == "WSHOTSL", (
+        f"indicator_catalog.yaml fed_soma_treasury.calc_params.external_symbol "
+        f"is {catalog_symbol!r}; expected 'WSHOTSL'"
+    )
+
+    assert api_symbol == catalog_symbol, (
+        f"Symbol drift: API map says {api_symbol!r}, catalog says "
+        f"{catalog_symbol!r}. They must agree."
+    )
+
+    # Also assert the two indicators use DIFFERENT FRED series — if
+    # fed_soma_treasury and fed_soma_mbs ever collapse to the same symbol
+    # again, the data feed is corrupt and the orchestrator would silently
+    # return identical numbers for both rows of the macro overview.
+    mbs_symbol = api_map["fed_soma_mbs"]["sources"][0]["symbol"]
+    assert api_symbol != mbs_symbol, (
+        f"fed_soma_treasury ({api_symbol}) and fed_soma_mbs ({mbs_symbol}) "
+        f"must use DIFFERENT FRED series; they are separate indicators."
     )
 
 
