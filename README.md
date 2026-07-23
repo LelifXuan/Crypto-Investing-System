@@ -1,638 +1,379 @@
-# Crypto Investing System V1.6 Portable
-
-Crypto Investing System 是一套面向个人研究者的本地市场研究、风险监控与决策辅助系统。
-
-系统以 BTC 和加密市场为核心，同时覆盖宏观日历、市场事件、技术指标、结构分析、策略推定、A 股 ETF 与黄金配置。它强调“证据、解释、数据质量和有限风险”，用于把分散的数据整理成可复核的研究页面，而不是替用户下单。
-
-当前版本：`1.6.0`
-
-## 重要声明
-
-- 本系统不执行下单，不连接交易账户，不提供自动交易。
-- 页面结论是研究辅助信息，不构成投资建议。
-- 系统不推荐裸卖期权。
-- Max Pain 用于观察期权持仓分布，不是价格预测。
-- Call Wall、Put Wall 用于观察持仓集中区和潜在对冲敏感区，不是确定支撑或阻力。
-- 比例价差不应被描述为安全对冲；系统的 Hedge Planner 只展示有限风险动作。
-- 实际投资决策仍需结合个人资金、期限、风险承受能力和独立判断。
-
-## 系统定位
-
-这个项目解决的不是“预测下一根 K 线”，而是以下几类更实际的问题：
-
-1. 当前宏观环境对风险资产是顺风、逆风还是相互冲突？
-2. BTC 的价格、持仓量、资金费率和基差是否形成杠杆压力？
-3. 期权 IV、Skew、Put/Call Ratio、Wall 与 Max Pain 正在如何迁移？
-4. 多周期趋势、结构、动量和资金证据是否一致？
-5. 现有观点的主要反证、失效条件和数据缺口是什么？
-6. 当风险上升时，是否存在成本可控的有限风险保护方式？
-7. 页面显示的数据来自哪里、何时更新、是否陈旧、是否只是降级结果？
-
-因此，系统的核心输出不是单一“买入/卖出”按钮，而是：
-
-- 当前市场状态；
-- 支持多头和空头的证据；
-- 相互冲突的证据；
-- 关键风险与失效条件；
-- 数据质量与来源；
-- 可供比较的有限风险保护方案。
-
-## 主要页面
-
-| 页面 | 主要用途 |
-| --- | --- |
-| 监控总览 | 汇总宏观、技术、结构、策略与风险状态，形成可解释的市场简报 |
-| 技术指标 | 查看多周期价格、趋势、动量、波动率与技术风险 |
-| 形态结构 | 识别 HH/HL、LH/LL、BOS、CHOCH 和结构失效 |
-| 市场事件 | 汇总交易所、监管、宏观及行业事件，并支持本地缓存 |
-| 宏观日历 | 查看重要宏观发布、实际值、预期值、前值和事件窗口 |
-| BTC 衍生品 | 查看永续、期货、期权、关键价位迁移及保护成本 |
-| AI 策略 | 将多周期证据组织为观察、等待、风险阻断和条件式方案 |
-| A 股 ETF | 维护 ETF 观察池、行情、分组与再平衡辅助信息 |
-| 黄金配置 | 查看黄金市场状态、定投、回撤加仓和配置辅助信息 |
-| 知识百科 | 解释指标、结构、衍生品术语和系统使用边界 |
-
-## 核心能力
-
-### 1. 监控总览与多空证据层
-
-监控总览将多个页面的最近快照组织成统一摘要：
-
-- 市场状态与主要矛盾；
-- 多周期方向及冲突；
-- 支持多头、削弱多头、支持空头、削弱空头的证据；
-- 关键风险、失效条件和数据缺口；
-- 宏观、结构、技术和策略来源引用。
-
-页面读取优先使用缓存，不因打开页面而等待外部 API。需要更新时，由刷新工作流在后台执行。
-
-### 2. 技术指标与结构分析
-
-技术指标页覆盖：
-
-- 多周期 K 线；
-- EMA、RSI、MACD、ATR、布林带、CCI 等指标；
-- 趋势、动量、波动率和背离；
-- 局部风险提示与多周期一致性。
-
-结构页覆盖：
-
-- HH、HL、LH、LL；
-- BOS 与 CHOCH；
-- 关键结构位；
-- 当前结构方向、置信度和失效条件。
-
-### 3. 宏观与事件研究
-
-宏观模块将利率、通胀、增长、就业、流动性、美元、实际利率和跨资产指标分层展示。
-
-主要能力包括：
-
-- 宏观日历；
-- 数据发布窗口；
-- 实际值与预期差；
-- 分层宏观评分；
-- 数据新鲜度和来源状态；
-- 缓存读取与稳定降级。
-
-市场事件页用于补充交易所、政策、监管和行业事件。空缓存时页面保持可用，不会在首屏自动发起长时间外部同步；用户可主动刷新。
-
-## BTC 衍生品市场
-
-V1.6 的 BTC 衍生品页由六张决策型主图组成：
-
-1. 价格、持仓与资金费率压力；
-2. 交易所杠杆拥挤快照；
-3. IV 与基差期限结构；
-4. 行权价表面：Call/Put OI、IV 与关键参考位；
-5. Call Wall、Put Wall、Max Pain 与 Spot 的历史迁移；
-6. 期权情绪与保护成本历史。
-
-### 数据源
-
-系统接入六个无需私钥的公开市场数据源：
-
-- Deribit；
-- OKX；
-- Bybit；
-- Binance Futures；
-- Bitget；
-- Hyperliquid。
-
-期权主链优先级为：
-
-```text
-Deribit → OKX → Bybit
-```
-
-Wall、Max Pain、IV Smile 等指标使用单个可用主链计算，不把不同交易所的期权 OI 直接相加。其他期权源用于覆盖率、质量和价位交叉验证。
-
-永续与期货数据保留 provider 维度，并进一步计算：
-
-- Funding median 与 dispersion；
-- USD OI 总量、分布与变化；
-- Price/OI regime；
-- Basis 与 annualized basis。
-
-### Constant Maturity
-
-关键价位历史默认使用 60D Constant Maturity。
-
-系统从未来有效到期日中选择最接近 30D、60D 或 90D 目标期限的合约。来源到期日变化时会明确记录 rollover，不平滑或隐藏跳变。
-
-行权价表面和原始期权链则使用用户当前选择的到期日。
-
-### 关键价位
-
-页面解释以下四类信息：
-
-- Call Wall：Call OI 较集中的行权价区域；
-- Put Wall：Put OI 较集中的行权价区域；
-- Max Pain：根据当前期权持仓计算的到期支付最小化参考点；
-- Constant Maturity：保持近似剩余期限的历史跟踪方法。
-
-这些指标用于观察持仓和对冲结构，不被描述为确定预测。
-
-### 有限风险 Hedge Planner
-
-Hedge Planner 可比较：
-
-- 买入保护性 Put；
-- 买入保护性 Call；
-- Put Debit Spread；
-- Call Debit Spread；
-- 降低网格或现货敞口；
-- 暂不对冲并继续观察。
-
-结果会结合 IV、流动性、关键价位和保护预算，但不会生成订单，也不会推荐裸卖期权。
-
-## 数据质量与降级原则
-
-BTC 衍生品运行时只使用真实公开数据。
-
-状态分为：
-
-- 实时：本次采集成功；
-- 最近真实缓存：实时采集失败，但存在 15 分钟内的真实快照；
-- 数据不足：没有可用实时数据，也没有符合时限的真实缓存。
-
-Fixture 只用于自动化测试，不参与运行时回退。
-
-每张图表可携带：
-
-- providers；
-- primary provider；
-- updated time；
-- requested/actual/maximum window；
-- data points；
-- quality；
-- missing reason。
-
-Provider 的地区限制、`403`、`451`、限流或结构漂移只会降低相应数据能力，不应被解释成市场信号。
-
-## 异步刷新工作流
-
-页面 GET 负责读取最近缓存，不等待外部数据源。
-
-刷新流程为：
-
-1. 前端提交刷新请求；
-2. 服务返回 HTTP `202` 和刷新任务回执；
-3. 相同任务在队列中去重；
-4. 前端轮询 `/api/v1/refresh-jobs/{job_id}`；
-5. 任务成功后重新读取缓存；
-6. 任务失败时保留页面当前可用状态。
-
-刷新任务状态写入独立 SQLite 文件，终态可在应用重启后继续查询；重启时未完成任务会被标记为中断。
-
-诊断和 smoke 场景仍可使用 `wait=true` 同步等待。
-
-## 数据存储
-
-### 主数据库
-
-SQLite 保存：
-
-- 市场与指标数据；
-- 页面快照和计算缓存；
-- 策略与监控结果；
-- 刷新任务状态；
-- 衍生品分区索引、行数、大小和校验信息。
-
-### 衍生品分区归档
-
-高频衍生品历史使用 gzip JSONL 分区：
-
-```text
-runtime/data/derivatives_archive/
-  archive_index.sqlite3
-  provider/
-    BTC/
-      data_type/
-        YYYY/
-          MM/
-            DD/
-              HHMMSS-hash.jsonl.gz
-```
-
-存储策略包括：
-
-- 内容哈希去重；
-- provider、标的和数据类型作用域；
-- 临时文件写入后原子替换；
-- 文件成功后事务登记索引；
-- 过期清理；
-- oldest-cold-first 配额治理；
-- 孤立文件和索引恢复入口。
-
-默认保留期：
-
-| 数据 | 保留期 |
-| --- | --- |
-| 主期权链 15 分钟快照 | 7 天 |
-| 高频永续快照 | 7 天 |
-| 小时级压缩快照 | 90 天 |
-| Wall、Max Pain、Funding、OI、保护成本等日级指标 | 400 天 |
-
-默认归档上限为 5 GiB：
-
-```env
-BTC_DERIVATIVES_ARCHIVE_QUOTA_BYTES=5368709120
-```
-
-Latest 文件和受保护的日级指标不会作为普通冷分区直接删除。
-
-## 系统架构
-
-```text
-Browser UI
-  │
-  ├─ 页面缓存读取
-  ├─ 异步刷新任务
-  └─ 数据质量与来源展示
-  │
-FastAPI
-  │
-  ├─ API endpoints
-  ├─ schemas
-  ├─ domain services
-  ├─ provider adapters
-  ├─ normalizers / collectors
-  └─ background worker
-  │
-Storage
-  ├─ SQLite
-  ├─ raw/normalized latest
-  ├─ gzip JSONL partitions
-  └─ logs / cache / tmp
-```
-
-主要源码目录：
-
-```text
-trading-system-codex/
-  app/
-    api/
-    schemas/
-    services/
-    static/
-    templates/
-    workers/
-  tests/
-  scripts/
-  tools/
-  docs/
-```
-
-## Portable 版本
-
-Portable 版本面向 Windows win-x64，内置 Python 3.11 运行时。
-
-目标机器无需安装 Python。
-
-主要文件：
-
-```text
-TradingSystemPortable/
-  TradingSystemLauncher.exe
-  start_portable.bat
-  app/
-  scripts/
-  runtime_env/python/
-  runtime/
-  README_PORTABLE.md
-  release_manifest.json
-```
-
-### 启动
-
-推荐双击：
-
-```text
-TradingSystemLauncher.exe
-```
-
-诊断启动：
-
-```text
-start_portable.bat
-```
-
-默认访问地址：
-
-```text
-http://127.0.0.1:8000/
-```
-
-### Portable 运行时目录
-
-```text
-runtime/
-  config/
-  data/
-  cache/
-  logs/
-  tmp/
-```
-
-其中：
-
-- `runtime/config/` 保存本地配置、JWT 和管理员凭据；
-- `runtime/data/` 保存数据库和衍生品归档；
-- `runtime/cache/` 与 `runtime/tmp/` 可重建；
-- `runtime/logs/` 保存启动、运行和审查日志。
-
-## 安全升级与同步
-
-同步命令：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\sync_portable_local.ps1
-```
-
-流程包括：
-
-1. 构建到独立 staging；
-2. 运行严格 verifier 和 preflight；
-3. 拒绝覆盖正在运行的 Portable；
-4. 备份原配置、数据库和用户文件；
-5. 清理 cache/tmp，并归档日志；
-6. 同步程序文件；
-7. 合并原运行时数据；
-8. 将数据库路径重写为目标 Portable 自身目录；
-9. 使用 embedded Python 启动同步后的实例；
-10. 运行 Playwright 页面审查；
-11. 审查通过后完成切换，失败则回滚。
-
-可用参数：
-
-```powershell
--Destination <path>
--SkipBuild
--SkipBrowserAudit
--ResetRuntime
--WhatIf
-```
-
-`-ResetRuntime` 会清空原运行时状态，只应在明确需要全新安装时使用。
-
-同步报告：
-
-```text
-trading-system-codex/reports/portable_sync_v16.json
-```
-
-## Portable Playwright 发布验收
-
-发布验收针对同步后的真实 `TradingSystemPortable`，不使用源码服务器代替。
-
-审查实例由以下解释器启动：
-
-```text
-TradingSystemPortable/runtime_env/python/python.exe
-```
-
-自动检查：
-
-- 十个主要页面；
-- 1440、1280、768、390px 四个视口；
-- 页面身份与真实内容；
-- console error 与 page error；
-- 失败 HTTP 响应；
-- 横向溢出；
-- BTC 六图、风险模式和异步刷新；
-- 静态资源、模板与 vendor 文件；
-- Portable 数据库路径；
-- 重启后配置与数据保持；
-- 外部 provider 不可用时的稳定降级。
-
-输出：
-
-```text
-trading-system-codex/reports/portable_playwright_v16.json
-trading-system-codex/reports/portable_playwright_screenshots/
-```
-
-统一发布命令：
-
-```powershell
-python scripts/tasks.py release-v16
-```
-
-## 源码开发
-
-### 环境要求
-
-- Windows；
-- Python 3.11 或 3.14；
-- Node.js，用于 JavaScript 语法检查；
-- 推荐将虚拟环境放在源码树外。
-
-### 快速开始
+# 交易系统 FastAPI
+
+基于 `FastAPI + SQLite + Gate.io` 构建的 Windows 本地加密货币研究与交易管理应用。
+
+当前版本：**V1.7.0**（详见下方 [Release Timeline](#release-timeline)）。
+
+## Release Timeline
+
+### V1.7.0 — AI 策略页 X+Y+Z 全栈重构
+
+V1.7.0 围绕 AI 策略页完成 X+Y+Z 全栈重构：
+
+- **后端 X — 上下文聚合**：`MarketContextBuilder` 注入真实字段（`market_data / derivatives_features / chip_features / onchain_features / freshness_breakdown`），修复了历史空字段漏洞；新增 `app/services/macro/scoring_engine.py`（`MacroScoringEngine`）驱动宏观评分；`strategy_unified` 引擎重构（13 个文件，含 `pick_context / verdict_for_node / evidence_confidence / VERDICT_FROM_STATE` 契约）。
+- **后端 Y — 链上数据**：`app/services/onchain/`（6 文件，DefiLlama P0 接通），4 个核心 key（`defi_total_tvl / stablecoin_total_mcap / dex_volume_24h / protocol_fees_24h`），`IndicatorMonitoringService.sync_onchain()` 双轨并行（policy_adapter + 旧 path）。
+- **后端 Z — 数据时效与终局决策**：`freshness_state="due"` 新增；BTC 衍生品 `options_wall_signal` 轴（572 行新模块）；2 小时硬陈旧回退（`btc_derivatives_hard_stale_max_seconds=7200`）；`final_decision` 引入 `market_state_axes` + `trade_permission`；VWAP 成本通道评分加入 `market_strategy_signal_config_v17.json`。
+- **前端**：`pages/strategy.js` 拆分为 11 个子模块（`pages/strategy/{index,adapter,renderOverview,renderNarrative,renderHorizonStack,renderHorizonGovernance,renderMarketOperation,renderTradePlans,renderRiskPanel,renderEventWatch,renderEvidenceTrace}.js`）；4 endpoint 并行 fetch（`/strategy/unified + /monitoring/dashboard + /btc-derivatives/dashboard + /monitoring/macro-overview`），`Promise.allSettled` 兜底；证据追踪改写为自然语言卡；`btc_derivatives.js` 新增 `renderOptionsWallSignal` 区块；置信列统一读 `evidence_confidence`。
+- **测试与验证**：11 个新增 test_*.py；4 张 PNG 截图 + JSON 报告重生成；`python tests/verify_pages.py --pages ai-strategy,monitoring-overview` 双 endpoint 验收。
+- **每日首页预热**：`daily_first_page_prewarm` middleware 在 UTC 日切时按 5 个主页面入队后台任务。
+
+### V1.6.0 — 衍生品数据与 Portable 发布加固
+
+V1.6.0 接入 BTC 衍生品公开数据源，刷新流程改为异步任务回执与缓存读取，
+并引入 SQLite 索引 + gzip JSONL 分区归档、保留期和 5 GB 水位治理。
+Portable 发布改用 staging、运行时数据保留、失败回滚和同步后 Playwright 实例验收。
+
+`V1.5` 系列在 V1.5 监控总览可解释性闭环的基础上，引入了"可解释性 + 性能 + UI 清晰度"三方面的迭代。每个 release 独立可发布、内容自洽；下面的版本号按工作落地顺序排列。
+
+### V1.5 — 监控总览可解释性闭环
+
+V1.5 聚焦在 **监控总览可解释性闭环**。终端摘要现以三行 `decision_brief` 形式呈现：
+
+- `市场情况` (market situation)
+- `交易指引` (trading guidance)
+- `风险点 / 失效条件` (risk / invalidation)
+
+每行携带一个 `evidence_strength` (0-1)，由新增的多周期冲突矩阵
+`terminal_summary.decision_brief.source_alignment.matrix` 计算。
+当证据强度跌破 `0.5` 时，行语气降级为 `warning`，summary 前缀加显式
+的不确定性提示。
+
+每次 `MonitoringDashboardService.refresh_bundle` 之后，`decision_brief`
+都会持久化到 `ComputedDatasetCache`，用户可通过
+`GET /monitoring/decision-brief/history` 复盘历史决策。
+
+### V1.5.1 — long/short reasoning 审计 (7 项修复)
+
+V1.5.1 是审计驱动的多空推理链重写。审计发现：
+
+- `normalize_direction_metrics(score)` 默默把 signed chip 分数
+  （范围 -100..+100）当成 legacy 0..100 值处理，导致在打分引擎
+  里被重复计入；
+- `next_trigger` 不是多态 — 字符串触发器、列表触发器、字典触发器
+  走不同输出路径，其中一条路径会被静默丢弃；
+- 门控在每个调用点 ad-hoc 解析，`block` / `warning` 走字符串匹配，
+  结构化的 `GateDiagnostic` 丢失；
+- 5 个 feature 来源（trend / structure / regime / momentum / flow）
+  不独立 — 改一个 EMA 会污染多个分；
+- 短周期快照不是从 cache 加载，而是从 aggregate data quality 推断；
+- ATR × leverage 没有用于期货保证金压力；
+- `MonitoringDashboardService` 会用自己的默认值覆盖调用方的
+  `instrument_id` / `timeframe`。
+
+T01-T07 七项修复：
+
+- **T01** `normalize_direction_metrics(score, *, scale="signed")`
+  强制显式 scale。Chip 走 `scale="signed"`；legacy 输入抛 `ValueError`。
+- **T02** `next_trigger` 接受 `str | list | dict`，输出统一规范化文本。
+- **T03** 门控解析为 `GateDiagnostic`（code、status、severity、
+  message、current、required），分 `block / warning / info` 三级；
+  trading row 用 `；` 拼接 blockers 并内联 warning。
+- **T04** `snapshot_builder` 拆出 5 个独立分量（mtf_trend / structure /
+  regime / momentum / flow），并给每个分量打 `*_source` 标签，
+  调用方清楚知道是哪个输入在动。
+- **T05** `lower_tf_snapshot` 从 `PageSnapshotCache` 加载；老的
+  `data_quality_score < 60` 启发式删除。
+- **T06** `compute_futures_risk` 读 `atr_14` × `default_leverage`，
+  输出 `block / downsize / watch / ok` 四档压力；并有强平缓冲检查：
+  止损离强平线 < 1.5 ATR 时强制 `block`。
+- **T07** `MonitoringDashboardService.get_bundle` 不再覆盖调用方
+  入参；只有当 FastAPI 默认值生效时空字符串才回退到
+  `btc-usdt-perp` / `1d`。
+
+### V1.5.2 — 监控总览 4 项用户反馈修复
+
+V1.5.2 关闭了用户在 live 部署中点击监控页时发现的 4 个问题：
+
+- **T08** 结构模块现在读真实的 `structure_bundle` cache（带
+  `strategy.structure_overall` 与 `alerts.chip_structure` fallback），
+  永久 `待确认` 占位不再出现。
+- **T09** Decision brief 行重设计：删 `trading_guidance`（重渲了
+  策略页）和 `risk_invalidation`（罗列每个 chip / divergence /
+  structure 风险）。新行集：`market_situation`（一句话 headline +
+  per-TF bullets）+ `mtf_breakdown`（多周期冲突时显示 per-TF 列表）+
+  `key_risk`（前 1-2 条关键失效条件 + 数据缺口）。
+- **T10** 期货保证金压力按 actionable 策略状态 gate —
+  `OBSERVE / NO_EDGE / WAIT_* / EVENT_WAIT / RISK_OFF /
+  INVALID_PLAN_LEVELS / 终态` 隐藏该 bullet。"OBSERVE + 建议减半仓位"
+  矛盾不再渲染。
+- **T11** `MonitoringDashboardService.get_bundle` 在 cache stale
+  时真的调用 `refresh_bundle`。旧代码只 log "refresh is needed"
+  然后返回 stale 载荷。修复后真正调用 refresh，refresh 自身失败时
+  才回退到 stale。
+
+### V1.5.3 — 死代码清理 + 快赢性能
+
+V1.5.3 删除了 V1.5.1 / V1.5.2 残留的 dormant 助手，并应用审计中
+识别的快赢性能修复：
+
+- **A1-A6** 删除 `terminal_summary_engine` 5 个 dormant 助手
+  （`_summarize_legacy`、`_decision_describe_timeframes`、
+  `_decision_describe_strategy_levels`、
+  `_decision_build_trading_row`、`_decision_build_risk_row`）。
+- **A9** 删除 2 个 dead 端点（`/alerts/chip-structure`、
+  `/strategy/iteration-proposals`）和对应 JS helper。
+- **A10-A12** 删除 3 个未读 `MonitoringDashboardRead` 字段
+  （`technical_source`、`technical_indicator_count`、
+  `onchain_observations`）、2 个 schema alias
+  （`StrategyV15DecisionRead`、`StrategyV15BundleRead`）、
+  `build_bundle` alias、以及 `_terminal_summary_payload` 未用的
+  `_cached` 参数。
+- **B1** 静态资源缓存头：`no-store` → `public, max-age=3600,
+  must-revalidate`（依赖已有 `?v=<mtime>` 自动 bust）。
+- **B2** `get_bundle` 4 处串行 cache 读改为 `asyncio.gather`；
+  `_load_cached_analysis_timeframes` 内部 3-TF 循环也 gather。
+- **B5** Chip payload 通过 `SharedQueryCache` 去重
+  （`alerts_bundle:chip_payload:v1:{inst}:{tf}`，TTL
+  `settings.shared_query_cache_seconds`）。
+- **B6** Chart.js CDN 标签包 `{% if page_id == "market-analysis" %}`
+  并加 `defer` — 8/9 页跳过 200 KB 下载。
+- **B10** `strategy.js` review-refresh listener race 修复
+  （document event delegation）。
+- **B11** `analysis.js scheduleBundleRetry` 上限 3 次。
+- **B12** `alerts.js` 状态切换点击只做 surgical 行更新（仅 state +
+  actions 两格），不再 refetch 整 bundle。
+
+### V1.5.4 — 数据管道重构 + SPA 路由
+
+V1.5.4 重做了数据管道热路径，并把 tab 导航改成进程内 SPA 路由：
+
+- **C1** `ComputedDatasetCacheService.get_or_build_indicator_series`
+  in-process 缓存，key 沿用 `indicator_series_cache_key`（已含 candle
+  timestamp，新 candle 自动失效）。
+- **C3** 新增 `MarketRepository.list_latest_observations_by_key`，
+  用 SQL window function；macro overview 不再拉 5000 行在 Python
+  端 dedupe。
+- **C5** `MonitoringDashboardService.get_bundle` 把验证过的
+  `MonitoringDashboardRead` 模型缓存在 `SharedQueryCache`，
+  key 为 `(instrument_id, timeframe, data_ts, cache_state)`，TTL 60s。
+- **C7** 新增 `MarketRepository.list_candles_for_instruments`，
+  把 `_cross_asset_snapshot` 的 5 次串行查询合并为 1 条 SQL。
+- **C12** `upsert_computed_dataset_cache` 改写为 dialect-native
+  `INSERT ... ON CONFLICT (cache_key) DO UPDATE`（Postgres / SQLite
+  各走对应 dialect）。
+- **C11** `monitoring.js` `applyMonitoringDiff` 构建一个稳定 shell
+  5 个命名容器，refresh 时只换 leaf innerHTML（不再整树重渲）。
+- **D1** `main.js` 渐进式 SPA 路由：拦截 `[data-page-link]` 点击、
+  preventDefault、pushState、对同一 shell 重跑 boot()。后端
+  `/<page>-page` 路由仍作为 deep-link fallback。
+
+### V1.5.5 — 监控总览 6 项用户反馈修复
+
+V1.5.5 关闭了用户对监控页的第二轮反馈：
+
+- **⑥** `monitoring_dashboard._load_cached_structure_payload`
+  改为读 `payload.snapshot.overall.{overall_bias, score,
+  regime, confidence, ...}`，替代原来错误的顶层
+  `payload.get("score")`。修复了"结构页看空，监控页中性"的
+  矛盾。`StructureSummaryAdapter._BIAS_TO_IMPACT` 补上
+  `weak_bullish / weak_bearish / mild_* / uncertain /
+  no_clear_structure` 映射并加 score clamp，弱方向 token 不再
+  漏到 `neutral`。chip_structure proxy 路径强制 `confidence=0.2`
+  + `is_proxy=True`，proxy 永远不再伪装成真实信号。
+- **②** `_determine_regime` 末尾按 `global_score` 子分类为
+  `偏多震荡`（>= 55）/ `偏空震荡`（<= 45）/ `中性震荡`（中间）。
+  前端把 `regime` + `bias · confidence` 两个 chip 合并为单个
+  regime chip + 置信度数字。
+- **③** 头部（`_generate_text` 末尾分支）和 `_decision_build_market_row`
+  4 个 summary 分支各自砍到 1 句话。Regime 前缀去掉（head chip
+  已经显示）。
+- **④** `_decision_build_key_risk_row` 不再渲染 `数据缺口`
+  bullet（那是内部数据质量报告，不是用户风险）；行 summary 改为
+  `关键失效条件：{topmost invalidation}`。`_decision_text` 不再
+  `str(dict)` repr — 拆 `text / message / label / reason / summary`
+  字段，单元素 list 也拆。
+- **⑤** 新增 `SOURCE_REF_META` 给每个 `source_ref` key 一个
+  中文 label + 目标页面。前端把 chip 渲染为
+  `<a data-page-link="{page}">`，复用 V1.5.4 D1 的 SPA 路由。
+  `missing:{bundle}` ref 加 `(未刷新)` 后缀并指向所属页面。
+- **①** `monitoring-snapshot-grid` 改为
+  `grid-template-areas: "terminal terminal / macro technical"`。
+  TERMINAL BRIEF 卡片现在跨满 content 宽度，MACRO 和 TECHNICAL
+  共享第 2 行。6 个 vote tile 仍留在 brief 卡片内部，headline
+  加 `line-clamp: 3`。
+
+详细 pre-flight 清单和实地核查命令见 `docs/RELEASE.md`。
+
+## Source Of Truth
+
+- 项目主目录：仓库根
+- 推荐运行模式：本地单用户
+- 支持 Python：`3.11` 与 `3.14`
+- 推荐本地 host：`127.0.0.1`
+
+本项目是本地研究工具，不是公开 SaaS，也不是自动化执行引擎。
+
+## Project Layout
+
+- `app/`：API、workers、services、templates、static 资源
+- `tests/`：回归与行为检查
+- `alembic/`：数据库 migration
+- `scripts/`：工作区自动化、清理、发布打包
+- `docs/`：项目文档与归档笔记
+
+本地运行状态刻意放在仓库外：
+
+- `..\runtime_dev\.venv`：开发用 Python 虚拟环境
+- `..\runtime_dev\source_runtime`：源码模式下的数据库、日志、cache、临时文件
+- `..\TradingSystemPortable`：生成的便携包；不要手动改
+
+## Windows Quick Start
+
+1. 在源码树之外创建并激活支持的虚拟环境。
 
 ```powershell
 py -3.11 -m venv ..\runtime_dev\.venv
 ..\runtime_dev\.venv\Scripts\Activate.ps1
+```
+
+也可以用：
+
+```powershell
+py -3.14 -m venv ..\runtime_dev\.venv
+```
+
+2. 复制示例环境文件。
+
+```powershell
 Copy-Item .env.example .env
+```
+
+3. 安装依赖并跑质量检查。
+
+```powershell
 python scripts/tasks.py install
+python scripts/tasks.py check
+```
+
+4. 启动本地应用。
+
+```powershell
 python scripts/tasks.py dev-local
 ```
 
-开发地址：
-
-```text
-http://127.0.0.1:8002/
-```
-
-源码模式运行数据默认位于：
-
-```text
-..\runtime_dev\source_runtime
-```
-
-避免把数据库、日志、缓存和本地密钥提交到源码仓库。
-
-## 常用开发命令
+如果用工作区标准外部环境，这个 helper 在端口 `8002` 启动源码实例，
+并把运行文件隔离在仓库外：
 
 ```powershell
-python scripts/tasks.py test
-python scripts/tasks.py lint
-python scripts/tasks.py check
-python scripts/tasks.py build-portable
-python scripts/tasks.py portable-preflight
-python scripts/tasks.py release-v16
+.\scripts\dev_env.ps1 -StartServer
 ```
 
-单独运行：
+在源码树里双击启动用：
 
 ```powershell
-python -m pytest -q
-python -m ruff check .
-python -m compileall -q app tests scripts
-python scripts/audit_redundant_workflows.py
+.\start_source.bat
 ```
 
-## API 概览
+`start_portable.bat` 仅供生成的 `TradingSystemPortable` 便携包使用，
+它依赖 `runtime_env\python` 下的内嵌 Python 运行时；源码仓库里双击
+会失败。
 
-主要 API 前缀：
+5. 打开本地 UI。
+
+- Dashboard: [http://127.0.0.1:8002/dashboard](http://127.0.0.1:8002/dashboard)
+- Indicators: [http://127.0.0.1:8002/indicators-page](http://127.0.0.1:8002/indicators-page)
+- Market events: [http://127.0.0.1:8002/market-events-page](http://127.0.0.1:8002/market-events-page)
+- Imports: [http://127.0.0.1:8002/imports-page](http://127.0.0.1:8002/imports-page)
+
+## Windows Task Runner
+
+可用 `python scripts/tasks.py <task>` 或 `.\scripts\dev.ps1 <task>`。
+
+可用 task：
+
+- `install`：安装可编辑的 app 与开发依赖
+- `dev`：在 `127.0.0.1:8000` 跑 Uvicorn
+- `dev-local`：在 `127.0.0.1:8002` 跑 Uvicorn
+- `test`：跑 `pytest -q`
+- `lint`：跑 `ruff check .`
+- `check`：跑 lint、tests、compile 烟测、import 检查、JS 语法检查
+- `clean`：删除生成的 cache、日志与安全的本地运行产物
+- `release-zip`：构建 GitHub release zip
+- `build-portable`：构建便携发行包
+- `portable-preflight`：发布前校验便携包
+
+开发 task 在以下情况快速失败：
+
+- Python 不是 `3.11`
+- Python 不是 `3.11` 或 `3.14`
+- 没有激活虚拟环境
+- 缺少 `pytest`、`ruff`、`uvicorn` 等必需工具
+
+## Makefile Mapping
+
+`Makefile` 仍可用于 CI 与类 Unix 环境。
+
+- `make install`
+- `make dev`
+- `make dev-local`
+- `make test`
+- `make lint`
+- `make check`
+- `make clean`
+- `make release-zip`
+
+## Health And Stability
+
+- 健康端点：
+  - `/health`
+  - `/health/live`
+  - `/health/ready`
+- 默认 worker profile：`desktop_light`
+- 市场事件翻译使用 provider cooldown 机制，减少重复 `429` 噪音
+- Websocket 断线视为可恢复并自动重连
+
+## Verification Gate
+
+按 `AGENTS.md` 与 `docs/RELEASE.md` 的要求，每次变更必须通过：
 
 ```text
-/api/v1
+[ ] python -m ruff check .              All checks passed
+[ ] python -m compileall -q app tests scripts   0 error
+[ ] python -c "import app.main"          OK
+[ ] python -m pytest -q                  X passed, 0 failed
+[ ] node --check app/static/**/*.js       all passed
 ```
 
-BTC 衍生品：
+V1.5.5 基线：**493 passed / 5 skipped / 0 failed**（5 个 skip 是先于
+本次工作的 `chip_structure` 测试）。
 
-```text
-GET  /api/v1/btc-derivatives/dashboard
-POST /api/v1/btc-derivatives/dashboard/refresh
-GET  /api/v1/btc-derivatives/live/snapshot
-POST /api/v1/btc-derivatives/live/refresh
-GET  /api/v1/btc-derivatives/sources/status
-POST /api/v1/btc-derivatives/sources/probe
-GET  /api/v1/refresh-jobs/{job_id}
-```
+## Cleanup Rules
 
-健康检查：
+`python scripts/tasks.py clean` 只删安全生成的产物：
 
-```text
-/health
-/health/live
-/health/ready
-```
+- `__pycache__`
+- `.pytest_cache`
+- `.ruff_cache`
+- `.mypy_cache`
+- `run/`
+- `*.pyc`
+- `*.log`
+- `dist/`
+- `build/`
+- `site/`
+- `htmlcov/`
+- `trading_system.db-shm`
+- `trading_system.db-wal`
+- `trading_system.db-journal`
 
-默认 Portable 配置关闭公开 OpenAPI 文档；源码开发模式可按本地配置启用。
+cleanup task 不删：
 
-## 配置与密钥
+- `.env`
+- `trading_system.db`
+- 本地导入的数据
+- `docs/`
+- tests、migration、应用源码
 
-源码模式使用：
+## Release Packaging
 
-```text
-.env
-```
-
-Portable 使用：
-
-```text
-runtime/config/portable.env
-```
-
-升级时保留：
-
-- JWT secret；
-- 管理员用户名和密码；
-- 数据库；
-- 用户导入和导出文件；
-- 自定义配置。
-
-不要把 API Key、JWT、管理员凭据或包含个人数据的运行时文件提交到 GitHub。
-
-## 故障排查
-
-### Portable 无法启动
-
-1. 运行 `start_portable.bat`；
-2. 检查 `runtime/logs/portable_console.log`；
-3. 检查 `runtime/logs/portable_startup_diagnostics.log`；
-4. 确认 `runtime_env/python/python.exe` 存在；
-5. 确认目标目录没有被安全软件隔离。
-
-### 同步提示实例仍在运行
-
-关闭 Portable 窗口，并确认没有从目标目录启动的 `python.exe` 或 Launcher 进程。
-
-同步脚本不会直接删除正在运行的目标目录。
-
-### 页面显示数据不足
-
-这通常表示：
-
-- 外部 provider 当前不可访问；
-- 地区限制返回 `403/451`；
-- 请求被限流；
-- 尚未积累真实快照；
-- 本地没有 15 分钟内的真实缓存。
-
-可在 BTC 衍生品页打开“数据源状态”，或使用“一键探测数据源”查看具体 provider。
-
-### 归档空间过大
-
-优先调整归档配额或等待维护任务清理过期高频分区。
-
-不要直接删除 `archive_index.sqlite3`。如需手工处理，先关闭应用并完整备份 `runtime/data/derivatives_archive/`。
-
-### 浏览器验收失败
-
-查看：
-
-```text
-reports/portable_playwright_v16.json
-reports/portable_playwright_screenshots/
-```
-
-报告会记录具体页面、视口、console error、page error、失败响应和溢出状态。
-
-## 验证基线
-
-V1.6.0 当前验证结果：
-
-```text
-pytest: 747 passed, 6 skipped
-Ruff: passed
-Python compile: passed
-JavaScript syntax: passed
-Portable strict verifier: passed
-Portable Playwright: 40/40 page-viewports passed
-```
-
-发布产物必须满足：
-
-- `release_manifest.json` 版本为 `1.6.0`；
-- embedded runtime 不是 stub；
-- Portable 不依赖系统 Python；
-- 数据库写入 Portable 自身 `runtime/data`；
-- 无绝对开发路径；
-- 浏览器审查零关键错误。
-
-## V1.6 相比 V1.5 的主要演进
-
-V1.6 不是单独的“衍生品插件”，而是一次系统级升级：
-
-- 新增 BTC 衍生品决策页面和六个公开数据源；
-- 引入异步刷新任务与缓存优先页面工作流；
-- 引入可扩展的衍生品分区归档；
-- 加强数据质量、来源和降级状态展示；
-- 取消空缓存页面的隐式长时间外部刷新；
-- 加固 Portable 构建、同步、路径、备份和回滚；
-- 将同步后 Portable 的 Playwright 实例审查设为发布门槛。
-
-## License 与贡献
-
-如需公开发布，请在仓库中补充明确的 License、贡献指南和安全披露方式。
-
-提交变更前至少运行：
+用以下命令构建发布包：
 
 ```powershell
-python scripts/tasks.py check
+python scripts/tasks.py release-zip
 ```
 
-涉及页面、发布或 Portable 的变更，还应完成真实实例 Playwright 验收。
+输出：
+
+```text
+dist/trading-system-fastapi-github.zip
+```
