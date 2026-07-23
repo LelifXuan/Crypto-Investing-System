@@ -2199,7 +2199,10 @@ indicators:
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: WSHOMCB-MBS
+    # WSHOMCB = FRED "Securities Held Outright: Mortgage-Backed Securities",
+    # weekly, USD millions. See https://fred.stlouisfed.org/series/WSHOMCB.
+    # Was previously WSHOMCB-MBS (synthetic; not a real FRED series).
+    external_symbol: WSHOMCB
   supported_assets:
   - global
   supported_timeframes:

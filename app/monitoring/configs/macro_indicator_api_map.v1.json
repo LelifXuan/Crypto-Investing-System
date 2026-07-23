@@ -659,7 +659,8 @@
       "sources": [
         {
           "source": "fred",
-          "symbol": "MBS10Y"
+          "symbol": "WSHOMCB",
+          "_note": "WSHOMCB = 'Securities Held Outright: Mortgage-Backed Securities' (FRED, weekly, USD M). See https://fred.stlouisfed.org/series/WSHOMCB. Was previously MBS10Y (a yield series, not a holdings quantity)."
         }
       ]
     },
