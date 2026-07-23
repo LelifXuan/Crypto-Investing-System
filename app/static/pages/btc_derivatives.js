@@ -79,6 +79,17 @@ const FALLBACK_CHART_IDS = [
   "options_risk_premium_history",
 ];
 
+// Stable mapping from each decision card id to a knowledge-base term id.
+// Each card surfaces a user-facing concept (regime / risk / protection cost);
+// the tooltip link uses these term ids so users can click through to the
+// knowledge entry. The contract is locked by
+// tests/test_btc_derivatives_decision_tooltips.py.
+const DECISION_CARD_TERM = {
+  market_state: "regime",
+  primary_risk: "wall-strength",
+  strategy_implication: "protection-cost",
+};
+
 let requestController = null;
 let dashboard = null;
 let autoRefreshAttempted = false;
@@ -288,9 +299,9 @@ function renderDecisionCards() {
   return `
     <section class="btc-decision-grid" aria-label="衍生品结论">
       ${cards.map((card) => `
-        <article class="card btc-decision-card" data-state="${escapeHtml(card.state)}">
+        <article class="card btc-decision-card" data-card-id="${escapeHtml(card.id)}" data-state="${escapeHtml(card.state)}">
           <div class="btc-card-kicker">
-            <span>${escapeHtml(card.label)}</span>
+            <span>${knowledgeTooltip(DECISION_CARD_TERM[card.id] || card.id, "tone-neutral", escapeHtml(card.label))}</span>
             <b>${escapeHtml(confidenceLabel(card.confidence))}</b>
           </div>
           ${card.id === "market_state" && dashboard?.joint_analysis?.range_state && dashboard.joint_analysis.range_state !== "NONE"
