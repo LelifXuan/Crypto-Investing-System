@@ -45,7 +45,7 @@ def detect_pivots_adaptive(
     tf_config = {
         "15m": {"window": 5, "reversal_multiplier": 2.5},
         "30m": {"window": 5, "reversal_multiplier": 2.2},
-        "1h":  {"window": 4, "reversal_multiplier": 2.0},
+        "1h":  {"window": 4, "reversal_multiplier": 1.5},
         "4h":  {"window": 3, "reversal_multiplier": 1.5},
         "1d":  {"window": 3, "reversal_multiplier": 1.2},
         "1w":  {"window": 2, "reversal_multiplier": 0.8},

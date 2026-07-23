@@ -564,7 +564,7 @@ function buildLayerToggleMarkup() {
 // still opt-in during exploration, but the steady-state chart should
 // never carry the "观察中" or "候选双底关键线 / 观察中" annotations
 // because those add visual noise without committing to a verdict.
-const overlayLayerState = { swing: true, fill: true, boundary: true, candidate: false };
+const overlayLayerState = { swing: true, fill: true, boundary: true, candidate: true };
 window.toggleOverlayLayer = function(layer) {
   overlayLayerState[layer] = !overlayLayerState[layer];
   if (state.bundle?.snapshot) {
@@ -957,14 +957,8 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
         : "";
       // V1.7.x: drop the floating "观察中" annotation entirely. The
       // unconfirmed dot itself still renders (it's the latest live
-      // price), but the verbal "观察中" label previously floated next
-      // to it and competed with the upper-boundary / candidate-key-line
-      // labels for the same right-margin space. The dot is enough — let
-      // the user hover for the tooltip text.
       const observationLabel = "";
-      const candidateLabel = isCandidate && mapped.length
-        ? `<text class="structure-svg-axis structure-candidate-label" x="${(mapped[mapped.length - 1].x - 6).toFixed(2)}" y="${(mapped[mapped.length - 1].y + (role === "lower_boundary" ? 15 : -7)).toFixed(2)}" text-anchor="end">${escapeHtml(role === "upper_boundary" ? `${candidateName}上沿` : role === "lower_boundary" ? `${candidateName}下沿` : `${candidateName}关键线`)}</text>`
-        : "";
+      const candidateLabel = "";
       return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round">${title}</path>${markers}${observationLabel}${candidateLabel}`;
     })
     .join("");
@@ -995,7 +989,7 @@ function buildMarketProfileMarkup(geometry, scale) {
       const opacity = label === "POC" ? 0.85 : 0.5;
       return `
         <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${CHART_SERIES.profile.color}" stroke-width="${label === "POC" ? 2.4 : 1.6}" stroke-dasharray="8 7" opacity="${opacity}"></line>
-        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 6).toFixed(2)}" text-anchor="end">${escapeHtml(label)}</text>
+        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 6).toFixed(2)}" text-anchor="end">${escapeHtml(label)} ${escapeHtml(String(item.price))}</text>
       `;
     })
     .join("");

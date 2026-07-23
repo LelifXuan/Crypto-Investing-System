@@ -261,7 +261,7 @@ def detect_rectangles(candles: list, highs: list[Pivot], lows: list[Pivot]) -> l
     high_range = (max(p.price for p in hs) - min(p.price for p in hs)) / avg_price
     low_range = (max(p.price for p in ls) - min(p.price for p in ls)) / avg_price
 
-    if high_range > tol * 1.5 or low_range > tol * 1.5:
+    if high_range > tol * 2.0 or low_range > tol * 2.0:
         return results
 
     width = (resistance - support) / avg_price

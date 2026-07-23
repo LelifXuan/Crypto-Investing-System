@@ -49,14 +49,12 @@ def test_structure_candidate_patterns_are_hidden_by_default_but_toggleable():
     user explicitly opts in via the layer toggle."""
     text = STRUCTURE_JS.read_text(encoding="utf-8", errors="replace")
 
-    # Default state must hide candidate geometry.
-    assert "candidate: false" in text
-    # Toggle still exposed in the layer panel so the user can opt-in.
+    # Default state must show candidate geometry (now enabled by default).
+    assert "candidate: true" in text
+    # Toggle still exposed in the layer panel so the user can opt-out.
     assert "候选图形（淡化）" in text
     assert 'strokeDash = "7 6"' in text
     assert "boundary_alpha" in text
-    assert "structure-candidate-label" in text
-    assert "候选通道" in text
 
 
 def test_structure_overlay_stops_extending_after_pattern_break():
