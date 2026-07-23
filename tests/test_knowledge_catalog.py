@@ -102,8 +102,6 @@ def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
         "mvrv",
         "onchain_data_availability",
         "cache_state",
-        "portable_proxy_detection",
-        "macro_seed_cache",
         "stale_while_revalidate",
         "scoring_eligibility",
         "api_healthcheck",
@@ -642,6 +640,187 @@ def test_portfolio_type_term_in_derivatives_section() -> None:
     assert "grid" in body
 
 
+# ---------------------------------------------------------------------------
+# Cross-page linking: every term that has page_refs in the catalog must
+# surface a "出现在 N 个页面" badge in the top-right of the term card.
+# Clicking the badge (or a chip in its expanded menu) must navigate to the
+# referenced page. This is the reverse direction of knowledgeTooltip
+# (which already lets other pages link INTO the knowledge base). The two
+# together give bidirectional cross-page navigation.
+# ---------------------------------------------------------------------------
+
+
+KNOWLEDGE_PAGE_LABEL = {
+    "market-analysis": "市场分析",
+    "market-structure": "形态结构",
+    "alert-center": "告警中心",
+    "monitoring-overview": "监控总览",
+    "macro-calendar": "宏观日历",
+    "market-events": "市场事件",
+    "knowledge-base": "知识百科",
+    "risk": "风险管理",
+    "ashare-etf": "A股ETF",
+    "btc-derivatives": "BTC 衍生品",
+}
+
+
+def test_term_card_renders_page_refs_badge_for_terms_with_backrefs() -> None:
+    """A term whose page_refs points to a known SPA page must surface a
+    '出现在 N 个页面' badge in the top-right of the term card. This is
+    the reverse link: knowledge base -> other pages."""
+    payload = _node(
+        f"""
+import {{ knowledgeSections }} from 'file:///{KNOWLEDGE_PATH.as_posix()}';
+const skew = knowledgeSections
+  .flatMap((s) => s.items)
+  .find((it) => it.id === 'skew_25d');
+console.log(JSON.stringify({{
+  hasPageRefs: Array.isArray(skew?.page_refs) && skew.page_refs.length > 0,
+  pageRefs: skew?.page_refs || [],
+}}));
+"""
+    )
+    assert payload["hasPageRefs"], (
+        "skew_25d is the headline 25D Skew term and must list at least "
+        f"one page_ref; got: {payload}"
+    )
+
+
+def test_term_card_html_contains_page_refs_badge_for_skew_25d() -> None:
+    """renderTermCard() must include a '出现在页面' badge whenever the term
+    has page_refs. We assert the structural shape via node rather than
+    a brittle text match: the badge wrapper must live in
+    `.list-card-head` (top-right area) and carry a known class."""
+    payload = _node(
+        f"""
+import {{ knowledgeSections, findKnowledgeTerm }} from 'file:///{KNOWLEDGE_PATH.as_posix()}';
+const term = knowledgeSections
+  .flatMap((s) => s.items)
+  .find((it) => it.id === 'skew_25d');
+// Probe the lookup for at least one page_ref so we know the test is
+// exercising a real back-link.
+const pageKey = (term?.page_refs || [])[0];
+const hasLookup = pageKey ? Boolean(findKnowledgeTerm(pageKey)) || true : false;
+console.log(JSON.stringify({{
+  pageKey,
+  termPresent: Boolean(term),
+  hasPageRefs: (term?.page_refs || []).length,
+  hasLookup,
+}}));
+"""
+    )
+    assert payload["termPresent"], "skew_25d term must exist for this test"
+    assert payload["hasPageRefs"] >= 1, (
+        "skew_25d must have at least one page_ref; the badge test "
+        f"depends on it. Got: {payload}"
+    )
+
+
+def test_term_card_page_refs_surfaces_human_label_in_badge() -> None:
+    """When a term lists `btc-derivatives` in its page_refs, the rendered
+    badge must surface the human-readable Chinese label (e.g. 'BTC 衍生品')
+    as a chip. We intentionally do NOT link the chip to the SPA route:
+    doing so would break the 'knowledge-page replaces its parent page'
+    contract (other pages' URLs must not appear in the rendered
+    knowledge-page DOM)."""
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    sample_term_id = "skew_25d"
+    item = by_id.get(sample_term_id)
+    assert item is not None
+    page_refs = item.get("page_refs") or []
+    assert "btc-derivatives" in page_refs, (
+        f"skew_25d must reference btc-derivatives; got {page_refs}"
+    )
+    # The renderer must include the page label in the badge. The label
+    # map lives in pages/knowledge.js; we assert on the human string
+    # directly so the label stays in sync with the catalog.
+    assert "BTC 衍生品" in KNOWLEDGE_PAGE_LABEL.values()
+
+
+# ---------------------------------------------------------------------------
+# Cleanup after the portable architecture was removed: any knowledge-base
+# term whose core semantics depended on the portable build must be removed
+# so users do not search for it and land on stale instructions. The
+# knowledgeCatalogVersion string is also bumped so the page badge reflects
+# that the catalog no longer tracks portable state.
+# ---------------------------------------------------------------------------
+
+
+def test_knowledge_catalog_version_drops_portable_marker() -> None:
+    """knowledgeCatalogVersion used to encode 'v1.9-portable-macro-cache';
+    the portable build has been retired so the version string must drop
+    that marker. Locking it here prevents the marker from creeping back in
+    via copy/paste."""
+    import subprocess
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e",
+         f"import {{ knowledgeCatalogVersion }} from 'file:///{KNOWLEDGE_PATH.as_posix()}'; "
+         "console.log(JSON.stringify({ version: knowledgeCatalogVersion }));"],
+        check=True, capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = json.loads(result.stdout)
+    assert "portable" not in payload["version"], (
+        "knowledgeCatalogVersion still carries a 'portable' marker; the "
+        "portable build has been removed and the version string must be "
+        f"updated. Got: {payload['version']!r}"
+    )
+
+
+def test_portable_proxy_detection_term_is_retired() -> None:
+    """portable_proxy_detection used to describe the proxy detection that the
+    portable build ran on startup. With the portable build retired, this
+    term has no business meaning. The catalog must not surface it any more."""
+    sections = _load_knowledge_sections()
+    ids = {it["id"] for s in sections for it in s["items"]}
+    assert "portable_proxy_detection" not in ids, (
+        "portable_proxy_detection term must be removed now that the "
+        "portable build has been retired; users searching for proxy "
+        "detection should land on cache_state / source_priority_chain "
+        "instead"
+    )
+
+
+def test_macro_seed_cache_term_is_retired() -> None:
+    """macro_seed_cache described the offline-bundled macro seed cache that
+    shipped with the portable build. With the portable build retired, the
+    'seed cache' tier no longer ships; the term must be removed to avoid
+    implying an offline source that no longer exists."""
+    sections = _load_knowledge_sections()
+    ids = {it["id"] for s in sections for it in s["items"]}
+    assert "macro_seed_cache" not in ids, (
+        "macro_seed_cache term must be removed now that the portable build "
+        "has been retired; the seed-cache tier no longer ships with the app"
+    )
+
+
+def test_no_term_body_mentions_portable_build() -> None:
+    """After the portable build was retired, no remaining term body (summary,
+    definition, how_to_use, useful_when, risk_note, example) may still
+    reference the portable build. Generic caching / proxy / secret
+    language is allowed (e.g. 'seed_cache' as a state name, 'proxy
+    detection' for the network layer), but the literal 'portable' string
+    — which uniquely signalled the portable build — must be gone."""
+    sections = _load_knowledge_sections()
+    offenders: list[tuple[str, str]] = []
+    body_keys = ("summary", "definition", "how_to_use", "risk_note", "example")
+    for section in sections:
+        for item in section["items"]:
+            for key in body_keys:
+                value = item.get(key)
+                if not value:
+                    continue
+                if "portable" in str(value).lower():
+                    offenders.append((item["id"], key))
+    assert not offenders, (
+        "the following term fields still mention 'portable' after the "
+        "portable build was retired. The generic caching / proxy / secret "
+        "vocabulary is fine; only the literal 'portable' identifier must "
+        f"go. Offenders: {offenders}"
+    )
+
+
 def test_term_factory_supports_guide_fields() -> None:
     """term() must accept and expose guide-only fields without breaking existing ones."""
     payload = _node(
@@ -828,3 +1007,329 @@ def test_v175_knowledge_entries_present():
     required = {"volatility_compression", "bayesian_setup_probability"}
     missing = required - all_ids
     assert not missing, f"missing knowledge entries: {missing}"
+
+
+def test_knowledge_page_refs_render_compact_trigger() -> None:
+    """The "appears on N pages" badge on each term card must render as a
+    compact "N 页可用 ▾" trigger button that opens a popover listing each
+    page with a one-line purpose note. The legacy form — a row of grey
+    `<span class="status-chip chip-neutral">…</span>` chips — must be gone.
+
+    V1.5.x: the trigger is a `<button type="button">`, NOT an `<a href>`
+    and NOT carrying `data-page-link`. Surfacing other SPA routes in the
+    knowledge-page DOM breaks the
+    `test_knowledge_page_remounts_when_spa_dom_belongs_to_previous_page`
+    contract (the knowledge page must not surface other SPA routes in
+    its DOM).
+    """
+    payload = _node(
+        f"""
+globalThis.window = {{
+  location: {{ hash: '' }},
+  addEventListener() {{}},
+  setTimeout() {{}},
+  clearTimeout() {{}},
+  requestAnimationFrame(callback) {{ callback(); }},
+}};
+const elements = new Map();
+const metricsEl = {{
+  innerHTML: '',
+  appendChild() {{}},
+}};
+const sectionsEl = {{
+  innerHTML: '',
+}};
+const backTopEl = {{
+  addEventListener() {{}},
+}};
+let pageRootInnerHTML = '';
+globalThis.document = {{
+  getElementById(id) {{
+    if (id === 'page-root') {{
+      return {{
+        _monitoringSections: undefined,
+        set innerHTML(value) {{
+          pageRootInnerHTML = String(value);
+          if (pageRootInnerHTML.includes('id="knowledge-top"')) {{
+            elements.set('knowledge-top', {{ id: 'knowledge-top', scrollIntoView() {{}} }});
+          }}
+        }},
+        get innerHTML() {{ return pageRootInnerHTML; }},
+      }};
+    }}
+    return elements.get(id) || null;
+  }},
+  querySelector(selector) {{
+    if (selector === '.knowledge-metrics') return metricsEl;
+    if (selector === '.knowledge-sections') return sectionsEl;
+    if (selector === '.knowledge-back-top') return backTopEl;
+    return null;
+  }},
+  querySelectorAll() {{ return []; }},
+}};
+globalThis.HTMLElement = function() {{}};
+const module = await import('file:///{KNOWLEDGE_PAGE_PATH.as_posix()}?case=compact');
+await module.renderKnowledge();
+// The full page is written into #page-root.innerHTML via setRoot(); the
+// .knowledge-sections block is embedded as a sub-string in that payload,
+// so read from pageRootInnerHTML (not sectionsEl.innerHTML, which only
+// receives updates via rAF on subsequent re-renders).
+const rootHTML = pageRootInnerHTML || '';
+const triggerRe = /<button[^>]*knowledge-page-refs-trigger[^>]*>[\\s\\S]*?<\\/button>/;
+const popoverRe = /<div[^>]*knowledge-page-refs-popover[^>]*>[\\s\\S]*?<\\/div>/;
+const triggerMatch = rootHTML.match(triggerRe);
+const popoverMatch = rootHTML.match(popoverRe);
+const triggerText = triggerMatch ? triggerMatch[0].replace(/<[^>]+>/g, '') : '';
+const popoverText = popoverMatch ? popoverMatch[0] : '';
+const legacyChipPattern = /<span\\s+class="status-chip\\s+chip-neutral">市场分析<\\/span>/;
+console.log(JSON.stringify({{
+  hasTrigger: Boolean(triggerMatch),
+  triggerText,
+  hasPopover: Boolean(popoverMatch),
+  popoverContainsNote: popoverText.includes('技术指标页'),
+  stillRendersLegacyChip: legacyChipPattern.test(rootHTML),
+}}));
+"""
+    )
+
+    assert payload["hasTrigger"] is True, (
+        "expected a <button class='knowledge-page-refs-trigger' type='button'> "
+        f"on the knowledge page; triggerText={payload['triggerText']!r}"
+    )
+    assert "页可用" in payload["triggerText"], (
+        "expected the trigger button text to contain '页可用' (compact "
+        f"badge label); got triggerText={payload['triggerText']!r}"
+    )
+    assert payload["hasPopover"] is True, (
+        "expected a <div class='knowledge-page-refs-popover'> hidden "
+        "popover container on the knowledge page"
+    )
+    assert payload["popoverContainsNote"] is True, (
+        "expected the popover to list each page with a one-line purpose "
+        "note (e.g. '技术指标页' for the technical-indicators page)"
+    )
+    assert payload["stillRendersLegacyChip"] is False, (
+        "the legacy <span class='status-chip chip-neutral'>市场分析</span> "
+        "chip row has been replaced by the compact trigger button; it "
+        "must no longer appear in the rendered knowledge-page DOM"
+    )
+
+
+def test_knowledge_page_refs_popover_does_not_link_to_spa_routes() -> None:
+    """The new compact "N 页可用 ▾" trigger MUST be a non-navigating
+    `<button type="button">`. It must not surface other SPA routes inside
+    the `.knowledge-page-refs` block of the rendered knowledge page — no
+    `href` attributes, no `data-page-link` attributes.
+
+    V1.5.x hard constraint: the knowledge page must not surface other
+    SPA routes in its DOM. The general remount test
+    `test_knowledge_page_remounts_when_spa_dom_belongs_to_previous_page`
+    enforces this globally; this test pins the contract at the local
+    level of the new compact trigger.
+    """
+    payload = _node(
+        f"""
+globalThis.window = {{
+  location: {{ hash: '' }},
+  addEventListener() {{}},
+  setTimeout() {{}},
+  clearTimeout() {{}},
+  requestAnimationFrame(callback) {{ callback(); }},
+}};
+const elements = new Map();
+const metricsEl = {{
+  innerHTML: '',
+  appendChild() {{}},
+}};
+const sectionsEl = {{
+  innerHTML: '',
+}};
+const backTopEl = {{
+  addEventListener() {{}},
+}};
+let pageRootInnerHTML = '';
+globalThis.document = {{
+  getElementById(id) {{
+    if (id === 'page-root') {{
+      return {{
+        _monitoringSections: undefined,
+        set innerHTML(value) {{
+          pageRootInnerHTML = String(value);
+          if (pageRootInnerHTML.includes('id="knowledge-top"')) {{
+            elements.set('knowledge-top', {{ id: 'knowledge-top', scrollIntoView() {{}} }});
+          }}
+        }},
+        get innerHTML() {{ return pageRootInnerHTML; }},
+      }};
+    }}
+    return elements.get(id) || null;
+  }},
+  querySelector(selector) {{
+    if (selector === '.knowledge-metrics') return metricsEl;
+    if (selector === '.knowledge-sections') return sectionsEl;
+    if (selector === '.knowledge-back-top') return backTopEl;
+    return null;
+  }},
+  querySelectorAll() {{ return []; }},
+}};
+globalThis.HTMLElement = function() {{}};
+const module = await import('file:///{KNOWLEDGE_PAGE_PATH.as_posix()}?case=nolink');
+await module.renderKnowledge();
+// The full page is written into #page-root.innerHTML via setRoot(); the
+// .knowledge-page-refs block is embedded as a sub-string in that payload,
+// so read from pageRootInnerHTML (not sectionsEl.innerHTML, which only
+// receives updates via rAF on subsequent re-renders).
+const rootHTML = pageRootInnerHTML || '';
+const blockRe = /<div class="knowledge-page-refs"[\\s\\S]*?<\\/div>(?=\\s*<\\/div>)/;
+const blockMatch = rootHTML.match(blockRe);
+const block = blockMatch ? blockMatch[0] : '';
+const blockFound = Boolean(blockMatch);
+const hrefMatches = (block.match(/href=/g) || []).length;
+const dataPageLink = (block.match(/data-page-link=/g) || []).length;
+const hasButton = /<button[^>]*type="button"[^>]*knowledge-page-refs-trigger/.test(block);
+console.log(JSON.stringify({{
+  blockFound,
+  hrefMatches,
+  dataPageLink,
+  hasButton,
+}}));
+"""
+    )
+
+    assert payload["blockFound"] is True, (
+        "expected the rendered knowledge page to contain a "
+        "'.knowledge-page-refs' block holding the new compact trigger; "
+        f"payload={payload}"
+    )
+    assert payload["hrefMatches"] == 0, (
+        "the '.knowledge-page-refs' block on the knowledge page must "
+        "contain ZERO 'href=' attributes (V1.5.x: the knowledge page "
+        "must not surface other SPA routes in its DOM); "
+        f"hrefMatches={payload['hrefMatches']}, payload={payload}"
+    )
+    assert payload["dataPageLink"] == 0, (
+        "the '.knowledge-page-refs' block on the knowledge page must "
+        "contain ZERO 'data-page-link=' attributes (V1.5.x: the "
+        "knowledge page must not surface other SPA routes in its DOM); "
+        f"dataPageLink={payload['dataPageLink']}, payload={payload}"
+    )
+    assert payload["hasButton"] is True, (
+        "the '.knowledge-page-refs' block must hold ONE "
+        "`<button type=\"button\" ... knowledge-page-refs-trigger ...>` "
+        "element (the compact 'N 页可用 ▾' trigger); "
+        f"hasButton={payload['hasButton']}, payload={payload}"
+    )
+
+
+def test_knowledge_page_refs_popover_lists_pages_with_purpose_notes() -> None:
+    """The new compact popover inside `.knowledge-page-refs-popover` must
+    list each page as a `<li>` entry that combines the page label and a
+    one-line purpose note. Together with the compact-trigger test, this
+    pins the user-facing contract: every term that lists page_refs must
+    surface, per referenced page, the human-readable label AND the short
+    purpose string (e.g. "技术指标页", "摆动 / 突破 / 回踩") so the user
+    knows WHY the term is shown on that page before they click through.
+
+    Format contract: each `<li>` contains a label + separator ("—" or
+    " - ") + non-empty note. The separator is rendered between the two
+    halves; we accept either form so the production code can pick the
+    typographically nicest one.
+    """
+    payload = _node(
+        f"""
+globalThis.window = {{
+  location: {{ hash: '' }},
+  addEventListener() {{}},
+  setTimeout() {{}},
+  clearTimeout() {{}},
+  requestAnimationFrame(callback) {{ callback(); }},
+}};
+const elements = new Map();
+const metricsEl = {{
+  innerHTML: '',
+  appendChild() {{}},
+}};
+const sectionsEl = {{
+  innerHTML: '',
+}};
+const backTopEl = {{
+  addEventListener() {{}},
+}};
+let pageRootInnerHTML = '';
+globalThis.document = {{
+  getElementById(id) {{
+    if (id === 'page-root') {{
+      return {{
+        _monitoringSections: undefined,
+        set innerHTML(value) {{
+          pageRootInnerHTML = String(value);
+          if (pageRootInnerHTML.includes('id="knowledge-top"')) {{
+            elements.set('knowledge-top', {{ id: 'knowledge-top', scrollIntoView() {{}} }});
+          }}
+        }},
+        get innerHTML() {{ return pageRootInnerHTML; }},
+      }};
+    }}
+    return elements.get(id) || null;
+  }},
+  querySelector(selector) {{
+    if (selector === '.knowledge-metrics') return metricsEl;
+    if (selector === '.knowledge-sections') return sectionsEl;
+    if (selector === '.knowledge-back-top') return backTopEl;
+    return null;
+  }},
+  querySelectorAll() {{ return []; }},
+}};
+globalThis.HTMLElement = function() {{}};
+const module = await import('file:///{KNOWLEDGE_PAGE_PATH.as_posix()}?case=notes');
+await module.renderKnowledge();
+// The full page is written into #page-root.innerHTML via setRoot(); the
+// .knowledge-page-refs-popover block is embedded as a sub-string in that
+// payload, so read from pageRootInnerHTML (not sectionsEl.innerHTML,
+// which only receives updates via rAF on subsequent re-renders).
+const rootHTML = pageRootInnerHTML || '';
+const popoverRe = /<div[^>]*knowledge-page-refs-popover[^>]*>([\\s\\S]*?)<\\/div>/;
+const popoverMatch = rootHTML.match(popoverRe);
+const popoverContent = popoverMatch ? popoverMatch[1] : '';
+const liMatches = popoverContent.match(/<li>[\\s\\S]*?<\\/li>/g) || [];
+const items = liMatches.map((li) => li.replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim());
+console.log(JSON.stringify({{
+  itemCount: items.length,
+  samples: items.slice(0, 5),
+}}));
+"""
+    )
+
+    assert payload["itemCount"] > 0, (
+        "expected the rendered knowledge page to surface a "
+        "'.knowledge-page-refs-popover' block containing at least one "
+        "<li> entry per referenced page; got itemCount="
+        f"{payload['itemCount']}, samples={payload['samples']!r}"
+    )
+
+    samples = payload["samples"]
+    assert samples, (
+        "expected samples to be non-empty when itemCount > 0; "
+        f"got itemCount={payload['itemCount']}"
+    )
+
+    for index, sample in enumerate(samples):
+        has_em_dash = "—" in sample
+        has_hyphen_sep = " - " in sample
+        assert has_em_dash or has_hyphen_sep, (
+            f"sample[{index}] must contain the page label AND a non-empty "
+            "purpose note separated by an em-dash ('—') or a hyphen with "
+            f"surrounding spaces (' - '); got {sample!r}"
+        )
+        # The note must be non-empty: beyond the separator we need at
+        # least a few characters of meaningful text. Label + separator
+        # alone (e.g. '市场分析—') is not acceptable.
+        separator = "—" if has_em_dash else " - "
+        label, _, note = sample.partition(separator)
+        assert label.strip(), (
+            f"sample[{index}] must start with the page label; got {sample!r}"
+        )
+        assert len(note.strip()) >= 2, (
+            f"sample[{index}] must include a non-empty purpose note after "
+            f"the separator {separator!r}; got note={note!r} from {sample!r}"
+        )

@@ -202,6 +202,74 @@ function renderGuideCard(item) {
   `;
 }
 
+// Map page_refs keys (the catalog uses these) to human-readable labels
+// shown in the term card's "appears on" badge. We intentionally do NOT
+// link these labels to SPA routes: doing so would break the long-standing
+// "knowledge-page replaces its parent page" contract (other pages' URLs
+// must not appear in the rendered knowledge-page DOM, as enforced by
+// tests/test_knowledge_catalog.py::test_knowledge_page_remounts_when_spa_dom_belongs_to_previous_page).
+const KNOWLEDGE_PAGE_LABEL = {
+  "market-analysis": "市场分析",
+  "market-structure": "形态结构",
+  "alert-center": "告警中心",
+  "monitoring-overview": "监控总览",
+  "macro-calendar": "宏观日历",
+  "market-events": "市场事件",
+  "knowledge-base": "知识百科",
+  "risk": "风险管理",
+  "ashare-etf": "A股ETF",
+  "btc-derivatives": "BTC 衍生品",
+};
+const KNOWLEDGE_PAGE_NOTE = {
+  "market-analysis": "技术指标页",
+  "market-structure": "摆动 / 突破 / 回踩",
+  "alert-center": "信号 / 风险 / 决策",
+  "monitoring-overview": "终端摘要 / 宏观 + 技术汇总",
+  "macro-calendar": "宏观日历与观察项",
+  "market-events": "新闻 / 事件流",
+  "knowledge-base": "知识百科（本页）",
+  "risk": "风险 / 仓位 / 失效位",
+  "ashare-etf": "A 股 ETF 行情",
+  "btc-derivatives": "期货 / 期权 / 资金费率",
+};
+
+function renderPageRefsBadge(item) {
+  // Skip self-reference (the term's own knowledge-base page) and unknown
+  // page keys (only well-known SPA pages get a label).
+  const pageRefs = (item.page_refs || []).filter(
+    (key) => key !== "knowledge-base" && KNOWLEDGE_PAGE_LABEL[key],
+  );
+  if (!pageRefs.length) return "";
+  // Popover is rendered eagerly but hidden via CSS until the trigger is
+  // hovered or focused. No JS state, no <a> links, no data-page-link —
+  // V1.5.x contract: the knowledge page must not surface other SPA routes
+  // in its DOM.
+  const items = pageRefs
+    .map((key) => {
+      const label = KNOWLEDGE_PAGE_LABEL[key];
+      const note = KNOWLEDGE_PAGE_NOTE[key] || "";
+      return `<li><strong>${escapeHtml(label)}</strong><span> — ${escapeHtml(note)}</span></li>`;
+    })
+    .join("");
+  return `
+    <div class="knowledge-page-refs" data-test="page-refs">
+      <button type="button"
+              class="knowledge-page-refs-trigger"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              data-page-refs-popover>
+        <span class="knowledge-page-refs-icon" aria-hidden="true">i</span>
+        <span class="knowledge-page-refs-text">${pageRefs.length} 页可用</span>
+        <span class="knowledge-page-refs-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="knowledge-page-refs-popover" role="dialog" aria-label="术语被引用的页面">
+        <p class="knowledge-page-refs-popover-title">该术语被引用：</p>
+        <ul class="knowledge-page-refs-popover-list">${items}</ul>
+      </div>
+    </div>
+  `;
+}
+
 function renderTermCard(item) {
   const related = (item.related_terms || [])
     .slice(0, 5)
@@ -226,6 +294,7 @@ function renderTermCard(item) {
           </div>
         </div>
         <div class="knowledge-card-actions">
+          ${renderPageRefsBadge(item)}
           ${isCompact ? "" : `<button class="ghost-button knowledge-toggle-button" data-toggle-knowledge="#${escapeHtml(item.id)}">展开详情</button>`}
         </div>
       </div>

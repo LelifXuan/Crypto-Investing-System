@@ -5282,6 +5282,103 @@ body[data-page="ai-strategy"] main {
   justify-content: flex-end;
 }
 
+/* 2026-07-23: compact page-refs trigger + hover/focus popover.
+   Replaces the legacy chip cluster to lower the visual weight of the
+   term-card actions row. */
+.knowledge-page-refs {
+  position: relative;
+  display: inline-block;
+}
+
+.knowledge-page-refs-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--neutral);
+  opacity: 0.75;
+  cursor: help;
+  border-radius: 6px;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.knowledge-page-refs-trigger:hover,
+.knowledge-page-refs:focus-within .knowledge-page-refs-trigger {
+  opacity: 1;
+  background: var(--hover-tint);
+}
+
+.knowledge-page-refs-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--neutral-soft);
+  color: var(--neutral);
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.knowledge-page-refs-caret {
+  font-size: 8px;
+  opacity: 0.7;
+  margin-left: 1px;
+}
+
+.knowledge-page-refs-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 10px 12px;
+  background: var(--surface-elevated, #ffffff);
+  border: 1px solid rgba(15, 118, 110, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-primary, #1f2a3a);
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.knowledge-page-refs-trigger:hover + .knowledge-page-refs-popover,
+.knowledge-page-refs:focus-within .knowledge-page-refs-popover {
+  visibility: visible;
+  opacity: 1;
+}
+
+.knowledge-page-refs-popover-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--text-primary, #1f2a3a);
+}
+
+.knowledge-page-refs-popover-list {
+  margin: 0;
+  padding-left: 14px;
+}
+
+.knowledge-page-refs-popover-list li {
+  margin: 2px 0;
+}
+
+.knowledge-page-refs-popover-list strong {
+  color: var(--accent-strong);
+  margin-right: 4px;
+}
+
 /* 展开详情按钮在窄列中不换行（沿用现有浏览器默认 button 样式，仅修复换行） */
 .knowledge-toggle-button {
   white-space: nowrap;
