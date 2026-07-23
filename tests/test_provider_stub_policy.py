@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.services.macro.provider_registry import MacroProviderRegistry
 from app.services.macro.providers.agushuju import AgushujuMacroProvider
 from app.services.macro.providers.fed import FedMacroProvider
 from app.services.macro.providers.ism import IsmMacroProvider
 from app.services.macro.providers.tushare import TushareMacroProvider
 from app.services.macro.providers.zhituapi import ZhituapiMacroProvider
-
 
 STUB_PROVIDER_CLASSES = [
     AgushujuMacroProvider,
