@@ -5,8 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app import __version__
-
+from app import __version__  # noqa: I001
 
 ROOT = Path(__file__).resolve().parents[1]
 
