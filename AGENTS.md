@@ -221,6 +221,28 @@ with sync_playwright() as p:
 | 知识百科 5 bug | unmount 反向 render、hashchange 泄漏、isMounted 错位、过滤后点击无效、80+ 词条同步阻塞 | 知识百科是「架构」级页面但只跑了 `node --check` | 知识百科改动 = 架构,必须实例检查 |
 | 横栏点击 lag 100-300ms | click handler 同步 walk boot() 阻塞主线程 | 没有骨架占位,`node --check` 完全无法发现 | 实测耗时,verify_pages.py 的 SPA 切换测试 |
 | template `<script defer>` 阻塞 DCL | headless 验证时 market-analysis 30s 都拿不到 HTML | Chart.js 远程 CDN 慢时 `defer` 仍阻塞 DOMContentLoaded | 模板不引用外部 CDN,统一走 main.js 的 `loadScriptOnce` |
+| **架构重组后 6 页报错未发现** | 用户报告 market-events、ashare-etf 等页面报错,但之前声称"全部正常" | **1)** 只用 curl 检查 HTTP 200,未用 Playwright 渲染; **2)** 用户报告 A 页只修 A 页,不检查 B/C/D 页; **3)** 修复后不跑全量 verify_pages | **绝对禁止 curl-only 验证。架构/路由改动后必须 `verify_pages.py` 全量(冷启动+SPA)。修复任何一页后必须重跑全量。** |
+
+### 六.4 修复后验证规则（强制）
+
+**修复一个页面的 bug 后,必须重跑全量 `verify_pages.py`,不是只跑那一页。** 原因:SPA 路由、共享依赖 (`main.js`/`core/*.js`)、静态资源路径的改动会影响所有页面。
+
+```
+# ❌ 错误:只验证刚修的那一页
+python tests/verify_pages.py --pages ashare-etf --skip-spa
+
+# ✅ 正确:全量验证
+python tests/verify_pages.py
+```
+
+**任何涉及以下改动的任务,完成后必须全量 verify_pages:**
+- `main.js` / `core/*.js` / `templates/page.html`
+- `app/api/router.py` (路由注册)
+- `app/core/paths.py` (静态资源路径)
+- 文件重命名/目录结构调整
+- 删除任何 `pages/*.js` 或 `endpoints/*.py`
+
+**如果 verify_pages 有任何 FAIL,任务未完成。** 不允许以"可能是缓存"为理由跳过。
 
 验证通过标志：
 ```
