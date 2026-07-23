@@ -6,7 +6,6 @@ from app.api.v1.endpoints import (
     auth,
     bootstrap,
     btc_derivatives,
-    etf,
     gold,
     health,
     indicators,
@@ -16,7 +15,6 @@ from app.api.v1.endpoints import (
     monitoring,
     precompute,
     refresh_jobs,
-    signals,
     strategy,
     structure,
 )
@@ -33,7 +31,6 @@ v1_router.include_router(market_prices.marketdata_router)
 v1_router.include_router(analysis.router)
 v1_router.include_router(ashare_etf.router)
 v1_router.include_router(btc_derivatives.router)
-v1_router.include_router(etf.router)
 v1_router.include_router(gold.router)
 v1_router.include_router(indicators.router)
 v1_router.include_router(monitoring.indicators_catalog_router)
@@ -48,6 +45,5 @@ v1_router.include_router(precompute.router)
 v1_router.include_router(refresh_jobs.router)
 v1_router.include_router(structure.router)
 v1_router.include_router(strategy.router)
-v1_router.include_router(signals.router)
 
 api_router.include_router(v1_router)

@@ -127,28 +127,6 @@ class GoldExecutionPlanResponse(BaseModel):
     diagnostics: dict[str, Any]
 
 
-class GoldFundamentalsResponse(BaseModel):
-    source: str
-    updated_at: str | None = None
-    central_bank: dict[str, Any]
-    supply: dict[str, Any]
-    investment_flow: dict[str, Any]
-    derivatives: dict[str, Any]
-    performance_metrics: dict[str, Any] = Field(default_factory=dict)
-    data_quality: dict[str, Any] = Field(default_factory=dict)
-
-    central_bank_net_purchase_tonnes_12m: float | None = None
-    central_bank_net_purchase_tonnes_3m: float | None = None
-    gold_etf_flow_tonnes_1m: float | None = None
-    mine_production_yoy: float | None = None
-    recycling_yoy: float | None = None
-    aisc_yoy: float | None = None
-    supply_demand_balance_tonnes: float | None = None
-    futures_oi_change_4w: float | None = None
-    futures_volume_zscore: float | None = None
-    cot_net_spec_percentile: float | None = None
-
-
 class GoldMarketStateResponse(BaseModel):
     instrument_id: str
     xaut_symbol: str
