@@ -149,6 +149,8 @@
 - SPA 路由切页时 `analysis.js` 顶层撞到 `Chart is not defined`
 - 知识百科 5 个跳转 bug(unmount 反向 render、hashchange 监听器泄漏、isMounted 错位、过滤后相关术语点击无效、80+ 词条同步 innerHTML 阻塞主线程)
 
+**必须使用 Playwright 工具，禁止仅用 curl 检查 HTTP 状态码。** HTTP 200 不代表页面正确渲染——JS 模块加载失败、CSS 404、import() 异常、全局变量缺失等问题 `curl` 完全看不到。
+
 **怎么做**:
 
 ```
@@ -161,6 +163,29 @@ python tests/verify_pages.py --pages monitoring-overview,market-analysis  # 精�
 python tests/verify_pages.py --skip-spa             # 只测冷启动
 python tests/verify_pages.py --baseline             # 把当前截图入库为基准
 ```
+
+**或用 Playwright 直接检查单个页面**:
+
+```python
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+    errors = []
+    page.on('pageerror', lambda err: errors.append(str(err)))
+    page.goto('http://127.0.0.1:8002/gold-allocation-page', wait_until='networkidle')
+    page.wait_for_timeout(3000)
+    page.screenshot(path='reports/check.png', full_page=True)
+    assert len(errors) == 0, f"Page errors: {errors}"
+    browser.close()
+```
+
+**检查清单**:
+1. HTTP 200（通过 Playwright 的 `response.status`）
+2. `pageerror` 事件 = 0（JS 异常）
+3. 页面渲染了预期内容（`page.content()` 包含关键 CSS 类名）
+4. 截图存档确认视觉正确
 
 脚本会做 4 件事:
 1. **冷启动**:用独立 Chromium context 打开每个 page,等真内容出现 (`<real-content-selector>` 之一)

@@ -54,6 +54,7 @@ PAGE_ROUTES = {
     "ashare-etf": "/ashare-etf-page",
     "btc-derivatives": "/btc-derivatives-page",
     "ai-strategy": "/strategy-page",
+    "gold-allocation": "/gold-allocation-page",
 }
 
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
@@ -71,6 +72,7 @@ SPA_NAV_PAGES = {
     "ashare-etf",
     "btc-derivatives",
     "ai-strategy",
+    "gold-allocation",
 }
 
 # 等待 #page-root 出现真实内容时,要找的特征 selector
@@ -92,6 +94,7 @@ REAL_CONTENT_SELECTORS = {
         ".strategy-horizon-governance",
         ".strategy-decision-audit",
     ],
+    "gold-allocation": [".hero-card", ".gold-signal-card", ".gold-workbench"],
 }
 ERROR_SELECTOR = ".error-state, .render-fatal, [data-render-fatal]"
 
