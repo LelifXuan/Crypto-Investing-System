@@ -94,15 +94,12 @@ def test_gold_plan_endpoint_rejects_invalid_total_value() -> None:
 def test_gold_get_endpoints_return_v2_degraded_payload_without_files() -> None:
     with _client() as client:
         allocation = client.get("/api/v1/gold/allocation")
-        fundamentals = client.get("/api/v1/gold/fundamentals")
         market = client.get("/api/v1/gold/market-state")
 
     assert allocation.status_code == 200
-    assert fundamentals.status_code == 200
     assert market.status_code == 200
     data = allocation.json()
     assert data["primary_instruction"]
     assert data["decision_summary"]
     assert data["data_quality"]["uses_xaut_as_proxy"] is True
-    assert "missing_categories" in fundamentals.json()["data_quality"]
     assert market.json()["xaut_symbol"] == "XAUT_USDT"

@@ -5,6 +5,7 @@ from app.services.macro.providers.agushuju import AgushujuMacroProvider
 from app.services.macro.providers.alpha_vantage import AlphaVantageMacroProvider
 from app.services.macro.providers.bea import BeaMacroProvider
 from app.services.macro.providers.bls import BlsMacroProvider
+from app.services.macro.providers.cftc import CftcCotProvider
 from app.services.macro.providers.china import ChinaMacroProvider
 from app.services.macro.providers.coinmarketcap import CoinMarketCapMacroProvider
 from app.services.macro.providers.fed import FedMacroProvider
@@ -40,6 +41,7 @@ class MacroProviderRegistry:
             ZhituapiMacroProvider(secrets, cache),
             GateioRwaMacroProvider(secrets, cache),
             TradingEconomicsWebProvider(secrets, cache),
+            CftcCotProvider(),
         ]
 
     def resolve(self, *, source_provider: str, source_kind: str):

@@ -10,7 +10,6 @@ from app.schemas.gold_allocation import (
     GoldAllocationPlanResponse,
     GoldExecutionPlanRequest,
     GoldExecutionPlanResponse,
-    GoldFundamentalsResponse,
     GoldMarketStateResponse,
 )
 from app.services.gold_allocation_engine import build_gold_allocation_plan
@@ -33,7 +32,6 @@ from app.schemas.gold_v3 import (
     GoldV3AllocationResponse,
 )
 from app.services.gold_derivatives import GoldDerivativesService
-from app.services.goldhub_data import GoldhubDataService
 from app.services.macro_overview import MacroOverviewService
 from app.services.xaut_market_state import XAUT_INSTRUMENT_ID, XautMarketStateService
 
@@ -56,10 +54,6 @@ async def _macro_payload(repo: MarketRepository | None) -> dict:
 
 async def _market_state(repo: MarketRepository | None, *, force: bool = False) -> dict:
     return await XautMarketStateService(repo).build_state(force=force)
-
-
-def _fundamentals() -> dict:
-    return GoldhubDataService().load_snapshot()
 
 
 def _compute_technical_indicators(candles: list) -> dict:
@@ -254,13 +248,6 @@ async def plan_gold_execution(
     return GoldExecutionPlanResponse.model_validate(plan)
 
 
-@router.get("/fundamentals", response_model=GoldFundamentalsResponse)
-async def get_gold_fundamentals(
-    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
-) -> GoldFundamentalsResponse:
-    return GoldFundamentalsResponse.model_validate(_fundamentals())
-
-
 @router.get("/market-state", response_model=GoldMarketStateResponse)
 async def get_gold_market_state(
     force: bool = Query(default=False),
@@ -287,7 +274,7 @@ async def get_gold_allocation(
     plan = build_gold_allocation_plan(
         portfolio,
         macro=await _macro_payload(repo),
-        goldhub=_fundamentals(),
+        goldhub={},
         market=await _market_state(repo),
     )
     return GoldAllocationPlanResponse.model_validate(plan.to_dict())

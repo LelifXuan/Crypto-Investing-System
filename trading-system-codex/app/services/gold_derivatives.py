@@ -13,7 +13,6 @@ from app.core.paths import app_paths
 
 _CACHE_DIR = app_paths.data_dir
 _CACHE_FILE = "xaut_oi_cache.json"
-_COT_FILE = "cot_snapshot.json"
 _MAX_OI_SNAPSHOTS = 5
 _WEEKS_FOR_OI_CHANGE = 4
 
@@ -95,37 +94,8 @@ class OICache:
         return result
 
 
-class COTCache:
-    """Read COT snapshot from local goldhub file."""
-
-    def __init__(self, data_dir: Optional[Path] = None) -> None:
-        self.data_dir = data_dir or app_paths.resource_root / "data" / "goldhub"
-        self.cot_path = self.data_dir / _COT_FILE
-
-    def read(self) -> Optional[dict]:
-        if not self.cot_path.exists():
-            return None
-        try:
-            return json.loads(self.cot_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-
-    def read_percentile(self) -> Optional[float]:
-        data = self.read()
-        if not data:
-            return None
-        for key in ("cot_net_spec_percentile", "cot_percentile"):
-            value = data.get(key)
-            if value is not None:
-                try:
-                    return float(value)
-                except (TypeError, ValueError):
-                    continue
-        return None
-
-
 class GoldDerivativesService:
-    """Fetch Gate.io OI/funding rate and load local COT data."""
+    """Fetch Gate.io OI/funding rate + CFTC COT positioning."""
 
     GATEIO_CONTRACT_URL = "https://api.gateio.ws/api/v4/futures/usdt/contracts/XAUT_USDT"
 
@@ -162,7 +132,19 @@ class GoldDerivativesService:
             self.oi_cache.write(OISnapshot(timestamp=now, oi_value=oi_value))
 
         oi_change = self.oi_cache.oi_change_4w()
-        cot_pct = COTCache().read_percentile()
+
+        # ── COT via live CFTC provider (replaces local file) ──
+        cot_pct: Optional[float] = None
+        cot_error: Optional[str] = None
+        try:
+            from app.services.macro.providers.cftc import CftcCotProvider
+            provider = CftcCotProvider()
+            _ = await provider.fetch_latest("gold_cot")
+            cot_pct = provider.get_latest_percentile()
+            if cot_pct is None:
+                cot_error = "COT 历史数据积累中（需 ≥ 2 周）"
+        except Exception as exc:
+            cot_error = f"COT 获取异常"
 
         notes: list[str] = []
         if gateio_error:
@@ -170,8 +152,8 @@ class GoldDerivativesService:
         if oi_change is None:
             oi_count = len(self.oi_cache._read_all())
             notes.append(f"OI 数据积累中（{oi_count}/{_MAX_OI_SNAPSHOTS} 周）")
-        if cot_pct is None:
-            notes.append("COT 数据待录入")
+        if cot_error:
+            notes.append(cot_error)
 
         return {
             "oi_change_4w": oi_change,
