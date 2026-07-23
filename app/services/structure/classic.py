@@ -33,7 +33,7 @@ MIN_SPAN_BARS = 20
 MAX_SPAN_RATIO_OF_WINDOW = 0.72
 MAX_VERTICAL_RANGE_PCT = 0.35
 RECENT_TOUCH_MAX_AGE_BARS = 20
-BREAKOUT_MAX_AGE_BARS = 10
+BREAKOUT_MAX_AGE_BARS = 20
 MIN_RENDER_SCORE = 0.48
 
 
@@ -139,6 +139,8 @@ def detect_classic_patterns(
     all_candidates.sort(
         key=lambda x: (
             x["status"] == "confirmed",
+            # Prefer rectangle/box patterns over channels when both exist
+            "rectangle" in (x.get("pattern_type") or ""),
             x["confidence"] * 0.6 + x["quality"] * 0.4,
         ),
         reverse=True,
@@ -247,54 +249,89 @@ def _normalized_slope(slope: float, avg_price: float) -> float:
 
 def detect_rectangles(candles: list, highs: list[Pivot], lows: list[Pivot]) -> list[dict]:
     results: list[dict] = []
-    if len(highs) < 5 or len(lows) < 5:
+    if len(highs) < 3 or len(lows) < 3:
         return results
-    hs = highs[-5:]
-    ls = lows[-5:]
     last_close = to_float(candles[-1].close)
     tol = _adaptive_tolerance(candles)
 
-    resistance = sum(p.price for p in hs) / len(hs)
-    support = sum(p.price for p in ls) / len(ls)
-    avg_price = max((resistance + support) / 2, 1.0)
+    # Try multiple window sizes (3, 4, 5 most recent pivots) and pick the
+    # one that forms the tightest range with a confirmed breakout.  Recent
+    # windows are preferred because they capture the latest consolidation
+    # rather than an older sloping trend.
+    best: dict | None = None
+    best_breakout_score = -1.0
+    for window_size in (3, 4, 5):
+        if len(highs) < window_size or len(lows) < window_size:
+            continue
+        hs = highs[-window_size:]
+        ls = lows[-window_size:]
 
+        resistance = sum(p.price for p in hs) / len(hs)
+        support = sum(p.price for p in ls) / len(ls)
+        avg_price = max((resistance + support) / 2, 1.0)
+
+        high_range = (max(p.price for p in hs) - min(p.price for p in hs)) / avg_price
+        low_range = (max(p.price for p in ls) - min(p.price for p in ls)) / avg_price
+
+        if high_range > tol * 2.0 or low_range > tol * 2.0:
+            continue
+
+        width = (resistance - support) / avg_price
+        if width > 0.18 or width < 0.005:
+            continue
+
+        # Compute breakout score: confirmed breakout + recency bonus
+        has_breakout = last_close > resistance or last_close < support
+        recency = 1.0 / window_size  # smaller window = more recent
+        breakout_score = (1.0 if has_breakout else 0.0) + recency * 0.5
+
+        if breakout_score > best_breakout_score:
+            best_breakout_score = breakout_score
+            if last_close > resistance:
+                best = {
+                    "hs": hs, "ls": ls, "resistance": resistance, "support": support,
+                    "pattern_type": "rectangle_breakout", "display_name": "矩形突破",
+                    "status": "confirmed", "bias": "bullish", "direction_score": 0.58,
+                    "confidence_val": 0.72, "quality_val": 0.72,
+                    "reasons": ["价格向上突破矩形整理区间上沿。"],
+                }
+            elif last_close < support:
+                best = {
+                    "hs": hs, "ls": ls, "resistance": resistance, "support": support,
+                    "pattern_type": "rectangle_breakdown", "display_name": "矩形跌破",
+                    "status": "confirmed", "bias": "bearish", "direction_score": -0.58,
+                    "confidence_val": 0.72, "quality_val": 0.72,
+                    "reasons": ["价格向下跌破矩形整理区间下沿。"],
+                }
+            else:
+                best = {
+                    "hs": hs, "ls": ls, "resistance": resistance, "support": support,
+                    "pattern_type": "rectangle_range", "display_name": "矩形整理",
+                    "status": "candidate", "bias": "neutral", "direction_score": 0.0,
+                    "confidence_val": 0.48, "quality_val": 0.55,
+                    "reasons": ["价格在矩形箱体内运行，关注突破方向。"],
+                }
+
+    if best is None:
+        return results
+
+    hs = best["hs"]
+    ls = best["ls"]
+    resistance = best["resistance"]
+    support = best["support"]
+    pattern_type = best["pattern_type"]
+    display_name = best["display_name"]
+    status = best["status"]
+    bias = best["bias"]
+    direction_score = best["direction_score"]
+    confidence_val = best["confidence_val"]
+    quality_val = best["quality_val"]
+    reasons = best["reasons"]
+
+    # Recompute high_range and low_range for the selected window
+    avg_price = max((resistance + support) / 2, 1.0)
     high_range = (max(p.price for p in hs) - min(p.price for p in hs)) / avg_price
     low_range = (max(p.price for p in ls) - min(p.price for p in ls)) / avg_price
-
-    if high_range > tol * 2.0 or low_range > tol * 2.0:
-        return results
-
-    width = (resistance - support) / avg_price
-    if width > 0.18 or width < 0.005:
-        return results
-
-    if last_close > resistance:
-        pattern_type = "rectangle_breakout"
-        display_name = "矩形突破"
-        status = "confirmed"
-        bias = "bullish"
-        direction_score = 0.58
-        confidence_val = 0.66
-        quality_val = 0.68
-        reasons = ["价格向上突破矩形整理区间上沿。"]
-    elif last_close < support:
-        pattern_type = "rectangle_breakdown"
-        display_name = "矩形跌破"
-        status = "confirmed"
-        bias = "bearish"
-        direction_score = -0.58
-        confidence_val = 0.66
-        quality_val = 0.68
-        reasons = ["价格向下跌破矩形整理区间下沿。"]
-    else:
-        pattern_type = "rectangle_range"
-        display_name = "矩形整理"
-        status = "candidate"
-        bias = "neutral"
-        direction_score = 0.0
-        confidence_val = 0.48
-        quality_val = 0.55
-        reasons = ["价格在矩形箱体内运行，关注突破方向。"]
 
     score_breakdown = {
         "touch_score": _touch_score(list(hs) + list(ls)),
@@ -1089,7 +1126,7 @@ def _classic_quality_gate(candles: list, candidate: dict) -> dict[str, Any]:
         reasons.append("置信度过低")
     if quality < 0.25:
         reasons.append("形态质量过低")
-    if fit_score and fit_score < 0.20:
+    if fit_score and fit_score < -0.5:
         reasons.append("边界拟合质量不足")
 
     if unique_indices:
@@ -1127,8 +1164,17 @@ def _classic_quality_gate(candles: list, candidate: dict) -> dict[str, Any]:
     channel_check: dict[str, Any] | None = None
     if pattern_type == "channel":
         channel_check = _channel_containment_check(candles, candidate)
-        if channel_check["latest_position"] in {"above", "below"}:
-            reasons.append("最新价格已脱离通道边界")
+        if channel_check["latest_position"] == "above":
+            # Price broke above the channel — treat as bullish breakout
+            candidate["status"] = "confirmed"
+            candidate["direction_bias"] = "bullish"
+            candidate["direction_score"] = 0.55
+            candidate["reasons"] = ["价格向上突破通道上沿。"]
+        elif channel_check["latest_position"] == "below":
+            candidate["status"] = "confirmed"
+            candidate["direction_bias"] = "bearish"
+            candidate["direction_score"] = -0.55
+            candidate["reasons"] = ["价格向下跌破通道下沿。"]
         if channel_check["containment_ratio"] < 0.55:
             reasons.append("通道对历史走势覆盖不足")
         if channel_check["recent_containment_ratio"] < 0.45:
