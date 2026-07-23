@@ -2,9 +2,15 @@
 
 基于 `FastAPI + SQLite + Gate.io` 构建的 Windows 本地加密货币研究与交易管理应用。
 
-当前版本：**V1.7.0**（详见下方 [Release Timeline](#release-timeline)）。
+当前版本：**V1.8.0**（详见下方 [Release Timeline](#release-timeline)）。
 
 ## Release Timeline
+
+### V1.8.0 — 知识百科 chip 压缩 + 版本号统一
+
+- **知识百科 chip 压缩**：术语卡上"出现在 X 个页面"的多 chip 簇改为单行 `i N 页可用 ▾` 触发器 + hover/focus 弹出 popover（每页 + 一句话用途）。`app/static/pages/knowledge.js` 的 `renderPageRefsBadge()` 重写，新增 `KNOWLEDGE_PAGE_NOTE` 映射；CSS-only hover/focus 交互。`tests/test_knowledge_catalog.py` 新增 3 个静态断言测试。
+- **版本号统一**：以 `app/__version__` 为单一来源（runtime 1.8.0），`config.py` / `paths.py` / `pyproject.toml` / `.env.example` / `README.md` / `CHANGELOG.md` 全部对齐。`tests/test_version_consistency.py` 新增 3 个回归测试钉住"source of truth"不变量。
+- **验证**：`python tests/verify_pages.py` 11/11 cold-load + 10/10 SPA switch 通过，0 console/page errors。
 
 ### V1.7.0 — AI 策略页 X+Y+Z 全栈重构
 
