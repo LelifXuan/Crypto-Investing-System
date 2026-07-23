@@ -987,6 +987,20 @@ class IndicatorMonitoringService:
                             payload_json={"indicator_key": indicator_key},
                         )
                         break
+                    except NotImplementedError as exc:
+                        # 2026-07-23: provider is registered but the
+                        # data path is not implemented. Distinct from
+                        # stale (which means data is old/may recover).
+                        await self._record_macro_source_health(
+                            provider_key=resolved_provider.provider_key,
+                            source_key=sym,
+                            status="not_implemented",
+                            message=str(exc),
+                            latency_ms=int((time_module.perf_counter() - fetch_started_at) * 1000),
+                            payload_json={"indicator_key": indicator_key, "reason": "stub"},
+                        )
+                        last_error = exc
+                        continue
                     except Exception as exc:
                         await self._record_macro_source_health(
                             provider_key=resolved_provider.provider_key,

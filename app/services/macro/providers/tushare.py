@@ -13,6 +13,7 @@ UTC = timezone.utc
 
 class TushareMacroProvider:
     provider_key = "tushare"
+    implemented = False  # 2026-07-23: explicit stub; HTTP client exists but no parsing
 
     def __init__(self, secrets: SecretLoader | None = None, cache: CacheStore | None = None):
         self.secrets = secrets or SecretLoader()

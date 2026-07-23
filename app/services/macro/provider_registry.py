@@ -49,6 +49,12 @@ class MacroProviderRegistry:
         aliases_to_try = [source_provider, canonical] if canonical != source_provider else [source_provider]
         for sp in aliases_to_try:
             for provider in self._providers:
+                # 2026-07-23: skip stub providers (e.g. agushuju, tushare,
+                # zhituapi, federal_reserve, ism) so the orchestrator
+                # transparently falls through to the next provider or the
+                # macro calendar fallback. See tests/test_provider_stub_policy.py.
+                if not getattr(provider, "implemented", True):
+                    continue
                 if provider.supports(sp, source_kind):
                     return provider
         return None

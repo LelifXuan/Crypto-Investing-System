@@ -9,6 +9,7 @@ UTC = __import__("datetime").timezone.utc
 
 class AgushujuMacroProvider:
     provider_key = "agushuju"
+    implemented = False  # 2026-07-23: explicit stub capability; no SDK yet
 
     def __init__(self, secrets: SecretLoader | None = None, cache: CacheStore | None = None):
         self.secrets = secrets or SecretLoader()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 class FedMacroProvider:
     provider_key = "federal_reserve"
+    implemented = False  # 2026-07-23: explicit stub; routes to calendar fallback
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
         return source_provider == self.provider_key and source_kind in {
