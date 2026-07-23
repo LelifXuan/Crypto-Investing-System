@@ -1,4 +1,4 @@
-﻿export const knowledgeCatalogVersion = "v1.9-portable-macro-cache";
+﻿export const knowledgeCatalogVersion = "v1.10-cleanup";
 
 export const knowledgePageFilters = [
   { key: "market-analysis", label: "技术指标" },
@@ -1244,26 +1244,6 @@ const dataQualityItems = [
     page_refs: ["monitoring-overview", "alert-center"],
     tags: ["onchain", "quality"],
   }),
-  term("portable_proxy_detection", "Portable Proxy Detection / 便携代理检测", {
-    family: "quality",
-    level: "basic",
-    summary: "便携版启动时检测系统代理和运行时代理配置，决定 live 数据源是否可直接访问。",
-    definition: "代理检测会把当前网络路径标记为 direct、system_proxy、portable_proxy 或 unavailable，供数据源健康度和降级策略使用。",
-    how_to_use: "如果宏观、ETF 或行情源同时变成 unavailable，先检查代理检测状态，再判断是市场数据缺失还是本地网络问题。",
-    risk_note: "代理可用只说明网络路径存在，不代表上游 API 数据一定新鲜。",
-    page_refs: ["monitoring-overview", "knowledge-base"],
-    tags: ["portable", "proxy", "quality"],
-  }),
-  term("macro_seed_cache", "Macro Seed Cache / 宏观种子缓存", {
-    family: "cache",
-    level: "basic",
-    summary: "开发机预先抓取的低频宏观数据，随 Portable 包发行，保证离线也有历史快照。",
-    definition: "种子缓存位于 app/assets/seed_cache/，首次启动时自动导入 runtime/cache/macro/。",
-    how_to_use: "读取顺序为 live → runtime cache → seed cache → placeholder。seed cache 可作背景观察，但需显示生成时间和置信度。",
-    risk_note: "种子缓存不等于最新数据，过期 seed 不应高权重参与评分。",
-    page_refs: ["monitoring-overview", "macro-calendar", "knowledge-base"],
-    tags: ["macro", "cache", "portable"],
-  }),
   term("stale_while_revalidate", "Stale-While-Revalidate / 先读旧再后台刷新", {
     family: "cache",
     level: "intermediate",
@@ -1317,7 +1297,7 @@ const dataQualityItems = [
     family: "security",
     level: "basic",
     summary: "API key、代理密码和交易所密钥不得进入 Git 仓库。",
-    definition: "真实密钥只能来自环境变量或 runtime/config/portable.env。发行包不含 .env，仅含 .env.example。",
+    definition: "真实密钥只能来自环境变量或 runtime 配置文件。发行包不含 .env，仅含 .env.example。",
     page_refs: ["knowledge-base"],
     tags: ["security", "secret"],
   }),
