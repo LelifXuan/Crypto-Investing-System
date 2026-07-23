@@ -62,6 +62,98 @@ def _fundamentals() -> dict:
     return GoldhubDataService().load_snapshot()
 
 
+def _compute_technical_indicators(candles: list) -> dict:
+    """Compute RSI(14), Bollinger %B(20,2), EMA20 distance, CCI(20) from candles.
+
+    Returns empty dict if < 21 candles (not enough data for 20-period indicators).
+    """
+    if len(candles) < 21:
+        return {}
+
+    closes = [c.close for c in candles]
+    highs = [c.high for c in candles]
+    lows = [c.low for c in candles]
+    typicals = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+
+    # ── RSI(14) ──
+    rsi = _compute_rsi(closes, 14)
+
+    # ── Bollinger %B (20, 2) ──
+    boll = _compute_bollinger_pct_b(closes, 20, 2)
+
+    # ── EMA20 distance ──
+    ema20 = _compute_ema(closes, 20)
+    ema20_dist = (closes[-1] - ema20) / ema20 if ema20 and ema20 != 0 else None
+
+    # ── CCI(20) ──
+    cci = _compute_cci(typicals, closes, 20)
+
+    return {
+        "rsi_14": rsi,
+        "boll_pct_b": boll,
+        "ema20_distance": ema20_dist,
+        "cci_20": cci,
+    }
+
+
+def _compute_rsi(closes: list[float], period: int = 14) -> float | None:
+    """Wilder's smoothed RSI."""
+    if len(closes) < period + 1:
+        return None
+    gains = 0.0
+    losses = 0.0
+    for i in range(1, period + 1):
+        diff = closes[-(period + 1) + i] - closes[-(period + 1) + i - 1]
+        if diff > 0:
+            gains += diff
+        else:
+            losses -= diff
+    avg_gain = gains / period
+    avg_loss = losses / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+def _compute_ema(values: list[float], period: int) -> float | None:
+    """Exponential moving average."""
+    if len(values) < period:
+        return None
+    multiplier = 2.0 / (period + 1)
+    ema = sum(values[:period]) / period
+    for v in values[period:]:
+        ema = (v - ema) * multiplier + ema
+    return ema
+
+
+def _compute_bollinger_pct_b(closes: list[float], period: int = 20, num_std: float = 2.0) -> float | None:
+    """Bollinger %B = (price - lower) / (upper - lower). 0 = at lower band, 1 = at upper band."""
+    if len(closes) < period:
+        return None
+    window = closes[-period:]
+    sma = sum(window) / period
+    variance = sum((v - sma) ** 2 for v in window) / period
+    std = variance ** 0.5
+    upper = sma + num_std * std
+    lower = sma - num_std * std
+    if upper == lower:
+        return 0.5
+    return (closes[-1] - lower) / (upper - lower)
+
+
+def _compute_cci(typicals: list[float], closes: list[float], period: int = 20) -> float | None:
+    """Commodity Channel Index. Uses typical price for mean, close for deviation."""
+    if len(typicals) < period:
+        return None
+    window = typicals[-period:]
+    sma = sum(window) / period
+    mean_dev = sum(abs(tp - sma) for tp in window) / period
+    if mean_dev == 0:
+        return 0.0
+    return (typicals[-1] - sma) / (0.015 * mean_dev)
+
+
 def _aware(value):
     if value.tzinfo is None:
         return value.replace(tzinfo=None).astimezone()
@@ -292,13 +384,46 @@ async def get_gold_v3_allocation(
     drawdown_threshold = 0.08
     drawdown_triggered = drawdown_60d is not None and abs(drawdown_60d) >= drawdown_threshold
 
-    # Indicator confirmations
+    # Indicator confirmations — compute from candles
+    candles = []
+    if repo is not None:
+        try:
+            candles = [
+                item for item in (
+                    normalize_candle(c) for c in await repo.list_candles(XAUT_INSTRUMENT_ID, "1d", limit=260)
+                ) if item
+            ]
+        except Exception:
+            candles = []
+    tech = _compute_technical_indicators(candles) if len(candles) >= 21 else {}
     vol_z = market_state.get("volume_zscore")
+
+    rsi_val = tech.get("rsi_14")
+    boll_val = tech.get("boll_pct_b")
+    ema20_dist = tech.get("ema20_distance")
+    cci_val = tech.get("cci_20")
+
     confirmations = [
-        GoldIndicatorConfirmation(label="RSI(14)", value=None, display="—", condition="≤40", passed=False),
-        GoldIndicatorConfirmation(label="布林位置", value=None, display="—", condition="≤0.2", passed=False),
-        GoldIndicatorConfirmation(label="距EMA20", value=None, display="—", condition="≤-2%", passed=False),
-        GoldIndicatorConfirmation(label="CCI(20)", value=None, display="—", condition="≤-80", passed=False),
+        GoldIndicatorConfirmation(
+            label="RSI(14)", value=rsi_val,
+            display=f"{rsi_val:.0f}" if rsi_val is not None else "—",
+            condition="≤40", passed=(rsi_val is not None and rsi_val <= 40),
+        ),
+        GoldIndicatorConfirmation(
+            label="布林位置", value=boll_val,
+            display=f"{boll_val:.2f}" if boll_val is not None else "—",
+            condition="≤0.2", passed=(boll_val is not None and boll_val <= 0.2),
+        ),
+        GoldIndicatorConfirmation(
+            label="距EMA20", value=ema20_dist,
+            display=f"{ema20_dist * 100:.1f}%" if ema20_dist is not None else "—",
+            condition="≤-2%", passed=(ema20_dist is not None and ema20_dist <= -0.02),
+        ),
+        GoldIndicatorConfirmation(
+            label="CCI(20)", value=cci_val,
+            display=f"{cci_val:.0f}" if cci_val is not None else "—",
+            condition="≤-80", passed=(cci_val is not None and cci_val <= -80),
+        ),
         GoldIndicatorConfirmation(
             label="成交量", value=vol_z,
             display=f"Z={vol_z:.1f}" if vol_z is not None else "—",
