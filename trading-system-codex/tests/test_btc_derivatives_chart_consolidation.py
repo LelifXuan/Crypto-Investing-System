@@ -112,6 +112,16 @@ def test_merged_charts_keep_key_levels_and_strike_surface_series() -> None:
     }
 
 
+def test_leverage_timeline_contains_one_funding_z_series() -> None:
+    chart = build_consolidated_dashboard_charts(**_inputs())["charts"][
+        "leverage_pressure_timeline"
+    ]
+
+    funding_series = [item for item in chart["datasets"] if item["label"] == "Funding Z"]
+    assert len(funding_series) == 1
+    assert funding_series[0]["data"] == [-0.2]
+
+
 def test_dashboard_schema_accepts_axes_layout_and_selection_metadata() -> None:
     result = build_consolidated_dashboard_charts(**_inputs())
     payload = {
@@ -182,3 +192,13 @@ def test_futures_layout_prioritizes_crowding_chart_width() -> None:
     four = build_consolidated_dashboard_charts(**four_exchanges)["chart_layout"]["cards"]
     assert four["exchange_crowding_snapshot"]["span"] == 12
     assert four["term_structure"]["span"] == 12
+
+
+def test_term_structure_keeps_basis_curves_when_futures_basis_is_available() -> None:
+    charts = build_consolidated_dashboard_charts(**_inputs())["charts"]
+    term = charts["term_structure"]
+    datasets = {item["label"]: item["data"] for item in term["datasets"]}
+
+    assert term["labels"] == ["2026-07-31"]
+    assert datasets["年化 Basis"] == [0.121]
+    assert datasets["Basis"] == [0.012]

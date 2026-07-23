@@ -69,12 +69,12 @@ CHART_SERIES_STYLE: dict[str, dict[str, dict[str, Any]]] = {
             "order": 3,
         },
         "Max Pain": {
-            "borderWidth": 1.5,
-            "borderDash": [2, 5],
+            "borderWidth": 2.2,
+            "borderDash": [6, 4],
             "pointRadius": 0,
             "tension": 0.05,
             "order": 4,
-            "opacity": 0.55,
+            "opacity": 0.85,
         },
     },
     "options_risk_premium_history": {
@@ -150,6 +150,42 @@ def _finite(value: Any) -> float | None:
 
 def _values(points: Sequence[Mapping[str, Any]], key: str) -> list[float | None]:
     return [_finite(point.get(key)) for point in points]
+
+
+def _short_date(iso_date: str | None) -> str:
+    """Render an ISO date (YYYY-MM-DD) as MM-DD for compact annotation labels."""
+    if not iso_date or len(iso_date) < 10:
+        return str(iso_date or "")
+    return iso_date[5:10]
+
+
+def _risk_break_label(point: Mapping[str, Any]) -> str:
+    """Render a human-readable label for a risk-history break point.
+
+    Reads the ``series_break_detail`` string written by
+    :func:`app.services.btc_derivatives.service._break_legacy_rolls` (e.g.
+    ``"expiry_rollover:2026-08-28->2026-09-25"`` or
+    ``"method_change:otm_estimate->constant_delta"``) and produces the
+    matching Chinese annotation label. Falls back to the legacy labels when
+    the detail field is missing so older payloads still render.
+    """
+    reason = point.get("series_break_reason")
+    detail = point.get("series_break_detail") or ""
+    if reason == "expiry_rollover" and detail.startswith("expiry_rollover:"):
+        _, _, payload = detail.partition(":")
+        src, _, dst = payload.partition("->")
+        return f"到期日切换：{_short_date(src)} → {_short_date(dst)}"
+    if reason == "method_change" and detail.startswith("method_change:"):
+        _, _, payload = detail.partition(":")
+        src, _, dst = payload.partition("->")
+        return f"方法切换：{src} → {dst}"
+    if reason == "method_change":
+        return "计算口径切换，序列断开"
+    return "期限滚动，序列断开"
+
+
+def _has_finite(values: Sequence[Any]) -> bool:
+    return any(_finite(value) is not None for value in values)
 
 
 def _axis(
@@ -311,7 +347,9 @@ def build_consolidated_dashboard_charts(
     call_wall: float | None,
     put_wall: float | None,
     max_pain: float | None,
+    risk_history: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    risk_points = list(risk_history) if risk_history is not None else list(history)
     term_labels = sorted(
         {
             str(point.get("expiry"))
@@ -331,6 +369,37 @@ def build_consolidated_dashboard_charts(
             ),
         }
         for expiry in term_labels
+    ]
+    term_datasets = [
+        _dataset(
+            "ATM IV",
+            _values(term_rows, "atm_iv"),
+            "y_iv",
+            "percent",
+            "line",
+            "percent",
+        ),
+        _dataset(
+            "年化 Basis",
+            _values(term_rows, "annualized_basis_pct"),
+            "y_basis",
+            "percent",
+            "line",
+            "percent",
+            style={"borderDash": [6, 4], "borderWidth": 2.0},
+        ),
+        _dataset(
+            "Basis",
+            _values(term_rows, "basis_pct"),
+            "y_basis",
+            "percent",
+            "line",
+            "percent",
+            style={"borderWidth": 2.2},
+        ),
+    ]
+    term_datasets = [
+        dataset for dataset in term_datasets if _has_finite(dataset["data"])
     ]
     annotations = [
         {"type": "verticalLine", "x": value, "label": label}
@@ -446,32 +515,7 @@ def build_consolidated_dashboard_charts(
                 "y_iv": _axis("percent", "left", "iv", padding_ratio=0.08),
                 "y_basis": _axis("percent", "right", "basis", grid=False, padding_ratio=0.08),
             },
-            [
-                _dataset(
-                    "ATM IV",
-                    _values(term_rows, "atm_iv"),
-                    "y_iv",
-                    "percent",
-                    "line",
-                    "percent",
-                ),
-                _dataset(
-                    "年化 Basis",
-                    _values(term_rows, "annualized_basis_pct"),
-                    "y_basis",
-                    "percent",
-                    "line",
-                    "percent",
-                ),
-                _dataset(
-                    "Basis",
-                    _values(term_rows, "basis_pct"),
-                    "y_basis",
-                    "percent",
-                    "line",
-                    "percent",
-                ),
-            ],
+            term_datasets,
         ),
         "strike_surface": _chart(
             "strike_surface",
@@ -571,15 +615,14 @@ def build_consolidated_dashboard_charts(
         "options_risk_premium_history": _chart(
             "options_risk_premium_history",
             "期权情绪与保护成本",
-            [point.get("timestamp", "") for point in history],
+            [point.get("timestamp", "") for point in risk_points],
             {
                 "y_ratio": _axis("ratio", "left", "ratio", grid=True, baseline=1),
                 "y_skew": _axis("skew", "right", "skew", grid=False, baseline=0),
                 "y_cost": _axis(
                     "percent",
                     "left",
-                    "cost",
-                    display_ticks=False,
+                    "percent",
                     grid=False,
                     padding_ratio=0.08,
                 ),
@@ -587,7 +630,7 @@ def build_consolidated_dashboard_charts(
             [
                 _dataset(
                     "25D Skew",
-                    _values(history, "skew_25d"),
+                    _values(risk_points, "skew_25d"),
                     "y_skew",
                     "centeredZero",
                     "line",
@@ -596,7 +639,7 @@ def build_consolidated_dashboard_charts(
                 ),
                 _dataset(
                     "Put/Call OI",
-                    _values(history, "put_call_oi_ratio"),
+                    _values(risk_points, "put_call_oi_ratio"),
                     "y_ratio",
                     "ratio",
                     "line",
@@ -607,7 +650,7 @@ def build_consolidated_dashboard_charts(
                 ),
                 _dataset(
                     "Put/Call Volume",
-                    _values(history, "put_call_volume_ratio"),
+                    _values(risk_points, "put_call_volume_ratio"),
                     "y_ratio",
                     "ratio",
                     "line",
@@ -618,7 +661,7 @@ def build_consolidated_dashboard_charts(
                 ),
                 _dataset(
                     "Call 保护成本",
-                    _values(history, "call_protection_cost_pct"),
+                    _values(risk_points, "call_protection_cost_pct"),
                     "y_cost",
                     "percent",
                     "line",
@@ -629,7 +672,7 @@ def build_consolidated_dashboard_charts(
                 ),
                 _dataset(
                     "Put 保护成本",
-                    _values(history, "put_protection_cost_pct"),
+                    _values(risk_points, "put_protection_cost_pct"),
                     "y_cost",
                     "percent",
                     "line",
@@ -640,7 +683,7 @@ def build_consolidated_dashboard_charts(
                 ),
                 _dataset(
                     "借记价差成本",
-                    _values(history, "debit_spread_cost_pct"),
+                    _values(risk_points, "debit_spread_cost_pct"),
                     "y_cost",
                     "percent",
                     "line",
@@ -664,7 +707,24 @@ def build_consolidated_dashboard_charts(
                     "axis_id": "y_skew",
                     "label": "Skew = 0",
                 },
+                *[
+                    {
+                        "type": "verticalLine",
+                        "x": point.get("timestamp", ""),
+                        "label": _risk_break_label(point),
+                    }
+                    for point in risk_points
+                    if point.get("series_break_reason")
+                ],
             ],
+            metadata={
+                "points": risk_points,
+                "rollover_breaks": [
+                    index
+                    for index, point in enumerate(risk_points)
+                    if point.get("series_break_reason")
+                ],
+            },
         ),
     }
     return {

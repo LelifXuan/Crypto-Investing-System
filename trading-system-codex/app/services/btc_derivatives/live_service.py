@@ -21,6 +21,38 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _merge_key_level_history(
+    archived: list[dict[str, Any]],
+    cached: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge durable and transient history without joining different rolls.
+
+    ``series_key`` contains the expiry mode, maturity bucket, and source
+    expiry. Keeping it in the identity prevents a contract roll from
+    overwriting an older observation that happened at the same timestamp.
+    """
+    merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in [*archived, *cached]:
+        if not isinstance(item, dict):
+            continue
+        timestamp = str(item.get("timestamp") or item.get("archive_captured_at") or "")
+        series_key = str(
+            item.get("series_key")
+            or ":".join(
+                str(item.get(key) or "")
+                for key in ("expiry_mode", "maturity_bucket", "source_expiry")
+            )
+        )
+        source_expiry = str(item.get("source_expiry") or item.get("expiry") or "")
+        if not timestamp:
+            continue
+        merged[(timestamp, series_key, source_expiry)] = dict(item)
+    return sorted(
+        merged.values(),
+        key=lambda item: str(item.get("timestamp") or item.get("archive_captured_at") or ""),
+    )
+
+
 def _protection_costs(
     envelope: LiveSnapshotEnvelope,
     expiry: str | None,
@@ -161,7 +193,11 @@ def _empty_dashboard(
             "quality": envelope.snapshot_state,
             "missing_reason": reason if chart["status"] != "ok" else None,
         }
-    snapshot_state = envelope.snapshot_state if (envelope.options or envelope.perps) else "data_insufficient"
+    snapshot_state = (
+        envelope.snapshot_state
+        if (envelope.options or envelope.perps)
+        else "data_insufficient"
+    )
     return BtcDerivativesDashboardResponse.model_validate(
         {
             "generated_at": _iso_now(),
@@ -299,7 +335,13 @@ class BtcDerivativesLiveService:
                 window=window,
                 strike_range_pct=strike_range_pct,
             )
-        envelope.key_level_history = self.collector.cache.read_history()
+        envelope.key_level_history = _merge_key_level_history(
+            self.collector.archive.read_records(
+                data_type="daily_metrics",
+                underlying="BTC",
+            ),
+            self.collector.cache.read_history(),
+        )
         try:
             dashboard = self.dashboard_builder.build_dashboard(
                 expiry=expiry,
@@ -321,12 +363,23 @@ class BtcDerivativesLiveService:
         if not force:
             return dashboard
 
-        previous = envelope.key_level_history[-1] if envelope.key_level_history else {}
         metrics = dashboard.options.metrics
-        protection = _protection_costs(
-            envelope,
-            dashboard.options.selected_expiry,
-            dashboard.hedge_context.get("spot_price"),
+        protection = dict(
+            metrics.get("constant_maturity_protection_cost")
+            or _protection_costs(
+                envelope,
+                dashboard.options.selected_expiry,
+                dashboard.hedge_context.get("spot_price"),
+            )
+        )
+        series_key = f"{expiry_mode}:{maturity_bucket}:{dashboard.options.selected_expiry}"
+        previous = next(
+            (
+                item
+                for item in reversed(envelope.key_level_history)
+                if item.get("series_key") == series_key
+            ),
+            {},
         )
         point = {
             "timestamp": (
@@ -334,13 +387,21 @@ class BtcDerivativesLiveService:
             ).isoformat(),
             "expiry": dashboard.options.selected_expiry,
             "source_expiry": dashboard.options.selected_expiry,
-            "source_dte": dashboard.maturity_selection.get("dte"),
+            "source_dte": dashboard.selection.effective_dte,
             "maturity_bucket": maturity_bucket,
+            "expiry_mode": expiry_mode,
+            "series_key": series_key,
+            "constant_maturity_interpolated": (
+                protection.get("interpolation_status") == "interpolated"
+            ),
+            "interpolation_sources": protection.get("sources", []),
             "spot_price": dashboard.hedge_context.get("spot_price"),
             "call_wall_strike": dashboard.options.walls.get("call_wall_strike"),
             "put_wall_strike": dashboard.options.walls.get("put_wall_strike"),
             "max_pain_strike": dashboard.options.max_pain.get("strike"),
             "skew_25d": metrics.get("skew_25d", {}).get("put_call_skew"),
+            "skew_25d_source": metrics.get("skew_25d", {}).get("delta_source"),
+            "skew_25d_delta_band": metrics.get("skew_25d", {}).get("delta_band"),
             "put_call_oi_ratio": metrics.get("put_call_ratios", {}).get(
                 "put_call_oi_ratio"
             ),
@@ -360,7 +421,10 @@ class BtcDerivativesLiveService:
                 != dashboard.options.selected_expiry
             ),
         }
-        envelope.key_level_history = self.collector.cache.append_daily(point)
+        envelope.key_level_history = _merge_key_level_history(
+            envelope.key_level_history,
+            self.collector.cache.append_daily(point),
+        )
         self.collector.archive.append(
             provider="derived",
             underlying="BTC",

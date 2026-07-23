@@ -25,6 +25,7 @@ from app.services.cache_registry import (
 )
 from app.services.data_freshness import bar_close_freshness
 from app.services.market_data_bundle import MarketDataBundleService
+from app.services.range_regime import classify_swing_range
 
 from .classic import ClassicScorer
 from .common import LOOKBACK_BY_TIMEFRAME, STRUCTURE_DETECTOR_VERSION, ScoringConfig
@@ -557,6 +558,12 @@ class StructureSnapshotService:
             "profile": profile_bundle.score,
         }
         fusion = StructureFusionEngine(config).fuse(timeframe, score_bundles)
+        range_classification = classify_swing_range(
+            regime=fusion.regime,
+            pivots=pivots,
+            candles=candles,
+            structure_score=fusion.overall_score,
+        )
 
         overall = StructureOverallJudgementRead(
             overall_bias=fusion.overall_bias,
@@ -565,6 +572,7 @@ class StructureSnapshotService:
             overall_score=round(fusion.overall_score, 2),
             overall_confidence=round(fusion.overall_confidence, 2),
             regime=fusion.regime or "trend",
+            **range_classification.as_dict(),
             weight_template=fusion.weight_template or "stable",
             weights=fusion.weights or {"swing": 0.4, "classic": 0.2, "profile": 0.4},
             conflict_state=fusion.conflict_state,

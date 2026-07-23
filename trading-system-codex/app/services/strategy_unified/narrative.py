@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from .contracts import HorizonView, RiskAlert, TradePlan
+from .contracts import HorizonView, RiskAlert, TimeframeNode, TradePlan
 
 
 def _cn_direction(direction: str) -> str:
@@ -40,11 +40,13 @@ def _state_label(state: Mapping[str, object]) -> str:
         "STRATEGIC_LONG_TACTICAL_SHORT": "短空长多",
         "STRATEGIC_SHORT_TACTICAL_SHORT": "顺周期空头",
         "STRATEGIC_SHORT_TACTICAL_LONG": "空头趋势中的战术反弹",
-        "RANGE_NO_EDGE": "多周期震荡无优势",
+        "RANGE_NO_EDGE": "多周期中性震荡",
         "EVENT_LOCKED": "事件锁定",
         "DATA_DEGRADED": "数据质量不足",
         "RISK_OFF": "风险关闭",
     }
+    if code == "RANGE_NO_EDGE" and state.get("range_label"):
+        return f"多周期{state['range_label']}"
     return mapping.get(code) or str(state.get("label") or code or "统一策略")
 
 
@@ -85,6 +87,32 @@ def _plan_by_type(plans: Sequence[TradePlan], plan_type: str) -> TradePlan | Non
     return None
 
 
+def _node_by_tf(nodes: Sequence[TimeframeNode], timeframe: str) -> TimeframeNode | None:
+    return next((node for node in nodes if node.timeframe == timeframe), None)
+
+
+def _fmt_price(value: float | None) -> str:
+    return f"{value:.2f}" if value is not None else "待数据补齐"
+
+
+def _structure_level(node: TimeframeNode | None, direction: str) -> float | None:
+    if not node:
+        return None
+    if direction == "LONG":
+        return node.key_resistance or node.key_support
+    return node.key_support or node.key_resistance
+
+
+def _failure_level(node: TimeframeNode | None, direction: str) -> float | None:
+    if not node:
+        return None
+    if node.invalidation is not None:
+        return node.invalidation
+    if direction == "LONG":
+        return node.key_support
+    return node.key_resistance
+
+
 class NarrativeRenderer:
     def render(
         self,
@@ -93,6 +121,7 @@ class NarrativeRenderer:
         trade_plans: Sequence[TradePlan],
         risk_alerts: Sequence[RiskAlert],
         market_operation: Mapping[str, object],
+        nodes: Sequence[TimeframeNode] = (),
     ) -> dict[str, Any]:
         strategic = horizon_views["strategic"]
         tactical = horizon_views["tactical"]
@@ -137,7 +166,7 @@ class NarrativeRenderer:
             },
         ]
 
-        watchlist = self._watchlist(tactical, execution, tactical_plan, execution_plan, risk_alerts)
+        watchlist = self._watchlist(tactical, execution, tactical_plan, execution_plan, risk_alerts, nodes)
         action = self._action(state, tactical, execution, watchlist)
         return {
             "headline": headline,
@@ -167,30 +196,48 @@ class NarrativeRenderer:
         tactical_plan: TradePlan | None,
         execution_plan: TradePlan | None,
         risk_alerts: Sequence[RiskAlert],
+        nodes: Sequence[TimeframeNode] = (),
     ) -> list[dict[str, str]]:
         side = "空头" if tactical.direction == "SHORT" else "多头" if tactical.direction == "LONG" else "方向"
+        h4 = _node_by_tf(nodes, "4h")
+        h1 = _node_by_tf(nodes, "1h")
+        m15 = _node_by_tf(nodes, "15m")
+        direction = "SHORT" if execution.direction == "WAIT_SHORT_TRIGGER" or tactical.direction == "SHORT" else "LONG"
+        h4_level = _structure_level(h4, direction)
+        h1_trigger = _structure_level(h1, direction)
+        h1_failure = _failure_level(h1, direction)
+        m15_trigger = _structure_level(m15, direction)
+        m15_failure = _failure_level(m15, direction)
+        if direction == "SHORT":
+            h1_condition = f"1H 收盘跌破 {_fmt_price(h1_trigger)} 后，反抽不能站回 {_fmt_price(h1_failure)}。"
+            m15_condition = f"15M 反抽不站回 {_fmt_price(m15_failure)}，且跌破/维持在 {_fmt_price(m15_trigger)} 下方，过滤追空风险。"
+            fail_condition = f"15M 触发后快速站回 {_fmt_price(m15_failure)}，或 1H 收盘站回 {_fmt_price(h1_failure)}，空头执行失效。"
+        else:
+            h1_condition = f"1H 收盘站上 {_fmt_price(h1_trigger)} 后，回踩不能跌回 {_fmt_price(h1_failure)}。"
+            m15_condition = f"15M 回踩不跌破 {_fmt_price(m15_failure)}，且重新站上/维持在 {_fmt_price(m15_trigger)} 上方，过滤追多风险。"
+            fail_condition = f"15M 触发后快速跌回 {_fmt_price(m15_failure)}，或 1H 收盘跌回 {_fmt_price(h1_failure)}，多头执行失效。"
         items = [
             {
                 "timeframe": "4H",
                 "indicator": "收盘结构",
-                "condition": tactical_plan.invalidation if tactical_plan else f"确认 {side} 结构是否延续。",
+                "condition": tactical_plan.invalidation if tactical_plan else f"4H 收盘确认 {side} 结构是否延续，关键结构位 {_fmt_price(h4_level)}。",
             },
             {
                 "timeframe": "1H",
                 "indicator": "触发信号",
-                "condition": "反抽失败 / 跌破确认" if execution.direction == "WAIT_SHORT_TRIGGER" else "突破回踩 / 支撑反转" if execution.direction == "WAIT_LONG_TRIGGER" else "等待方向触发。",
+                "condition": h1_condition,
             },
             {
                 "timeframe": "15M",
                 "indicator": "执行过滤",
-                "condition": "确认回抽不过、追价质量和触发位收回风险。",
+                "condition": m15_condition,
             },
         ]
         if execution_plan and execution_plan.invalidation:
             items.append({
                 "timeframe": "1H/15M",
                 "indicator": "执行失效",
-                "condition": execution_plan.invalidation,
+                "condition": fail_condition,
             })
         for risk in risk_alerts:
             if risk.severity in {"blocker", "warning"}:

@@ -56,19 +56,9 @@ class MarketEventTranslationService:
         has_internal_tencent_key = bool(
             settings.tencent_tmt_secret_id and settings.tencent_tmt_secret_key
         )
-        portable_forces_local = (
-            settings.app_distribution_mode == "portable"
-            and not settings.portable_remote_translation_enabled
-            and not (
-                configured_provider in {"tencent_tmt", "tencent", "tmt"}
-                and has_internal_tencent_key
-            )
-        )
         configured_enabled = settings.market_events_translate_enabled
         self.enabled = configured_enabled if enabled is None else enabled
-        default_provider = (
-            "local_glossary" if portable_forces_local else settings.market_events_translation_provider
-        )
+        default_provider = settings.market_events_translation_provider
         self.provider = (provider or default_provider or "none").lower()
         self.target_language = settings.market_events_translation_target_lang
         self.source_language = "en"
@@ -246,7 +236,7 @@ class MarketEventTranslationService:
         if bundle.translated_summary:
             payload["translated_summary"] = self._clean_text(bundle.translated_summary)
         if bundle.error:
-            payload["translation_error"] = bundle.error
+            payload["translation_error"] = self._sanitize_error_message(bundle.error)
         else:
             payload.pop("translation_error", None)
             payload.pop("translation_retry_after", None)
@@ -258,6 +248,11 @@ class MarketEventTranslationService:
     @staticmethod
     def _sanitize_error(exc: Exception) -> str:
         text = str(exc)
+        return MarketEventTranslationService._sanitize_error_message(text)
+
+    @staticmethod
+    def _sanitize_error_message(message: str) -> str:
+        text = str(message or "")
         for marker in ("SecretId", "SecretKey", "Authorization", "Credential="):
             if marker in text:
                 return "translation_provider_error"

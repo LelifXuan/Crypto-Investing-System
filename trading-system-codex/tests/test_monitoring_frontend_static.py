@@ -74,8 +74,10 @@ def test_monitoring_css_has_terminal_brief_classes() -> None:
 def test_monitoring_surfaces_have_clear_vertical_separation() -> None:
     content = _read(STYLES_CSS)
 
-    selector = 'body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface'
-    assert selector in content
+    full_render_selector = 'body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface'
+    diff_shell_selector = 'body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-surface'
+    assert full_render_selector in content
+    assert diff_shell_selector in content
     assert "margin-top: 28px;" in content
 
 

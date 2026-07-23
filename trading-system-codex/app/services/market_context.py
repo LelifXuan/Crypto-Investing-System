@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.cache.shared_query_cache import shared_query_cache
@@ -10,10 +10,16 @@ from app.core.config import settings
 from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for_cache
 from app.repositories.market_repository import MarketRepository
 from app.services.btc_derivatives.live_service import btc_derivatives_live_service
-from app.services.cache_registry import market_context_cache_key
+from app.services.cache_registry import (
+    analysis_cache_key,
+    cache_status,
+    market_context_cache_key,
+)
 from app.services.chip_structure import ChipStructureService
 from app.services.macro_overview import MacroOverviewService
 from app.services.onchain.feature_engine import OnchainFeatureEngine
+from app.services.strategy_unified.contracts import payload_hash
+from app.services.strategy_unified.trade_decision import _next_close_iso
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +75,49 @@ class MarketContextBuilder:
             now = datetime.now(UTC)
             dependencies: dict[str, dict[str, Any]] = {}
             sources: list[str] = []
+            indicator_features: dict[str, Any] = {}
+            vwap_features: dict[str, Any] = {}
+            analysis_mark: dict[str, Any] = {}
+            analysis_limits = {
+                "1h": 720,
+                "4h": 480,
+                "1d": 420,
+                "1w": 260,
+                "30d": 180,
+            }
+            analysis_limit = analysis_limits.get(timeframe, 420)
+            try:
+                analysis_cache = await self.repository.get_page_snapshot_cache(
+                    analysis_cache_key(instrument_id, timeframe, analysis_limit)
+                )
+                analysis_payload = (
+                    dict(analysis_cache.payload_json or {}) if analysis_cache else {}
+                )
+                analysis_mark = dict(analysis_payload.get("mark") or {})
+                indicator_features, vwap_features = self._technical_features(
+                    analysis_payload
+                )
+                analysis_ts = self._parse_ts(
+                    getattr(analysis_cache, "source_updated_at", None)
+                    or getattr(analysis_cache, "data_ts", None)
+                )
+                dependencies["technical_indicators"] = self._dependency_meta(
+                    "indicators",
+                    cache_state=(
+                        cache_status(analysis_cache)
+                        if analysis_cache is not None and indicator_features
+                        else "missing"
+                    ),
+                    source_updated_at=analysis_ts,
+                    timeframe=timeframe,
+                    snapshot_payload=analysis_payload,
+                )
+            except Exception as exc:
+                logger.warning("market_context_technical_cache_failed: %s", exc)
+                dependencies["technical_indicators"] = self._dependency_meta(
+                    "indicators", cache_state="missing", source_updated_at=None
+                )
+            sources.append("technical_indicators")
             chip: dict[str, Any] = {
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
@@ -96,6 +145,8 @@ class MarketContextBuilder:
                     "chip_structure",
                     cache_state="fresh",
                     source_updated_at=now,
+                    timeframe=timeframe,
+                    snapshot_payload=chip,
                 )
             sources.append("chip_structure")
             macro_payload: dict[str, Any] = {}
@@ -114,6 +165,8 @@ class MarketContextBuilder:
                 "macro",
                 cache_state="fresh" if macro_payload.get("regime_key") else "missing",
                 source_updated_at=macro_ts,
+                timeframe="1d",
+                snapshot_payload=macro_payload,
             )
             sources.append("macro")
             derivatives_features: dict[str, Any] = {
@@ -135,6 +188,8 @@ class MarketContextBuilder:
                 max_pain = dict(options.get("max_pain") or {})
                 hedge = dict(getattr(derivatives_dashboard, "hedge_context", None) or {})
                 derivatives_features = {
+                    "joint_analysis": joint,
+                    "options_metrics": dict(options.get("metrics", {}) or {}),
                     "key_levels_axis": dict(
                         joint.get("derivatives_axes", {}).get("key_levels_axis", {})
                     ),
@@ -156,6 +211,9 @@ class MarketContextBuilder:
                     "put_call_ratios": dict(
                         options.get("metrics", {}).get("put_call_ratios", {}) or {}
                     ),
+                    "protection_cost_regime": dict(
+                        joint.get("protection_cost_regime", {}) or {}
+                    ),
                 }
                 derivatives_state = (
                     "fresh"
@@ -166,6 +224,8 @@ class MarketContextBuilder:
                     "btc_derivatives",
                     cache_state=derivatives_state,
                     source_updated_at=derivatives_ts,
+                    timeframe="30m",
+                    snapshot_payload=derivatives_features,
                 )
                 sources.append("btc_derivatives")
             except Exception:
@@ -217,7 +277,12 @@ class MarketContextBuilder:
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
                 "market_data": {
-                    "current_price": chip.get("components", {}).get("latest_close"),
+                    "current_price": (
+                        analysis_mark.get("mark_price")
+                        or chip.get("components", {}).get("latest_close")
+                    ),
+                    "price_as_of": analysis_mark.get("ts_event"),
+                    "price_source": analysis_mark.get("source") or "analysis_bundle",
                     "price_change_pct": chip.get("components", {}).get("price_change_pct"),
                     "execution_score": chip.get("execution_score"),
                     "execution_label": chip.get("execution_label"),
@@ -228,8 +293,8 @@ class MarketContextBuilder:
                     "primary_regime": chip.get("primary_regime"),
                     "primary_regime_label": chip.get("primary_regime_label"),
                 },
-                "indicator_features": {},
-                "vwap_features": {},
+                "indicator_features": indicator_features,
+                "vwap_features": vwap_features,
                 "structure_features": chip.get("components", {}).get("structure_overall") or {},
                 "derivatives_features": derivatives_features,
                 "macro_features": {
@@ -240,6 +305,7 @@ class MarketContextBuilder:
                 "event_features": {
                     "event_window_state": macro_payload.get("event_window_state"),
                     "event_window_status": macro_payload.get("event_window_status"),
+                    "next_check_time": _next_close_iso(datetime.now(UTC), timeframe),
                 },
                 "onchain_features": {
                     **dict(onchain_read.features),
@@ -329,12 +395,111 @@ class MarketContextBuilder:
         except ValueError:
             return None
 
+    @classmethod
+    def _technical_features(
+        cls, payload: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        core = dict(payload.get("core_indicator_series") or {})
+        secondary = dict(payload.get("secondary_indicator_series") or {})
+        def latest(source: dict[str, Any], *keys: str) -> float | None:
+            return cls._latest_series_value(source, *keys)
+        features = {
+            "ema_20": latest(core, "ema_20"),
+            "ema_50": latest(core, "ema_50"),
+            "ema_200": latest(core, "ema_200"),
+            "rsi_14": latest(core, "rsi_14"),
+            "macd_hist": latest(core, "macd_hist"),
+            "atr_14": latest(core, "atr_14"),
+            "natr_14": latest(core, "natr_14"),
+            "adx_14": latest(secondary, "adx_14"),
+            "bb_width": latest(secondary, "bbands_width", "boll_width"),
+            "percent_b": latest(secondary, "percent_b"),
+            "obv_slope": latest(secondary, "obv_slope"),
+            "rsi_14_percentile": cls._series_percentile(core, "rsi_14"),
+            "macd_hist_percentile": cls._series_percentile(core, "macd_hist"),
+            "bb_width_percentile": cls._series_percentile(
+                secondary, "bbands_width", "boll_width"
+            ),
+            "natr_14_percentile": cls._series_percentile(core, "natr_14"),
+            "rsi_14_change": cls._series_change(core, "rsi_14"),
+            "macd_hist_change": cls._series_change(core, "macd_hist"),
+            "history_points": max(
+                len(cls._series_values(core, "rsi_14")),
+                len(cls._series_values(core, "macd_hist")),
+                len(cls._series_values(secondary, "bbands_width", "boll_width")),
+            ),
+        }
+        vwap = {
+            "vwap_short": latest(secondary, "vwap_short", "vwap_50"),
+            "vwap_long": latest(secondary, "vwap_long", "vwap_100"),
+            "price_vs_vwap_short_pct": latest(
+                secondary, "price_vs_vwap_short_pct"
+            ),
+            "price_vs_vwap_long_pct": latest(
+                secondary, "price_vs_vwap_long_pct"
+            ),
+            "vwap_spread_pct": latest(secondary, "vwap_spread_pct"),
+            "vwap_slope_short_10": latest(
+                secondary, "vwap_slope_short_10", "vwap_slope_10"
+            ),
+            "vwap_slope_long_10": latest(secondary, "vwap_slope_long_10"),
+        }
+        return (
+            {key: value for key, value in features.items() if value is not None},
+            {key: value for key, value in vwap.items() if value is not None},
+        )
+
+    @staticmethod
+    def _latest_series_value(source: dict[str, Any], *keys: str) -> Any:
+        for key in keys:
+            value = source.get(key)
+            values = value.get("values") if isinstance(value, dict) else value
+            if isinstance(values, list):
+                for item in reversed(values):
+                    if item is not None:
+                        return item
+            elif values is not None:
+                return values
+        return None
+
+    @staticmethod
+    def _series_values(source: dict[str, Any], *keys: str) -> list[float]:
+        for key in keys:
+            raw = source.get(key)
+            values = raw.get("values") if isinstance(raw, dict) else raw
+            if isinstance(values, list):
+                return [
+                    float(item)
+                    for item in values
+                    if isinstance(item, (int, float))
+                ]
+        return []
+
+    @classmethod
+    def _series_percentile(cls, source: dict[str, Any], *keys: str) -> float | None:
+        values = cls._series_values(source, *keys)
+        if len(values) < 20:
+            return None
+        latest = values[-1]
+        less = sum(value < latest for value in values)
+        equal = sum(value == latest for value in values)
+        return round((less + 0.5 * equal) / len(values), 6)
+
+    @classmethod
+    def _series_change(cls, source: dict[str, Any], *keys: str) -> float | None:
+        values = cls._series_values(source, *keys)
+        if len(values) < 2:
+            return None
+        return round(values[-1] - values[-2], 8)
+
     @staticmethod
     def _dependency_meta(
         source_page: str,
         *,
         cache_state: str,
         source_updated_at: datetime | None,
+        timeframe: str | None = None,
+        snapshot_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(UTC)
         age_seconds = (
@@ -343,12 +508,41 @@ class MarketContextBuilder:
             else None
         )
         freshness_state = "fresh" if cache_state in {"fresh", "ready", "live"} else cache_state
+        duration = {
+            "15m": timedelta(minutes=15),
+            "30m": timedelta(minutes=30),
+            "1h": timedelta(hours=1),
+            "4h": timedelta(hours=4),
+            "1d": timedelta(days=1),
+            "1w": timedelta(days=7),
+            "30d": timedelta(days=30),
+        }.get(str(timeframe or ""), timedelta(minutes=30))
+        grace = {
+            "15m": timedelta(minutes=3),
+            "30m": timedelta(minutes=5),
+            "1h": timedelta(minutes=10),
+            "4h": timedelta(minutes=30),
+            "1d": timedelta(hours=2),
+            "1w": timedelta(hours=12),
+            "30d": timedelta(days=2),
+        }.get(str(timeframe or ""), timedelta(minutes=5))
+        expires_at = source_updated_at + duration + grace if source_updated_at else None
+        if expires_at is not None and expires_at < now:
+            freshness_state = "stale" if cache_state != "missing" else "missing"
+        identity = {
+            "source_page": source_page,
+            "timeframe": timeframe,
+            "source_updated_at": source_updated_at.isoformat() if source_updated_at else None,
+            "payload": snapshot_payload or {},
+        }
         return {
             "source_page": source_page,
             "cache_state": "fresh" if cache_state == "live" else cache_state,
             "freshness_state": freshness_state,
             "source_updated_at": source_updated_at.isoformat() if source_updated_at else None,
             "source_age_seconds": age_seconds,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "snapshot_id": f"{source_page}:{payload_hash(identity)[:16]}",
         }
 
     @staticmethod

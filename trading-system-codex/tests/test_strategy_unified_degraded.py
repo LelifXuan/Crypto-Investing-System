@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_db_session
 from app.main import create_app
+from app.schemas.market import PrecomputeHintResponse
 
 
 async def _dummy_db_session():
@@ -28,7 +29,7 @@ def test_strategy_unified_endpoint_returns_200_when_service_throws(monkeypatch) 
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/api/v1/strategy/unified",
-            params={"instrument_id": "btc-usdt-perp"},
+            params={"instrument_id": "btc-usdt-perp", "force": "true"},
         )
 
     assert response.status_code == 200
@@ -49,7 +50,9 @@ def test_strategy_prewarm_endpoint_enqueues_hint() -> None:
     with patch(
         "app.api.v1.endpoints.strategy.precompute_service"
     ) as mock_pc, TestClient(app, raise_server_exceptions=False) as client:
-        mock_pc.enqueue_hint.return_value = {"status": "enqueued"}
+        mock_pc.enqueue_hint = AsyncMock(
+            return_value=PrecomputeHintResponse(status="accepted", accepted=1, queued=1)
+        )
         response = client.post(
             "/api/v1/strategy/prewarm",
             params={"instrument_id": "btc-usdt-perp"},
@@ -57,13 +60,14 @@ def test_strategy_prewarm_endpoint_enqueues_hint() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "enqueued"
+    assert body["status"] == "accepted"
     assert "eta_seconds" in body
 
     mock_pc.enqueue_hint.assert_called_once()
     call_arg = mock_pc.enqueue_hint.call_args[0][0]
     assert call_arg.current_page == "strategy"
     assert call_arg.reason == "strategy_cold_start"
+    assert "strategy_unified" in call_arg.candidates
     assert "monitoring" in call_arg.candidates
-    assert "btc-derivatives" in call_arg.candidates
-    assert "macro-overview" in call_arg.candidates
+    assert "btc_derivatives" in call_arg.candidates
+    assert "macro" in call_arg.candidates

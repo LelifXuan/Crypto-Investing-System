@@ -28,6 +28,7 @@ from app.services.cache_registry import (
     strategy_bundle_cache_key,
     structure_bundle_cache_key,
 )
+from app.services.indicator_judgement import attach_indicator_judgement
 from app.services.indicator_monitoring import IndicatorMonitoringService
 from app.services.page_snapshot_cache import (
     bundle_status_message,
@@ -101,55 +102,81 @@ class MonitoringDashboardService:
         if allow_refresh and displayable_cache and (
             status == "stale" or freshness.state in {"expired", "missing"}
         ):
-            try:
-                from app.services.precompute import precompute_service
-
-                queued = await precompute_service.enqueue_hint(
-                    PrecomputeHintRequest(
-                        current_page="monitoring",
-                        instrument_id=instrument_id,
-                        timeframe=timeframe,
-                        reason="monitoring_dashboard_stale_read",
-                        visible=True,
-                        candidates=["monitoring"],
-                        priority=3,
-                    )
-                )
-                refresh_enqueued = queued.accepted > 0 or queued.deduped > 0
-                refresh_task_key = queued.queued_keys[0] if queued.queued_keys else None
-            except Exception:
-                logger.warning("monitoring refresh enqueue failed", exc_info=True)
+            refresh_enqueued, refresh_task_key = await self._enqueue_refresh_hint(
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                reason="monitoring_dashboard_stale_read",
+                candidates=["monitoring"],
+                priority=3,
+            )
         if allow_refresh and needs_refresh:
-            # T11 audit fix: the previous code path logged that a refresh
-            # was needed but never actually called refresh_bundle, so the
-            # caller was stuck with the stale payload. We now invoke the
-            # refresh synchronously and rebuild the bundle from the fresh
-            # cache. The lock guard prevents infinite recursion (refresh
-            # itself does not flip the caller's allow_refresh back to
-            # True for this code path because we only re-enter the
-            # read-only get_bundle on subsequent calls).
             logger.info(
-                "monitoring dashboard refresh triggered for %s/%s (status=%s)",
+                "monitoring dashboard refresh enqueued for %s/%s (status=%s)",
                 instrument_id,
                 timeframe,
                 status,
             )
-            try:
-                fresh = await self.refresh_bundle(instrument_id, timeframe)
-                return fresh
-            except Exception as exc:
-                logger.warning(
-                    "monitoring dashboard refresh failed for %s/%s: %s; "
-                    "falling back to stale cache",
-                    instrument_id,
-                    timeframe,
-                    exc,
-                )
-            macro_overview = payload.get("macro_overview")
-        else:
-            macro_overview = payload.get("macro_overview")
+            refresh_enqueued, refresh_task_key = await self._enqueue_refresh_hint(
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                reason="monitoring_dashboard_cold_read",
+                candidates=["monitoring"],
+                priority=2,
+            )
+            return await self._missing_dashboard_response(
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                status="missing" if status in {"fresh", "stale"} else status,
+                freshness_state=freshness.state,
+                source_age_seconds=freshness.age_seconds,
+                refresh_enqueued=refresh_enqueued,
+                refresh_task_key=refresh_task_key,
+                cache=cache,
+            )
+        macro_overview = payload.get("macro_overview")
         if isinstance(macro_overview, dict) and macro_overview.get("status") == "unavailable":
             macro_overview = None
+        technical_backfilled = False
+        if (
+            allow_refresh
+            and displayable_cache
+            and self._technical_observations_need_backfill(
+                payload.get("technical_observations", []),
+                technical_observations,
+            )
+        ):
+            try:
+                backfilled_technical = await self._technical_observations_from_analysis_bundle(
+                    instrument_id,
+                    timeframe,
+                    now,
+                )
+                backfilled_technical = self._fresh_technical_observations(
+                    backfilled_technical,
+                    now,
+                )
+            except Exception:
+                backfilled_technical = []
+                logger.warning(
+                    "monitoring technical backfill failed for %s/%s",
+                    instrument_id,
+                    timeframe,
+                    exc_info=True,
+                )
+            if backfilled_technical:
+                technical_observations = backfilled_technical
+                technical_backfilled = True
+            else:
+                refresh_enqueued = True
+                queued, task_key = await self._enqueue_refresh_hint(
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    reason="monitoring_technical_observations_missing",
+                    candidates=["analysis", "monitoring"],
+                    priority=2,
+                )
+                refresh_enqueued = refresh_enqueued or queued
+                refresh_task_key = refresh_task_key or task_key
         # T08: prefer the in-payload structure (written by refresh_bundle)
         # but fall back to a direct structure_bundle cache load when the
         # caller is reading a stale snapshot that pre-dates this change.
@@ -174,6 +201,7 @@ class MonitoringDashboardService:
         )
         if payload_structure:
             structure_payload = payload_structure
+        technical_observations = self._with_indicator_judgements(technical_observations)
         terminal_summary = self._terminal_summary_payload(
             macro_overview,
             technical_observations,
@@ -206,11 +234,82 @@ class MonitoringDashboardService:
             "expires_at": cache.expires_at if cache else None,
             "source_version": cache.source_version if cache else CACHE_SOURCE_VERSION,
             "cost_ms": cache.cost_ms if cache else None,
-            "refreshed": False,
+            "refreshed": technical_backfilled,
             "status_message": bundle_status_message(status),
         }
         return await self._validate_monitoring_dashboard(
             instrument_id, timeframe, response_dict, status
+        )
+
+    async def _enqueue_refresh_hint(
+        self,
+        *,
+        instrument_id: str,
+        timeframe: str,
+        reason: str,
+        candidates: list[str],
+        priority: int,
+    ) -> tuple[bool, str | None]:
+        try:
+            from app.services.precompute import precompute_service
+
+            queued = await precompute_service.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page="monitoring",
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    reason=reason,
+                    visible=True,
+                    candidates=candidates,
+                    priority=priority,
+                )
+            )
+            return (
+                queued.accepted > 0 or queued.deduped > 0,
+                queued.queued_keys[0] if queued.queued_keys else None,
+            )
+        except Exception:
+            logger.warning("monitoring refresh enqueue failed", exc_info=True)
+            return False, None
+
+    async def _missing_dashboard_response(
+        self,
+        *,
+        instrument_id: str,
+        timeframe: str,
+        status: str,
+        freshness_state: str,
+        source_age_seconds: int | None,
+        refresh_enqueued: bool,
+        refresh_task_key: str | None,
+        cache: Any | None,
+    ) -> MonitoringDashboardRead:
+        return MonitoringDashboardRead.model_validate(
+            {
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
+                "macro_overview": None,
+                "terminal_summary": None,
+                "technical_observations": [],
+                "technical_indicator_count": 0,
+                "alert_events": [],
+                "cross_asset": [],
+                "source_status": self._normalize_source_status({}),
+                "status": status,
+                "cache_state": status,
+                "freshness_state": freshness_state,
+                "source_age_seconds": source_age_seconds,
+                "refresh_enqueued": refresh_enqueued,
+                "refresh_task_key": refresh_task_key,
+                "snapshot_at": cache.snapshot_at if cache else None,
+                "data_ts": cache.data_ts if cache else None,
+                "source_updated_at": cache.source_updated_at if cache else None,
+                "expires_at": cache.expires_at if cache else None,
+                "source_version": cache.source_version if cache else CACHE_SOURCE_VERSION,
+                "cost_ms": cache.cost_ms if cache else None,
+                "refreshed": False,
+                "status_message": bundle_status_message(status),
+            }
         )
 
     async def _validate_monitoring_dashboard(
@@ -230,10 +329,18 @@ class MonitoringDashboardService:
             if response_dict.get("data_ts") is not None
             else "missing"
         )
-        technical_count = len(response_dict.get("technical_observations") or [])
+        technical_items = response_dict.get("technical_observations") or []
+        technical_count = len(technical_items)
+        technical_signature = ",".join(
+            str(item.get("indicator_key") or item.get("observation_id") or "-")
+            for item in technical_items
+            if isinstance(item, dict)
+        )
         key = (
             f"monitoring_dashboard_validated:v1:"
-            f"{instrument_id}:{timeframe}:{data_ts}:{cache_state}:tech={technical_count}"
+            f"{instrument_id}:{timeframe}:{data_ts}:{cache_state}:"
+            f"refreshed={bool(response_dict.get('refreshed'))}:"
+            f"tech={technical_count}:{technical_signature}"
         )
         ttl = 60
 
@@ -308,6 +415,7 @@ class MonitoringDashboardService:
             strategy_bundle=strategy_bundle,
             alerts_bundle=alerts_bundle,
         )
+        technical_observations = self._with_indicator_judgements(technical_observations)
         terminal_summary = self._terminal_summary_payload(
             macro_overview,
             technical_observations,
@@ -523,6 +631,15 @@ class MonitoringDashboardService:
             merged[(str(item.get("indicator_key")), item.get("timeframe"))] = item
         return list(merged.values())
 
+    @staticmethod
+    def _technical_observations_need_backfill(
+        raw_items: Any,
+        fresh_items: list[dict[str, Any]],
+    ) -> bool:
+        if not isinstance(raw_items, list) or not raw_items:
+            return True
+        return not fresh_items
+
     @classmethod
     def _fresh_technical_observations(
         cls,
@@ -544,6 +661,18 @@ class MonitoringDashboardService:
             if now - ts <= max_age:
                 fresh.append(item)
         return fresh
+
+    @staticmethod
+    def _with_indicator_judgements(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            attach_indicator_judgement(
+                item,
+                timeframe=str(item.get("timeframe") or MONITORING_TECH_TIMEFRAME),
+                freshness=str(item.get("freshness_label") or "current"),
+                source_ref=str(item.get("source_ref") or "monitoring_dashboard"),
+            )
+            for item in items
+        ]
 
     @staticmethod
     def _technical_max_age(timeframe: str | None) -> timedelta:

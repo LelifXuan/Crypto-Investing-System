@@ -124,8 +124,11 @@ def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
     assert "monitoring-snapshot-grid" in content
     assert "renderTerminalSummary(data)" in content
     assert "terminal-summary-card" in content
-    assert "monitoring-left-stack" in content
-    assert "monitoring-right-stack" in content
+    # The legacy left/right stacks are gone; the macro panel and terminal
+    # summary now share a single full-width snapshot grid.
+    assert "monitoring-left-stack" not in content
+    assert "monitoring-right-stack" not in content
+    assert "monitoring-snapshot-grid-full" in content
     assert "全局市场摘要" in content
     assert "全局摘要暂不可用" in content
     assert "macroTitle(item)" in content
@@ -173,7 +176,11 @@ def test_monitoring_frontend_trusts_backend_technical_observations() -> None:
     assert ".filter(isFreshTechnicalObservation)" not in content
 
 
-def test_monitoring_frontend_restores_left_macro_summary_right_technical_layout() -> None:
+def test_monitoring_frontend_uses_full_width_macro_then_terminal_layout() -> None:
+    """The monitoring surface now stacks the macro panel and the terminal
+    summary full-width (no left/right columns), and the standalone technical
+    panel is gone — technical evidence is folded into the terminal summary as
+    '证据：…' annotations on the trend / momentum / volatility sub-modules."""
     content = Path("app/static/pages/monitoring.js").read_text(encoding="utf-8")
     css = Path("app/static/styles.css").read_text(encoding="utf-8")
 
@@ -182,15 +189,43 @@ def test_monitoring_frontend_restores_left_macro_summary_right_technical_layout(
         1,
     )[0]
     shell_block = content.split("root.innerHTML = `", 1)[1].split("`;", 1)[0]
-    for block in (render_block, shell_block):
-        left = block.split('class="monitoring-left-stack"', 1)[1].split(
-            'class="monitoring-right-stack"',
-            1,
-        )[0]
-        right = block.split('class="monitoring-right-stack"', 1)[1]
-        assert "renderMacroPanel" in left or "monitoring-macro-panel" in left
-        assert "renderTerminalSummary" in left or "monitoring-terminal-summary" in left
-        assert "renderTechnicalPanel" in right or "monitoring-technical-panel" in right
+
+    # The full-width grid class must be present in both blocks.
+    assert "monitoring-snapshot-grid-full" in render_block, (
+        "renderDashboard must switch to the full-width snapshot grid "
+        "(no left/right stacks)"
+    )
+    assert "monitoring-snapshot-grid-full" in shell_block, (
+        "the diff shell template must also use the full-width snapshot grid"
+    )
+
+    # The left/right stack containers are gone.
+    assert "monitoring-left-stack" not in render_block
+    assert "monitoring-right-stack" not in render_block
+    assert "monitoring-left-stack" not in shell_block
+    assert "monitoring-right-stack" not in shell_block
+
+    # Macro + terminal summary still wired into the surface. The render
+    # block calls the helpers directly; the diff shell references the
+    # container ids.
+    assert "renderMacroPanel(data, macro)" in render_block, (
+        "renderDashboard must still call renderMacroPanel"
+    )
+    assert "renderTerminalSummary(data)" in render_block, (
+        "renderDashboard must still call renderTerminalSummary"
+    )
+    assert "monitoring-terminal-summary" in shell_block, (
+        "the diff shell template must still expose the terminal-summary "
+        "container id so applyMonitoringDiff can swap its innerHTML"
+    )
+
+    # The standalone technical panel must NOT be wired any more.
+    assert "renderTechnicalPanel(data)" not in content, (
+        "renderTechnicalPanel must no longer be invoked from the page"
+    )
+    assert "monitoring-technical-panel" not in content, (
+        "the dedicated technical panel section id must be gone"
+    )
 
     assert '"terminal terminal"' not in css
     assert '"macro technical"' not in css
@@ -206,7 +241,137 @@ def test_monitoring_dashboard_api_defaults_to_btc_daily() -> None:
         "@router.post",
         1,
     )[0]
-    assert "allow_refresh=False" in dashboard_block
+    assert "allow_refresh=True" in dashboard_block
+
+
+@pytest.mark.asyncio
+async def test_monitoring_dashboard_get_backfills_missing_technical_observations(monkeypatch) -> None:
+    from app.services.cache_registry import monitoring_dashboard_cache_key
+
+    now = datetime.now(UTC)
+    cache = SimpleNamespace(
+        payload_json={
+            "macro_overview": {
+                "total_score": 68,
+                "score_band": "温和偏暖",
+                "growth_score": 70,
+                "inflation_score": 60,
+                "policy_score": 65,
+                "liquidity_score": 72,
+                "regime_summary": "宏观环境温和偏暖。",
+                "regime_label_cn": "温和偏暖",
+                "regime_key": "mild_warm",
+            },
+            "technical_observations": [],
+        },
+        snapshot_at=now,
+        data_ts=now,
+        source_updated_at=now,
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
+        source_version="test",
+        cost_ms=8,
+        cache_state="fresh",
+        status="ready",
+    )
+
+    class Repo:
+        async def get_page_snapshot_cache(self, cache_key: str):
+            if cache_key == monitoring_dashboard_cache_key("btc-usdt-perp", "1d"):
+                return cache
+            return None
+
+        async def get_computed_dataset_cache(self, cache_key: str):
+            return None
+
+    service = MonitoringDashboardService(repository=Repo())  # type: ignore[arg-type]
+
+    async def backfill(*_args, **_kwargs):
+        return [
+            {
+                "observation_id": "analysis-bundle:btc-usdt-perp:1d:ema_20",
+                "indicator_key": "ema_20",
+                "category": "technical",
+                "instrument_id": "btc-usdt-perp",
+                "timeframe": "1d",
+                "observation_ts": now.isoformat(),
+                "value_num": 100,
+                "value_json": {},
+                "source_provider": "analysis_bundle",
+                "is_preliminary": False,
+                "quality_score": 95,
+            }
+        ]
+
+    async def full_refresh(*_args, **_kwargs):
+        raise AssertionError("displayable dashboard cache must not run full refresh")
+
+    monkeypatch.setattr(service, "_technical_observations_from_analysis_bundle", backfill)
+    monkeypatch.setattr(service, "refresh_bundle", full_refresh)
+
+    result = await service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)
+
+    assert result.refreshed is True
+    assert result.technical_indicator_count == 1
+    assert result.technical_observations[0].indicator_key == "ema_20"
+
+
+@pytest.mark.asyncio
+async def test_monitoring_dashboard_get_keeps_snapshot_when_technical_backfill_fails(
+    monkeypatch,
+) -> None:
+    from app.services.cache_registry import monitoring_dashboard_cache_key
+
+    now = datetime(2026, 5, 27, 12, tzinfo=UTC)
+    cache = SimpleNamespace(
+        payload_json={
+            "macro_overview": {
+                "total_score": 68,
+                "score_band": "温和偏暖",
+                "growth_score": 70,
+                "inflation_score": 60,
+                "policy_score": 65,
+                "liquidity_score": 72,
+                "regime_summary": "宏观环境温和偏暖。",
+                "regime_label_cn": "温和偏暖",
+                "regime_key": "mild_warm",
+            },
+            "technical_observations": [],
+        },
+        snapshot_at=now,
+        data_ts=now,
+        source_updated_at=now,
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
+        source_version="test",
+        cost_ms=8,
+        cache_state="fresh",
+        status="ready",
+    )
+
+    class Repo:
+        async def get_page_snapshot_cache(self, cache_key: str):
+            if cache_key == monitoring_dashboard_cache_key("btc-usdt-perp", "1d"):
+                return cache
+            return None
+
+        async def get_computed_dataset_cache(self, cache_key: str):
+            return None
+
+    service = MonitoringDashboardService(repository=Repo())  # type: ignore[arg-type]
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("analysis unavailable")
+
+    async def full_refresh(*_args, **_kwargs):
+        raise AssertionError("technical-only miss must not run full dashboard refresh")
+
+    monkeypatch.setattr(service, "_technical_observations_from_analysis_bundle", boom)
+    monkeypatch.setattr(service, "refresh_bundle", full_refresh)
+
+    result = await service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)
+
+    assert result.refreshed is False
+    assert result.refresh_enqueued is True
+    assert result.technical_indicator_count == 0
 
 
 @pytest.mark.asyncio

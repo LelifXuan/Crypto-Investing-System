@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-_CJK_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_CJK_PATTERN = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 _ENGLISH_PATTERN = re.compile(r"[A-Za-z]{3,}")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 

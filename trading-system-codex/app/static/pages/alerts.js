@@ -577,7 +577,7 @@ export async function renderAlerts() {
         tone: "neutral",
         title: "背离结果暂不可用",
         score: 0,
-        confidence: 0,
+        confidence: null,
         leaders: [],
         message: "当前无法读取背离摘要，请稍后重试。",
       },

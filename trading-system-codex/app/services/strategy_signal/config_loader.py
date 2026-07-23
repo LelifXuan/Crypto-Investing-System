@@ -92,7 +92,7 @@ DEFAULT_STRATEGY_SIGNAL_CONFIG: dict[str, Any] = {
         "strong_trend_atr_expansion_min": 60,
         "strong_trend_flow_min": 55,
         "chase_max_distance_atr": 1.5,
-        "setup_valid_bars": {"1w": 8, "1d": 10, "4h": 12, "1h": 16},
+        "setup_valid_bars": {"1w": 8, "1d": 10, "4h": 12, "1h": 16, "15m": 20},
     },
     "state_permissions": {
         "NO_EDGE": "observe_only",
@@ -136,7 +136,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 def strategy_signal_config_path() -> Path:
     return (
-        app_paths.repo_root
+        app_paths.resource_root
         / "app"
         / "monitoring"
         / "configs"
@@ -145,22 +145,13 @@ def strategy_signal_config_path() -> Path:
 
 
 def load_strategy_signal_config() -> dict[str, Any]:
-    candidates = [
-        strategy_signal_config_path(),
-        app_paths.repo_root
-        / "app"
-        / "monitoring"
-        / "configs"
-        / "market_strategy_signal_config_v16.json",
-    ]
-    for path in candidates:
-        if not path.exists():
-            continue
+    path = strategy_signal_config_path()
+    if path.exists():
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
+            return _deep_merge(DEFAULT_STRATEGY_SIGNAL_CONFIG, payload)
         except (OSError, json.JSONDecodeError):
-            continue
-        return _deep_merge(DEFAULT_STRATEGY_SIGNAL_CONFIG, payload)
+            pass
     return DEFAULT_STRATEGY_SIGNAL_CONFIG
 
 

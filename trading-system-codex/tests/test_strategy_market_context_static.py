@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,11 +64,26 @@ def test_strategy_v2_renderers_show_real_unified_payload_fields() -> None:
     assert "计算规则" not in evidence
     assert "输入特征" not in evidence
     assert "human_explanation" in evidence
-    assert "freshnessLabel" in evidence
+    assert "buildEvidenceSummary" in evidence
+    assert "strategy-evidence-summary" in evidence
     assert "入场区间" in trade_plans
     assert "失效条件" in trade_plans
-    assert "verdictLabel" in horizon_stack
+    assert "STRUCTURE_STATE_LABELS" in horizon_stack
+    assert "verdictLabel" not in horizon_stack
     assert "evidence_confidence" in horizon_stack
+
+
+def test_strategy_confidence_missing_values_are_not_coerced_to_zero() -> None:
+    adapter = (ROOT / "app/static/pages/strategy/adapter.js").read_text(encoding="utf-8")
+    operation = (ROOT / "app/static/pages/strategy/renderMarketOperation.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "confidence: 0" not in adapter
+    assert "node.confidence ?? 0" not in adapter
+    assert "dim.confidence ?? 0" not in adapter
+    assert "safe.confidence || 0" not in operation
+    assert "evidence_confidence) || 0" not in operation
 
 
 def test_strategy_snapshot_builder_attaches_market_context() -> None:
@@ -131,6 +147,49 @@ def test_strategy_macro_regime_emits_human_explanation() -> None:
     assert "宏观" in macro
 
 
+def test_strategy_market_operation_backend_hides_internal_diagnostics() -> None:
+    from app.services.strategy_unified.macro_regime import MacroRegimeEngine
+    from app.services.strategy_unified.onchain_regime import OnchainRegimeEngine
+    from app.services.strategy_unified.unified_service import UnifiedStrategyService
+
+    context = SimpleNamespace(
+        macro_features={"regime_key": "risk_on", "operation_bias": "bullish", "total_score": 68},
+        macro_overview={},
+        event_features={},
+        cache_meta={"cache_state": "fresh"},
+    )
+    macro = MacroRegimeEngine().compute({"1d": context})
+    macro_text = " ".join([*macro.evidence, macro.details["human_explanation"]])
+    for token in ("operation_bias", "regime_key"):
+        assert token not in macro_text
+
+    class _Node:
+        def __init__(self, timeframe: str, direction: str) -> None:
+            self.timeframe = timeframe
+            self.direction = direction
+
+        def as_dict(self) -> dict[str, str]:
+            return {"timeframe": self.timeframe, "direction": self.direction}
+
+    service = UnifiedStrategyService(repository=None)  # type: ignore[arg-type]
+    price = service._price_structure_dimension(  # noqa: SLF001
+        [
+            _Node("1M", "NEUTRAL"),
+            _Node("1w", "NEUTRAL"),
+            _Node("1d", "NEUTRAL"),
+            _Node("4h", "NEUTRAL"),
+        ]
+    )
+    price_text = " ".join(price.evidence)
+    assert "战略栈=" not in price_text
+    assert "战术栈=" not in price_text
+    assert "NEUTRAL" not in price_text
+
+    onchain_text = OnchainRegimeEngine._strategy_impact("upstream_missing", [])  # noqa: SLF001
+    assert "onchain observations" not in onchain_text
+    assert "链上观测数据" in onchain_text
+
+
 def test_strategy_onchain_observation_writes_indicator_observations() -> None:
     policy = (ROOT / "app/services/onchain/policy_adapter.py").read_text(encoding="utf-8")
     indicator_monitoring = (
@@ -157,3 +216,65 @@ def test_strategy_verdict_for_node_handles_all_states() -> None:
     assert verdict_for_node("DATA_DEGRADED", "NEUTRAL", "1d") == "DATA_DEGRADED"
     assert verdict_for_node("CONTEXT_MISSING", "NEUTRAL", "1d") == "DATA_DEGRADED"
     assert verdict_for_node("UNKNOWN_STATE", "NEUTRAL", "1d") == "RANGE_NO_EDGE"
+
+
+def test_timeframe_node_confidence_reflects_conclusive_state() -> None:
+    from app.services.strategy_unified.mtf_structure import MultiTimeframeStructureEngine
+
+    nodes = MultiTimeframeStructureEngine().build_nodes(
+        {
+            "1d": {
+                "cache_meta": {"cache_state": "fresh"},
+                "structure_features": {"structure_state": "CONTEXT_SHORT"},
+            }
+        },
+        {
+            "1d": {
+                "status": "ready",
+                "cache_state": "fresh",
+                "decision": {
+                    "strategy_state": "CONTEXT_SHORT",
+                    "long_score": 36,
+                    "short_score": 73,
+                    "primary_strategy": {},
+                },
+            }
+        },
+    )
+    daily = next(node for node in nodes if node.timeframe == "1d")
+
+    assert daily.direction == "SHORT"
+    assert daily.verdict_code == "STRATEGIC_SHORT_TACTICAL_SHORT"
+    assert daily.confidence > 0
+    assert daily.confidence >= 70
+
+
+def test_timeframe_node_confidence_reflects_range_no_edge_judgment() -> None:
+    from app.services.strategy_unified.mtf_structure import MultiTimeframeStructureEngine
+
+    nodes = MultiTimeframeStructureEngine().build_nodes(
+        {
+            "1w": {
+                "cache_meta": {"cache_state": "fresh"},
+                "structure_features": {"structure_state": "NO_EDGE"},
+            }
+        },
+        {
+            "1w": {
+                "status": "ready",
+                "cache_state": "fresh",
+                "decision": {
+                    "strategy_state": "NO_EDGE",
+                    "long_score": 49,
+                    "short_score": 56,
+                    "primary_strategy": {},
+                },
+            }
+        },
+    )
+    weekly = next(node for node in nodes if node.timeframe == "1w")
+
+    assert weekly.direction == "NEUTRAL"
+    assert weekly.verdict_code == "RANGE_NO_EDGE"
+    assert weekly.confidence > 0
+    assert weekly.confidence >= 60

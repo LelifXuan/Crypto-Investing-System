@@ -10,20 +10,21 @@ import {
   setRoot,
   statusBanner,
 } from "../../core/dom.js";
-import { normalizeUnifiedStrategy, buildDataDegradedCard } from "./adapter.js?v=narrative-layers";
-import { renderEvidenceTrace } from "./renderEvidenceTrace.js?v=narrative-layers";
-import { renderEventWatch } from "./renderEventWatch.js?v=narrative-layers";
-import { renderHorizonGovernance } from "./renderHorizonGovernance.js?v=narrative-layers";
-import { renderHorizonStack } from "./renderHorizonStack.js?v=narrative-layers";
-import { renderMarketOperation } from "./renderMarketOperation.js?v=narrative-layers";
-import { renderNarrative } from "./renderNarrative.js?v=narrative-layers";
-import { renderOverview } from "./renderOverview.js?v=narrative-layers";
-import { renderRiskPanel } from "./renderRiskPanel.js?v=narrative-layers";
-import { renderTradePlans } from "./renderTradePlans.js?v=narrative-layers";
+import { normalizeUnifiedStrategy, buildDataDegradedCard } from "./adapter.js?v=trade-4h-v1";
+import { renderEventWatch } from "./renderEventWatch.js?v=compact-v3";
+import { renderMarketOperation } from "./renderMarketOperation.js?v=decision-text-cleanup";
+import { renderOverview } from "./renderOverview.js?v=trade-4h-v1";
+import { renderRiskPanel } from "./renderRiskPanel.js?v=compact-v3";
+import { renderExecutionPlan } from "./renderExecutionPlan.js?v=trade-4h-v1";
+import { renderEvidenceStack } from "./renderEvidenceStack.js?v=compact-v3";
+import { renderDecisionAudit } from "./renderDecisionAudit.js?v=auditable-v1";
+import { mountPageGuide } from "../../ui/pageGuideFab.js";
 
 let activeController = null;
 let requestToken = 0;
 let mounted = false;
+let coldStartRetryTimer = null;
+let coldStartRetryCount = 0;
 
 const helpers = {
   emptyState,
@@ -69,43 +70,17 @@ function renderShell() {
   `);
 }
 
-function renderDataAccessState(model) {
-  const items = (model.timeframe_stack || []).map((node) => {
-    const cacheState = node.raw_status?.cache_state || node.freshness || "unknown";
-    const modules = (node.source_modules || []).join(" / ") || "-";
-    return `
-      <article class="strategy-data-state-item ${escapeHtml(cacheState)}">
-        <strong>${escapeHtml(node.timeframe || "-")}</strong>
-        <span>${escapeHtml(cacheState)}</span>
-        <small>${escapeHtml(modules)}</small>
-      </article>
-    `;
-  }).join("");
-  return `
-    <section class="strategy-data-state">
-      <div>
-        <p class="eyebrow">DATA ACCESS</p>
-        <h2>六周期数据接入状态</h2>
-      </div>
-      <div class="strategy-data-state-grid">${items || emptyState("暂无周期数据状态")}</div>
-    </section>
-  `;
-}
-
 function renderModel(model) {
   const content = document.getElementById("strategy-content");
   if (!content) return;
   content.innerHTML = `
     ${renderOverview(model, helpers)}
+    ${renderExecutionPlan(model, helpers)}
+    ${renderDecisionAudit(model, helpers)}
+    ${renderEvidenceStack(model, helpers)}
     ${renderMarketOperation(model, helpers)}
-    ${renderHorizonGovernance(model, helpers)}
-    ${renderHorizonStack(model, helpers)}
-    ${renderTradePlans(model, helpers)}
     ${renderRiskPanel(model, helpers)}
     ${renderEventWatch(model, helpers)}
-    ${renderEvidenceTrace(model, helpers)}
-    ${renderNarrative(model, helpers)}
-    ${renderDataAccessState(model)}
     ${buildDataDegradedCard(model)}
   `;
 }
@@ -117,19 +92,22 @@ function renderReview(review) {
   const rows = items.slice(0, 5).map((item) => `
     <li>
       <strong>${escapeHtml(item.outcome || item.status || "复盘记录")}</strong>
-      <span>${escapeHtml(item.note || item.summary || item.generated_at || "")}</span>
+      <span>${escapeHtml(item.note || item.summary || (item.generated_at ? formatDateTime(item.generated_at) : ""))}</span>
     </li>
   `).join("");
+  const isEmpty = rows.length === 0;
   el.innerHTML = `
-    <section class="strategy-v2-section card">
-      <div class="section-heading compact">
+    <details class="strategy-v2-section strategy-collapsible strategy-review-panel card" ${isEmpty ? "" : "open"}>
+      <summary class="strategy-collapsible-summary">
         <div>
           <p class="eyebrow">TACTICAL REVIEW</p>
           <h2>1d 战术快照与复盘辅助</h2>
+          <small>${isEmpty ? "暂无战术复盘记录" : `${rows.length} 条近期记录`}</small>
         </div>
-      </div>
-      <ul class="strategy-monitor-list">${rows || "<li>暂无战术复盘记录</li>"}</ul>
-    </section>
+        <span class="strategy-collapse-control" aria-hidden="true"></span>
+      </summary>
+      ${isEmpty ? "" : `<div class="strategy-collapsible-body"><ul class="strategy-monitor-list">${rows}</ul></div>`}
+    </details>
   `;
 }
 
@@ -142,8 +120,12 @@ async function loadReview() {
   }
 }
 
-async function loadUnifiedStrategy({ force = false } = {}) {
+async function loadUnifiedStrategy({ force = false, bypassCache = false } = {}) {
   const token = ++requestToken;
+  if (coldStartRetryTimer) {
+    clearTimeout(coldStartRetryTimer);
+    coldStartRetryTimer = null;
+  }
   activeController?.abort();
   activeController = new AbortController();
   const status = document.getElementById("strategy-status");
@@ -151,7 +133,11 @@ async function loadUnifiedStrategy({ force = false } = {}) {
   const instrumentId = appState.selectedInstrumentId;
   const { signal } = activeController;
   const results = await Promise.allSettled([
-    api.getUnifiedStrategy(instrumentId, { force, signal }),
+    api.getUnifiedStrategy(instrumentId, {
+      force,
+      bypassCache: bypassCache || coldStartRetryCount > 0,
+      signal,
+    }),
     api.getMonitoringDashboard(instrumentId, "1d", { signal }),
     api.getBtcDerivativesDashboard({ signal }),
     api.getMacroOverview({ signal }),
@@ -195,6 +181,8 @@ async function loadUnifiedStrategy({ force = false } = {}) {
   model.data_access = dataAccess;
   model.data_access_failures = dataAccessFailures;
   renderModel(model);
+  const shouldAutoRetryColdStart = !force
+    && model.degraded_components?.includes("strategy_unified_cache_missing");
   if (failed.length === 0 && !model.degraded) {
     if (status) status.innerHTML = statusBanner("统一策略推演已更新", "success");
   } else if (model.degraded) {
@@ -202,6 +190,21 @@ async function loadUnifiedStrategy({ force = false } = {}) {
     if (status) status.innerHTML = statusBanner(`策略已渲染；${components} 降级，后台预热中`, "warning");
   } else {
     if (status) status.innerHTML = statusBanner(`统一策略已更新；${failed.length}/4 数据源不可用`, "warning");
+  }
+  if (shouldAutoRetryColdStart) {
+    api.prewarmStrategy(instrumentId).catch(() => {});
+    coldStartRetryCount += 1;
+    if (status) {
+      status.innerHTML = statusBanner(
+        `统一策略快照尚未就绪，后台预热中 (${coldStartRetryCount})`,
+        "warning"
+      );
+    }
+    coldStartRetryTimer = setTimeout(() => {
+      if (mounted) void loadUnifiedStrategy({ force: false, bypassCache: true });
+    }, Math.min(8000, 1500 + coldStartRetryCount * 1000));
+  } else {
+    coldStartRetryCount = 0;
   }
   await loadReview();
 }
@@ -243,14 +246,22 @@ export async function renderStrategy() {
   mounted = true;
   renderShell();
   attachEvents();
+  const guideFab = mountPageGuide("ai-strategy");
   return {
     mount: async () => {
       // Fire-and-forget background prewarm (don't await)
       api.prewarmStrategy(appState.selectedInstrumentId).catch(() => {});
+      coldStartRetryCount = 0;
       await loadUnifiedStrategy();
     },
     unmount: async () => {
+      guideFab.unmount();
       mounted = false;
+      if (coldStartRetryTimer) {
+        clearTimeout(coldStartRetryTimer);
+        coldStartRetryTimer = null;
+      }
+      coldStartRetryCount = 0;
       activeController?.abort();
       activeController = null;
     },

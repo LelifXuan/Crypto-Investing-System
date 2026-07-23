@@ -15,6 +15,7 @@ REMOVABLE_DIRS = {
     "build",
     "site",
     "htmlcov",
+    "reports/portable_playwright_screenshots",
     "runtime",
 }
 

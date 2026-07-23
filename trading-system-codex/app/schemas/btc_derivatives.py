@@ -61,6 +61,10 @@ class DashboardSelection(BaseModel):
     expiry_mode: Literal["fixed", "constant_maturity"] = "constant_maturity"
     maturity_bucket: Literal["30D", "60D", "90D"] = "60D"
     selected_expiry: str | None = None
+    effective_expiry: str | None = None
+    effective_dte: int | None = None
+    selection_status: str = "ok"
+    selection_reason: str = ""
     window: Literal["7D", "30D", "90D", "180D", "365D"] | None = None
     strike_range_pct: Literal["10", "20", "30", "50", "all"] = "30"
 
@@ -176,6 +180,8 @@ class FuturesSection(BaseModel):
 class OptionsSection(BaseModel):
     selected_expiry: str | None = None
     expiries: list[str] = Field(default_factory=list)
+    standard_expiries: list[str] = Field(default_factory=list)
+    maturity_ladder: list[dict[str, Any]] = Field(default_factory=list)
     chain: list[OptionChainRow] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
     walls: dict[str, Any] = Field(default_factory=dict)
@@ -192,6 +198,8 @@ class DataQuality(BaseModel):
     stale_snapshots: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     history_available: bool = False
+    greeks_coverage: dict[str, Any] = Field(default_factory=dict)
+    expiry_coverage: dict[str, Any] = Field(default_factory=dict)
 
 
 class BtcDerivativesDashboardResponse(BaseModel):
@@ -209,6 +217,7 @@ class BtcDerivativesDashboardResponse(BaseModel):
     joint_analysis: dict[str, Any] = Field(default_factory=dict)
     hedge_context: dict[str, Any] = Field(default_factory=dict)
     data_quality: DataQuality = Field(default_factory=DataQuality)
+    indicator_judgements: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class HedgePlanRequest(BaseModel):

@@ -30,6 +30,38 @@ def _observation(
     )
 
 
+def test_technical_features_include_historical_percentiles_and_changes() -> None:
+    rsi = list(range(30, 60))
+    macd = [index / 10 for index in range(-15, 15)]
+    width = [index / 100 for index in range(1, 31)]
+
+    indicators, vwap = MarketContextBuilder._technical_features(
+        {
+            "core_indicator_series": {
+                "ema_20": [100, 101],
+                "ema_50": [98, 99],
+                "ema_200": [90, 91],
+                "rsi_14": rsi,
+                "macd_hist": macd,
+                "natr_14": width,
+            },
+            "secondary_indicator_series": {
+                "adx_14": [24, 29],
+                "bbands_width": width,
+                "vwap_short": [99, 100],
+            },
+        }
+    )
+
+    assert indicators["ema_20"] == 101
+    assert indicators["rsi_14_percentile"] > 0.95
+    assert indicators["macd_hist_percentile"] > 0.95
+    assert indicators["bb_width_percentile"] > 0.95
+    assert indicators["rsi_14_change"] == 1
+    assert indicators["history_points"] == 30
+    assert vwap["vwap_short"] == 100
+
+
 @pytest.mark.asyncio
 async def test_market_context_builder_reuses_chip_and_macro_for_same_key(monkeypatch) -> None:
     await shared_query_cache.clear()

@@ -17,6 +17,18 @@ function dedupeRisks(items) {
   });
 }
 
+const GROUP_LABELS = {
+  strategic: "长期风险",
+  tactical: "战术风险",
+  execution: "执行风险",
+  data: "数据风险",
+  event: "事件风险",
+};
+
+function groupLabel(value) {
+  return GROUP_LABELS[value] || "其他风险";
+}
+
 export function renderRiskPanel(model, helpers) {
   const { escapeHtml } = helpers;
   const groups = model.risk_groups || {};
@@ -35,10 +47,10 @@ export function renderRiskPanel(model, helpers) {
     if (!items.length) return "";
     return `
       <div class="strategy-risk-group">
-        <h3>${escapeHtml(key)}</h3>
+        <h3>${escapeHtml(groupLabel(key))}</h3>
         ${items.map((risk) => `
           <article class="strategy-risk-item ${escapeHtml(risk.severity || "info")}">
-            <span>${escapeHtml(risk.category || "risk")}</span>
+            <span>${escapeHtml(groupLabel(risk.category))}</span>
             <strong>${escapeHtml(risk.label || "风险提示")}</strong>
             <p>${escapeHtml(risk.message || "")}</p>
             ${risk.action ? `<small>${escapeHtml(risk.action)}</small>` : ""}
@@ -49,7 +61,7 @@ export function renderRiskPanel(model, helpers) {
   };
   const alerts = groupKeys.map(renderGroup).filter(Boolean).join("") || dedupeRisks(model.risk_alerts).map((risk) => `
     <article class="strategy-risk-item ${escapeHtml(risk.severity || "info")}">
-      <span>${escapeHtml(risk.category || "risk")}</span>
+      <span>${escapeHtml(groupLabel(risk.category))}</span>
       <strong>${escapeHtml(risk.label || "风险提示")}</strong>
       <p>${escapeHtml(risk.message || "")}</p>
     </article>

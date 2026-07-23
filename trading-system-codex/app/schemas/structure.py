@@ -23,6 +23,11 @@ class StructureOverallJudgementRead(BaseModel):
     overall_score: float | None = None
     overall_confidence: float | None = None
     regime: str | None = None
+    range_state: str = "NONE"
+    range_label: str = ""
+    range_score: float = 0.0
+    range_basis: list[str] = Field(default_factory=list)
+    range_conflicts: list[str] = Field(default_factory=list)
     weight_template: str | None = None
     weights: dict[str, float] = Field(default_factory=dict)
     conflict_state: bool = False

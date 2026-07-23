@@ -6,15 +6,11 @@ $ErrorActionPreference = "Stop"
 
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptPath "..")
-$WorkspaceRoot = Split-Path -Parent $ProjectRoot
-$VenvRoot = Join-Path $WorkspaceRoot "runtime_dev\.venv"
-$PythonExe = Join-Path $VenvRoot "Scripts\python.exe"
-
-if (-not (Test-Path -LiteralPath $PythonExe)) {
-  throw "Development venv not found: $PythonExe. Create it with: py -3.11 -m venv `"$VenvRoot`""
-}
-
-$env:APP_RUNTIME_ROOT = Join-Path $WorkspaceRoot "runtime_dev\source_runtime"
+# V1.5.x expected a sibling `runtime_dev/.venv`. The project now uses the
+# system Python and the in-repo `runtime/` dir for state. APP_RUNTIME_ROOT
+# is left unset so app_paths falls back to `<repo>/runtime/` automatically.
+$PythonExe = (Get-Command python -ErrorAction Stop).Source
+$env:APP_RUNTIME_ROOT = ""
 $env:PYTHONPATH = $ProjectRoot
 Set-Location $ProjectRoot
 
@@ -25,5 +21,5 @@ if ($StartServer) {
 
 Write-Output "Project root: $ProjectRoot"
 Write-Output "Python: $PythonExe"
-Write-Output "Runtime root: $env:APP_RUNTIME_ROOT"
+Write-Output "Runtime root: <repo>/runtime/"
 Write-Output "Run source server: .\scripts\dev_env.ps1 -StartServer"

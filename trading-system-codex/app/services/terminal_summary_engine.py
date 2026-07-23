@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field
 from math import isfinite
 from typing import Any
 
+from app.services.range_regime import RangeClassification, classify_range
 from app.services.strategy_signal.setup_lifecycle import GateDiagnostic
 
 MODULE_KEYS = (
@@ -95,6 +96,22 @@ class TerminalSummaryEngine:
         }
         global_score = self._weighted_score(modules)
         regime, bias, confidence = self._determine_regime(modules, global_score)
+        range_classification = RangeClassification()
+        if regime in {"上行震荡", "下行震荡", "中性震荡"}:
+            raw_structure = structure or {}
+            structure_overall = raw_structure.get("overall", raw_structure)
+            structure_range_state = str(structure_overall.get("range_state") or "NONE")
+            structure_direction = {
+                "UPWARD_RANGE": "UP",
+                "DOWNWARD_RANGE": "DOWN",
+                "NEUTRAL_RANGE": "NEUTRAL",
+            }.get(structure_range_state)
+            range_classification = classify_range(
+                regime="range",
+                structure_direction=structure_direction,
+                composite_score=global_score,
+            )
+            regime = range_classification.range_label
         headline, conflict, implication = self._generate_text(regime, modules, market_context)
         evidence = self._top_evidence(modules)
         watch_points = self._merge_watch_points(
@@ -106,6 +123,7 @@ class TerminalSummaryEngine:
                 "regime": regime,
                 "bias": bias,
                 "confidence": confidence,
+                **range_classification.as_dict(),
                 "headline": headline,
                 "main_conflict": conflict,
                 "strategy_implication": implication,
@@ -133,6 +151,7 @@ class TerminalSummaryEngine:
             "regime": regime,
             "bias": bias,
             "confidence": confidence,
+            **range_classification.as_dict(),
             "headline": headline,
             "module_scores": {key: modules[key].to_dict() for key in MODULE_KEYS},
             "main_conflict": conflict,
@@ -152,6 +171,7 @@ class TerminalSummaryEngine:
             ],
             "evidence": [item.to_dict() for item in evidence],
             "decision_brief": decision_brief,
+            "trade_decision": _decision_extract_trade_decision(strategy_bundle or {}),
         }
 
     def _build_decision_brief(
@@ -258,7 +278,7 @@ class TerminalSummaryEngine:
         elif bearish_trend and (momentum_bearish or macro_tight):
             regime = "弱势下行"
         elif bearish_trend:
-            regime = "弱势震荡"
+            regime = "下行震荡"
         elif bullish_trend and momentum_bullish and not macro_tight:
             regime = "强趋势偏多"
         elif bullish_trend and macro_loose:
@@ -272,17 +292,17 @@ class TerminalSummaryEngine:
             # We use the same bias threshold the existing bias
             # variable uses so the two stay consistent.
             if global_score >= 55:
-                regime = "偏多震荡"
+                regime = "上行震荡"
             elif global_score <= 45:
-                regime = "偏空震荡"
+                regime = "下行震荡"
             else:
                 regime = "中性震荡"
 
         if global_score >= 58:
             bias = "偏多"
-        elif global_score <= 42 or regime in {"偏空震荡", "弱势震荡", "弱势下行", "空头加速"}:
+        elif global_score <= 42 or regime in {"下行震荡", "弱势下行", "空头加速"}:
             bias = "偏空"
-        elif regime in {"偏多震荡", "温和偏多", "强趋势偏多", "多头修复"}:
+        elif regime in {"上行震荡", "温和偏多", "强趋势偏多", "多头修复"}:
             bias = "偏多"
         else:
             bias = "中性"
@@ -317,9 +337,9 @@ class TerminalSummaryEngine:
                 "空头趋势与波动扩张一致，主要风险是低位追空后的急反抽，而不是方向证据不足。",
                 "反弹失败或跌破确认后的空头计划优先级较高，但仍需由策略页独立处理仓位和止损。",
             )
-        if regime == "弱势震荡":
+        if regime == "下行震荡":
             return (
-                f"当前判定为弱势震荡结构。技术趋势处于{trend.state}，但动量、波动或宏观尚未形成一致加速确认。",
+                f"当前判定为下行震荡结构。技术趋势处于{trend.state}，但动量、波动或宏观尚未形成一致加速确认。",
                 "空头方向占优但延续质量不足，市场更容易出现反复拉扯。",
                 "优先等待反抽失败、区间下沿跌破或动量重新扩张后再评估策略触发质量。",
             )
@@ -402,7 +422,7 @@ class TerminalSummaryEngine:
 
         if bearish_trend:
             headline = (
-                f"{label}仍处于偏空震荡{close_text}，价格低于关键均线和 VWAP 压制区。"
+                f"{label}仍处于下行震荡{close_text}，价格低于关键均线和 VWAP 压制区。"
                 "追空质量取决于反弹失败或前低跌破确认。"
             )
             conflict = (
@@ -654,6 +674,12 @@ class StructureSummaryAdapter:
         "accumulation_confirmed": ("积累确认", "bullish"),
         "distribution_proxy": ("派发倾向", "mild_bearish"),
         "distribution_confirmed": ("派发确认", "bearish"),
+        # Range sub-states surfaced from upstream range_state (swing /
+        # pivot pipeline). Each one is itself a directional verdict, not
+        # just a "形态待分类" placeholder.
+        "upward_range": ("上行震荡", "mild_bullish"),
+        "downward_range": ("下行震荡", "mild_bearish"),
+        "neutral_range": ("中性震荡", "neutral"),
     }
 
     _BIAS_TO_IMPACT: dict[str, str] = {
@@ -716,6 +742,17 @@ class StructureSummaryAdapter:
             or structure.get("direction")
             or ""
         ).lower()
+        # V1.7.x: a structure regime of "transition" hides the underlying
+        # range sub-direction. If the structure payload already carries a
+        # range_state (computed by the swing / pivot pipeline), surface
+        # that as the user-facing state — range with directional bias
+        # (上行震荡 / 下行震荡 / 中性震荡) is itself a valid verdict and
+        # more informative than a generic "结构切换".
+        structure_overall = structure.get("overall") if isinstance(structure.get("overall"), Mapping) else structure
+        upstream_range_state = str(structure_overall.get("range_state") or "NONE") if structure_overall else "NONE"
+        upstream_range_label = str(structure_overall.get("range_label") or "") if structure_overall else ""
+        if upstream_range_state in {"UPWARD_RANGE", "DOWNWARD_RANGE", "NEUTRAL_RANGE"} and upstream_range_label:
+            regime = upstream_range_state.lower()
         base_score = _num(structure.get("score"))
         if base_score is None:
             bias_score = _num(structure.get("bias_score"))
@@ -765,6 +802,12 @@ class StructureSummaryAdapter:
                 reason = "趋势结构形成，方向由趋势模板权重决定。"
             elif regime in {"balance", "range", "ranging"}:
                 reason = "区间结构，方向需等待区间边界突破或失效。"
+            elif regime in {"upward_range"}:
+                reason = "上行震荡：摆动高点与低点同步抬升，等待结构突破后确认延续。"
+            elif regime in {"downward_range"}:
+                reason = "下行震荡：摆动高点与低点同步下移，关注区间下沿是否破位。"
+            elif regime in {"neutral_range"}:
+                reason = "中性震荡：摆动高低点未形成同向迁移，方向需等待区间边界确认。"
             elif regime in {"transition", "shock"}:
                 reason = "结构切换窗口，方向不明确，等待新结构定型。"
             else:
@@ -775,6 +818,12 @@ class StructureSummaryAdapter:
                 watch_points = ["结构边界是否守住", "趋势模板权重是否变化"]
             elif regime in {"balance", "range", "ranging"}:
                 watch_points = ["区间边界是否被突破", "突破是否伴随成交放大"]
+            elif regime in {"upward_range"}:
+                watch_points = ["区间上沿是否被突破", "回踩是否守住抬升低点"]
+            elif regime in {"downward_range"}:
+                watch_points = ["区间下沿是否破位", "反弹是否被下移高点压制"]
+            elif regime in {"neutral_range"}:
+                watch_points = ["区间上下沿是否收敛", "突破方向是否伴随成交放大"]
             elif regime in {"transition", "shock"}:
                 watch_points = ["新结构方向是否明确", "切换期间是否出现假突破"]
             else:
@@ -1644,6 +1693,21 @@ def _decision_extract_strategy(bundle: Mapping[str, Any]) -> Mapping[str, Any]:
     return bundle
 
 
+def _decision_extract_trade_decision(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass through the canonical decision; never reconstruct it from tone/bias."""
+
+    if not bundle:
+        return {}
+    direct = bundle.get("trade_decision")
+    if isinstance(direct, Mapping):
+        return dict(direct)
+    for key in ("payload", "result", "data"):
+        nested = bundle.get(key)
+        if isinstance(nested, Mapping) and isinstance(nested.get("trade_decision"), Mapping):
+            return dict(nested["trade_decision"])
+    return {}
+
+
 def _decision_append_direction(
     out: list[tuple[str, str]], name: str, value: Any
 ) -> None:
@@ -2147,7 +2211,14 @@ def _apply_evidence_strength(row: dict[str, Any], strength: float) -> dict[str, 
     row["evidence_strength"] = round(float(strength), 4)
     if strength < EVIDENCE_STRENGTH_THRESHOLD:
         row["tone"] = "warning"
-        prefix = f"证据强度 {int(strength * 100)}%，结论置信度有限。"
+        # When strength is exactly 0 there is no independent evidence to
+        # support any directional verdict, so the message must say "no
+        # conclusion can be drawn" rather than "the conclusion has limited
+        # confidence" — the latter still implies a verdict exists.
+        if strength <= 0:
+            prefix = "证据强度 0%，无独立证据支撑，无法得出方向结论。"
+        else:
+            prefix = f"证据强度 {int(strength * 100)}%，结论置信度有限。"
         existing = str(row.get("summary") or "")
         if not existing.startswith(prefix):
             row["summary"] = prefix + existing
@@ -2613,7 +2684,7 @@ def _decision_build_market_row(
     inline because they are aggregations, not re-computations.
     """
 
-    regime = _decision_text(base_summary.get("regime"), "中性震荡")
+    regime = _decision_text(base_summary.get("regime"), "状态待确认")
     bias = _decision_direction(base_summary.get("bias")) or "neutral"
     confidence = _decision_text(base_summary.get("confidence"), "--")
     mtf_breakdown = _decision_format_mtf_breakdown(

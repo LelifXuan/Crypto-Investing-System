@@ -35,3 +35,12 @@ def test_option_chart_series_emit_visually_distinct_styles() -> None:
     assert risk["25D Skew"]["borderDash"] == []
     assert risk["Put/Call OI"]["borderDash"]
     assert risk["Call 保护成本"]["opacity"] < 1
+
+
+def test_hedge_cost_axis_shows_percent_ticks() -> None:
+    charts = build_consolidated_dashboard_charts(**_inputs())["charts"]
+    y_cost = charts["options_risk_premium_history"]["axes"]["y_cost"]
+
+    assert y_cost["display_ticks"] is True
+    assert y_cost["profile"] == "percent"
+    assert y_cost["unit"] == "percent"

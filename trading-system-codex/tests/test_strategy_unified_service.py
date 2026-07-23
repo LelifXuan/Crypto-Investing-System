@@ -94,7 +94,7 @@ def _bundle(
 
 
 @pytest.mark.asyncio
-async def test_unified_loader_computes_missing_strategy_bundles(monkeypatch) -> None:
+async def test_force_unified_loader_computes_missing_strategy_bundles(monkeypatch) -> None:
     from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
     computed_timeframes: list[str] = []
@@ -110,7 +110,9 @@ async def test_unified_loader_computes_missing_strategy_bundles(monkeypatch) -> 
         def __init__(self, repository) -> None:  # noqa: ANN001
             self.repository = repository
 
-        async def get_bundle(self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True):
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
             return {
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
@@ -133,9 +135,100 @@ async def test_unified_loader_computes_missing_strategy_bundles(monkeypatch) -> 
             long_score, short_score = scores[timeframe]
             return _bundle(timeframe, long_score=long_score, short_score=short_score)
 
-        async def refresh_bundle(self, instrument_id: str, timeframe: str, *, reason: str = "scheduled"):
+        async def refresh_bundle(
+            self, instrument_id: str, timeframe: str, *, reason: str = "scheduled"
+        ):
             computed_timeframes.append(f"refresh:{timeframe}")
             return await self.build_bundle_uncached(instrument_id, timeframe)
+
+    monkeypatch.setattr(
+        "app.services.strategy_unified.data_loader.MarketContextBuilder",
+        FakeContextBuilder,
+    )
+    monkeypatch.setattr(
+        "app.services.strategy_unified.data_loader.StrategySignalService",
+        FakeStrategyService,
+    )
+
+    payload = await UnifiedStrategyService(SimpleNamespace()).build_unified_strategy(
+        "btc-usdt-perp",
+        force=True,
+    )
+
+    assert computed_timeframes == ["30d", "1w", "1d", "4h", "1h", "15m"]
+    assert payload["refresh_state"] == "requested"
+    assert payload["unified_state"]["code"] != "DATA_DEGRADED"
+    assert {node["raw_status"]["cache_state"] for node in payload["timeframe_stack"]} == {
+        "computed"
+    }
+    assert all(node["long_score"] or node["short_score"] for node in payload["timeframe_stack"])
+    assert any(plan["type"] != "NO_TRADE" for plan in payload["trade_plans"])
+    for key in (
+        "recommended_leverage",
+        "max_leverage",
+        "leverage_status",
+        "leverage_reason",
+        "order_type",
+        "order_status",
+        "execution_price",
+        "limit_price",
+        "conflict_timeframe",
+        "confirmation_timeframe",
+        "filter_timeframe",
+        "activation_conditions",
+        "price_protection",
+        "valid_until",
+        "planned_leverage",
+        "trade_timeframe",
+        "direction_timeframes",
+        "execution_timeframes",
+    ):
+        assert key in payload["trade_decision"]
+        assert all(key in plan for plan in payload["trade_plans"])
+
+
+@pytest.mark.asyncio
+async def test_unified_loader_cold_read_does_not_compute_missing_strategy_bundles(
+    monkeypatch,
+) -> None:
+    from app.services.strategy_unified.unified_service import UnifiedStrategyService
+
+    class FakeContextBuilder:
+        def __init__(self, repository) -> None:  # noqa: ANN001
+            self.repository = repository
+
+        async def get_context(self, instrument_id: str, timeframe: str, *, cache_only: bool = True):
+            context = _context(timeframe)
+            context.structure_features.update(
+                {
+                    "direction": "LONG",
+                    "long_score": 62,
+                    "short_score": 42,
+                    "confidence": 58,
+                }
+            )
+            return context
+
+    class FakeStrategyService:
+        def __init__(self, repository) -> None:  # noqa: ANN001
+            self.repository = repository
+
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
+            return {
+                "instrument_id": instrument_id,
+                "timeframe": timeframe,
+                "status": "missing",
+                "cache_state": "missing",
+                "freshness_state": "missing",
+                "decision": {},
+            }
+
+        async def build_bundle_uncached(self, instrument_id: str, timeframe: str):
+            raise AssertionError(
+                "cold read must not synchronously compute missing strategy bundles"
+            )
 
     monkeypatch.setattr(
         "app.services.strategy_unified.data_loader.MarketContextBuilder",
@@ -150,14 +243,11 @@ async def test_unified_loader_computes_missing_strategy_bundles(monkeypatch) -> 
         "btc-usdt-perp"
     )
 
-    assert computed_timeframes == ["30d", "1w", "1d", "4h", "1h", "15m"]
-    assert payload["refresh_state"] == "computed"
-    assert payload["unified_state"]["code"] != "DATA_DEGRADED"
-    assert {node["raw_status"]["cache_state"] for node in payload["timeframe_stack"]} == {
-        "computed"
-    }
-    assert all(node["long_score"] or node["short_score"] for node in payload["timeframe_stack"])
-    assert any(plan["type"] != "NO_TRADE" for plan in payload["trade_plans"])
+    assert payload["refresh_state"] == "computed_with_context_fallback"
+    assert all(
+        node["raw_status"]["cache_state"] == "context_fallback"
+        for node in payload["timeframe_stack"]
+    )
 
 
 @pytest.mark.asyncio
@@ -191,7 +281,9 @@ async def test_unified_strategy_uses_market_context_when_legacy_bundle_missing(m
         def __init__(self, repository) -> None:  # noqa: ANN001
             self.repository = repository
 
-        async def get_bundle(self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True):
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
             return {
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
@@ -218,10 +310,10 @@ async def test_unified_strategy_uses_market_context_when_legacy_bundle_missing(m
     )
 
     assert payload["unified_state"]["code"] == "STRATEGIC_LONG_TACTICAL_SHORT"
-    assert payload["unified_state"]["permission"] != "no_trade"
+    assert payload["unified_state"]["permission"] == "no_trade"
+    assert payload["trade_decision"]["status"] == "INVALID_PLAN_LEVELS"
     assert all(
-        "MarketContextBuilder" in node["source_modules"]
-        for node in payload["timeframe_stack"]
+        "MarketContextBuilder" in node["source_modules"] for node in payload["timeframe_stack"]
     )
     assert all(
         node["raw_status"]["cache_state"] == "context_fallback"
@@ -230,7 +322,9 @@ async def test_unified_strategy_uses_market_context_when_legacy_bundle_missing(m
 
 
 @pytest.mark.asyncio
-async def test_force_unified_strategy_preserves_usable_cache_when_recompute_fails(monkeypatch) -> None:
+async def test_force_unified_strategy_preserves_usable_cache_when_recompute_fails(
+    monkeypatch,
+) -> None:
     from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
     class FakeContextBuilder:
@@ -244,7 +338,9 @@ async def test_force_unified_strategy_preserves_usable_cache_when_recompute_fail
         def __init__(self, repository) -> None:  # noqa: ANN001
             self.repository = repository
 
-        async def get_bundle(self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True):
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
             return _bundle(timeframe, long_score=65, short_score=38)
 
         async def build_bundle_uncached(self, instrument_id: str, timeframe: str):
@@ -292,7 +388,9 @@ async def test_unified_strategy_builds_short_term_short_long_term_long(monkeypat
         def __init__(self, repository) -> None:  # noqa: ANN001
             self.repository = repository
 
-        async def get_bundle(self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True):
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
             loaded_bundles.append(timeframe)
             scores = {
                 "30d": (72, 35),
@@ -337,13 +435,31 @@ async def test_unified_strategy_builds_short_term_short_long_term_long(monkeypat
     assert payload["unified_state"]["label"] == "短空长多"
     assert payload["unified_state"]["risk_level"] in {"low", "medium", "high"}
     assert payload["unified_state"]["next_check_time"]
+    assert payload["active_model_version"] == "legacy-cross-horizon-v2"
+    assert payload["candidate_model_version"] == "auditable-rules-v3-shadow"
+    assert payload["shadow_evaluation"]["affects_active_decision"] is False
+    assert payload["direction_resolution"]["evaluation_mode"] == "shadow"
+    assert payload["market_decision_snapshot"]["snapshot_id"]
+    assert payload["signal_coverage"]
     assert payload["horizon_views"]["strategic"]["direction"] == "LONG"
     assert payload["horizon_views"]["tactical"]["direction"] == "SHORT"
-    assert payload["horizon_views"]["execution"]["direction"] == "WAIT_SHORT_TRIGGER"
+    assert payload["horizon_views"]["execution"]["direction"] == "WAIT"
     assert payload["horizon_governance"]["position_cap"] == "reduced"
     assert payload["horizon_governance"]["allowed_sides"] == ["LONG", "SHORT"]
     assert payload["horizon_governance"]["upgrade_path"]
     assert payload["horizon_governance"]["invalidation_path"]
+    governance_text = " ".join(
+        payload["horizon_governance"]["upgrade_path"]
+        + payload["horizon_governance"]["invalidation_path"]
+    )
+    assert "关键结构位" in governance_text
+    assert "关键失效位" in governance_text
+    assert "相反结构指" in governance_text
+    assert "多/空分" in governance_text
+    assert "结构状态改写" not in governance_text
+    assert "no_trade" not in governance_text
+    assert "待数据补齐" not in governance_text
+    assert any(char.isdigit() for char in governance_text)
     assert len(payload["timeframe_stack"]) == 6
     assert {item["timeframe"] for item in payload["timeframe_stack"]} == {
         "1M",
@@ -385,7 +501,7 @@ async def test_unified_strategy_builds_short_term_short_long_term_long(monkeypat
     assert payload["narrative"]["headline"]
     assert "1M/1w 看多" in payload["narrative"]["headline"]
     assert "1d/4h 看空" in payload["narrative"]["headline"]
-    assert "执行层等待空头触发" in payload["narrative"]["headline"]
+    assert "执行层等待触发" in payload["narrative"]["headline"]
     assert {layer["key"] for layer in payload["narrative"]["layers"]} == {
         "strategic",
         "tactical",
@@ -400,11 +516,27 @@ async def test_unified_strategy_builds_short_term_short_long_term_long(monkeypat
     assert narrative_layers["tactical"]["timeframes"] == ["1d", "4h"]
     assert narrative_layers["tactical"]["direction"] == "SHORT"
     assert "1d/4h 综合分数" in narrative_layers["tactical"]["basis"]
-    assert narrative_layers["execution"]["direction"] == "WAIT_SHORT_TRIGGER"
+    assert narrative_layers["execution"]["direction"] == "WAIT"
     assert "1H" in narrative_layers["execution"]["required_signal"]
     assert "15M" in narrative_layers["execution"]["required_signal"]
     assert payload["narrative"]["watchlist"]
-    assert any(item["timeframe"] == "1H" and "触发" in item["indicator"] for item in payload["narrative"]["watchlist"])
+    assert any(
+        item["timeframe"] == "1H" and "触发" in item["indicator"]
+        for item in payload["narrative"]["watchlist"]
+    )
+    watchlist_by_key = {
+        (item["timeframe"], item["indicator"]): item["condition"]
+        for item in payload["narrative"]["watchlist"]
+    }
+    for key in [
+        ("1H", "触发信号"),
+        ("15M", "执行过滤"),
+        ("1H/15M", "执行失效"),
+    ]:
+        assert key in watchlist_by_key
+        assert any(char.isdigit() for char in watchlist_by_key[key])
+    assert "反抽失败 / 跌破确认" not in watchlist_by_key[("1H", "触发信号")]
+    assert "确认回抽不过" not in watchlist_by_key[("15M", "执行过滤")]
     assert payload["narrative"]["action"] != payload["unified_state"]["instruction"]
     assert list(payload["market_operation"]["chain"].keys()) == [
         "macro_regime",
@@ -413,6 +545,15 @@ async def test_unified_strategy_builds_short_term_short_long_term_long(monkeypat
         "onchain_regime",
         "price_structure",
     ]
+    assert payload["direction_resolution"]["unified_code"] == "STRATEGIC_LONG_TACTICAL_SHORT"
+    assert payload["direction_resolution"]["position_cap"] == "reduced"
+    assert payload["direction_resolution"]["operation_cards"]
+    assert payload["direction_resolution"]["governance_cards"]
+    assert payload["market_operation"]["operation_cards"]
+    assert payload["horizon_governance"]["governance_cards"]
+    resolution_text = str(payload["direction_resolution"])
+    for token in ("operation_bias", "regime_key", "PRICE_STRUCTURE_READY"):
+        assert token not in resolution_text
 
 
 @pytest.mark.asyncio
@@ -435,7 +576,9 @@ async def test_unified_strategy_marks_data_degraded_when_core_cycles_missing(mon
         def __init__(self, repository) -> None:  # noqa: ANN001
             self.repository = repository
 
-        async def get_bundle(self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True):
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
             if timeframe in {"30d", "1w", "1d"}:
                 return {"status": "missing", "cache_state": "missing", "decision": {}}
             return _bundle(timeframe, long_score=45, short_score=45, status="ready")
@@ -479,7 +622,9 @@ async def test_unified_strategy_event_lock_becomes_first_class_risk(monkeypatch)
         def __init__(self, repository) -> None:  # noqa: ANN001
             self.repository = repository
 
-        async def get_bundle(self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True):
+        async def get_bundle(
+            self, instrument_id: str, timeframe: str, *, enqueue_refresh: bool = True
+        ):
             return _bundle(timeframe, long_score=70, short_score=30)
 
     monkeypatch.setattr(
@@ -508,7 +653,11 @@ async def test_build_unified_marks_degraded_when_engine_fails(repository) -> Non
     from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
     service = UnifiedStrategyService(repository)
-    valid_bundle = {"decision": {"direction_confidence": 50}, "status": "ready", "cache_state": "ready"}
+    valid_bundle = {
+        "decision": {"direction_confidence": 50},
+        "status": "ready",
+        "cache_state": "ready",
+    }
     valid_context = {
         "timeframe": "1d",
         "market_data": {},
@@ -538,12 +687,14 @@ async def test_build_unified_marks_degraded_when_engine_fails(repository) -> Non
         "refresh_state": "cache_only",
         "refresh_limitations": [],
     }
-    with patch.object(service.loader, "load", new=AsyncMock(return_value=mock_loaded)), \
-         patch.object(
-             service.macro_engine,
-             "compute",
-             new=MagicMock(side_effect=RuntimeError("macro engine crashed")),
-         ):
+    with (
+        patch.object(service.loader, "load", new=AsyncMock(return_value=mock_loaded)),
+        patch.object(
+            service.macro_engine,
+            "compute",
+            new=MagicMock(side_effect=RuntimeError("macro engine crashed")),
+        ),
+    ):
         payload = await service.build_unified_strategy("btc-usdt-perp")
 
     assert payload["degraded"] is True

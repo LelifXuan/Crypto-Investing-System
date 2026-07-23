@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[3]
+from app.core.paths import app_paths
 
 # Indicator keys that should never legitimately report a literal 0 value.
 # Defense in depth: if a value of 0 sneaks in (e.g. uninitialised column,
@@ -118,9 +118,9 @@ def fallback_for_indicator(
 
 def load_seed_cache() -> dict[str, dict[str, Any]]:
     for path in (
-        ROOT / "runtime" / "cache" / "macro" / "macro_observations_seed.json",
-        ROOT / "runtime" / "cache" / "macro" / "macro_observations.json",
-        ROOT / "app" / "assets" / "seed_cache" / "macro_observations_seed.json",
+        app_paths.cache_dir / "macro" / "macro_observations_seed.json",
+        app_paths.cache_dir / "macro" / "macro_observations.json",
+        app_paths.resource_root / "app" / "assets" / "seed_cache" / "macro_observations_seed.json",
     ):
         data = _load_items(path)
         if data:
@@ -130,9 +130,9 @@ def load_seed_cache() -> dict[str, dict[str, Any]]:
 
 def load_websearch_cache() -> dict[str, dict[str, Any]]:
     for path in (
-        ROOT / "runtime" / "cache" / "macro" / "macro_websearch_seed.json",
-        ROOT / "runtime" / "cache" / "macro" / "macro_websearch.json",
-        ROOT / "app" / "assets" / "seed_cache" / "macro_websearch_seed.json",
+        app_paths.cache_dir / "macro" / "macro_websearch_seed.json",
+        app_paths.cache_dir / "macro" / "macro_websearch.json",
+        app_paths.resource_root / "app" / "assets" / "seed_cache" / "macro_websearch_seed.json",
     ):
         data = _load_items(path)
         if data:
@@ -249,7 +249,13 @@ def _record_from_cache(
 
 
 def _freshness_windows() -> dict[str, dict[str, float]]:
-    path = ROOT / "app" / "monitoring" / "configs" / "portable_macro_never_empty_policy.v2.json"
+    path = (
+        app_paths.resource_root
+        / "app"
+        / "monitoring"
+        / "configs"
+        / "portable_macro_never_empty_policy.v2.json"
+    )
     if not path.exists():
         return DEFAULT_FRESHNESS_WINDOWS
     try:

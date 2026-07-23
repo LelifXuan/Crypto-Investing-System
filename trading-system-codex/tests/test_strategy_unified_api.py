@@ -1,13 +1,81 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from types import SimpleNamespace
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_db_session
 from app.main import create_app
+from app.schemas.market import PrecomputeHintResponse
 
 
 async def _dummy_db_session():
     yield object()
+
+
+@pytest.mark.asyncio
+async def test_cached_strategy_fails_closed_when_live_price_unavailable(monkeypatch) -> None:
+    from app.api.v1.endpoints.strategy import _guard_cached_strategy
+
+    async def unavailable(self, instrument_id: str, prefer_live: bool = True):  # noqa: ARG001
+        raise RuntimeError("price feed down")
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.strategy.MarketService.get_best_mark", unavailable
+    )
+    payload, invalidated = await _guard_cached_strategy(
+        object(),
+        "btc-usdt-perp",
+        {
+            "unified_state": {"permission": "conditional"},
+            "trade_decision": {
+                "side": "SHORT",
+                "permission": "conditional",
+                "order_type": "CONDITIONAL_LIMIT",
+            },
+        },
+    )
+
+    assert invalidated is False
+    assert payload["trade_decision"]["status"] == "PRICE_UNAVAILABLE"
+    assert payload["trade_decision"]["permission"] == "no_trade"
+    assert payload["trade_decision"]["levels_active"] is False
+    assert payload["recompute_status"] == "enqueued"
+
+
+@pytest.mark.asyncio
+async def test_cached_strategy_rejects_stale_mark_before_level_reconciliation(monkeypatch) -> None:
+    from app.api.v1.endpoints.strategy import _guard_cached_strategy
+
+    async def stale(self, instrument_id: str, prefer_live: bool = True):  # noqa: ARG001
+        return SimpleNamespace(
+            mark_price=Decimal("66382"),
+            source="test",
+            ts_event=datetime.now(UTC) - timedelta(seconds=61),
+        )
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.strategy.MarketService.get_best_mark", stale
+    )
+    payload, invalidated = await _guard_cached_strategy(
+        object(),
+        "btc-usdt-perp",
+        {
+            "unified_state": {"permission": "conditional"},
+            "trade_decision": {
+                "side": "SHORT",
+                "invalidation": 65_861.23,
+                "lifecycle_state": "SETUP_DETECTED",
+            },
+        },
+    )
+
+    assert invalidated is False
+    assert payload["trade_decision"]["status"] == "PRICE_STALE"
+    assert payload["trade_decision"]["lifecycle_state"] == "SETUP_DETECTED"
 
 
 def test_strategy_unified_endpoint_returns_unified_payload(monkeypatch) -> None:
@@ -90,6 +158,21 @@ def test_strategy_unified_endpoint_returns_unified_payload(monkeypatch) -> None:
         fake_build,
     )
 
+    async def no_cached_snapshot(self, cache_key: str):  # noqa: ARG001
+        return None
+
+    async def fake_upsert_snapshot(self, **kwargs):  # noqa: ARG001
+        return object()
+
+    monkeypatch.setattr(
+        "app.repositories.market_repository.MarketRepository.get_page_snapshot_cache",
+        no_cached_snapshot,
+    )
+    monkeypatch.setattr(
+        "app.repositories.market_repository.MarketRepository.upsert_page_snapshot_cache",
+        fake_upsert_snapshot,
+    )
+
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
     with TestClient(app, raise_server_exceptions=False) as client:
@@ -115,3 +198,48 @@ def test_strategy_unified_endpoint_returns_unified_payload(monkeypatch) -> None:
     assert payload["narrative"]["watchlist"][0]["timeframe"] == "1H"
     assert calls == [("btc-usdt-perp", True)]
     assert legacy_response.status_code in {200, 500}
+
+
+def test_strategy_unified_cold_read_returns_shell_without_build(monkeypatch) -> None:
+    async def no_cached_snapshot(self, cache_key: str):  # noqa: ARG001
+        return None
+
+    async def fail_upsert_snapshot(self, **kwargs):  # noqa: ARG001
+        raise AssertionError("cold read should not write a unified snapshot")
+
+    async def fail_build(self, instrument_id: str = "btc-usdt-perp", *, force: bool = False):
+        raise AssertionError("cold read should not synchronously build unified strategy")
+
+    async def fake_enqueue(payload):  # noqa: ANN001
+        return PrecomputeHintResponse(status="accepted", accepted=1, queued=1)
+
+    monkeypatch.setattr(
+        "app.repositories.market_repository.MarketRepository.get_page_snapshot_cache",
+        no_cached_snapshot,
+    )
+    monkeypatch.setattr(
+        "app.repositories.market_repository.MarketRepository.upsert_page_snapshot_cache",
+        fail_upsert_snapshot,
+    )
+    monkeypatch.setattr(
+        "app.services.strategy_unified.unified_service.UnifiedStrategyService.build_unified_strategy",
+        fail_build,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.strategy.precompute_service.enqueue_hint",
+        fake_enqueue,
+    )
+
+    app = create_app(enable_lifespan=False)
+    app.dependency_overrides[get_db_session] = _dummy_db_session
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/api/v1/strategy/unified",
+            params={"instrument_id": "btc-usdt-perp"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["prewarm_status"] == "enqueued"
+    assert payload["refresh_state"] == "missing"

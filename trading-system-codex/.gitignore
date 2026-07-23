@@ -41,6 +41,7 @@ logs/
 tmp/
 *.egg-info/
 reports/*.json
+runtime_dev/
 .opencode_backups/
 *.db-journal
 *.db-shm

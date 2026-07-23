@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased (2026-07-21)
+
+### 架构清理（仅删无 caller 代码）
+
+- 删除 `app/services/decision/`、`app/services/portfolio/`、`app/services/execution/`、`app/services/etf_quotes.py`、`tests/test_data_quality_and_decision.py`：均为引用不存在的子模块或零 caller 的 compatibility shim。
+- 删除版本化配置 `app/monitoring/configs/macro_data_sources.v1.json` 与 `market_strategy_signal_config_v16.json`：当前活跃版本为 v2 / v17，原文件只是被 `source_registry.py` 和 `config_loader.py` 用作 fallback chain 的死路径。
+- `app/services/translation/providers/router.py`：删除 `local` / `local_glossary` / `glossary` 死分支（`MarketEventTranslationService` 在调用 router 前已 short-circuit 处理）。
+- `app/services/risk.py`：删除 `rotation_assessment` 与 `liquidity_assessment` 字段及对应条件块（仅被 module-level skipped 测试使用）。
+- `app/services/macro/source_registry.py` 与 `app/services/strategy_signal/config_loader.py`：移除 `LEGACY_CONFIG_PATH` 与 v16 candidate。
+
+### AI 策略触发条件 — 绝对时间戳
+
+- `TradeDecision` / `TradePlan` / `OperationCard` / `DirectionResolutionResult` 增加 `valid_until_iso` 与 `next_check_at_iso` 字段，默认 `""`。
+- `app/services/strategy_unified/trade_decision.py` 新增 `_BAR_HOURS` 表与 `_bars_to_iso` / `_next_close_iso` 辅助函数；在 build 时一次性算 `now` 并写入决策。
+- `unified_service._next_check_time`、`cross_horizon.build_unified_state`、各 `OperationCard` 在 `next_check` 为空时回退到 `_next_close_iso`。
+- `app/services/market_context.py:240` 同步写入 `event_features.next_check_time`（之前从未填充）。
+- 新增 `app/static/pages/strategy/formatHelpers.js`：`formatIsoShort` / `formatLegacyNextCheck` / `formatNextCheck` / `formatValidUntil`；4 处前端文案（`renderExecutionPlan` / `renderTradeDecision` / `renderEvidenceStack` / `renderMarketOperation`）统一改用绝对时间戳，缺字段时优雅降级到原相对文案。
+- 文案变化示例：`有效期：未来 20 根 15M K线` → `有效期至 2026-07-21 18:00 UTC`；`下一检查：下一根 4H 收盘` → `下一检查：2026-07-21 18:00 UTC`。
+
+### 监控总览 10 项"未获取指标"修复（依据用户提供的 API key）
+
+- `app/services/macro/transforms.py` 新增 `compute_weekly_diff_rolling_4w(points, window=4)`；`indicator_monitoring._transform_macro_result` 的 transform switch 扩展支持 `weekly_diff_rolling_4w`。
+- `app/monitoring/configs/indicator_catalog.yaml` 新增 7 条 `IndicatorDefinition`：`fed_iorb`（IORB）/ `fed_on_rrp_rate`（RRPONTSYAWARD）/ `fed_soma_treasury`（WSHOMCB）/ `fed_soma_mbs`（WSHOMCB-MBS）/ `fed_srf_usage`（RPTSYD）/ `fed_discount_window`（WLCFLPCL）/ `fed_tga_net_change_4w`（WTREGEN + transform）。
+- `app/monitoring/configs/refresh_policies.yaml` 新增对应 7 条 cron 策略（多数工作日 8/14/20 UTC，SOMA 与 TGA 周频）。
+- `runtime/config/portable.env` 写入 `FRED_API_KEY` 与 `OPENEXCHANGERATES_APP_ID`（用户提供，**不入 git**）。USD/CNY 已通过 OpenExchangeRates 实测拉取到 6.7691。
+- **审计结果**：`scripts/audit_macro_coverage.build_report()` `unknown_count` 从 6 降至 0；`tests/test_macro_coverage_audit.py` 全部 3 测试通过。
+- **剩余**：HYG 仍待 Tiingo API key；当前未获取指标预期 10 → ≤1（仅 HYG）。
+
+### 测试
+
+- 全量 `pytest`：1064 通过、14 跳过、2 失败（`test_portable_release_strict` + `test_precompute_hint_analysis`，均为预先存在且与本次改动无关）。
+- 与 main 基线对比：本次改动**修复了 40 条此前失败的测试**（多数为指向已删除模块的 vestigial test）。
+
+---
+
 ## V1.7.6 (2026-07-06)
 
 3-TF 动量 + Funding Regime 子分升级 — 拆掉单尺度动量，新增 3 个独立时间尺度动量（5/20/60 K 线），并把 V2 funding_state 接入成 `funding_pressure_long/short` 子分，重新激活一直硬编码为 0 的 `funding_crowding_score`。

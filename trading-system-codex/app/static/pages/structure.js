@@ -1,14 +1,15 @@
 import {
   escapeHtml,
+  formatChartTime,
   formatDateTime,
   formatNumber,
   knowledgeTooltip,
   setRoot,
   statusChip,
 } from "../core/dom.js";
-import { scheduleIdlePrecompute } from "../core/precompute.js";
 import { api, invalidateCache } from "../core/api.js";
 import { appState, getInstrumentMeta, persistState } from "../core/state.js";
+import { rangeStateLabel } from "../core/rangeState.js";
 
 const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
 const SYSTEMS = [
@@ -79,7 +80,7 @@ const STATUS_LABELS = {
 
 const REGIME_LABELS = {
   trend: "趋势",
-  balance: "平衡",
+  balance: "区间状态待分类",
   transition: "过渡",
 };
 
@@ -90,12 +91,14 @@ const SYSTEM_LABELS = {
   fused: "综合判断",
 };
 
+// Canonical Monet-aligned palette — shared with analysis.js + btc_derivatives.js (semantic lock).
+// "price" wears the same near-black close-line color across all pages so users find it instantly.
 const CHART_SERIES = {
-  price: { label: "价格", color: "rgba(22, 35, 43, 0.38)", dash: "", width: 2.15 },
-  swing: { label: "摆动结构", color: "#2563eb", dash: "", width: 2.85 },
-  classic: { label: "经典图形", color: "#ea580c", dash: "10 6", width: 2.75 },
-  profile: { label: "成交量 / 市场轮廓", color: "#9333ea", dash: "4 7", width: 2.75 },
-  fused: { label: "综合判断", color: "#0891b2", dash: "6 5", width: 2.45 },
+  price: { label: "收盘价", color: "rgba(44, 56, 73, 0.42)", dash: "", width: 2.15 },
+  swing: { label: "确认摆动路径", color: "#2563eb", dash: "5 7", width: 1.65 },
+  classic: { label: "经典图形", color: "#b8924a", dash: "10 6", width: 2.75 },
+  profile: { label: "成交量 / 市场轮廓", color: "#9686b9", dash: "4 7", width: 2.75 },
+  fused: { label: "综合判断", color: "#6a7587", dash: "6 5", width: 2.45 },
 };
 
 function labelFor(map, value, fallback = "-") {
@@ -209,13 +212,13 @@ function formatAxisPrice(value) {
 }
 
 function formatAxisTime(value, timeframe) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
   if (timeframe === "1h" || timeframe === "4h") {
-    return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:00`;
+    return formatChartTime(value);
   }
-  if (timeframe === "1M") return `${date.getFullYear()}/${date.getMonth() + 1}`;
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  const formatted = formatChartTime(value, timeframe === "1M");
+  if (formatted === "-") return "";
+  if (timeframe === "1M") return formatted.slice(0, 7);
+  return formatted.slice(0, 5);
 }
 
 function buildChartScale(candles, width, height, minPrice, maxPrice) {
@@ -321,6 +324,18 @@ function pointPrice(point) {
   return Number.isFinite(value) ? value : null;
 }
 
+function isSwingPointInsideCandleRange(point, candle) {
+  const price = pointPrice(point);
+  if (price === null) return false;
+  const high = Number(point?.candle_high ?? candle?.high);
+  const low = Number(point?.candle_low ?? candle?.low);
+  if (!Number.isFinite(high) || !Number.isFinite(low)) return true;
+  const upper = Math.max(high, low);
+  const lower = Math.min(high, low);
+  const tolerance = Math.max(Math.abs(upper - lower) * 0.002, Math.abs(price) * 0.00001, 0.01);
+  return price >= lower - tolerance && price <= upper + tolerance;
+}
+
 function hasExplicitIndex(point) {
   return point && point.index !== undefined && point.index !== null && Number.isFinite(Number(point.index));
 }
@@ -359,10 +374,21 @@ function shouldExtendToLatest(item, role) {
   return levelRoles.has(role) || levelRoles.has(item.kind);
 }
 
-function extendOverlayToLatestCandle(mapped, role, candles, scale, item) {
+function extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGuide) {
   // overlay extension to latest visible candle
   if (!mapped.length || !candles.length) return mapped;
   if (!shouldExtendToLatest(item, role)) return mapped;
+  // V1.7.x: once the classic pattern is broken (上破 / 下破 / 失效),
+  // stop extending the boundary lines past the break point. The shape
+  // is meant to describe the structure that *was*, not project where it
+  // would have continued. Geometry already on the right side of the
+  // break candle is dropped so the broken pattern doesn't visually
+  // swallow subsequent price action.
+  const terminalState = priceGuide && ["breakout", "breakdown", "invalidated"].includes(priceGuide.state);
+  const breakIndex = Number.isInteger(priceGuide?.break_index) ? priceGuide.break_index : null;
+  const breakX = terminalState && Number.isInteger(breakIndex)
+    ? scale.xForIndex(breakIndex)
+    : null;
   const latestX = scale.xForIndex(candles.length - 1);
   const extendableRoles = new Set([
     "support",
@@ -378,14 +404,27 @@ function extendOverlayToLatestCandle(mapped, role, candles, scale, item) {
   ]);
   if (extendableRoles.has(role)) {
     const last = mapped[mapped.length - 1];
+    if (breakX !== null && last.x >= breakX) {
+      // Trim trailing points past the break point.
+      const trimmed = mapped.filter((point) => point.x <= breakX);
+      if (trimmed.length) return trimmed;
+      return mapped;
+    }
     if (last.x < latestX) return [...mapped, { x: latestX, y: last.y }];
   }
   if (mapped.length >= 2) {
     const prev = mapped[mapped.length - 2];
     const last = mapped[mapped.length - 1];
     if (last.x < latestX && Math.abs(last.x - prev.x) > 0.01) {
+      // For trendline-style slopes, also stop at the break point: extend
+      // the line from the last anchor up to breakX (or latestX), whichever
+      // comes first. We re-derive the slope from the trailing two anchors
+      // so the trendline ends exactly at the break point with consistent
+      // angle rather than running straight through it.
+      const targetX = breakX !== null && breakX < latestX ? breakX : latestX;
       const slope = (last.y - prev.y) / (last.x - prev.x);
-      return [...mapped, { x: latestX, y: last.y + slope * (latestX - last.x) }];
+      if (targetX <= last.x) return mapped;
+      return [...mapped, { x: targetX, y: last.y + slope * (targetX - last.x) }];
     }
   }
   return mapped;
@@ -489,13 +528,21 @@ function legendAvailability(geometry) {
 }
 
 function buildLegendMarkup(availability) {
+  const helpText = {
+    price: "收盘价只连接每根 K 线的收盘价格，不代表该周期完整的最高价与最低价范围。",
+    swing: "摆动高点取对应 K 线最高价，摆动低点取对应 K 线最低价，因此可能高于或低于同期收盘线；虚线只表示摆动顺序，不代表中间时点的实际价格。",
+  };
+  const helpX = { price: 88, swing: 142 };
   const items = Object.entries(CHART_SERIES)
     .filter(([key]) => key !== "fused" && availability[key]);
   return items.map(
     ([key, series], index) => `
-      <g transform="translate(${78 + index * 168}, 22)">
-        <line x1="0" y1="0" x2="28" y2="0" stroke="${series.color}" stroke-width="3" stroke-dasharray="${series.dash}"></line>
+      <g transform="translate(${78 + index * 168}, 22)" class="${helpText[key] ? "structure-legend-help" : ""}">
+        ${helpText[key] ? `<title>${escapeHtml(helpText[key])}</title>` : ""}
+        <line x1="0" y1="0" x2="28" y2="0" stroke="${series.color}" stroke-width="${series.width}" stroke-dasharray="${series.dash}"></line>
+        ${key === "swing" ? `<circle cx="0" cy="0" r="3.5" fill="${series.color}" stroke="#fff8ed" stroke-width="1.4"></circle><circle cx="28" cy="0" r="3.5" fill="${series.color}" stroke="#fff8ed" stroke-width="1.4"></circle>` : ""}
         <text class="structure-svg-axis structure-axis-label" x="36" y="4">${escapeHtml(series.label)}</text>
+        ${helpText[key] ? `<text class="structure-legend-help-icon" x="${helpX[key]}" y="4">ⓘ</text>` : ""}
       </g>
     `).join("");
 }
@@ -506,11 +553,17 @@ function buildLayerToggleMarkup() {
       <label class="legend-toggle" id="toggle-swing"><input type="checkbox" ${overlayLayerState.swing ? "checked" : ""} onchange="toggleOverlayLayer('swing')">摆动骨架</label>
       <label class="legend-toggle" id="toggle-fill"><input type="checkbox" ${overlayLayerState.fill ? "checked" : ""} onchange="toggleOverlayLayer('fill')">图形填充</label>
       <label class="legend-toggle" id="toggle-boundary"><input type="checkbox" ${overlayLayerState.boundary ? "checked" : ""} onchange="toggleOverlayLayer('boundary')">图形边界</label>
-      <label class="legend-toggle" id="toggle-candidate"><input type="checkbox" ${overlayLayerState.candidate ? "checked" : ""} onchange="toggleOverlayLayer('candidate')">候选图形</label>
+      <label class="legend-toggle" id="toggle-candidate"><input type="checkbox" ${overlayLayerState.candidate ? "checked" : ""} onchange="toggleOverlayLayer('candidate')">候选图形（淡化）</label>
     </div>
   `;
 }
 
+// V1.7.x: candidate classic patterns (双底 / 双顶 / 通道 等 "候选" 形态)
+// are intentionally hidden by default — the user asked for "only draw
+// the highest-confidence shapes". The toggle in the layer panel can
+// still opt-in during exploration, but the steady-state chart should
+// never carry the "观察中" or "候选双底关键线 / 观察中" annotations
+// because those add visual noise without committing to a verdict.
 const overlayLayerState = { swing: true, fill: true, boundary: true, candidate: false };
 window.toggleOverlayLayer = function(layer) {
   overlayLayerState[layer] = !overlayLayerState[layer];
@@ -545,7 +598,7 @@ function classicPatternTooltip(candidate) {
     candidate?.display_name || candidate?.pattern_type || "经典形态",
     explanation.status_text || candidate?.status,
     explanation.direction_text || candidate?.direction_bias,
-    `置信度 ${formatNumber(candidate?.confidence ?? 0, 2)}`,
+    `置信度 ${formatNumber(candidate?.confidence, 2)}`,
     levels,
   ].filter(Boolean).join("｜");
 }
@@ -579,18 +632,66 @@ function currentPriceGuide(snapshot, candles) {
   const direction = primary.direction_bias || "neutral";
 
   if (Number.isFinite(invalidation) && ((direction === "bullish" && close < invalidation) || (direction === "bearish" && close > invalidation))) {
-    return { state: "invalidated", label: "经典图形失效", close, level: invalidation, message: "最新收盘价已经触发经典图形失效位，旧形态不再作为入场依据；综合结论仍会参考摆动结构与市场轮廓。" };
+    return {
+      state: "invalidated",
+      label: "经典图形失效",
+      close,
+      level: invalidation,
+      break_index: firstCrossIndex(candles, invalidation, direction === "bullish" ? "below" : "above"),
+      message: "最新收盘价已经触发经典图形失效位，旧形态不再作为入场依据；综合结论仍会参考摆动结构与市场轮廓。",
+    };
   }
   if (Number.isFinite(breakout) && close > breakout) {
-    return { state: "breakout", label: "经典图形上破", close, level: breakout, message: "最新收盘价站上经典图形突破确认位，后续重点观察回踩是否守住突破位；这不等同于综合系统已经转强。" };
+    return {
+      state: "breakout",
+      label: "经典图形上破",
+      close,
+      level: breakout,
+      break_index: firstCrossIndex(candles, breakout, "above"),
+      message: "最新收盘价站上经典图形突破确认位，后续重点观察回踩是否守住突破位；这不等同于综合系统已经转强。",
+    };
   }
   if (Number.isFinite(breakdown) && close < breakdown) {
-    return { state: "breakdown", label: "经典图形下破", close, level: breakdown, message: "最新收盘价跌破经典图形下沿确认位，旧区间支撑已被破坏。系统已结合综合结构方向给出具体执行权限判断。" };
+    return {
+      state: "breakdown",
+      label: "经典图形下破",
+      close,
+      level: breakdown,
+      break_index: firstCrossIndex(candles, breakdown, "below"),
+      message: "最新收盘价跌破经典图形下沿确认位，旧区间支撑已被破坏。系统已结合综合结构方向给出具体执行权限判断。",
+    };
   }
   if (Number.isFinite(upper) && Number.isFinite(lower) && close <= upper && close >= lower) {
     return { state: "inside", label: "位于形态内部", close, level: null, message: "价格仍在形态区间内部，需等待收盘突破或跌破后再确认方向。" };
   }
   return { state: "retest", label: "回踩确认中", close, level: Number.isFinite(upper) ? upper : lower, message: "价格已离开主要形态区域，需观察是否回踩边界并重新获得确认。" };
+}
+
+/**
+ * Find the most recent candle index where the close first crossed the given
+ * boundary level in the specified direction ("above" or "below"). Walks
+ * candles from oldest to newest so the returned index is the *first*
+ * crossing (the break point), not the most recent re-touch. Returns the
+ * last candle index if no clean crossing is detected (price stayed
+ * above / below the level for the entire window).
+ */
+function firstCrossIndex(candles, level, direction) {
+  if (!Array.isArray(candles) || !Number.isFinite(level)) return null;
+  let prev = null;
+  for (let i = 0; i < candles.length; i += 1) {
+    const value = Number(candles[i]?.close);
+    if (!Number.isFinite(value)) continue;
+    if (prev === null) {
+      prev = value;
+      continue;
+    }
+    const crossed = direction === "above"
+      ? prev <= level && value > level
+      : prev >= level && value < level;
+    if (crossed) return i;
+    prev = value;
+  }
+  return candles.length ? candles.length - 1 : null;
 }
 
 function buildCurrentPriceGuideMarkup(guide, textDecision) {
@@ -692,7 +793,7 @@ function classicPatternsToGeometry(classicPatterns) {
   });
 }
 
-function buildOverlayMarkup(geometry, candles, scale) {
+function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
   return geometry
     .slice()
     .sort((left, right) => {
@@ -731,14 +832,15 @@ function buildOverlayMarkup(geometry, candles, scale) {
       let opacity = 1.0;
 
       if (role === "swing_backbone" || role === "swing_zigzag" || item.kind === "swing_zigzag") {
-        opacity = 0.75;
-        strokeWidth = 2.2;
+        opacity = 0.48;
+        strokeWidth = CHART_SERIES.swing.width;
         strokeColor = "#2563eb";
+        strokeDash = CHART_SERIES.swing.dash;
       } else if (role === "swing_live_leg" || item.kind === "swing_live_leg") {
-        opacity = 0.62;
-        strokeWidth = 2.0;
+        opacity = 0.36;
+        strokeWidth = 1.5;
         strokeColor = "#3b82f6";
-        strokeDash = "6 5";
+        strokeDash = "3 8";
       } else if (role === "neckline") {
         strokeColor = "#e67e22";
         strokeWidth = 2.5;
@@ -754,6 +856,12 @@ function buildOverlayMarkup(geometry, candles, scale) {
       } else       if (role === "pattern_zone" || item.kind === "zone") {
         opacity = 0.15;
         strokeColor = "#6366f1";
+      }
+
+      if (isCandidate) {
+        opacity = Math.min(Number(meta.boundary_alpha ?? 0.35), 0.4);
+        strokeWidth = Math.min(strokeWidth, 1.5);
+        strokeDash = "7 6";
       }
 
       if (item.kind === "region" || role === "pattern_region") {
@@ -780,7 +888,18 @@ function buildOverlayMarkup(geometry, candles, scale) {
           })
           .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
         if (polyPoints.length < 3) return "";
-        const polyCoords = polyPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        // V1.7.x: clip the region's right edge to the break candle so the
+        // pattern fill doesn't overlap candles that came after the
+        // structure was invalidated / broken.
+        const polyBreakX = priceGuide && ["breakout", "breakdown", "invalidated"].includes(priceGuide.state)
+          && Number.isInteger(priceGuide.break_index)
+            ? scale.xForIndex(priceGuide.break_index)
+            : null;
+        const clippedPoly = polyBreakX !== null
+          ? polyPoints.map((p) => (p.x > polyBreakX ? { x: polyBreakX, y: p.y } : p))
+          : polyPoints;
+        if (clippedPoly.length < 3) return "";
+        const polyCoords = clippedPoly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
         const title = meta.tooltip || meta.pattern_type || "";
         return `<polygon points="${polyCoords}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.2" opacity="${boundaryAlpha}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""}><title>${escapeHtml(title)}</title></polygon>`;
       }
@@ -793,11 +912,13 @@ function buildOverlayMarkup(geometry, candles, scale) {
           const candleIndex = hasExplicitIndex(point)
             ? Math.max(0, Math.min(candles.length - 1, explicitIndex))
             : nearestCandleIndex(candles, tsValue, typeof tsValue === 'number' && tsValue < candles.length ? tsValue : index);
+          if (isSwing && !isSwingPointInsideCandleRange(point, candles[candleIndex])) return null;
           const price = pointPrice(point);
-          return { x: scale.xForIndex(candleIndex), y: price === null ? NaN : scale.yForPrice(price) };
+          return { x: scale.xForIndex(candleIndex), y: price === null ? NaN : scale.yForPrice(price), point, candle: candles[candleIndex] };
         })
+        .filter(Boolean)
         .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-      mapped = extendOverlayToLatestCandle(mapped, role, candles, scale, item);
+      mapped = extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGuide);
       if (!mapped.length) return "";
 
       if (mapped.length === 1) {
@@ -807,8 +928,44 @@ function buildOverlayMarkup(geometry, candles, scale) {
       const path = mapped
         .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
         .join(" ");
-      const title = meta.tooltip ? `<title>${escapeHtml(meta.tooltip)}</title>` : "";
-      return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round">${title}</path>`;
+      const patternNames = {
+        channel: "候选通道",
+        double_top: "候选双顶",
+        double_bottom: "候选双底",
+      };
+      const candidateName = patternNames[meta.pattern_type] || "候选形态";
+      const titleText = meta.tooltip || (isCandidate ? `${candidateName}，尚未形成主形态确认。` : "");
+      const title = titleText ? `<title>${escapeHtml(titleText)}</title>` : "";
+      const isSwingGeometry = isSwing || role === "swing_live_leg" || item.kind === "swing_live_leg";
+      const markers = isSwingGeometry
+        ? mapped.map(({ x, y, point, candle }) => {
+            const confirmed = point?.confirmed !== false;
+            const kind = point?.label === "high" ? "摆动高点" : point?.label === "low" ? "摆动低点" : "最新收盘观察点";
+            const time = point?.ts ?? candle?.ts_open ?? "-";
+            const high = Number(point?.candle_high ?? candle?.high);
+            const low = Number(point?.candle_low ?? candle?.low);
+            const details = [
+              `${appState.selectedTimeframe}｜${kind}`,
+              `时间：${formatDateTime(time)}`,
+              `价格：${formatNumber(pointPrice(point), 2)}`,
+              Number.isFinite(high) ? `最高：${formatNumber(high, 2)}` : "",
+              Number.isFinite(low) ? `最低：${formatNumber(low, 2)}` : "",
+              `状态：${confirmed ? "已确认" : "观察中"}`,
+            ].filter(Boolean).join("\n");
+            return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${confirmed ? 4.2 : 3.8}" fill="${confirmed ? strokeColor : "#fff8ed"}" stroke="${strokeColor}" stroke-width="1.8" opacity="${confirmed ? 0.94 : 0.72}"><title>${escapeHtml(details)}</title></circle>`;
+          }).join("")
+        : "";
+      // V1.7.x: drop the floating "观察中" annotation entirely. The
+      // unconfirmed dot itself still renders (it's the latest live
+      // price), but the verbal "观察中" label previously floated next
+      // to it and competed with the upper-boundary / candidate-key-line
+      // labels for the same right-margin space. The dot is enough — let
+      // the user hover for the tooltip text.
+      const observationLabel = "";
+      const candidateLabel = isCandidate && mapped.length
+        ? `<text class="structure-svg-axis structure-candidate-label" x="${(mapped[mapped.length - 1].x - 6).toFixed(2)}" y="${(mapped[mapped.length - 1].y + (role === "lower_boundary" ? 15 : -7)).toFixed(2)}" text-anchor="end">${escapeHtml(role === "upper_boundary" ? `${candidateName}上沿` : role === "lower_boundary" ? `${candidateName}下沿` : `${candidateName}关键线`)}</text>`
+        : "";
+      return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round">${title}</path>${markers}${observationLabel}${candidateLabel}`;
     })
     .join("");
 }
@@ -855,6 +1012,9 @@ function renderChart(snapshot, candles) {
     const confidence = Number(item.meta_json?.confidence ?? item.meta?.confidence ?? 1);
     return matchesSelectedSystem(item.system) && confidence >= state.minConfidence;
   });
+  const invalidSwingPointCount = rawGeometry
+    .filter((item) => item.system === "swing")
+    .reduce((total, item) => total + Number(item.meta_json?.invalid_point_count ?? item.meta?.invalid_point_count ?? 0), 0);
 
   if (!candles.length) {
     chartPanel.className = "structure-chart-panel empty";
@@ -900,7 +1060,7 @@ function renderChart(snapshot, candles) {
   const height = 520;
   const scale = buildChartScale(visibleCandles, width, height, minPrice, maxPrice);
   const pricePath = buildLinePath(visibleCandles, scale);
-  const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale);
+  const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale, priceGuide);
   const profileMarkup = buildMarketProfileMarkup(visibleGeometry, scale);
   const guideMarkerMarkup = buildGuideMarkerMarkup(priceGuide, scale);
   const overlayCount = visibleGeometry.filter((item) => item.system !== "profile").length;
@@ -918,6 +1078,7 @@ function renderChart(snapshot, candles) {
       ${overlayMarkup}
       ${guideMarkerMarkup}
     </svg>
+    ${invalidSwingPointCount > 0 ? `<div class="structure-geometry-warning" role="status">部分摆动点与 K 线无法对齐，已隐藏 ${invalidSwingPointCount} 个异常节点。</div>` : ""}
     ${buildCurrentPriceGuideMarkup(priceGuide, snapshot.overall?.text_decision)}
     ${buildLayerToggleMarkup()}
     <div class="structure-chart-meta">
@@ -935,6 +1096,9 @@ function renderChart(snapshot, candles) {
 
 function renderSummary(snapshot) {
   const overall = snapshot.overall || {};
+  const marketStateLabel = overall.range_state && overall.range_state !== "NONE"
+    ? rangeStateLabel(overall)
+    : labelFor(REGIME_LABELS, overall.regime);
   const systems = Array.isArray(snapshot.systems) ? snapshot.systems : [];
   const panel = document.getElementById("structure-summary-panel");
   const orderedSystems = ["swing", "classic", "profile"].map((key) => systems.find((item) => item.system === key) || null);
@@ -951,8 +1115,8 @@ function renderSummary(snapshot) {
         </div>
         <div class="metric-grid metric-grid-compact structure-summary-metrics">
           <div class="metric-box"><span>综合分数</span><strong>${escapeHtml(formatNumber(overall.overall_score ?? overall.score ?? 0, 2))}</strong></div>
-          <div class="metric-box"><span>综合置信度</span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence ?? 0, 2))}</strong></div>
-          <div class="metric-box"><span>市场状态</span><strong>${escapeHtml(labelFor(REGIME_LABELS, overall.regime))}</strong></div>
+          <div class="metric-box"><span>综合置信度</span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence, 2))}</strong></div>
+          <div class="metric-box"><span>市场状态</span><strong>${escapeHtml(marketStateLabel)}</strong><small>${escapeHtml(overall.range_basis?.[0] || "")}</small></div>
           <div class="metric-box"><span>权重模板</span><strong>${escapeHtml(overall.weight_template || "-")}</strong></div>
         </div>
         ${
@@ -1030,6 +1194,7 @@ function renderFromBundle(bundle) {
     const chartPanel = document.getElementById("structure-chart-panel");
     const summaryPanel = document.getElementById("structure-summary-panel");
     if (candles.length) {
+      chartPanel.dataset.snapshotState = "price-only";
       const fallbackSnapshot = {
         active_items: [],
         systems: [],
@@ -1038,7 +1203,7 @@ function renderFromBundle(bundle) {
         overall: {
           overall_bias: "uncertain",
           score: 0,
-          confidence: 0,
+          confidence: null,
           meaning: appState.selectedTimeframe === "1M"
             ? "月线样本不足，当前仅展示价格走势；结构判断等待更多 K 线。"
             : "结构快照暂不可用，当前先展示价格走势。",
@@ -1074,6 +1239,7 @@ function renderFromBundle(bundle) {
     overall: {},
     ...snapshot,
   };
+  document.getElementById("structure-chart-panel").dataset.snapshotState = "ready";
   renderChart(safeSnapshot, candles);
   renderSummary(safeSnapshot);
   const lastCandleTs = candles[candles.length - 1]?.ts_open;
@@ -1195,13 +1361,17 @@ export async function renderStructure() {
       ) {
         state.recoveryKeys.add(recoveryKey);
         renderStatus("正在拉取 K 线并生成结构快照", "loading");
-        await scheduleIdlePrecompute({
-          page: "market-structure",
-          instrumentId,
-          timeframe: timeframe === "1M" ? "30d" : timeframe,
-          reason: "structure_bundle_read",
-          priority: 3,
-        });
+        try {
+          await api.refreshStructure(instrumentId, timeframe);
+          bundle = await api.getStructureBundle(instrumentId, timeframe, {
+            includeGeometry: true,
+            candlesLimit: limit,
+            force: true,
+            signal: activeController.signal,
+          });
+        } catch (recoveryError) {
+          console.warn("structure:auto-recovery:failed", recoveryError);
+        }
       }
 
       if (disposed || requestToken !== state.requestToken) return;

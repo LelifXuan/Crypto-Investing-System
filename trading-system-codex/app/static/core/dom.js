@@ -144,14 +144,49 @@ export function formatDateTime(value) {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute} 北京时间`;
 }
 
 export function formatDateOnly(value) {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export function formatChartTime(value, includeYear = false) {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      ...(includeYear ? { year: "numeric" } : {}),
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  const prefix = includeYear ? `${parts.year}-` : "";
+  return `${prefix}${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 export function compactWindowLabel(values) {
@@ -304,4 +339,3 @@ export function dataFreshnessHint(updatedAt, status, cacheStatus) {
   else hint = formatDateTime(updatedAt);
   return `<span class="freshness-hint">${escapeHtml(hint)}</span>`;
 }
-

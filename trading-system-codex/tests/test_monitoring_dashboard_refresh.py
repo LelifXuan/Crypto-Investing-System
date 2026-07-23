@@ -6,10 +6,10 @@ was stuck with the stale payload. The user observed this live: the
 JSON returned ``status: "stale"``, ``cache_state: "stale"`` and
 ``refreshed: false`` even when the API caller asked for a refresh.
 
-Current contract: when ``allow_refresh`` is True and the cached bundle is
-missing / error / updating / effectively empty, ``get_bundle`` calls
-``refresh_bundle``. A stale but displayable payload is returned
-immediately so the first screen does not block on a cold refresh.
+Current contract: ``get_bundle`` never runs the full refresh on a GET
+read. Missing / error / updating / effectively empty snapshots return a
+lightweight shell and enqueue a background refresh. A stale but
+displayable payload is returned immediately for the same reason.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ def _monitoring_key() -> str:
     return monitoring_dashboard_cache_key("btc-usdt-perp", "1d")
 
 
-def test_get_bundle_with_empty_stale_cache_and_allow_refresh_calls_refresh() -> None:
+def test_get_bundle_with_empty_stale_cache_and_allow_refresh_enqueues_refresh() -> None:
     repo = _Repo(
         initial={_monitoring_key(): _stale_cache()}
     )
@@ -105,13 +105,10 @@ def test_get_bundle_with_empty_stale_cache_and_allow_refresh_calls_refresh() -> 
         service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)
     )
 
-    assert repo.refresh_called or repo.writes, (
-        "refresh_bundle should have written a fresh cache when stale + allow_refresh"
-    )
-    # The returned bundle should reflect the fresh cache_state, not the
-    # original "stale".
-    assert result.cache_state == "fresh"
-    assert result.refreshed is True
+    assert not repo.writes
+    assert result.cache_state == "missing"
+    assert result.refresh_enqueued is True
+    assert result.refreshed is False
 
 
 def test_get_bundle_with_displayable_stale_cache_returns_immediately() -> None:
@@ -153,6 +150,57 @@ def test_get_bundle_with_displayable_stale_cache_returns_immediately() -> None:
     assert result.refreshed is False
     assert result.technical_indicator_count == 1
     assert result.status_message
+
+
+def test_get_bundle_with_displayable_stale_cache_and_empty_technical_backfills_only() -> None:
+    now = datetime.now(UTC)
+    payload = {
+        "macro_overview": {
+            "total_score": 45,
+            "score_band": "温和偏紧",
+            "growth_score": 50,
+            "inflation_score": 40,
+            "policy_score": 45,
+            "liquidity_score": 50,
+            "regime_summary": "宏观环境温和偏紧。",
+            "regime_label_cn": "温和偏紧",
+            "regime_key": "mild_tightening",
+        },
+        "technical_observations": [],
+    }
+    repo = _Repo(initial={_monitoring_key(): _stale_cache(payload)})
+    service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
+
+    async def backfill(*_args, **_kwargs):
+        return [
+            {
+                "observation_id": "analysis-bundle:btc-usdt-perp:1d:rsi_14",
+                "indicator_key": "rsi_14",
+                "category": "technical",
+                "instrument_id": "btc-usdt-perp",
+                "timeframe": "1d",
+                "observation_ts": now.isoformat(),
+                "value_num": 58,
+                "value_json": {},
+                "source_provider": "analysis_bundle",
+                "is_preliminary": False,
+                "quality_score": 95,
+            }
+        ]
+
+    async def full_refresh(*_args, **_kwargs):
+        raise AssertionError("stale displayable cache should not run full refresh")
+
+    service._technical_observations_from_analysis_bundle = backfill  # type: ignore[method-assign]
+    service.refresh_bundle = full_refresh  # type: ignore[method-assign]
+
+    result = asyncio.run(service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True))
+
+    assert not repo.writes
+    assert result.cache_state == "stale"
+    assert result.refreshed is True
+    assert result.technical_indicator_count == 1
+    assert result.technical_observations[0].indicator_key == "rsi_14"
 
 
 def test_get_bundle_with_fresh_cache_skips_refresh() -> None:
@@ -248,19 +296,17 @@ def test_get_bundle_reports_final_technical_indicator_count() -> None:
     assert result.technical_indicator_count == len(result.technical_observations)
 
 
-def test_get_bundle_falls_back_to_stale_when_refresh_fails() -> None:
-    """If refresh_bundle raises, get_bundle still returns the cached
-    payload so the user does not get a 500. The warning is logged.
+def test_get_bundle_does_not_call_refresh_on_empty_stale_read() -> None:
+    """The cold GET path must stay non-blocking even when refresh_bundle
+    would fail or take a long time.
     """
     repo = _Repo(
         initial={_monitoring_key(): _stale_cache()}
     )
     service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
 
-    # Make refresh_bundle raise (simulate a DB outage). We patch the
-    # bound method on the instance.
     async def boom(*_args, **_kwargs):
-        raise RuntimeError("db down")
+        raise AssertionError("GET should enqueue refresh, not run refresh_bundle")
 
     service.refresh_bundle = boom  # type: ignore[method-assign]
 
@@ -268,15 +314,14 @@ def test_get_bundle_falls_back_to_stale_when_refresh_fails() -> None:
         service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)
     )
 
-    # The fallback path returns the cached payload.
-    assert result.cache_state == "stale"
+    assert result.cache_state == "missing"
+    assert result.refresh_enqueued is True
     assert result.refreshed is False
 
 
-def test_get_bundle_triggers_refresh_when_cache_missing() -> None:
-    """When the cache is missing entirely, get_bundle must still
-    trigger a refresh so the first user request does not see an
-    empty snapshot.
+def test_get_bundle_enqueues_refresh_when_cache_missing() -> None:
+    """When the cache is missing entirely, get_bundle returns a shell
+    payload and asks the background worker to prepare the real snapshot.
     """
     repo = _Repo(initial={})  # no cache at all
     service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
@@ -285,5 +330,7 @@ def test_get_bundle_triggers_refresh_when_cache_missing() -> None:
         service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)
     )
 
-    assert repo.writes, "refresh_bundle should have run when cache is missing"
-    assert result.refreshed is True
+    assert not repo.writes
+    assert result.cache_state == "missing"
+    assert result.refresh_enqueued is True
+    assert result.refreshed is False

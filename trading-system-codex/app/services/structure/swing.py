@@ -192,6 +192,14 @@ class SwingScorer:
     ) -> list[StructureGeometry]:
         if len(pivots) < 2:
             return []
+        validated_points: list[dict] = []
+        validation_errors: list[dict[str, object]] = []
+        for pivot in pivots[-12:]:
+            point, error = self._validated_pivot_point(pivot, candles)
+            if point is not None:
+                validated_points.append(point)
+            elif error is not None:
+                validation_errors.append(error)
         geometry = [
             StructureGeometry(
                 geometry_id=build_structure_id("swing", timeframe, "zigzag"),
@@ -202,14 +210,15 @@ class SwingScorer:
                 kind="zigzag",
                 status="confirmed",
                 visible=True,
-                points_json=[
-                    {"ts": pivot.ts.isoformat(), "price": pivot.price, "label": pivot.kind}
-                    for pivot in pivots[-12:]
-                ],
+                points_json=validated_points,
                 labels_json=["zigzag"],
                 meta_json={
                     "role": "swing_zigzag",
                     "pivot_count": len(pivots),
+                    "validated_point_count": len(validated_points),
+                    "invalid_point_count": len(validation_errors),
+                    "geometry_validation": "valid" if not validation_errors else "partial",
+                    "validation_errors": validation_errors,
                     "extend_to_latest": False,
                 },
                 created_at=generated_at,
@@ -217,9 +226,10 @@ class SwingScorer:
         ]
         if pivots and candles:
             last_pivot = pivots[-1]
+            validated_last_pivot, _ = self._validated_pivot_point(last_pivot, candles)
             latest_idx = len(candles) - 1
             lag_bars = latest_idx - last_pivot.index
-            if lag_bars > 0:
+            if lag_bars > 0 and validated_last_pivot is not None:
                 latest = candles[-1]
                 geometry.append(
                     StructureGeometry(
@@ -232,13 +242,7 @@ class SwingScorer:
                         status="provisional",
                         visible=True,
                         points_json=[
-                            {
-                                "ts": last_pivot.ts.isoformat(),
-                                "price": last_pivot.price,
-                                "label": last_pivot.kind,
-                                "index": last_pivot.index,
-                                "confirmed": True,
-                            },
+                            validated_last_pivot,
                             {
                                 "ts": latest.ts_open.isoformat(),
                                 "price": float(latest.close),
@@ -264,6 +268,53 @@ class SwingScorer:
                     )
                 )
         return geometry
+
+    @staticmethod
+    def _validated_pivot_point(
+        pivot: Pivot,
+        candles: list,
+    ) -> tuple[dict | None, dict[str, object] | None]:
+        if not 0 <= pivot.index < len(candles):
+            return None, {
+                "index": pivot.index,
+                "ts": pivot.ts.isoformat(),
+                "reason": "index_out_of_range",
+            }
+        candle = candles[pivot.index]
+        if pivot.ts != candle.ts_open:
+            return None, {
+                "index": pivot.index,
+                "ts": pivot.ts.isoformat(),
+                "candle_ts": candle.ts_open.isoformat(),
+                "reason": "timestamp_index_mismatch",
+            }
+        high = to_float(candle.high)
+        low = to_float(candle.low)
+        expected_price = high if pivot.kind == "high" else low if pivot.kind == "low" else None
+        if expected_price is None:
+            return None, {
+                "index": pivot.index,
+                "ts": pivot.ts.isoformat(),
+                "reason": "invalid_pivot_kind",
+            }
+        if pivot.price != expected_price:
+            return None, {
+                "index": pivot.index,
+                "ts": pivot.ts.isoformat(),
+                "reason": "price_candle_mismatch",
+                "pivot_price": pivot.price,
+                "expected_price": expected_price,
+            }
+        point = {
+            "ts": pivot.ts.isoformat(),
+            "price": pivot.price,
+            "label": pivot.kind,
+            "index": pivot.index,
+            "confirmed": True,
+            "candle_high": high,
+            "candle_low": low,
+        }
+        return point, None
 
     def _symmetry_score(self, pivots: list[Pivot]) -> float:
         if len(pivots) < 4:

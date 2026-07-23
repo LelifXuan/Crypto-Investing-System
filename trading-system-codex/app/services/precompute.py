@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import os
@@ -32,6 +33,7 @@ from app.services.cache_registry import (
     market_events_cache_key,
     monitoring_dashboard_cache_key,
     strategy_bundle_cache_key,
+    strategy_unified_cache_key,
     structure_bundle_cache_key,
 )
 from app.services.monitoring_dashboard import MonitoringDashboardService
@@ -81,9 +83,16 @@ PAGE_PRIORITY_MATRIX = {
     "events": {"current": [("events", "P2")], "secondary": [], "related": []},
     "knowledge": {"current": [], "secondary": [], "related": []},
     "strategy": {
-        "current": [("strategy", "P1")],
+        "current": [("strategy_unified", "P1"), ("strategy", "P2")],
         "secondary": [("market_context", "P2")],
-        "related": [("analysis", "P3"), ("structure", "P3"), ("alerts", "P3")],
+        "related": [
+            ("analysis", "P3"),
+            ("structure", "P3"),
+            ("monitoring", "P3"),
+            ("macro", "P3"),
+            ("btc_derivatives", "P3"),
+            ("alerts", "P4"),
+        ],
     },
     "btc-derivatives": {
         "current": [("btc_derivatives", "P1")],
@@ -105,6 +114,7 @@ LANE_BY_TASK = {
     "events": "maintenance",
     "adjacent_timeframe_analysis": "background_precompute",
     "strategy": "background_precompute",
+    "strategy_unified": "background_precompute",
     "market_context": "background_precompute",
     "btc_derivatives": "network_limited",
 }
@@ -122,6 +132,7 @@ TASK_COST_CLASS = {
     "events": "network",
     "adjacent_timeframe_analysis": "medium",
     "strategy": "medium",
+    "strategy_unified": "heavy",
     "market_context": "light",
     "btc_derivatives": "network",
 }
@@ -183,6 +194,36 @@ class PrecomputeTaskPlanner:
                         visible=payload.visible,
                     )
                 )
+        direct_candidates = {
+            "monitoring": "monitoring",
+            "macro": "macro",
+            "macro-overview": "macro",
+            "macro_overview": "macro",
+            "btc-derivatives": "btc_derivatives",
+            "btc_derivatives": "btc_derivatives",
+            "market-context": "market_context",
+            "market_context": "market_context",
+            "strategy": "strategy",
+            "strategy-unified": "strategy_unified",
+            "strategy_unified": "strategy_unified",
+        }
+        planned_types = {task.task_type for task in tasks}
+        for raw_candidate in selected_candidates:
+            task_type = direct_candidates.get(str(raw_candidate).strip().lower())
+            if task_type is None or task_type in planned_types:
+                continue
+            expanded = self._expand_task_type(
+                task_type=task_type,
+                priority_level="P2",
+                page=page,
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                view_window=view_window,
+                reason=payload.reason,
+                visible=payload.visible,
+            )
+            tasks.extend(expanded)
+            planned_types.update(task.task_type for task in expanded)
         return self.sort_tasks(tasks)
 
     def sort_tasks(self, tasks: Iterable[PrecomputeTask]) -> list[PrecomputeTask]:
@@ -291,6 +332,20 @@ class PrecomputeTaskPlanner:
                         visible=visible and target_timeframe == timeframe,
                     )
                 )
+        elif task_type == "strategy_unified":
+            items.append(
+                self._build_task(
+                    task_type=task_type,
+                    page_type="strategy_unified",
+                    cache_key=strategy_unified_cache_key(instrument_id),
+                    instrument_id=instrument_id,
+                    timeframe="1d",
+                    priority_level=priority_level,
+                    page=page,
+                    reason=reason,
+                    visible=visible,
+                )
+            )
         elif task_type == "macro":
             items.append(
                 self._build_task(
@@ -379,6 +434,7 @@ class PrecomputeTaskPlanner:
             "divergence": "alerts",
             "microstructure": "alerts",
             "market_context": "market_context",
+            "strategy_unified": "strategy_unified",
         }.get(task_type, task_type)
         signature = (
             f"{dedupe_task_type}|{instrument_id or '-'}|{timeframe or '-'}|"
@@ -429,6 +485,17 @@ class PrecomputeTaskPlanner:
             score += PRIORITY_WEIGHTS["current_page_boost"]
         if reason and any(token in reason.lower() for token in ("refresh", "manual", "click")):
             score += PRIORITY_WEIGHTS["user_action_boost"]
+        if reason in {"startup_critical_snapshot", "daily_first_page_access"}:
+            score -= 180
+        if task_type == "strategy_unified" and reason in {
+            "startup_critical_snapshot",
+            "daily_first_page_access",
+            "strategy_cold_start",
+            "strategy_unified_cold_read",
+            "strategy_unified_stale_read",
+            "startup_strategy_snapshot_finalize",
+        }:
+            score += 360
         if instrument_id:
             score += PRIORITY_WEIGHTS["same_instrument_boost"]
         if timeframe in {"4h", "1d", "1w"} and task_type == "adjacent_timeframe_analysis":
@@ -623,35 +690,56 @@ class PrecomputeService:
             return True
         except Exception as exc:  # pragma: no cover
             logger.exception("precompute task failed for %s: %s", task.cache_key, exc)
+            with contextlib.suppress(Exception):
+                await repository.session.rollback()
+            error_text = str(exc)
             self._recent_failures.append(
                 {
                     "task_key": task.dedupe_key,
                     "cache_key": task.cache_key,
                     "task_type": task.task_type,
                     "lane": task.lane,
-                    "error": str(exc),
+                    "error": error_text,
                     "ts": datetime.now(timezone.utc).isoformat(),
                 }
             )
-            await repository.upsert_page_snapshot_cache(
-                cache_key=task.cache_key,
-                page_type=task.page_type,
-                instrument_id=task.instrument_id,
-                timeframe=task.timeframe,
-                payload_json={},
-                status="error",
-                cache_state="error",
-                snapshot_at=datetime.now(timezone.utc),
-                expires_at=expires_at_for_page(task.page_type, datetime.now(timezone.utc)),
-                source_updated_at=None,
-                source_version=CACHE_SOURCE_VERSION,
-                last_error=str(exc),
-                meta_json={
-                    "reason": task.reason or "",
-                    "view_window": task.view_window,
-                    "lane": task.lane,
-                },
-            )
+            if "database is locked" in error_text.lower() and task.attempt_count < 2:
+                task.attempt_count += 1
+                task.score -= PRIORITY_WEIGHTS["retry_penalty_per_attempt"] * task.attempt_count
+                task.created_at = time.monotonic()
+                async with self._lock:
+                    self._queue.append(task)
+                    self._queued[task.dedupe_key] = task
+                    self._queue.sort(key=lambda item: (-item.score, item.created_at))
+                    self._wakeup.set()
+                return False
+            try:
+                await repository.upsert_page_snapshot_cache(
+                    cache_key=task.cache_key,
+                    page_type=task.page_type,
+                    instrument_id=task.instrument_id,
+                    timeframe=task.timeframe,
+                    payload_json={},
+                    status="error",
+                    cache_state="error",
+                    snapshot_at=datetime.now(timezone.utc),
+                    expires_at=expires_at_for_page(task.page_type, datetime.now(timezone.utc)),
+                    source_updated_at=None,
+                    source_version=CACHE_SOURCE_VERSION,
+                    last_error=error_text,
+                    meta_json={
+                        "reason": task.reason or "",
+                        "view_window": task.view_window,
+                        "lane": task.lane,
+                    },
+                )
+            except Exception as write_error:
+                logger.warning(
+                    "precompute error-state write failed for %s: %s",
+                    task.cache_key,
+                    write_error,
+                    exc_info=True,
+                )
             return False
         finally:
             async with self._lock:
@@ -687,7 +775,14 @@ class PrecomputeService:
         if len(self._queue) >= settings.precompute_max_queue_size:
             return "skipped"
         last_seen = self._last_seen_at.get(task.dedupe_key, 0.0)
-        if now - last_seen < settings.precompute_min_seconds_between_same_key:
+        bypass_recent_dedupe = (
+            task.task_type == "strategy_unified"
+            and task.reason == "startup_strategy_snapshot_finalize"
+        )
+        if (
+            not bypass_recent_dedupe
+            and now - last_seen < settings.precompute_min_seconds_between_same_key
+        ):
             return "deduped"
         self._last_seen_at[task.dedupe_key] = now
         self._queue.append(task)
@@ -726,6 +821,32 @@ class PrecomputeService:
                 task.instrument_id,
                 task.timeframe,
                 reason=task.reason or "precompute",
+            )
+            return
+        if task.page_type == "strategy_unified" and task.instrument_id:
+            from app.services.strategy_unified.unified_service import UnifiedStrategyService
+
+            started = time.perf_counter()
+            payload = await UnifiedStrategyService(repository).build_unified_strategy(
+                task.instrument_id,
+                force=True,
+            )
+            now = datetime.now(timezone.utc)
+            await repository.upsert_page_snapshot_cache(
+                cache_key=task.cache_key,
+                page_type="strategy_unified",
+                instrument_id=task.instrument_id,
+                timeframe=None,
+                payload_json=payload,
+                status="ready",
+                cache_state="fresh" if payload.get("status") != "degraded" else "stale",
+                snapshot_at=now,
+                data_ts=now,
+                expires_at=expires_at_for_page("strategy_unified", now),
+                source_updated_at=now,
+                source_version=CACHE_SOURCE_VERSION,
+                cost_ms=int((time.perf_counter() - started) * 1000),
+                meta_json={"reason": task.reason or "", "lane": task.lane},
             )
             return
         if task.page_type == "structure" and task.instrument_id and task.timeframe:
@@ -792,6 +913,17 @@ class PrecomputeService:
             ):
                 return
             await btc_derivatives_live_service.dashboard(force=True)
+            await self.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page="strategy",
+                    instrument_id=task.instrument_id or "btc-usdt-perp",
+                    timeframe="1d",
+                    reason="derivatives_snapshot_updated",
+                    visible=False,
+                    candidates=["strategy_unified"],
+                    priority=2,
+                )
+            )
             return
         if task.page_type == "macro":
             items = await repository.list_macro_events(limit=200)
@@ -869,8 +1001,6 @@ class PrecomputeService:
 
     @staticmethod
     def _cpu_is_idle() -> bool:
-        if settings.app_distribution_mode == "portable":
-            return True
         if hasattr(os, "getloadavg"):
             try:
                 load = os.getloadavg()[0]

@@ -83,14 +83,14 @@ REAL_CONTENT_SELECTORS = {
     "market-events": [".event-card", "#market-events-root"],
     "macro-calendar": ["#macro-statusbar", "#macro-summary-cards"],
     # alert-center was removed; /alerts-page now routes to ai-strategy (see app/web/router.py).
-    "alert-center": [".strategy-v2-page", ".strategy-unified-overview"],
+    "alert-center": [".strategy-unified-overview", ".strategy-decision-audit"],
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
     "ashare-etf": ["#etf-overview", "#etf-groups"],
     "btc-derivatives": [".btc-derivatives-page", ".btc-chart-overview"],
     "ai-strategy": [
-        ".strategy-v2-page",
         ".strategy-unified-overview",
         ".strategy-horizon-governance",
+        ".strategy-decision-audit",
     ],
 }
 ERROR_SELECTOR = ".error-state, .render-fatal, [data-render-fatal]"

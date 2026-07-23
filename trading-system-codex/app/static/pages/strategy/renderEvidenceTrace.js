@@ -2,111 +2,94 @@ function asArray(value) {
   return Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined && item !== "") : [];
 }
 
-function joinList(value, fallback = "-") {
-  const items = asArray(value);
-  return items.length ? items.join(" / ") : fallback;
-}
-
 function formatConfidence(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return "-";
-  return `${Math.round(number)}%`;
+  if (!Number.isFinite(number)) return "置信不足";
+  return `置信 ${Math.round(number)}%`;
 }
 
-function freshnessLabel(value) {
-  const map = {
-    fresh: "新鲜",
-    ready: "新鲜",
-    live: "新鲜",
-    usable_stale: "可降级",
-    stale: "过期",
-    missing: "缺失",
-    error: "异常",
-    updating: "更新中",
-  };
-  return map[String(value || "").toLowerCase()] || value || "未知";
+function textOf(item) {
+  return String(item?.human_explanation || item?.summary || item?.message || "").trim();
 }
 
-function sourceModuleLabel(module) {
-  const map = {
-    "MarketContextBuilder": "市场上下文",
-    "MacroOverviewService": "宏观",
-    "ChipStructureService": "筹码结构",
-    "BtcDerivativesService": "衍生品",
-    "OnchainFeatureEngine": "链上",
-    "OnchainProvider": "链上",
-    "StrategyGenerator": "策略生成",
-    "StrategySignalService": "策略信号",
-    "MultiTimeframeStructureEngine": "周期结构",
-    "CrossHorizonSynthesisEngine": "跨周期合成",
-    "UnifiedRiskGateEngine": "风险门禁",
-    "IndicatorObservation": "指标观察",
-    "IndicatorMonitoringService": "指标监控",
-  };
-  return map[module] || module;
+function findTrace(traces, matcher) {
+  return traces.find((item) => matcher(String(item?.conclusion_key || ""), item));
 }
 
-function sourceTimeframeLabel(timeframe) {
-  const map = {
-    "1M": "月线",
-    "1w": "周线",
-    "1d": "日线",
-    "4h": "4 小时",
-    "1h": "1 小时",
-    "15m": "15 分钟",
-  };
-  return map[timeframe] || timeframe || "-";
+function shortText(text, limit = 96) {
+  if (!text) return "";
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
 }
 
-function renderCard(item, escapeHtml) {
-  const conclusionKey = String(item.conclusion_key || "source");
-  const title = String(item.conclusion || item.label || "-");
-  const body = String(
-    item.human_explanation || item.summary || item.message || "暂无解释文本"
-  );
-  const confidence = formatConfidence(item.confidence);
-  const freshness = freshnessLabel(item.freshness);
-  const sources = joinList(
-    asArray(item.source_modules).map(sourceModuleLabel)
-  );
-  const timeframes = joinList(
-    asArray(item.source_timeframes).map(sourceTimeframeLabel)
-  );
+function summaryItem(kind, title, body, meta) {
+  return { kind, title, body: shortText(body), meta };
+}
+
+function buildEvidenceSummary(model) {
+  const traces = asArray(model.evidence_trace);
+  const stateTrace = findTrace(traces, (key) => key === "unified_state.code") || {};
+  const strategicTrace = findTrace(traces, (key) => key === "horizon_views.strategic.direction") || {};
+  const tacticalTrace = findTrace(traces, (key) => key === "horizon_views.tactical.direction") || {};
+  const executionTrace = findTrace(traces, (key) => key === "horizon_views.execution.direction") || {};
+  const riskTrace = findTrace(traces, (key) => key === "horizon_governance.position_cap")
+    || findTrace(traces, (key) => key.includes("risk"))
+    || {};
+  const state = model.unified_state || {};
+  const strategic = model.horizon_views?.strategic || {};
+  const tactical = model.horizon_views?.tactical || {};
+  const execution = model.horizon_views?.execution || {};
+  return [
+    summaryItem(
+      "decision",
+      state.label || stateTrace.conclusion || "最终结论",
+      state.instruction || textOf(stateTrace) || "当前结论等待更多数据确认。",
+      formatConfidence(stateTrace.confidence),
+    ),
+    summaryItem(
+      "direction",
+      "方向依据",
+      [
+        textOf(strategicTrace) || strategic.instruction,
+        textOf(tacticalTrace) || tactical.instruction,
+        textOf(executionTrace) || execution.instruction,
+      ].filter(Boolean).join(" "),
+      `战略 ${strategic.direction || "-"} / 战术 ${tactical.direction || "-"} / 执行 ${execution.direction || "-"}`,
+    ),
+    summaryItem(
+      "risk",
+      "风险与缺口",
+      textOf(riskTrace) || `仓位上限 ${model.horizon_governance?.position_cap || "-"}；若关键数据缺失或事件门禁触发，暂停提高仓位。`,
+      formatConfidence(riskTrace.confidence),
+    ),
+  ].filter((item) => item.body);
+}
+
+function renderSummaryItem(item, escapeHtml) {
   return `
-    <article class="strategy-evidence-item">
-      <p class="eyebrow">${escapeHtml(conclusionKey)}</p>
-      <h3>${escapeHtml(title)}</h3>
-      <p>${escapeHtml(body)}</p>
-      <dl class="strategy-evidence-meta">
-        <div>
-          <dt>置信度</dt>
-          <dd>${escapeHtml(confidence)}</dd>
-        </div>
-        <div>
-          <dt>来源</dt>
-          <dd>${escapeHtml(sources)}</dd>
-        </div>
-        <div>
-          <dt>周期 / 时效</dt>
-          <dd>${escapeHtml(timeframes)} · ${escapeHtml(freshness)}</dd>
-        </div>
-      </dl>
+    <article class="strategy-evidence-summary-item ${escapeHtml(item.kind)}">
+      <div>
+        <h3>${escapeHtml(item.title)}</h3>
+        <p>${escapeHtml(item.body)}</p>
+      </div>
+      <small>${escapeHtml(item.meta || "")}</small>
     </article>
   `;
 }
 
 export function renderEvidenceTrace(model, helpers) {
   const { escapeHtml } = helpers;
-  const traces = (model.evidence_trace || []).map((item) => renderCard(item, escapeHtml));
+  const items = buildEvidenceSummary(model);
   return `
     <section class="strategy-v2-section strategy-evidence-trace card">
-      <div class="section-heading">
+      <div class="section-heading compact">
         <div>
           <p class="eyebrow">EVIDENCE TRACE</p>
-          <h2>结论来源与依据</h2>
+          <h2>结论依据摘要</h2>
         </div>
       </div>
-      <div class="strategy-v2-grid evidence">${traces.join("") || helpers.emptyState("暂无证据链")}</div>
+      <div class="strategy-evidence-summary">
+        ${items.map((item) => renderSummaryItem(item, escapeHtml)).join("") || helpers.emptyState("暂无证据摘要")}
+      </div>
     </section>
   `;
 }

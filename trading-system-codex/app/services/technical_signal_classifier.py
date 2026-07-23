@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.indicator_judgement import attach_indicator_judgement
+
 
 def classify_signals(candles: list, core_series: dict, secondary_series: dict) -> list[dict]:
     if not candles:
@@ -32,7 +34,13 @@ def classify_signals(candles: list, core_series: dict, secondary_series: dict) -
     if atr_signal:
         signals.append(atr_signal)
 
-    return signals
+    return [
+        attach_indicator_judgement(
+            signal,
+            source_ref=f"technical_signal_classifier.{signal.get('indicator_key', 'unknown')}",
+        )
+        for signal in signals
+    ]
 
 
 def _get_series(series: dict, key: str) -> list:

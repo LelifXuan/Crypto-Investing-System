@@ -60,6 +60,23 @@ def _missing(mapping: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
     return [field for field in fields if mapping.get(field) is None]
 
 
+def _future_expiry_from_instrument(instrument: str) -> str | None:
+    parts = instrument.split("-")
+    candidates = [
+        ("%d%b%y", parts[1])
+        for _ in [None]
+        if len(parts) >= 2 and parts[1].upper() not in {"PERPETUAL", "SWAP"}
+    ]
+    if len(parts) >= 3 and parts[2].isdigit() and len(parts[2]) == 6:
+        candidates.append(("%y%m%d", parts[2]))
+    for fmt, value in candidates:
+        try:
+            return datetime.strptime(value.upper(), fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
 def normalize_deribit_option(
     item: dict[str, Any],
     *,
@@ -262,6 +279,8 @@ def normalize_simple_perp(
     mark = _float(mark_price)
     contracts = _float(open_interest_contracts)
     oi_usd = _float(open_interest_usd)
+    expiry = _future_expiry_from_instrument(instrument)
+    instrument_type = "future" if expiry else "perpetual"
     conversion = "provider USD field"
     if oi_usd is None and contracts is not None and mark is not None:
         oi_usd = contracts * mark * contract_multiplier
@@ -277,13 +296,20 @@ def normalize_simple_perp(
     return NormalizedPerpSnapshot(
         provider=provider,
         instrument=instrument,
+        instrument_type=instrument_type,
+        expiry=expiry,
         **values,
         provider_timestamp=_timestamp(timestamp),
         collected_at=collected_at or _utc_now(),
         conversion=conversion,
         missing_fields=_missing(
             values,
-            ("mark_price", "funding_rate", "open_interest_contracts", "open_interest_usd"),
+            (
+                "mark_price",
+                *(() if instrument_type == "future" else ("funding_rate",)),
+                "open_interest_contracts",
+                "open_interest_usd",
+            ),
         ),
     )
 

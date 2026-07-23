@@ -1,7 +1,10 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
+
+from app.services.range_regime import RangeClassification, classify_range
 
 from .contracts import (
     EXECUTION_WEIGHTS,
@@ -14,6 +17,9 @@ from .contracts import (
     evidence_confidence,
     weighted,
 )
+from .trade_decision import _next_close_iso
+
+UTC = timezone.utc
 
 
 class CrossHorizonSynthesisEngine:
@@ -55,6 +61,8 @@ class CrossHorizonSynthesisEngine:
             allowed_sides = []
         if strategic.direction == "NEUTRAL" and tactical.direction == "NEUTRAL":
             position_cap = "observe"
+        upgrade_path = self._upgrade_path(strategic, tactical, execution, nodes)
+        invalidation_path = self._invalidation_path(strategic, tactical, execution, nodes)
         return HorizonGovernance(
             higher_timeframe_constraint={
                 "direction": strategic.direction,
@@ -68,16 +76,146 @@ class CrossHorizonSynthesisEngine:
             },
             position_cap=position_cap,
             allowed_sides=allowed_sides,
-            upgrade_path=[
-                "1H 连续确认执行触发",
-                "4H 收盘站回/跌破关键结构位",
-                "1d 结构状态改写后重新计算战术方向",
-            ],
-            invalidation_path=[
-                "执行触发后价格收回关键失效位",
-                "1d 与 4H 同时转为相反结构",
-                "宏观事件或数据门禁触发 no_trade",
-            ],
+            upgrade_path=upgrade_path,
+            invalidation_path=invalidation_path,
+        )
+
+    def _upgrade_path(
+        self,
+        strategic: HorizonView,
+        tactical: HorizonView,
+        execution: HorizonView,
+        nodes: Sequence[TimeframeNode],
+    ) -> list[str]:
+        direction = self._active_direction(execution.direction, tactical.direction, strategic.direction)
+        h1 = self._node(nodes, "1h")
+        h4 = self._node(nodes, "4h")
+        daily = self._node(nodes, "1d")
+        return [
+            self._trigger_text(h1, direction),
+            self._structure_close_text(h4, direction),
+            self._rewrite_text(daily, direction),
+        ]
+
+    def _invalidation_path(
+        self,
+        strategic: HorizonView,
+        tactical: HorizonView,
+        execution: HorizonView,
+        nodes: Sequence[TimeframeNode],
+    ) -> list[str]:
+        direction = self._active_direction(execution.direction, tactical.direction, strategic.direction)
+        opposite = "SHORT" if direction == "LONG" else "LONG"
+        h1 = self._node(nodes, "1h")
+        h4 = self._node(nodes, "4h")
+        daily = self._node(nodes, "1d")
+        return [
+            self._trigger_failure_text(h1, direction),
+            self._opposite_structure_text(daily, h4, opposite),
+            "宏观事件或关键数据缺失触发风险门禁时，暂停新开仓并等待下一次完整计算。",
+        ]
+
+    @staticmethod
+    def _node(nodes: Sequence[TimeframeNode], timeframe: str) -> TimeframeNode | None:
+        return next((node for node in nodes if node.timeframe == timeframe), None)
+
+    @staticmethod
+    def _active_direction(*directions: str) -> str:
+        for direction in directions:
+            if direction in {"LONG", "WAIT_LONG_TRIGGER"}:
+                return "LONG"
+            if direction in {"SHORT", "WAIT_SHORT_TRIGGER"}:
+                return "SHORT"
+        return "LONG"
+
+    @staticmethod
+    def _price(value: float | None) -> str:
+        return f"{value:,.2f}" if value is not None else "待数据补齐"
+
+    @staticmethod
+    def _side_label(direction: str) -> str:
+        return "多头" if direction == "LONG" else "空头"
+
+    @staticmethod
+    def _confirm_verb(direction: str) -> str:
+        return "站上" if direction == "LONG" else "跌破"
+
+    @staticmethod
+    def _fail_verb(direction: str) -> str:
+        return "跌回" if direction == "LONG" else "站回"
+
+    @staticmethod
+    def _structure_level(node: TimeframeNode | None, direction: str) -> float | None:
+        if not node:
+            return None
+        if direction == "LONG":
+            return node.key_resistance or node.key_support
+        return node.key_support or node.key_resistance
+
+    @staticmethod
+    def _failure_level(node: TimeframeNode | None, direction: str) -> float | None:
+        if not node:
+            return None
+        if node.invalidation is not None:
+            return node.invalidation
+        if direction == "LONG":
+            return node.key_support
+        return node.key_resistance
+
+    def _trigger_text(self, node: TimeframeNode | None, direction: str) -> str:
+        level = self._structure_level(node, direction)
+        failure = self._failure_level(node, direction)
+        tf = node.timeframe if node else "1h"
+        return (
+            f"{tf} 连续收盘{self._confirm_verb(direction)}关键结构位 {self._price(level)}，"
+            f"且没有快速{self._fail_verb(direction)}失效位 {self._price(failure)}，才视为{self._side_label(direction)}执行触发。"
+        )
+
+    def _structure_close_text(self, node: TimeframeNode | None, direction: str) -> str:
+        level = self._structure_level(node, direction)
+        failure = self._failure_level(node, direction)
+        tf = node.timeframe if node else "4h"
+        return (
+            f"{tf} 收盘{self._confirm_verb(direction)}关键结构位 {self._price(level)} 后，"
+            f"结构确认才升级；若下一根重新{self._fail_verb(direction)} {self._price(failure)}，升级失败。"
+        )
+
+    def _rewrite_text(self, node: TimeframeNode | None, direction: str) -> str:
+        level = self._structure_level(node, direction)
+        failure = self._failure_level(node, direction)
+        tf = node.timeframe if node else "1d"
+        long_score = node.long_score if node else 0
+        short_score = node.short_score if node else 0
+        return (
+            f"{tf} 结构改写的判定条件是日线收盘{self._confirm_verb(direction)} {self._price(level)}，"
+            f"并且{self._side_label(direction)}分重新高于反向分；当前多/空分 {long_score:.0f}/{short_score:.0f}，"
+            f"失效观察位 {self._price(failure)}。"
+        )
+
+    def _opposite_structure_text(
+        self,
+        daily: TimeframeNode | None,
+        h4: TimeframeNode | None,
+        opposite: str,
+    ) -> str:
+        daily_level = self._structure_level(daily, opposite)
+        h4_level = self._structure_level(h4, opposite)
+        daily_long = daily.long_score if daily else 0
+        daily_short = daily.short_score if daily else 0
+        h4_long = h4.long_score if h4 else 0
+        h4_short = h4.short_score if h4 else 0
+        return (
+            f"相反结构指 1d 收盘{self._confirm_verb(opposite)} {self._price(daily_level)}，"
+            f"且 4H 同向收盘{self._confirm_verb(opposite)} {self._price(h4_level)}；"
+            f"同时多/空分转向反侧（1d {daily_long:.0f}/{daily_short:.0f}，4H {h4_long:.0f}/{h4_short:.0f}）。"
+        )
+
+    def _trigger_failure_text(self, node: TimeframeNode | None, direction: str) -> str:
+        failure = self._failure_level(node, direction)
+        tf = node.timeframe if node else "1h"
+        return (
+            f"执行触发后，{tf} 收盘重新{self._fail_verb(direction)}关键失效位 {self._price(failure)}，"
+            f"说明触发失败，撤销本次{self._side_label(direction)}执行信号。"
         )
 
     def build_unified_state(
@@ -111,7 +249,7 @@ class CrossHorizonSynthesisEngine:
             "STRATEGIC_LONG_TACTICAL_SHORT": "短空长多",
             "STRATEGIC_SHORT_TACTICAL_SHORT": "顺周期空头",
             "STRATEGIC_SHORT_TACTICAL_LONG": "空头趋势中的战术反弹",
-            "RANGE_NO_EDGE": "多周期震荡无优势",
+            "RANGE_NO_EDGE": "多周期中性震荡",
             "EVENT_LOCKED": "事件锁定",
             "DATA_DEGRADED": "数据质量不足",
             "RISK_OFF": "风险关闭",
@@ -131,6 +269,17 @@ class CrossHorizonSynthesisEngine:
             permission = "observe"
         risk_level = "high" if permission == "no_trade" else "medium" if governance.position_cap == "reduced" else "low"
         current_price = next((node.current_price for node in nodes if node.current_price is not None), None)
+        range_classification = RangeClassification()
+        if code == "RANGE_NO_EDGE":
+            direction_nodes = [
+                node for node in nodes if node.timeframe in {"1d", "4h"}
+            ]
+            range_classification = classify_range(
+                regime="range",
+                long_score=sum(node.long_score for node in direction_nodes),
+                short_score=sum(node.short_score for node in direction_nodes),
+            )
+            labels[code] = f"多周期{range_classification.range_label}"
         return {
             "code": code,
             "label": labels[code],
@@ -139,7 +288,8 @@ class CrossHorizonSynthesisEngine:
             "risk_level": risk_level,
             "current_price": current_price,
             "primary_symbol": "BTC",
-            "next_check_time": next_check_time or "next_4h_close",
+            "next_check_time": next_check_time or _next_close_iso(datetime.now(UTC), "4h"),
+            **range_classification.as_dict(),
         }
 
     def _view(
@@ -189,4 +339,4 @@ class CrossHorizonSynthesisEngine:
             return f"{key} 层方向看多，等待下级周期确认执行条件。"
         if direction == "SHORT":
             return f"{key} 层方向看空，等待下级周期确认执行条件。"
-        return f"{key} 层方向无优势，等待结构重新定价。"
+        return f"{key} 层处于震荡或方向未确认，等待结构重新定价。"

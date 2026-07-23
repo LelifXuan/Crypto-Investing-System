@@ -37,15 +37,53 @@ def detect_pivots_adaptive(
     if n < 20:
         return []
 
-    if n < 120:
-        window = 2
-    elif n < 260:
-        window = 3
+    # V1.7.x: timeframe-specific (window, reversal_multiplier).
+    # Short cycles have noisier candles (more whipsaw per unit of price
+    # movement), so we (a) widen the local-extremum window and (b) raise
+    # the minimum reversal percentage so micro-swings don't generate
+    # pivots. Long cycles are smoother so we can be more permissive.
+    tf_config = {
+        "15m": {"window": 5, "reversal_multiplier": 2.5},
+        "30m": {"window": 5, "reversal_multiplier": 2.2},
+        "1h":  {"window": 4, "reversal_multiplier": 2.0},
+        "4h":  {"window": 3, "reversal_multiplier": 1.5},
+        "1d":  {"window": 3, "reversal_multiplier": 1.2},
+        "1w":  {"window": 2, "reversal_multiplier": 0.8},
+        "1M":  {"window": 2, "reversal_multiplier": 0.7},
+    }
+    cfg = tf_config.get(str(timeframe or "").lower())
+    if cfg is not None:
+        window = cfg["window"]
+        reversal_multiplier = cfg["reversal_multiplier"]
     else:
-        window = 4
+        # Fallback for unknown timeframe: pick a window that scales with
+        # the candle count so very short and very long series still
+        # produce useful pivots.
+        if n < 120:
+            window = 2
+        elif n < 260:
+            window = 3
+        else:
+            window = 4
+        reversal_multiplier = 1.6
 
     atr_pct = _compute_atr_pct(candles)
-    min_reversal_pct = clamp(atr_pct * 1.6, 0.006, 0.045)
+    # V1.7.x: scale the absolute floor by the timeframe so longer cycles
+    # don't get clamped to a noisy 0.6% floor. Short cycles need the
+    # floor because their per-candle noise dominates; long cycles have
+    # already smoothed out noise in their candles so a much smaller
+    # reversal still represents a real structural turn.
+    floor_by_tf = {
+        "15m": 0.006,
+        "30m": 0.005,
+        "1h":  0.004,
+        "4h":  0.003,
+        "1d":  0.002,
+        "1w":  0.0015,
+        "1M":  0.0015,
+    }
+    reversal_floor = floor_by_tf.get(str(timeframe or "").lower(), 0.003)
+    min_reversal_pct = clamp(atr_pct * reversal_multiplier, reversal_floor, 0.045)
 
     raw: list[Pivot] = []
     values = [{"high": to_float(c.high), "low": to_float(c.low)} for c in candles]

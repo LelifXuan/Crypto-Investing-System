@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from app.core.paths import app_paths
 from app.services.macro.cache_store import CacheStore
 from app.services.macro.providers.bea import BeaMacroProvider
 from app.services.macro.providers.bls import BlsMacroProvider
@@ -11,18 +12,11 @@ from app.services.macro.providers.treasury import TreasuryMacroProvider
 from app.services.macro.secret_loader import SecretLoader
 
 DEFAULT_CONFIG_PATH = (
-    Path(__file__).resolve().parents[3]
+    app_paths.resource_root
     / "app"
     / "monitoring"
     / "configs"
     / "macro_data_sources.v2.json"
-)
-LEGACY_CONFIG_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "app"
-    / "monitoring"
-    / "configs"
-    / "macro_data_sources.v1.json"
 )
 
 
@@ -42,9 +36,8 @@ class SourceRegistry:
     def _load_config(self) -> dict:
         import json
 
-        path = self.config_path if self.config_path.exists() else LEGACY_CONFIG_PATH
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+        if self.config_path.exists():
+            return json.loads(self.config_path.read_text(encoding="utf-8"))
         return {}
 
     def _init_adapters(self) -> None:

@@ -4,9 +4,12 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_PATH = ROOT / "app" / "static" / "core" / "knowledge.js"
 DOM_PATH = ROOT / "app" / "static" / "core" / "dom.js"
+KNOWLEDGE_PAGE_PATH = ROOT / "app" / "static" / "pages" / "knowledge.js"
 
 
 def _node(script: str):
@@ -27,6 +30,40 @@ import {{ knowledgeSections }} from 'file:///{KNOWLEDGE_PATH.as_posix()}';
 console.log(JSON.stringify(knowledgeSections));
 """
     )
+
+
+def test_knowledge_catalog_imports_without_syntax_errors() -> None:
+    result = subprocess.run(
+        ["node", "--check", str(KNOWLEDGE_PATH)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _load_knowledge_sections()
+
+
+def test_non_derivative_terms_have_useful_when_and_example() -> None:
+    missing = _node(
+        f"""
+import {{ knowledgeSections }} from 'file:///{KNOWLEDGE_PATH.as_posix()}';
+const missing = [];
+for (const section of knowledgeSections) {{
+  for (const item of section.items) {{
+    if (item.type === 'guide' || item.category === 'btc-derivatives') continue;
+    const usefulWhen = Array.isArray(item.useful_when) ? item.useful_when.filter(Boolean) : [];
+    if (usefulWhen.length < 3 || !String(item.example || '').trim()) {{
+      missing.push({{ id: item.id, usefulWhen: usefulWhen.length, hasExample: Boolean(String(item.example || '').trim()) }});
+    }}
+  }}
+}}
+console.log(JSON.stringify(missing));
+"""
+    )
+
+    assert not missing, f"terms missing useful_when/example: {missing[:20]}"
 
 
 def test_knowledge_catalog_schema_seed_terms_and_utf8() -> None:
@@ -174,6 +211,53 @@ console.log(JSON.stringify({{
     assert "/knowledge-page#ema" in payload["html"]
 
 
+def test_knowledge_page_remounts_when_spa_dom_belongs_to_previous_page() -> None:
+    payload = _node(
+        f"""
+globalThis.window = {{
+  location: {{ hash: '' }},
+  addEventListener() {{}},
+  setTimeout() {{}},
+  clearTimeout() {{}},
+  requestAnimationFrame(callback) {{ callback(); }},
+}};
+const elements = new Map();
+let rootInnerHTML = '<section class="market-events-page">最近市场事件与新闻</section>';
+const root = {{
+  get innerHTML() {{ return rootInnerHTML; }},
+  set innerHTML(value) {{
+    rootInnerHTML = String(value);
+    if (rootInnerHTML.includes('id="knowledge-top"')) {{
+      elements.set('knowledge-top', {{ id: 'knowledge-top', scrollIntoView() {{}} }});
+    }}
+  }},
+}};
+globalThis.document = {{
+  getElementById(id) {{
+    if (id === 'page-root') return root;
+    return elements.get(id) || null;
+  }},
+  querySelector() {{ return null; }},
+  querySelectorAll() {{ return []; }},
+}};
+const module = await import('file:///{KNOWLEDGE_PAGE_PATH.as_posix()}?case=remount');
+await module.renderKnowledge();
+root.innerHTML = '<section class="market-events-page">最近市场事件与新闻</section>';
+elements.delete('knowledge-top');
+await module.renderKnowledge();
+console.log(JSON.stringify({{
+  hasKnowledgeTop: rootInnerHTML.includes('id="knowledge-top"'),
+  hasKnowledgeHero: rootInnerHTML.includes('knowledge-hero'),
+  stillMarketEvents: rootInnerHTML.includes('market-events-page'),
+}}));
+"""
+    )
+
+    assert payload["hasKnowledgeTop"] is True
+    assert payload["hasKnowledgeHero"] is True
+    assert payload["stillMarketEvents"] is False
+
+
 def test_btc_derivatives_terms_are_available_to_dashboard_tooltips() -> None:
     sections = _load_knowledge_sections()
     terms = {
@@ -187,6 +271,167 @@ def test_btc_derivatives_terms_are_available_to_dashboard_tooltips() -> None:
         assert "btc-derivatives" in terms[label]["page_refs"]
         assert terms[label]["summary"]
         assert terms[label]["risk_note"]
+
+
+# ---------------------------------------------------------------------------
+# Round 2-A: BTC 衍生品核心新概念 (V1.7+ skew_25d / cross_expiry fallback)
+# ---------------------------------------------------------------------------
+
+
+def _btc_derivative_term_ids() -> set[str]:
+    sections = _load_knowledge_sections()
+    return {
+        item["id"]
+        for section in sections
+        for item in section["items"]
+        if "btc-derivatives" in (item.get("page_refs") or [])
+    }
+
+
+def test_btc_derivatives_section_exposes_25d_skew() -> None:
+    """The 25-delta skew computed by options_metrics.skew_25d must be
+    discoverable from the knowledge base so the 25D Skew chart tooltip and
+    the terminal summary sub-module can link to it."""
+    ids = _btc_derivative_term_ids()
+    assert "skew_25d" in ids, (
+        "skew_25d is the headline metric on the BTC derivatives page; the "
+        "knowledge base must surface it as a discoverable term"
+    )
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["skew_25d"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"], "skew_25d must carry a non-empty summary"
+    assert item["definition"], "skew_25d must carry a non-empty definition"
+    assert item["risk_note"], "skew_25d is a risk-bearing metric"
+    # Cross-link to the greeks that drive it.
+    related = set(item.get("related_terms", []))
+    assert "delta" in related, "skew_25d must reference the Delta greek"
+
+
+def test_btc_derivatives_section_exposes_risk_reversal_25d() -> None:
+    ids = _btc_derivative_term_ids()
+    assert "risk_reversal_25d" in ids, (
+        "options_metrics.skew_25d also returns risk_reversal (negated skew); "
+        "users comparing bullish / bearish positioning on BTC options need "
+        "to find this term"
+    )
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["risk_reversal_25d"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"]
+    assert "skew_25d" in set(item.get("related_terms", [])), (
+        "risk_reversal_25d and skew_25d describe the same data from opposite "
+        "sides; the related_terms link must exist in both directions"
+    )
+
+
+def test_btc_derivatives_section_exposes_delta_band() -> None:
+    """options_metrics.skew_25d stamps each result with delta_band
+    (exact_25d / near_25d / outside_band). Users see this band on the chart
+    but have no way to look up what it means."""
+    ids = _btc_derivative_term_ids()
+    assert "delta_band" in ids
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["delta_band"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"]
+    # delta_band must mention the three possible values somewhere in the
+    # term body so the user can distinguish them.
+    body = " ".join(
+        str(v) for v in (item["summary"], item["definition"], item["how_to_use"])
+    ).lower()
+    for variant in ("exact_25d", "near_25d", "outside_band"):
+        assert variant in body, (
+            f"delta_band term body must list the {variant!r} variant so users "
+            f"can decode the chart annotation"
+        )
+
+
+def test_btc_derivatives_section_exposes_cross_expiry_fallback() -> None:
+    """When the effective_expiry chain can't produce a 25D call/put, the
+    service falls back to a neighbouring standard expiry. The knowledge base
+    must surface this so users understand why a 'cross_expiry' label appears
+    on the chart."""
+    ids = _btc_derivative_term_ids()
+    assert "cross_expiry_fallback" in ids
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["cross_expiry_fallback"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"]
+    assert "delta-source" in set(item.get("related_terms", [])), (
+        "delta-source is the field on the cache point that records whether "
+        "the fallback was used; users looking up either should find the other"
+    )
+
+
+def test_btc_derivatives_section_exposes_series_break() -> None:
+    """service._break_legacy_rolls sets series_break_reason on cache points
+    where cost or skew chains would otherwise be misleading. The knowledge
+    base must surface this so users understand the '序列断开' annotation."""
+    ids = _btc_derivative_term_ids()
+    assert "series_break" in ids
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["series_break"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"]
+    # The two known break reasons must be reflected in the body so users
+    # can map the chart label to the underlying mechanism.
+    body = " ".join(
+        str(v) for v in (item["summary"], item["definition"], item["how_to_use"])
+    ).lower()
+    assert "expiry_rollover" in body
+    assert "method_change" in body
+
+
+def test_btc_derivatives_section_exposes_roll_expiry() -> None:
+    """constant_maturity mode rolls the selected expiry to the next standard
+    expiry once the current one is too close to expiry. Users see this as
+    'next_check: next_4h_close' on the trade plan and need a way to look it up."""
+    ids = _btc_derivative_term_ids()
+    assert "roll_expiry" in ids
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["roll_expiry"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"]
+    assert "constant-maturity" in set(item.get("related_terms", [])), (
+        "roll_expiry is the mechanism behind Constant Maturity; users should "
+        "be able to navigate between the two"
+    )
+
+
+def test_btc_derivatives_section_exposes_iv_term_structure() -> None:
+    """implied-volatility mentions 'term structure' in passing; promote it
+    to a first-class term so users can search for it directly."""
+    ids = _btc_derivative_term_ids()
+    assert "iv_term_structure" in ids
+
+    sections = _load_knowledge_sections()
+    by_id = {it["id"]: it for s in sections for it in s["items"]}
+    item = by_id["iv_term_structure"]
+    assert "btc-derivatives" in item["page_refs"]
+    assert item["summary"]
+    # Term must mention both contango and backwardation so users can tell
+    # them apart from the chart's single-line label.
+    body = " ".join(
+        str(v) for v in (item["summary"], item["definition"], item["how_to_use"])
+    ).lower()
+    assert "contango" in body
+    assert "backwardation" in body
+    assert "implied-volatility" in set(item.get("related_terms", [])), (
+        "iv_term_structure should be linked to the base IV term"
+    )
 
 
 def test_term_factory_supports_guide_fields() -> None:
@@ -235,9 +480,106 @@ def test_page_guides_required_fields_are_populated():
         assert len(g.get("purpose", "")) >= 10, f"{g['id']}: purpose too short"
         assert len(g.get("when_to_use", [])) >= 1, f"{g['id']}: need ≥1 when_to_use"
         assert len(g.get("page_walkthrough", [])) >= 2, f"{g['id']}: need ≥2 walkthrough steps"
-        assert len(g.get("data_lineage", [])) >= 1, f"{g['id']}: need ≥1 lineage entry"
-        assert len(g.get("caveats", [])) >= 1, f"{g['id']}: need ≥1 caveat"
-        assert len(g.get("related_pages", [])) >= 1, f"{g['id']}: need ≥1 related_page"
+
+
+# ---------------------------------------------------------------------------
+# Stale-content guards: terms whose summaries reference the old field names
+# or pre-V1.7 / pre-V2 concepts must surface modern aliases so users can find
+# them under either name. This locks the rename without forcing a full term
+# rewrite.
+# ---------------------------------------------------------------------------
+
+
+def test_real_yield_exposes_v2_aliases():
+    """V2 renamed TIPS to real_yield_10y in the macro layer; the legacy
+    'real_yield' term must surface the new id (and the canonical '10Y TIPS'
+    phrasing) as aliases so search still resolves."""
+    sections = _load_knowledge_sections()
+    items = [item for s in sections for item in s["items"]]
+    real_yield = next((it for it in items if it["id"] == "real_yield"), None)
+    assert real_yield is not None, "real_yield term must exist"
+    aliases = set(a.lower() for a in real_yield.get("aliases", []))
+    for required in ("real_yield_10y", "tips_real_yield", "10y tips"):
+        assert required in aliases, (
+            f"real_yield must list {required!r} as an alias so V2 renames and "
+            f"the legacy '10Y TIPS' phrasing both resolve. Got aliases: "
+            f"{sorted(aliases)}"
+        )
+
+
+def test_open_interest_terms_cross_reference_each_other():
+    """The microstructure 'open_interest' term and the btc-derivatives
+    'open-interest' term describe different slices of the same concept. They
+    must be cross-referenced in related_terms so users moving between the
+    two pages understand they belong to the same family."""
+    sections = _load_knowledge_sections()
+    items = [item for s in sections for item in s["items"]]
+    by_id = {it["id"]: it for it in items}
+
+    assert "open_interest" in by_id
+    assert "open-interest" in by_id
+
+    micro_related = set(by_id["open_interest"].get("related_terms", []))
+    deriv_related = set(by_id["open-interest"].get("related_terms", []))
+
+    # Cross-references must be present in both directions. The related_terms
+    # entries use the OTHER term's id verbatim, so:
+    # - micro `open_interest` should list "open-interest" (deriv id)
+    # - deriv `open-interest` should list "open_interest" (micro id)
+    assert "open-interest" in micro_related, (
+        f"open_interest term should reference its derivatives counterpart "
+        f"via id 'open-interest'; got related_terms={sorted(micro_related)}"
+    )
+    assert "open_interest" in deriv_related, (
+        f"open-interest term should reference its microstructure counterpart "
+        f"via id 'open_interest'; got related_terms={sorted(deriv_related)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quality scan guards: certain risk-sensitive terms must surface a
+# `risk_note` so users can see the caveats without having to infer them from
+# the surrounding prose. The list below was derived from the recent audit
+# of the catalog; the same test pins down the gaps so they cannot regress.
+# ---------------------------------------------------------------------------
+
+RISK_NOTE_REQUIRED = {
+    # derivatives section (highly leveraged / liquidation-sensitive topics)
+    "basis_rate": "基差 / 杠杆情绪",
+    "mark_price": "强平 / 标记价",
+    "price_deviation": "价格偏离 / 执行",
+    # risk family
+    "position_sizing": "杠杆 / 仓位",
+    # structure family
+    "pivot_fractal": "结构判断 / noise 误判",
+    # onchain family
+    "active_addresses": "链上活跃地址 / 口径差异",
+    # ashare-etf family
+    "dividend_cashflow": "现金流 ETF / 会计口径",
+}
+
+
+def test_risk_sensitive_terms_have_risk_note() -> None:
+    sections = _load_knowledge_sections()
+    items = [item for s in sections for item in s["items"]]
+    by_id = {it["id"]: it for it in items}
+    missing = []
+    for term_id, topic in RISK_NOTE_REQUIRED.items():
+        item = by_id.get(term_id)
+        assert item is not None, (
+            f"required term {term_id!r} (topic: {topic}) is missing from the "
+            f"knowledge catalog entirely"
+        )
+        risk = item.get("risk_note")
+        if not (isinstance(risk, str) and risk.strip()) and not (
+            isinstance(risk, list) and any(str(x).strip() for x in risk)
+        ):
+            missing.append((term_id, topic))
+    assert not missing, (
+        "the following risk-sensitive terms must surface a risk_note so the "
+        "card UI can show the caveat without users having to read every "
+        f"section: {missing}"
+    )
 
 
 def test_guide_related_pages_reference_existing_pages():

@@ -130,3 +130,63 @@ def compute_mom_pct(points: Iterable[Point]) -> Optional[tuple[Decimal, datetime
     except (InvalidOperation, ZeroDivisionError):
         return None
     return ((ratio - Decimal(1)) * Decimal(100), latest_ts)
+
+
+def compute_mom_change(points: Iterable[Point]) -> Optional[tuple[Decimal, datetime]]:
+    """Compute the absolute month-over-month change.
+
+    This is used for level series whose headline release is a monthly
+    difference, such as nonfarm payrolls. Unlike percent transforms, a literal
+    zero latest value is valid input for this calculation.
+    """
+    cleaned: list[tuple[datetime, Decimal]] = []
+    for ts, value in points:
+        if ts is None or value is None:
+            continue
+        if isinstance(value, str) and value.strip() in {"", "."}:
+            continue
+        try:
+            numeric = Decimal(str(value).strip()) if isinstance(value, str) else Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            continue
+        if not numeric.is_finite():
+            continue
+        cleaned.append((ts, numeric))
+    cleaned.sort(key=lambda item: item[0])
+    if len(cleaned) < 2:
+        return None
+    latest_ts, latest_value = cleaned[-1]
+    previous_value = cleaned[-2][1]
+    return latest_value - previous_value, latest_ts
+
+
+def compute_weekly_diff_rolling_4w(
+    points: Iterable[Point], *, window: int = 4
+) -> Optional[tuple[Decimal, datetime]]:
+    """Return ``latest - value(window weeks ago)`` over a weekly cadence.
+
+    Used for "TGA NET CHANGE 4W" style indicators that need a 4-week
+    rolling diff. Returns ``None`` when there are fewer than ``window + 1``
+    valid weekly points.
+    """
+    if window < 1:
+        return None
+    cleaned: list[tuple[datetime, Decimal]] = []
+    for ts, value in points:
+        if ts is None or value is None:
+            continue
+        if isinstance(value, str) and value.strip() in {"", "."}:
+            continue
+        try:
+            numeric = Decimal(str(value).strip()) if isinstance(value, str) else Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            continue
+        if not numeric.is_finite():
+            continue
+        cleaned.append((ts, numeric))
+    cleaned.sort(key=lambda item: item[0])
+    if len(cleaned) <= window:
+        return None
+    latest_ts, latest_value = cleaned[-1]
+    baseline_value = cleaned[-(window + 1)][1]
+    return latest_value - baseline_value, latest_ts

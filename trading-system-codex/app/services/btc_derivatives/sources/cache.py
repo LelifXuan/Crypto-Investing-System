@@ -81,7 +81,15 @@ class LiveSourceCache:
     def append_daily(self, point: dict[str, Any]) -> list[dict[str, Any]]:
         history = self._read(self.history_path, [])
         day = str(point.get("timestamp", ""))[:10]
-        history = [item for item in history if str(item.get("timestamp", ""))[:10] != day]
+        series_key = str(point.get("series_key") or "")
+        history = [
+            item
+            for item in history
+            if not (
+                str(item.get("timestamp", ""))[:10] == day
+                and str(item.get("series_key") or "") == series_key
+            )
+        ]
         history.append(point)
         history.sort(key=lambda item: str(item.get("timestamp", "")))
         history = history[-400:]

@@ -8,7 +8,7 @@ from typing import Any, Mapping
 
 from app.core.paths import app_paths
 
-DEFAULT_GOLDHUB_DIR = app_paths.repo_root / "data" / "goldhub"
+DEFAULT_GOLDHUB_DIR = app_paths.resource_root / "data" / "goldhub"
 
 CATEGORY_PATTERNS = {
     "central_bank": ("central_bank", "reserve"),

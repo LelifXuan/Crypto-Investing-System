@@ -39,7 +39,6 @@ python scripts/tasks.py portable-preflight
 - 嵌入式 Python 运行时：`runtime_env/`
 - 应用源码和配置
 - `TradingSystemLauncher.exe`
-- `start_portable.bat`
 - `portable.env.example`
 - `README_PORTABLE.md`
 - `portable_runtime.lock.json`
@@ -60,7 +59,7 @@ python scripts/tasks.py portable-preflight
 - 每个功能域独立提交，例如 `[macro]`、`[frontend]`、`[network]`、`[release]`。
 - 不提交 `.db`、`.log`、cache、runtime 用户数据。
 - 不提交 API key 或 secret。
-- 发布前确认 `TradingSystemLauncher.exe` 存在；若无法构建 launcher，必须在发布说明中标注 `start_portable.bat` 为官方 fallback。
+- 发布前确认 `TradingSystemLauncher.exe` 存在；若无法构建 launcher，需要在发布说明中标注该次发布不含 Windows 启动器（不支持 Windows 便携分发）。
 
 ## V1.5 发布前验收清单（监控总览改造）
 

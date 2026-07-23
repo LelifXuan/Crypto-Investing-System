@@ -1,4 +1,10 @@
-"""Playwright + Node integration tests for the knowledge page user guides."""
+"""Playwright + Node integration tests for the knowledge page user guides.
+
+TODO: page-guide cards were moved from /knowledge-page to per-page floating
+FABs (see app/static/ui/pageGuideFab.js, mounted on /monitoring-overview,
+/ai-strategy, /btc-derivatives). The tests below assert the old in-page
+section. Skip them until rewritten as FAB end-to-end tests.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+pytestmark = pytest.mark.skip(
+    reason="page-guide cards moved to per-page FAB; rewrite as FAB tests",
+)
+
+
 def _backend_up() -> bool:
     """Quick check that uvicorn is up on 8002 (skip test if not)."""
     import socket
@@ -19,7 +30,7 @@ def _backend_up() -> bool:
     try:
         s.connect(("127.0.0.1", 8002))
         return True
-    except (socket.error, socket.timeout):
+    except (socket.error, socket.socket.timeout):
         return False
     finally:
         s.close()

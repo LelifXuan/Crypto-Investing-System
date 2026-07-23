@@ -13,12 +13,21 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPTS_DIR.parent
-RUNTIME_ROOT = PROJECT_ROOT.parent / "runtime_dev" / "source_runtime"
+# Resolve runtime root via the canonical app paths module so this script
+# stays in sync with the env-driven APP_RUNTIME_ROOT layout (portable vs
+# source). Historically the source-mode runtime lived under
+# `../runtime_dev/source_runtime`, but that location was dropped in favour
+# of an in-repo `runtime/` folder.
+sys.path.insert(0, str(PROJECT_ROOT))
+from app.core.paths import app_paths  # noqa: E402
+
+RUNTIME_ROOT = app_paths.runtime_root
 DB_PATH = RUNTIME_ROOT / "data" / "trading_system.db"
 BACKUP_DIR = RUNTIME_ROOT / "data" / "backups"
 

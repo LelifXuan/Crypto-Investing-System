@@ -19,6 +19,7 @@ const HIDDEN_KNOWLEDGE_TAGS = new Set([
 ]);
 
 let isMounted = false;
+let hashListenerInstalled = false;
 let searchTimer = null;
 
 function visibleKnowledgeTags(item) {
@@ -424,11 +425,14 @@ function renderKnowledgeLayout() {
 }
 
 export async function renderKnowledge() {
-  if (!isMounted) {
+  const hasKnowledgeRoot = Boolean(document.getElementById("knowledge-top"));
+  if (!isMounted || !hasKnowledgeRoot) {
     renderKnowledgeLayout();
     isMounted = true;
-    // First mount: install the hashchange listener exactly once.
-    window.addEventListener("hashchange", focusHashTarget);
+    if (!hashListenerInstalled) {
+      window.addEventListener("hashchange", focusHashTarget);
+      hashListenerInstalled = true;
+    }
   } else {
     updateKnowledgeContent();
   }

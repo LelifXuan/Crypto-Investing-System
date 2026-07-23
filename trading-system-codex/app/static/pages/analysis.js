@@ -5,7 +5,9 @@ let getWindowProfile;
 let persistState;
 let emptyState;
 let errorState;
+let escapeHtml;
 let formatDateTime;
+let formatChartTime;
 let formatNumber;
 let impactChip;
 let knowledgeTooltip;
@@ -20,24 +22,29 @@ let lineDataset;
 let renderChart;
 let sanitizeChartSeries;
 let scheduleIdlePrecompute;
+let rangeStateLabel;
+let activeRangeClassification = null;
 
 async function ensureDeps() {
   if (api && appState && renderChart) {
     return;
   }
   const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
-  const [apiModule, stateModule, domModule, chartModule, precomputeModule] = await Promise.all([
+  const [apiModule, stateModule, domModule, chartModule, precomputeModule, rangeModule] = await Promise.all([
     import(`../core/api.js${assetVersion}`),
     import(`../core/state.js${assetVersion}`),
     import(`../core/dom.js${assetVersion}`),
     import(`../ui/charts.js${assetVersion}`),
     import(`../core/precompute.js${assetVersion}`),
+    import(`../core/rangeState.js${assetVersion}`),
   ]);
   ({ api, invalidateCache } = apiModule);
   ({ appState, getWindowProfile, persistState } = stateModule);
   ({
     emptyState,
     errorState,
+    escapeHtml,
+    formatChartTime,
     formatDateTime,
     formatNumber,
     impactChip,
@@ -56,6 +63,7 @@ async function ensureDeps() {
     sanitizeChartSeries,
   } = chartModule);
   ({ scheduleIdlePrecompute } = precomputeModule);
+  ({ rangeStateLabel } = rangeModule);
 }
 
 const MIN_ANALYSIS_CANDLES = {
@@ -342,11 +350,10 @@ function bbands(values, period = 20, multiplier = 2) {
 
 function buildLabels(candles, timeframe) {
   return candles.map((item) => {
-    const ts = new Date(item.ts_open);
     if (timeframe === "1h" || timeframe === "4h") {
-      return `${ts.getMonth() + 1}/${ts.getDate()} ${String(ts.getHours()).padStart(2, "0")}:00`;
+      return formatChartTime(item.ts_open);
     }
-    return `${ts.getFullYear()}/${ts.getMonth() + 1}/${ts.getDate()}`;
+    return formatChartTime(item.ts_open, true).slice(0, 10);
   });
 }
 
@@ -975,9 +982,12 @@ function renderAnalysisStatus(message, tone = "neutral", mode = null, secondaryS
 
 function renderModeBadge(mode) {
   if (mode === "range") {
+    const label = rangeStateLabel?.(activeRangeClassification, "中性震荡") || "中性震荡";
+    const basis = activeRangeClassification?.range_basis?.[0] || "区间结构内部方向仍需确认";
     return `
       <div class="status-mode-badge range-mode">
-        <span>📊 区间震荡模式</span>
+        <span>📊 ${escapeHtml(label)}</span>
+        <small>${escapeHtml(basis)}</small>
         <a class="status-mode-link" href="/structure-page">查看形态结构页 →</a>
       </div>
     `;
@@ -1027,6 +1037,7 @@ async function loadAll(force = false, token = activeRenderToken) {
   let liveFetched = false;
   let bundleMode = null;
   let bundleSecondary = null;
+  activeRangeClassification = null;
   renderAnalysisStatus("正在读取缓存", "loading", bundleMode, bundleSecondary);
   setRefreshBusy(true, force ? "计算中" : "读取中");
   if (force) {
@@ -1043,6 +1054,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       { force, signal: abortController.signal },
     );
     bundleMode = bundle?.mode ?? null;
+    activeRangeClassification = bundle || null;
     bundleSecondary = bundle?.secondary_indicator_series || null;
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
@@ -1057,7 +1069,9 @@ async function loadAll(force = false, token = activeRenderToken) {
     }
     let candlesPayload = { candles: bundle.candles || [] };
     let markPayload = bundle.mark || null;
-    void enhanceLatestMark(token, { preferLive: force });
+    // The analysis bundle may be cached, but the headline mark must refresh on entry.
+    // Run this independently so a cold load does not wait for the five-minute timer.
+    void enhanceLatestMark(token, { preferLive: true });
     let allCandles = normalizeOhlcCandles(candlesPayload.candles || []);
     const shouldAutoFetch = allCandles.length < minCandles && !autoFetchKeys.has(fetchKey);
     if (force || shouldAutoFetch) {
@@ -1228,12 +1242,13 @@ async function loadAll(force = false, token = activeRenderToken) {
         data: {
           labels,
           datasets: [
-            lineDataset("收盘价", analysis.closes, "#16232b", { borderWidth: 3.1 }),
-            lineDataset("EMA30", analysis.ema30, "#0f766e", { borderWidth: 2.5 }),
-            lineDataset("EMA60", analysis.ema60, "#2563eb", { borderDash: [8, 6], borderWidth: 2.15 }),
-            lineDataset("EMA120", analysis.ema120, "#c17827", { borderDash: [3, 5], borderWidth: 2.05 }),
-            lineDataset("VWAP50", analysis.vwapValues.vwap50, "rgba(126,58,242,0.74)", { borderDash: [5, 5], borderWidth: 1.9 }),
-            lineDataset("VWAP100", analysis.vwapValues.vwap100, "rgba(14,116,144,0.7)", { borderDash: [2, 6], borderWidth: 1.8 }),
+            lineDataset("收盘价", analysis.closes, "#2c3849", { borderWidth: 2.4 }),
+            // Short EMA = bright + thin; Long EMA = deep + thick (stable anchor).
+            lineDataset("EMA30", analysis.ema30, "#dcbe88", { borderWidth: 1.6 }),
+            lineDataset("EMA60", analysis.ema60, "#a89569", { borderWidth: 2.0 }),
+            lineDataset("EMA120", analysis.ema120, "#5a7d8e", { borderWidth: 2.6 }),
+            lineDataset("VWAP50", analysis.vwapValues.vwap50, "#a594c2", { borderDash: [2, 4], borderWidth: 1.5 }),
+            lineDataset("VWAP100", analysis.vwapValues.vwap100, "#5d4e7e", { borderDash: [10, 5], borderWidth: 2.4 }),
           ],
         },
       }],
@@ -1243,11 +1258,12 @@ async function loadAll(force = false, token = activeRenderToken) {
         data: {
           labels,
           datasets: [
-            lineDataset("EMA12", analysis.ema12, "#d97706", { borderWidth: 2.3 }),
-            lineDataset("快轨", analysis.vegasFastLow, "rgba(15,118,110,0.92)", { borderWidth: 2.15 }),
-            lineDataset("快轨", analysis.vegasFastHigh, "rgba(15,118,110,0.92)", { fill: "-1", backgroundColor: "rgba(15,118,110,0.1)", borderWidth: 2.15 }),
-            lineDataset("慢轨", analysis.vegasSlowLow, "rgba(195,90,29,0.88)", { borderDash: [7, 5], borderWidth: 2.05 }),
-            lineDataset("慢轨", analysis.vegasSlowHigh, "rgba(195,90,29,0.88)", { fill: "-1", backgroundColor: "rgba(195,90,29,0.08)", borderDash: [7, 5], borderWidth: 2.05 }),
+            // EMA12 = bright + thin (active 12-period crossover signal).
+            lineDataset("EMA12", analysis.ema12, "#dcb09a", { borderWidth: 1.6 }),
+            lineDataset("快轨", analysis.vegasFastLow, "#6e9b94", { borderWidth: 2.6 }),
+            lineDataset("快轨", analysis.vegasFastHigh, "#6e9b94", { fill: "-1", backgroundColor: "rgba(110,155,148,0.12)", borderWidth: 2.6 }),
+            lineDataset("慢轨", analysis.vegasSlowLow, "#5d4e7e", { borderDash: [8, 5], borderWidth: 2.6 }),
+            lineDataset("慢轨", analysis.vegasSlowHigh, "#5d4e7e", { fill: "-1", backgroundColor: "rgba(93,78,126,0.10)", borderDash: [8, 5], borderWidth: 2.6 }),
           ],
         },
         options: {
@@ -1263,9 +1279,9 @@ async function loadAll(force = false, token = activeRenderToken) {
           labels,
           datasets: [
             candleDataset("K 线", candles, { order: 0 }),
-            lineDataset("上轨", analysis.boll.upper, "rgba(193,120,39,0.92)", { order: 1, borderDash: [10, 6], borderWidth: 2.1 }),
-            lineDataset("中轨", analysis.boll.middle, "rgba(89,104,113,0.8)", { order: 1, borderDash: [4, 6], borderWidth: 1.8 }),
-            lineDataset("下轨", analysis.boll.lower, "rgba(37,99,235,0.88)", { order: 1, borderDash: [10, 6], borderWidth: 2.1 }),
+            lineDataset("上轨", analysis.boll.upper, "#a896c8", { order: 1, borderDash: [2, 4], borderWidth: 1.4 }),
+            lineDataset("中轨", analysis.boll.middle, "#5a6a7c", { order: 1, borderDash: [6, 4], borderWidth: 2.4 }),
+            lineDataset("下轨", analysis.boll.lower, "#a896c8", { order: 1, borderDash: [2, 4], borderWidth: 1.4 }),
           ],
         },
         options: {
@@ -1298,12 +1314,27 @@ async function loadAll(force = false, token = activeRenderToken) {
       ["analysis-rsi", document.getElementById("analysis-rsi-chart"), {
         type: "line",
         axisProfile: "oscillator",
-        data: { labels, datasets: [lineDataset("RSI", analysis.rsiValues, "#c35a1d", { borderWidth: 2.25 })] },
+        data: {
+          labels,
+          datasets: [
+            lineDataset("RSI", analysis.rsiValues, "#a896c8", { borderWidth: 2.0 }),
+          ],
+        },
+        options: {
+          plugins: {
+            annotation: {
+              annotations: {
+                rsi70: { type: "line", yMin: 70, yMax: 70, borderColor: "#94a3b8", borderWidth: 1, borderDash: [4, 4] },
+                rsi30: { type: "line", yMin: 30, yMax: 30, borderColor: "#94a3b8", borderWidth: 1, borderDash: [4, 4] },
+              },
+            },
+          },
+        },
       }],
       ["analysis-volume", document.getElementById("analysis-volume-chart"), {
         type: "bar",
         axisProfile: "volume",
-        data: { labels, datasets: [barDataset("成交量", analysis.volumes, "rgba(183,121,31,0.72)")] },
+        data: { labels, datasets: [barDataset("成交量", analysis.volumes, "rgba(184,146,74,0.7)")] },
       }],
       ["analysis-macd", document.getElementById("analysis-macd-chart"), {
         type: "bar",
@@ -1311,9 +1342,9 @@ async function loadAll(force = false, token = activeRenderToken) {
         data: {
           labels,
           datasets: [
-            barDataset("柱状图", analysis.macdValues.hist, analysis.macdValues.hist.map((value) => value >= 0 ? "rgba(15,118,110,0.45)" : "rgba(180,83,9,0.45)")),
-            lineDataset("MACD", analysis.macdValues.line, "#0f766e", { borderWidth: 2.25 }),
-            lineDataset("信号线", analysis.macdValues.signal, "#2563eb", { borderDash: [7, 5], borderWidth: 2.05 }),
+            barDataset("柱状图", analysis.macdValues.hist, analysis.macdValues.hist.map((value) => value >= 0 ? "rgba(124,155,138,0.55)" : "rgba(194,114,90,0.55)")),
+            lineDataset("MACD", analysis.macdValues.line, "#6e9b94", { borderWidth: 2.0 }),
+            lineDataset("信号线", analysis.macdValues.signal, "#b8924a", { borderDash: [7, 4], borderWidth: 1.8 }),
           ],
         },
       }],

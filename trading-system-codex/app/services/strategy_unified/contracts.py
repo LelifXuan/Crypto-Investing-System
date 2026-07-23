@@ -28,7 +28,7 @@ TIMEFRAME_SPECS: tuple[TimeframeSpec, ...] = (
 
 STRATEGIC_WEIGHTS = {"1M": 0.45, "1w": 0.55}
 TACTICAL_WEIGHTS = {"1d": 0.62, "4h": 0.38}
-EXECUTION_WEIGHTS = {"4h": 0.48, "1h": 0.37, "15m": 0.15}
+EXECUTION_WEIGHTS = {"1h": 0.7, "15m": 0.3}
 LONG_THRESHOLD = 58.0
 SHORT_THRESHOLD = 58.0
 MIN_DIRECTION_GAP = 8.0
@@ -40,7 +40,7 @@ UNIFIED_LABELS = {
     "STRATEGIC_SHORT_TACTICAL_SHORT": "顺周期空头",
     "STRATEGIC_SHORT_TACTICAL_LONG": "空头趋势中的战术反弹",
     "STRATEGIC_ACCUMULATION_TACTICAL_DISTRIBUTION": "战略吸筹区内的战术派发",
-    "RANGE_NO_EDGE": "多周期震荡无优势",
+    "RANGE_NO_EDGE": "多周期中性震荡",
     "EVENT_LOCKED": "事件锁定",
     "DATA_DEGRADED": "数据质量不足",
     "RISK_OFF": "风险关闭",
@@ -100,8 +100,14 @@ class TimeframeNode:
     key_support: float | None
     key_resistance: float | None
     invalidation: float | None
+    timeframe_state: str = "DATA_UNAVAILABLE"
+    range_state: str = "NONE"
+    range_label: str = ""
+    range_score: float = 0.0
+    range_basis: list[str] = field(default_factory=list)
+    range_conflicts: list[str] = field(default_factory=list)
     verdict_code: str = "RANGE_NO_EDGE"
-    verdict_label: str = "多周期震荡无优势"
+    verdict_label: str = "多周期中性震荡"
     evidence: list[str] = field(default_factory=list)
     source_modules: list[str] = field(default_factory=list)
     freshness: str = "unknown"
@@ -185,6 +191,38 @@ class TradePlan:
     evidence: list[str] = field(default_factory=list)
     trigger: dict[str, Any] = field(default_factory=dict)
     risk_reward: dict[str, Any] = field(default_factory=dict)
+    recommended_leverage: float = 0.0
+    max_leverage: float = 0.0
+    leverage_status: str = "blocked"
+    leverage_reason: str = "当前计划不建议使用杠杆。"
+    order_type: str = "NONE"
+    order_status: str = "NO_DIRECTION"
+    execution_price: float | None = None
+    limit_price: float | None = None
+    conflict_timeframe: str = ""
+    confirmation_timeframe: str = ""
+    filter_timeframe: str = ""
+    price_condition: str = ""
+    confirmation_condition: str = ""
+    activation_conditions: list[str] = field(default_factory=list)
+    price_protection: dict[str, Any] = field(default_factory=dict)
+    valid_until: str = ""
+    valid_until_iso: str = ""
+    # V1.7.x: Stale-plan awareness copy of the same fields on TradeDecision.
+    # Surface the same distance / stale info on the per-plan row so the
+    # execution plan table can show "距离触发 +N%" without recomputing.
+    plan_distance_pct: float = 0.0
+    plan_stale_score: int = 0
+    plan_stale_reason: str = ""
+    planned_leverage: float = 0.0
+    trade_timeframe: str = "4h"
+    direction_timeframes: list[str] = field(default_factory=lambda: ["1d", "4h"])
+    execution_timeframes: list[str] = field(default_factory=lambda: ["1h", "15m"])
+    lifecycle_state: str = "SETUP_DETECTED"
+    activated_at: str = ""
+    invalidated_at: str = ""
+    invalidation_reason: str = ""
+    levels_active: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)

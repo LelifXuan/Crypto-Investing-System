@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
+from app.core.paths import app_paths
 from app.schemas.market import MacroOverviewIndicatorRead
 from app.services.macro.indicator_key_aliases import canonical_macro_key
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY_PATH = (
-    PROJECT_ROOT / "app" / "monitoring" / "configs" / "macro_scoring_registry.v1.json"
+    app_paths.resource_root
+    / "app"
+    / "monitoring"
+    / "configs"
+    / "macro_scoring_registry.v1.json"
 )
 
 

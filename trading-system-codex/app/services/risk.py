@@ -5,8 +5,6 @@ from decimal import Decimal
 
 from app.core.decimal_utils import DECIMAL_ZERO
 from app.quant.indicators import atr_wilder_series
-from app.services.execution.liquidity import LiquidityAssessment
-from app.services.portfolio.rotation import RotationAssessment
 
 
 @dataclass(slots=True)
@@ -24,8 +22,6 @@ class RiskInput:
     current_total_exposure: Decimal = DECIMAL_ZERO
     liquidation_price: Decimal | None = None
     data_quality_ok: bool = True
-    rotation_assessment: RotationAssessment | None = None
-    liquidity_assessment: LiquidityAssessment | None = None
     highs: list[Decimal] = field(default_factory=list)
     lows: list[Decimal] = field(default_factory=list)
     closes: list[Decimal] = field(default_factory=list)
@@ -94,17 +90,6 @@ class RiskEngine:
         if not payload.data_quality_ok:
             pause_trading = True
             reasons.append("数据质量不足，暂停交易。")
-        if payload.rotation_assessment and payload.rotation_assessment.relative_strength < 0:
-            reduce_size = True
-            reasons.append("轮动强度偏弱，需降低仓位。")
-        if payload.liquidity_assessment:
-            if not payload.liquidity_assessment.min_liquidity_ok:
-                pause_trading = True
-                reasons.append("市场流动性不足，暂停交易。")
-            elif payload.liquidity_assessment.max_executable_size < recommended:
-                reduce_size = True
-                recommended = payload.liquidity_assessment.max_executable_size
-                reasons.append("市场可执行规模不足，已按市深限制仓位。")
 
         allowed_to_trade = not pause_trading and recommended > DECIMAL_ZERO
         if not reasons:

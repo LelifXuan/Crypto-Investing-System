@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from app.core.paths import app_paths
 
-MONITORING_DIR = Path(__file__).resolve().parent
+MONITORING_DIR = app_paths.resource_root / "app" / "monitoring"
 CONFIG_DIR = MONITORING_DIR / "configs"

@@ -39,3 +39,14 @@ class StrategyUnifiedRead(BaseModel):
         default="idle",
         description="Background prewarm state: 'idle' | 'enqueued' | 'running' | 'ready'.",
     )
+    market_decision_snapshot: dict[str, Any] = Field(default_factory=dict)
+    price_as_of: datetime | str | None = None
+    price_source: str = ""
+    strategy_as_of: datetime | str | None = None
+    active_model_version: str = "legacy-cross-horizon-v2"
+    candidate_model_version: str = "auditable-rules-v3-shadow"
+    shadow_evaluation: dict[str, Any] = Field(default_factory=dict)
+    cross_validation: dict[str, Any] = Field(default_factory=dict)
+    signal_coverage: list[dict[str, Any]] = Field(default_factory=list)
+    recompute_status: str = "complete"
+    trade_decision: dict[str, Any] = Field(default_factory=dict)

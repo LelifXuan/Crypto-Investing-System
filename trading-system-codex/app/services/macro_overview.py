@@ -4,9 +4,9 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any
 
+from app.core.paths import app_paths
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import (
     MacroOverviewEventRead,
@@ -20,7 +20,7 @@ from app.services.macro.provider_registry import MacroProviderRegistry
 from app.services.macro.scoring_engine import DEFAULT_MACRO_SCORING_ENGINE
 
 UTC = timezone.utc
-CONFIG_DIR = Path(__file__).resolve().parents[1] / "monitoring" / "configs"
+CONFIG_DIR = app_paths.resource_root / "app" / "monitoring" / "configs"
 INDICATOR_MAP_PATH = CONFIG_DIR / "macro_indicator_api_map.v1.json"
 
 INVALID_TEXT_VALUES = {

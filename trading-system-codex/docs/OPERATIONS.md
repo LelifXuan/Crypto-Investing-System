@@ -21,8 +21,6 @@ python scripts/tasks.py dev-local
 
 # 便携版启动
 .\TradingSystemLauncher.exe
-# 或
-.\start_portable.bat
 ```
 
 ## 健康检查
@@ -60,7 +58,7 @@ python scripts/tasks.py check
 | 模式 | 端口 | 命令 |
 | --- | --- | --- |
 | 源码开发 | 8002 | `python scripts/tasks.py dev-local` |
-| 通用/便携 | 8000 | `python scripts/tasks.py dev` 或 `start_portable.bat` |
+| 通用/便携 | 8000 | `python scripts/tasks.py dev` 或 `TradingSystemLauncher.exe` |
 
 ## Worker 配置
 

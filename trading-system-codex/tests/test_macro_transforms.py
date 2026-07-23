@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.services.macro.transforms import (
+    compute_mom_change,
     compute_mom_pct,
     compute_yoy_pct,
 )
@@ -178,3 +179,29 @@ class TestComputeMomPct:
             (_month(2026, 4), Decimal("0")),
         ]
         assert compute_mom_pct(points) is None
+
+
+class TestComputeMomChange:
+    def test_monthly_level_change(self):
+        points = [
+            (_month(2026, 4), Decimal("159500")),
+            (_month(2026, 5), Decimal("159650")),
+        ]
+        result = compute_mom_change(points)
+        assert result is not None
+        value, ts = result
+        assert value == Decimal("150")
+        assert ts == _month(2026, 5)
+
+    def test_zero_latest_is_valid(self):
+        points = [
+            (_month(2026, 4), Decimal("10")),
+            (_month(2026, 5), Decimal("0")),
+        ]
+        result = compute_mom_change(points)
+        assert result is not None
+        value, _ = result
+        assert value == Decimal("-10")
+
+    def test_insufficient_points_returns_none(self):
+        assert compute_mom_change([(_month(2026, 5), Decimal("159650"))]) is None

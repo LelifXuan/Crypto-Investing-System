@@ -112,6 +112,19 @@ def test_page_exposes_window_maturity_and_strike_controls() -> None:
     assert "strikeRangePct" in api
 
 
+def test_page_renders_standard_expiry_matrix_and_disables_fixed_selector_in_constant_mode() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    styles = STYLES.read_text(encoding="utf-8")
+
+    assert "function renderMaturityLadder()" in source
+    assert "标准到期日期限矩阵" in source
+    assert "standard_expiries" in source
+    assert 'filters.expiryMode === "fixed" ? "" : "disabled"' in source
+    assert "optionDirectionLabel" in source
+    assert ".btc-maturity-table" in styles
+    assert "非标准到期日" not in source
+
+
 def test_option_chain_and_raw_tables_are_in_closed_details_panel() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
@@ -120,6 +133,17 @@ def test_option_chain_and_raw_tables_are_in_closed_details_panel() -> None:
     details = source[source.index('<details class="btc-details-drawer">') :]
     assert "renderOptionChain()" in details
     assert "renderFuturesTable()" in details
+
+
+def test_live_source_provider_cards_are_collapsed_by_default() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert '<details class="btc-source-details">' in source
+    assert '<details class="btc-source-details" open>' not in source
+    details = source[source.index('<details class="btc-source-details">') :]
+    assert "btc-provider-grid" in details
+    assert "btc-quality-details" in details
+    assert "一键探测数据源" in source[: source.index('<details class="btc-source-details">')]
 
 
 def test_filter_request_abort_is_not_reported_as_page_error() -> None:
@@ -152,6 +176,29 @@ def test_chart_styles_and_risk_mode_are_rendered_without_api_reload() -> None:
     assert "updateRiskChartHeaderInsight" in source
 
 
+def test_funding_z_uses_solid_positive_and_dashed_negative_segments() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "export function expandFundingZeroCrossings" in source
+    assert "export function splitFundingZSeries" in source
+    assert 'dataset.label === "Funding Z"' in source
+    assert "borderDash: [6, 4]" in source
+    assert "fundingZLegendDuplicate" in source
+    assert "expanded.datasets.flatMap((dataset, index)" in source
+    assert "fundingZSegmentBorderDash" not in source
+
+
+def test_single_point_history_charts_show_centered_markers() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "function finiteSeriesPointCount(values)" in source
+    assert 'finiteSeriesPointCount(dataset.data) === 1' in source
+    assert "extra.pointRadius = Math.max(Number(extra.pointRadius) || 0, 4)" in source
+    assert "extra.pointHoverRadius = Math.max(Number(extra.pointHoverRadius) || 0, 6)" in source
+    assert "expanded.labels.length === 1" in source
+    assert "{ x: { offset: true } }" in source
+
+
 def test_page_safety_copy_is_explicit_and_forbidden_actions_are_absent() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
@@ -174,6 +221,32 @@ def test_chart_header_uses_interpretation_not_timestamp_metadata() -> None:
     assert "btc-chart-insight" in source
     assert "metadata.updated_at" not in source
     assert "displayState(metadata.quality)" not in source
+
+
+def test_empty_charts_are_compact_and_do_not_claim_a_direction() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    styles = Path("app/static/styles.css").read_text(encoding="utf-8")
+    judgement = Path("app/static/core/judgement.js").read_text(encoding="utf-8")
+
+    assert 'hasData ? chartInsight(chartId) : "数据不足"' in source
+    assert '${hasData ? "" : " is-empty"}' in source
+    assert ".btc-chart-card.is-empty .btc-chart-wrap" in styles
+    assert "height: 120px" in styles
+    assert 'STABLE: "持仓稳定"' in judgement
+    assert 'stateKey === "NEUTRAL" && judgement.axis === "crowding"' in judgement
+    assert 'judgement.js?v=semantic-v3' in source
+    assert ".btc-indicator-semantics .btc-decision-card" in styles
+
+
+def test_chart_x_axis_keeps_date_only_labels_as_dates_without_fake_time() -> None:
+    charts = Path("app/static/ui/charts.js").read_text(encoding="utf-8")
+
+    assert "isDateOnlyLabel" in charts
+    assert "return `${month}-${day}`;" in charts
+    date_only_branch = charts[
+        charts.index("function formatXAxisTick") : charts.index("const numeric")
+    ]
+    assert "08:00" not in date_only_branch
 
 
 def test_chart_header_uses_short_labels_not_evidence_layer_sentences() -> None:

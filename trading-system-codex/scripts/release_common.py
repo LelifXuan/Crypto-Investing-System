@@ -109,12 +109,6 @@ RESIDUE_SUFFIXES = {
     ".dll",
 }
 
-# Path used as the single source of portable exclusion rules, consumed by
-# both Python (verify_portable_release.py) and PowerShell
-# (sync_portable_local.ps1) so all portable tooling agrees on what must
-# never ship.
-PORTABLE_EXCLUDES_JSON = DIST_DIR / "portable_excludes.json"
-
 SECRET_KEY_PATTERN = re.compile(
     r"(?i)(secret|password|passwd|token|api[_-]?key|access[_-]?key|private[_-]?key|jwt)"
 )
@@ -219,40 +213,3 @@ def release_residue(root: Path = PROJECT_ROOT) -> list[Path]:
     return findings
 
 
-def dump_portable_excludes(target: Path = PORTABLE_EXCLUDES_JSON) -> Path:
-    """Serialise the portable exclusion tables to JSON.
-
-    Other portable tooling (the strict verifier, the PowerShell sync
-    script) reads the same file so the truth lives in exactly one place.
-    Returns the path that was written.
-    """
-
-    payload: dict[str, Any] = {
-        "schema_version": "portable-excludes-v1",
-        "generated_at": datetime.now(UTC).isoformat(),
-        "excluded_any_dirs": sorted(EXCLUDED_ANY_DIRS),
-        "excluded_top_level_dirs": sorted(EXCLUDED_TOP_LEVEL_DIRS),
-        "excluded_dirs": sorted(EXCLUDED_DIRS),
-        "excluded_files": sorted(EXCLUDED_FILES),
-        "excluded_suffixes": sorted(EXCLUDED_SUFFIXES),
-        "residue_dirs": sorted(RESIDUE_DIRS),
-        "residue_files": sorted(RESIDUE_FILES),
-        "residue_suffixes": sorted(RESIDUE_SUFFIXES),
-    }
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return target
-
-
-def load_portable_excludes(source: Path = PORTABLE_EXCLUDES_JSON) -> dict[str, list[str]]:
-    """Read a previously dumped portable_excludes.json.
-
-    Returns the parsed payload. Callers that need to assert existence should
-    call :func:`dump_portable_excludes` first to guarantee the file is on
-    disk before reading.
-    """
-
-    return json.loads(source.read_text(encoding="utf-8"))

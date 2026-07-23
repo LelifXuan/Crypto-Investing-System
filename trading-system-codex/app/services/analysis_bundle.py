@@ -20,6 +20,7 @@ from app.services.page_snapshot_cache import (
     cache_status,
     expires_at_for_page,
 )
+from app.services.range_regime import RangeClassification, classify_range
 from app.services.strategy_signal.config_loader import detect_asset_class, detect_mode
 
 UTC = timezone.utc
@@ -38,7 +39,7 @@ def _extract_latest_adx(adx_series) -> float | None:
     return None
 
 
-def _compute_payload_mode(payload: dict) -> tuple[str, str]:
+def _compute_payload_mode(payload: dict) -> tuple[str, str, RangeClassification]:
     """Derive ``mode`` / ``asset_class`` from a freshly built payload.
 
     Used by both :meth:`get_bundle` (read path) and :meth:`refresh_bundle`
@@ -70,7 +71,22 @@ def _compute_payload_mode(payload: dict) -> tuple[str, str]:
         asset_class=asset_class,
         timeframe=timeframe,
     )
-    return mode, asset_class
+    if structure_overall.get("range_state") in {
+        "UPWARD_RANGE", "DOWNWARD_RANGE", "NEUTRAL_RANGE"
+    }:
+        range_classification = RangeClassification(
+            range_state=str(structure_overall.get("range_state")),
+            range_label=str(structure_overall.get("range_label") or ""),
+            range_score=float(structure_overall.get("range_score") or 0.0),
+            range_basis=list(structure_overall.get("range_basis") or []),
+            range_conflicts=list(structure_overall.get("range_conflicts") or []),
+        )
+    else:
+        range_classification = classify_range(
+            regime=mode,
+            structure_score=final_decision.get("direction_score"),
+        )
+    return mode, asset_class, range_classification
 
 
 WINDOW_PROFILES = {
@@ -136,7 +152,7 @@ class AnalysisBundleService:
         mode_payload = dict(payload)
         mode_payload.setdefault("instrument_id", instrument_id)
         mode_payload.setdefault("timeframe", timeframe)
-        mode, asset_class = _compute_payload_mode(mode_payload)
+        mode, asset_class, range_classification = _compute_payload_mode(mode_payload)
         return AnalysisBundleRead.model_validate(
             {
                 "instrument_id": instrument_id,
@@ -150,6 +166,7 @@ class AnalysisBundleService:
                 "final_decision": payload.get("final_decision", {}),
                 "mode": mode,
                 "asset_class": asset_class,
+                **range_classification.as_dict(),
                 "status": "ready" if status == "fresh" else status,
                 "cache_state": status,
                 "freshness_state": freshness_state,
@@ -253,11 +270,12 @@ class AnalysisBundleService:
             "secondary_indicator_series": secondary_indicator_series,
             "final_decision": final_decision,
         }
-        mode, asset_class = _compute_payload_mode(
+        mode, asset_class, range_classification = _compute_payload_mode(
             {**payload, "instrument_id": instrument_id, "timeframe": normalized_timeframe}
         )
         payload["mode"] = mode
         payload["asset_class"] = asset_class
+        payload.update(range_classification.as_dict())
         cost_ms = int((time.perf_counter() - started) * 1000)
         cache = await self.repository.upsert_page_snapshot_cache(
             cache_key=analysis_cache_key(instrument_id, normalized_timeframe, limit),
@@ -288,6 +306,7 @@ class AnalysisBundleService:
                 "final_decision": final_decision,
                 "mode": mode,
                 "asset_class": asset_class,
+                **range_classification.as_dict(),
                 "status": "ready",
                 "cache_state": "fresh",
                 "freshness_state": source_freshness(

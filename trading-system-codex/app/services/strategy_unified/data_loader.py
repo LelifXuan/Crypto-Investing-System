@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Mapping
 
 from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for_cache
@@ -22,30 +23,43 @@ class UnifiedDataLoader:
         contexts: dict[str, Any] = {}
         bundles: dict[str, dict[str, Any]] = {}
         resolved_states: list[str] = []
+        # The loader shares one MarketRepository/AsyncSession across all
+        # horizon reads. SQLAlchemy AsyncSession is not safe for concurrent
+        # flushes; keep this serial until each horizon owns an independent
+        # session.
+        semaphore = asyncio.Semaphore(1)
 
-        for spec in TIMEFRAME_SPECS:
+        async def load_spec(spec) -> tuple[str, Any, dict[str, Any], str]:
             cache_tf = normalize_timeframe_for_cache(spec.cache)
-            try:
-                contexts[spec.logical] = await self.context_builder.get_context(
+            async with semaphore:
+                try:
+                    context = await self.context_builder.get_context(
+                        instrument,
+                        cache_tf,
+                        cache_only=not force,
+                    )
+                except Exception as exc:
+                    context = {
+                        "timeframe": cache_tf,
+                        "error": str(exc),
+                        "cache_meta": {"cache_state": "missing"},
+                    }
+
+                bundle = await self._load_bundle(
                     instrument,
                     cache_tf,
-                    cache_only=not force,
+                    context,
+                    force=force,
                 )
-            except Exception as exc:
-                contexts[spec.logical] = {
-                    "timeframe": cache_tf,
-                    "error": str(exc),
-                    "cache_meta": {"cache_state": "missing"},
-                }
+            state = str(bundle.get("cache_state") or bundle.get("status") or "unknown")
+            return spec.logical, context, bundle, state
 
-            bundle = await self._load_bundle(
-                instrument,
-                cache_tf,
-                contexts[spec.logical],
-                force=force,
-            )
-            bundles[spec.logical] = bundle
-            resolved_states.append(str(bundle.get("cache_state") or bundle.get("status") or "unknown"))
+        for logical, context, bundle, state in await asyncio.gather(
+            *(load_spec(spec) for spec in TIMEFRAME_SPECS)
+        ):
+            contexts[logical] = context
+            bundles[logical] = bundle
+            resolved_states.append(state)
 
         return {
             "instrument_id": instrument,
@@ -74,6 +88,10 @@ class UnifiedDataLoader:
 
         if not force and not self._bundle_requires_compute(cached):
             return cached
+
+        if not force:
+            fallback = self._context_fallback_bundle(instrument, timeframe, context)
+            return fallback if fallback is not None else cached
 
         try:
             if hasattr(self.strategy_service, "build_bundle_uncached"):

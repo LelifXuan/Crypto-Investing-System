@@ -219,6 +219,7 @@ class IndicatorObservationRead(ORMModel):
     percentile_num: Decimal | None = None
     signal_state: str | None = None
     signal_score: Decimal | None = None
+    indicator_judgement: dict[str, Any] = Field(default_factory=dict)
     source_provider: str
     source_ref: str | None = None
     source_granularity: str | None = None
@@ -562,7 +563,7 @@ class MacroOverviewResponse(BaseModel):
     liquidity_score: int
     total_score: int = 0
     score_scale: str = "0 ~ 100"
-    score_band: str = "中性震荡"
+    score_band: str = "宏观中性"
     score_explanation: str = ""
     confidence: str = "low"
     data_completeness: dict[str, float] = Field(default_factory=dict)
@@ -608,6 +609,11 @@ class AnalysisBundleRead(BundleMetaRead):
     final_decision: dict = Field(default_factory=dict)
     mode: str | None = None
     asset_class: str | None = None
+    range_state: str = "NONE"
+    range_label: str = ""
+    range_score: float = 0.0
+    range_basis: list[str] = Field(default_factory=list)
+    range_conflicts: list[str] = Field(default_factory=list)
 
 
 class AlertsBundleRead(BundleMetaRead):

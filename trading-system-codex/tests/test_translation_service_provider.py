@@ -6,7 +6,7 @@ import pytest
 
 from app.core.config import settings
 from app.services.translation.providers.tencent import TencentTmtTranslationProvider
-from app.services.translation.service import MarketEventTranslationService
+from app.services.translation.service import MarketEventTranslationService, TranslationBundle
 
 
 def test_local_glossary_replaces_crypto_terms():
@@ -20,6 +20,28 @@ def test_local_glossary_replaces_crypto_terms():
 def test_translation_disabled_returns_skipped():
     service = MarketEventTranslationService(enabled=False)
     assert not service.enabled
+
+
+def test_build_payload_sanitizes_secret_leak_in_error():
+    """Regression: provider errors carrying API credentials must never reach DB payload_json."""
+    service = MarketEventTranslationService(enabled=True, provider="tencent_tmt")
+    bundle = TranslationBundle(
+        original_title="Hedera lending protocol",
+        original_summary="A second wallet borrowed",
+        translation_status="error",
+        provider="tencent_tmt",
+        error=(
+            "tencent auth failed: Credential=AKIDBKOF1jMqBRbcv496sRq10mT3fLuzbCgx/2026-07-12/tmt/tc3_request, "
+            "SecretKey=95sbFtOeqtjM2XoGbq4MXpz4zqeR3au0, Authorization=TC3-HMAC-SHA256 ..."
+        ),
+    )
+    payload = service.build_payload({}, bundle)
+    stored_error = payload.get("translation_error", "")
+    assert "AKID" not in stored_error
+    assert "95sbFtOeqtjM2XoGbq4MXpz4zqeR3au0" not in stored_error
+    assert "Credential=" not in stored_error
+    assert "Authorization" not in stored_error
+    assert stored_error == "translation_provider_error"
 
 
 class _FakeTencentResponse:

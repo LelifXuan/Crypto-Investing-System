@@ -36,37 +36,57 @@ MAIN_PAGE_PATHS = {
 }
 
 
-async def _enqueue_daily_page_prewarm() -> None:
-    instrument_id = "btc-usdt-perp"
-    plan = (
-        ("analysis", ["analysis"], ("1h", "4h", "1d")),
-        ("structure", ["structure"], ("1h", "4h", "1d")),
-        ("strategy", ["strategy"], ("4h", "1d")),
-        ("monitoring", ["monitoring"], ("1d",)),
-        ("macro", ["macro"], ("1d",)),
-        ("events", ["events"], ("1d",)),
-    )
-    for page, candidates, timeframes in plan:
-        for timeframe in timeframes:
-            await precompute_service.enqueue_hint(
-                PrecomputeHintRequest(
-                    current_page=page,
-                    instrument_id=instrument_id,
-                    timeframe=timeframe,
-                    reason="daily_first_page_access",
-                    visible=False,
-                    candidates=candidates,
-                    priority=4,
+STRATEGY_CRITICAL_WARMUP_PLAN = (
+    ("strategy", ["strategy_unified"], ("1d",)),
+    ("strategy", ["strategy", "market_context"], ("30d", "1w", "1d", "4h", "1h", "15m")),
+    ("analysis", ["analysis"], ("1w", "1d", "4h", "1h")),
+    ("structure", ["structure"], ("1w", "1d", "4h", "1h")),
+    ("monitoring", ["monitoring"], ("1d",)),
+    ("macro", ["macro"], ("1d",)),
+    ("events", ["events"], ("1d",)),
+)
+
+
+async def _enqueue_strategy_critical_warmup(
+    instrument_ids: list[str],
+    *,
+    reason: str,
+    priority: int,
+    initial_delay_seconds: float = 0.0,
+) -> None:
+    if initial_delay_seconds > 0:
+        await asyncio.sleep(initial_delay_seconds)
+    for target_instrument_id in instrument_ids:
+        for page, candidates, timeframes in STRATEGY_CRITICAL_WARMUP_PLAN:
+            for timeframe in timeframes:
+                await precompute_service.enqueue_hint(
+                    PrecomputeHintRequest(
+                        current_page=page,
+                        instrument_id=target_instrument_id,
+                        timeframe=timeframe,
+                        reason=reason,
+                        visible=False,
+                        candidates=list(candidates),
+                        priority=priority,
+                    )
                 )
-            )
     await precompute_service.enqueue_hint(
         PrecomputeHintRequest(
             current_page="btc-derivatives",
-            reason="daily_first_page_access",
+            reason=reason,
             visible=False,
             candidates=["btc_derivatives"],
-            priority=4,
+            priority=priority,
         )
+    )
+
+
+async def _enqueue_daily_page_prewarm() -> None:
+    await asyncio.sleep(5)
+    await _enqueue_strategy_critical_warmup(
+        ["btc-usdt-perp"],
+        reason="daily_first_page_access",
+        priority=4,
     )
 
 
@@ -181,39 +201,25 @@ async def lifespan(app: FastAPI):
     if settings.local_auto_bootstrap_enabled and warmup_instrument_ids:
 
         async def run_startup_warmup(instrument_ids: list[str]) -> None:
-            # Let interactive page requests and precompute hints take the lead first.
-            await asyncio.sleep(8)
-            warmup_plan = (
-                ("analysis", ["analysis"], ("1h", "4h", "1d")),
-                ("structure", ["structure"], ("1h", "4h", "1d")),
-                ("strategy", ["strategy"], ("4h", "1d")),
-                ("monitoring", ["monitoring"], ("1d",)),
-                ("macro", ["macro"], ("1d",)),
-                ("events", ["events"], ("1d",)),
+            await _enqueue_strategy_critical_warmup(
+                instrument_ids,
+                reason="startup_critical_snapshot",
+                priority=3,
+                initial_delay_seconds=1.0,
             )
+            await asyncio.sleep(45)
             for target_instrument_id in instrument_ids:
-                for page, candidates, timeframes in warmup_plan:
-                    for timeframe in timeframes:
-                        await precompute_service.enqueue_hint(
-                            PrecomputeHintRequest(
-                                current_page=page,
-                                instrument_id=target_instrument_id,
-                                timeframe=timeframe,
-                                reason="startup_critical_snapshot",
-                                visible=False,
-                                candidates=candidates,
-                                priority=5,
-                            )
-                        )
-            await precompute_service.enqueue_hint(
-                PrecomputeHintRequest(
-                    current_page="btc-derivatives",
-                    reason="startup_critical_snapshot",
-                    visible=False,
-                    candidates=["btc_derivatives"],
-                    priority=5,
+                await precompute_service.enqueue_hint(
+                    PrecomputeHintRequest(
+                        current_page="strategy",
+                        instrument_id=target_instrument_id,
+                        timeframe="1d",
+                        reason="startup_strategy_snapshot_finalize",
+                        visible=False,
+                        candidates=["strategy_unified"],
+                        priority=2,
+                    )
                 )
-            )
 
         warmup_task = asyncio.create_task(
             run_startup_warmup(warmup_instrument_ids),

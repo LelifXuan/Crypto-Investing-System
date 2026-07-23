@@ -1,0 +1,246 @@
+{
+  "version": "indicator-judgement-v1",
+  "indicators": [
+    {
+      "indicator_key": "ema_structure",
+      "axis": "price_structure",
+      "directional": true,
+      "signal_role": "trend_direction",
+      "default_action_effect": "SUPPORT",
+      "direction_map": {"bullish": "LONG", "bearish": "SHORT"},
+      "state_map": {"bullish": "BULLISH_STRUCTURE", "bearish": "BEARISH_STRUCTURE", "neutral": "MIXED_STRUCTURE", "missing": "DATA_UNAVAILABLE"}
+    },
+    {
+      "indicator_key": "adx_direction",
+      "axis": "trend_strength",
+      "directional": true,
+      "signal_role": "trend_confirmation",
+      "default_action_effect": "CONFIRM",
+      "direction_map": {"strong_bullish": "LONG", "bullish": "LONG", "strong_bearish": "SHORT", "bearish": "SHORT"},
+      "state_map": {"strong_bullish": "STRONG_TREND", "strong_bearish": "STRONG_TREND", "bullish": "DEVELOPING_TREND", "bearish": "DEVELOPING_TREND", "neutral": "WEAK_TREND", "missing": "DATA_UNAVAILABLE"}
+    },
+    {
+      "indicator_key": "rsi_14",
+      "axis": "momentum",
+      "directional": true,
+      "signal_role": "momentum_confirmation",
+      "default_action_effect": "CONFIRM",
+      "direction_map": {"bullish": "LONG", "bearish": "SHORT"},
+      "action_map": {"risk_hot": "DOWNGRADE", "risk_cold": "DOWNGRADE"},
+      "state_map": {"bullish": "POSITIVE_MOMENTUM", "bearish": "NEGATIVE_MOMENTUM", "risk_hot": "OVERBOUGHT_RISK", "risk_cold": "OVERSOLD_RISK", "neutral": "BALANCED_MOMENTUM"}
+    },
+    {
+      "indicator_key": "macd_hist",
+      "axis": "momentum",
+      "directional": true,
+      "signal_role": "momentum_confirmation",
+      "default_action_effect": "CONFIRM",
+      "direction_map": {"bullish": "LONG", "neutral_bullish": "LONG", "bearish": "SHORT", "neutral_bearish": "SHORT"},
+      "state_map": {"bullish": "POSITIVE_ACCELERATING", "neutral_bullish": "POSITIVE_DECELERATING", "bearish": "NEGATIVE_ACCELERATING", "neutral_bearish": "NEGATIVE_DECELERATING", "neutral": "ZERO_AXIS"}
+    },
+    {
+      "indicator_key": "bbands",
+      "axis": "volatility",
+      "directional": false,
+      "signal_role": "volatility_filter",
+      "default_action_effect": "OBSERVE",
+      "action_map": {"volatility_breakout_up": "CONFIRM", "volatility_breakout_down": "CONFIRM"},
+      "state_map": {"volatility_breakout_up": "EXPANSION_BREAKOUT_UP", "volatility_breakout_down": "EXPANSION_BREAKOUT_DOWN", "neutral": "NORMAL_OR_COMPRESSION"}
+    },
+    {
+      "indicator_key": "atr_14",
+      "axis": "volatility",
+      "directional": false,
+      "signal_role": "position_sizing_filter",
+      "default_action_effect": "DOWNGRADE",
+      "state_map": {"event": "HIGH_VOLATILITY", "neutral": "NORMAL_VOLATILITY"}
+    },
+    {
+      "indicator_key": "funding_rate",
+      "axis": "crowding",
+      "directional": false,
+      "signal_role": "crowding_filter",
+      "default_action_effect": "DOWNGRADE",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "open_interest",
+      "axis": "derivatives_positioning",
+      "directional": false,
+      "signal_role": "positioning_confirmation",
+      "default_action_effect": "CONFIRM",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "long_short_ratio",
+      "axis": "crowding",
+      "directional": false,
+      "signal_role": "crowding_filter",
+      "default_action_effect": "DOWNGRADE",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "call_wall",
+      "axis": "derivatives_positioning",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "put_wall",
+      "axis": "derivatives_positioning",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "max_pain",
+      "axis": "derivatives_positioning",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "ema_20",
+      "axis": "price_structure",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "ema_50",
+      "axis": "price_structure",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "ema_200",
+      "axis": "price_structure",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "natr_14",
+      "axis": "volatility",
+      "directional": false,
+      "signal_role": "position_sizing_filter",
+      "default_action_effect": "DOWNGRADE",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "bbands_width",
+      "axis": "volatility",
+      "directional": false,
+      "signal_role": "volatility_filter",
+      "default_action_effect": "OBSERVE",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "percent_b",
+      "axis": "volatility",
+      "directional": false,
+      "signal_role": "volatility_filter",
+      "default_action_effect": "OBSERVE",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "adx_14",
+      "axis": "trend_strength",
+      "directional": false,
+      "signal_role": "trend_confirmation",
+      "default_action_effect": "CONFIRM",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "plus_di",
+      "axis": "trend_strength",
+      "directional": false,
+      "signal_role": "trend_confirmation",
+      "default_action_effect": "CONFIRM",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "minus_di",
+      "axis": "trend_strength",
+      "directional": false,
+      "signal_role": "trend_confirmation",
+      "default_action_effect": "CONFIRM",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "obv",
+      "axis": "capital_flow",
+      "directional": false,
+      "signal_role": "flow_confirmation",
+      "default_action_effect": "CONFIRM",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "vwap_50",
+      "axis": "price_structure",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "vwap_100",
+      "axis": "price_structure",
+      "directional": false,
+      "signal_role": "key_level",
+      "default_action_effect": "LEVEL_ONLY",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "vwap_spread_pct",
+      "axis": "price_structure",
+      "directional": false,
+      "signal_role": "execution_filter",
+      "default_action_effect": "OBSERVE",
+      "state_map": {}
+    },
+    {
+      "indicator_key": "vwap_slope_10",
+      "axis": "momentum",
+      "directional": true,
+      "signal_role": "momentum_confirmation",
+      "default_action_effect": "CONFIRM",
+      "direction_map": {"bullish": "LONG", "bearish": "SHORT"},
+      "state_map": {}
+    },
+    {
+      "indicator_key": "kdj_j",
+      "axis": "momentum",
+      "directional": true,
+      "signal_role": "momentum_confirmation",
+      "default_action_effect": "CONFIRM",
+      "direction_map": {"bullish": "LONG", "bearish": "SHORT"},
+      "state_map": {}
+    },
+    {
+      "indicator_key": "cci_20",
+      "axis": "momentum",
+      "directional": true,
+      "signal_role": "momentum_confirmation",
+      "default_action_effect": "CONFIRM",
+      "direction_map": {"bullish": "LONG", "bearish": "SHORT"},
+      "state_map": {}
+    },
+    {
+      "indicator_key": "volume",
+      "axis": "liquidity",
+      "directional": false,
+      "signal_role": "volume_confirmation",
+      "default_action_effect": "CONFIRM",
+      "state_map": {}
+    }
+  ]
+}

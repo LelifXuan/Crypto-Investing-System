@@ -12,23 +12,17 @@ bootstrap_runtime_environment()
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(str(app_paths.portable_env_path), ".env"),
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     app_name: str = Field(default="Trading System API", alias="APP_NAME")
-    app_version: str = Field(default="1.7.0", alias="APP_VERSION")
+    app_version: str = Field(default="1.8.0", alias="APP_VERSION")
     app_env: str = Field(default="dev", alias="APP_ENV")
-    app_distribution_mode: str = Field(
-        default=app_paths.distribution_mode, alias="APP_DISTRIBUTION_MODE"
-    )
-    app_host: str = Field(
-        default="127.0.0.1" if app_paths.distribution_mode == "portable" else "0.0.0.0",
-        alias="APP_HOST",
-    )
+    app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
-    app_debug: bool = Field(default=app_paths.distribution_mode != "portable", alias="APP_DEBUG")
+    app_debug: bool = Field(default=True, alias="APP_DEBUG")
     worker_profile: str = Field(default="desktop_light", alias="WORKER_PROFILE")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
@@ -172,7 +166,7 @@ class Settings(BaseSettings):
         default=False, alias="MARKET_EVENTS_TRANSLATE_ENABLED"
     )
     market_events_translation_provider: str = Field(
-        default="mymemory",
+        default="tencent_tmt",
         alias="MARKET_EVENTS_TRANSLATION_PROVIDER",
     )
     market_events_translation_base_url: str = Field(
@@ -262,19 +256,17 @@ class Settings(BaseSettings):
     bls_api_key: str = Field(default="", alias="BLS_API_KEY")
     bea_api_key: str = Field(default="", alias="BEA_API_KEY")
     glassnode_api_key: str = Field(default="", alias="GLASSNODE_API_KEY")
+    # Optional paid-data providers. API keys are loaded from the env file.
+    tiingo_api_key: str = Field(default="", alias="TIINGO_API_KEY")
+    openexchangerates_app_id: str = Field(
+        default="", alias="OPENEXCHANGERATES_APP_ID"
+    )
     history_mark_prices_keep_per_series: int = Field(
         default=720,
         alias="HISTORY_MARK_PRICES_KEEP_PER_SERIES",
     )
-    enable_docs: bool = Field(
-        default=app_paths.distribution_mode != "portable", alias="ENABLE_DOCS"
-    )
-    enable_openapi: bool = Field(
-        default=app_paths.distribution_mode != "portable", alias="ENABLE_OPENAPI"
-    )
-    portable_remote_translation_enabled: bool = Field(
-        default=False, alias="PORTABLE_REMOTE_TRANSLATION_ENABLED"
-    )
+    enable_docs: bool = Field(default=True, alias="ENABLE_DOCS")
+    enable_openapi: bool = Field(default=True, alias="ENABLE_OPENAPI")
     precompute_enabled: bool = Field(default=True, alias="PRECOMPUTE_ENABLED")
     precompute_max_queue_size: int = Field(default=200, alias="PRECOMPUTE_MAX_QUEUE_SIZE")
     precompute_worker_interval_seconds: int = Field(

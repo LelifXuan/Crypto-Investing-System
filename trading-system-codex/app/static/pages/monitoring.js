@@ -8,6 +8,9 @@ import {
   statusBanner,
 } from "../core/dom.js";
 import { scheduleIdlePrecompute } from "../core/precompute.js";
+import { judgementMeta } from "../core/judgement.js";
+import { rangeStateLabel, rangeStateTone } from "../core/rangeState.js";
+import { mountPageGuide } from "../ui/pageGuideFab.js";
 
 let activeController = null;
 let refreshInFlight = false;
@@ -375,7 +378,7 @@ function macroConfidence(macro) {
 function macroBiasLabel(macro) {
   return readableText(
     macro?.score_band || macro?.regime_label_cn || macro?.operation_bias || macro?.direction_label,
-    "中性震荡",
+    "宏观中性",
   );
 }
 
@@ -426,6 +429,7 @@ function getTechnicalItems(data) {
         rule: item.rule || "",
         signal_label: item.signal_label || "",
         tone: item.tone || "",
+        judgement: item.indicator_judgement || {},
       }))
     : [];
 }
@@ -680,6 +684,7 @@ function renderMacroPanel(data, macro) {
 
 function renderTechnicalCard(item) {
   const meta = signalMeta(item.signal_state || item.signal);
+  const judgement = judgementMeta(item.judgement);
   const value = numeric(item.value_num ?? item.value) !== null ? formatNumber(item.value_num ?? item.value, 2) : readableText(item.value_text ?? item.value);
   const formula = item.formula || "";
   const comment = item.comment || item.rule || item.hint || "";
@@ -687,37 +692,12 @@ function renderTechnicalCard(item) {
     <article class="technical-chip">
       <div class="technical-chip-head">
         <span>${escapeHtml(item.label || item.signal_label || item.indicator_key)}</span>
-        ${chip(item.signal_label || meta.label, meta.className)}
+        ${chip(judgement.stateLabel, meta.className)}
       </div>
       <strong>${escapeHtml(value)}</strong>
       <small>${escapeHtml(readableText(comment, meta.hint))}</small>
+      <small class="muted compact">${escapeHtml(`${judgement.axisLabel} · ${judgement.effectLabel} · ${judgement.dataLabel}`)}</small>
       ${formula ? `<small class="muted compact">${escapeHtml(formula)}</small>` : ""}
-    </article>
-  `;
-}
-
-function renderTechnicalPanel(data) {
-  const items = getTechnicalItems(data);
-  const body = items.length
-    ? items.map(renderTechnicalCard).join("")
-    : `
-        <div class="technical-empty-state">
-          <strong>技术快照准备中</strong>
-          <p>后台会在指标缓存可用后填充趋势、动量与波动观测。</p>
-        </div>
-      `;
-  return `
-    <article class="monitoring-panel technical">
-      <div class="monitoring-panel-head">
-        <div>
-          <p class="eyebrow">TECHNICAL</p>
-          <h2>技术观测</h2>
-        </div>
-        ${chip(`${items.length} 项`, "chip-neutral")}
-      </div>
-      <div class="technical-chip-grid">
-        ${body}
-      </div>
     </article>
   `;
 }
@@ -747,32 +727,46 @@ function renderTerminalSummary(data) {
     structure: "结构",
     event_risk: "事件",
   };
+  // Short label of which indicators feed each technical sub-module. The
+  // standalone '技术观测' panel was removed; instead the terminal summary
+  // shows a one-line evidence annotation per technical module so users can
+  // still tell what evidence is behind '趋势 / 动量 / 波动'. Non-technical
+  // modules (macro / structure / event_risk) intentionally have no evidence
+  // line because their inputs aren't on this chart.
+  const moduleEvidence = {
+    technical_trend: "EMA 20/50/200、MACD 柱、BOLL 宽度、VWAP 斜率",
+    momentum_volume: "RSI 14、KDJ、CCI、OBV、VWAP 价差",
+    volatility: "ATR 14、NATR 14、ADX 14、+DI/-DI、Percent B",
+  };
   const moduleVotes = ["macro", "technical_trend", "momentum_volume", "volatility", "structure", "event_risk"]
     .map((key) => {
       const item = modules[key] || {};
       const meta = signalMeta(item.impact || item.state);
       const score = numeric(item.score) !== null ? formatNumber(item.score, 0) : DASH;
+      const evidence = moduleEvidence[key];
       return `
         <article class="terminal-summary-vote">
           <span>${escapeHtml(moduleLabels[key] || key)}</span>
           <strong>${escapeHtml(readableText(item.state, "待确认"))}</strong>
           <small>${escapeHtml(score)}</small>
           ${chip(impactLabel(item.impact || item.state), meta.className)}
+          ${evidence ? `<small class="terminal-summary-evidence">证据：${escapeHtml(evidence)}</small>` : ""}
         </article>
       `;
     })
     .join("");
   const confidence = numeric(summary.confidence) !== null ? formatNumber(summary.confidence, 0) : DASH;
-  const regime = readableText(summary.regime, "中性震荡");
-  // V1.5.5 ②: the regime already carries the sub-direction
-  // (偏多震荡 / 偏空震荡 / 中性震荡). Drop the separate bias chip
-  // so the user gets one unambiguous answer to "is this
-  // 偏多震荡 or 偏空震荡?". Confidence goes into a single
-  // combined chip for readability.
+  const regime = summary.range_state && summary.range_state !== "NONE"
+    ? rangeStateLabel(summary)
+    : readableText(summary.regime, "状态待确认");
+  // The shared range contract already carries the sub-direction. Keep one
+  // market-state chip and avoid rendering a second, potentially conflicting bias.
   const bias = readableText(summary.bias, "中性");
-  const regimeTone = ["偏多震荡", "强趋势偏多", "温和偏多", "多头修复"].includes(regime)
+  const regimeTone = summary.range_state && summary.range_state !== "NONE"
+    ? rangeStateTone(summary)
+    : ["上行震荡", "强趋势偏多", "温和偏多", "多头修复"].includes(regime)
     ? "bullish"
-    : ["偏空震荡", "弱势震荡", "空头加速", "弱势下行", "高波动风险"].includes(regime)
+    : ["下行震荡", "空头加速", "弱势下行", "高波动风险"].includes(regime)
     ? "bearish"
     : "neutral";
   const regimeMeta = signalMeta(regimeTone);
@@ -962,14 +956,9 @@ function renderDashboard(data) {
   return `
     ${renderTopbar(data, macro)}
     <section class="monitoring-surface monitoring-summary-surface">
-      <div class="monitoring-snapshot-grid">
-        <div class="monitoring-left-stack">
-          ${renderMacroPanel(data, macro)}
-          ${renderTerminalSummary(data)}
-        </div>
-        <div class="monitoring-right-stack">
-          ${renderTechnicalPanel(data)}
-        </div>
+      <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
+        ${renderMacroPanel(data, macro)}
+        ${renderTerminalSummary(data)}
       </div>
     </section>
     ${renderMacroIndicatorGrid(macro)}
@@ -988,7 +977,6 @@ const MONITORING_SECTION_IDS = [
   "monitoring-topbar",
   "monitoring-macro-panel",
   "monitoring-terminal-summary",
-  "monitoring-technical-panel",
   "monitoring-macro-grid",
 ];
 
@@ -1002,14 +990,9 @@ function applyMonitoringDiff(data, options = {}) {
     root.innerHTML = `
       <div id="monitoring-topbar"></div>
       <section class="monitoring-surface monitoring-summary-surface">
-        <div class="monitoring-snapshot-grid">
-          <div class="monitoring-left-stack">
-            <div id="monitoring-macro-panel"></div>
-            <div id="monitoring-terminal-summary"></div>
-          </div>
-          <div class="monitoring-right-stack">
-            <div id="monitoring-technical-panel"></div>
-          </div>
+        <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
+          <div id="monitoring-macro-panel"></div>
+          <div id="monitoring-terminal-summary"></div>
         </div>
       </section>
       <div id="monitoring-macro-grid"></div>
@@ -1018,7 +1001,6 @@ function applyMonitoringDiff(data, options = {}) {
       topbar: root.querySelector("#monitoring-topbar"),
       "monitoring-macro-panel": root.querySelector("#monitoring-macro-panel"),
       "monitoring-terminal-summary": root.querySelector("#monitoring-terminal-summary"),
-      "monitoring-technical-panel": root.querySelector("#monitoring-technical-panel"),
       "monitoring-macro-grid": root.querySelector("#monitoring-macro-grid"),
     };
   }
@@ -1027,7 +1009,6 @@ function applyMonitoringDiff(data, options = {}) {
   sections.topbar.innerHTML = renderTopbar(data, macro);
   sections["monitoring-macro-panel"].innerHTML = renderMacroPanel(data, macro);
   sections["monitoring-terminal-summary"].innerHTML = renderTerminalSummary(data);
-  sections["monitoring-technical-panel"].innerHTML = renderTechnicalPanel(data);
   sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro);
   if (options.skeleton) {
     // noop: skeleton handled by the caller
@@ -1180,8 +1161,10 @@ export async function renderMonitoring() {
   const loadPromise = loadDashboard().catch((error) => {
     console.error("monitoring:load:error", error);
   });
+  const guideFab = mountPageGuide("monitoring-overview");
   return {
     async unmount() {
+      guideFab.unmount();
       activeController?.abort();
       activeController = null;
       void loadPromise.catch(() => null);

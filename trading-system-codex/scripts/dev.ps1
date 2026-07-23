@@ -6,11 +6,9 @@ param(
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
-$workspaceRoot = Split-Path -Parent $projectRoot
-$externalPython = Join-Path $workspaceRoot "runtime_dev\.venv\Scripts\python.exe"
-if (Test-Path -LiteralPath $externalPython) {
-    & $externalPython scripts/tasks.py $Task
-} else {
-    python scripts/tasks.py $Task
-}
+# V1.5.x used a sibling `runtime_dev/.venv` location for the dev venv. The
+# project now runs against the system Python with deps installed into the
+# active interpreter, so this launcher simply delegates to whatever
+# `python` resolves to on PATH.
+python scripts/tasks.py $Task
 exit $LASTEXITCODE

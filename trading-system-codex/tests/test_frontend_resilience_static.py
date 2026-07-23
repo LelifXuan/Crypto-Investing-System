@@ -44,7 +44,7 @@ def test_alert_chip_layout_avoids_sparse_fixed_metric_grid() -> None:
 
 def test_structure_price_line_is_visually_subdued() -> None:
     source = (ROOT / "app/static/pages/structure.js").read_text(encoding="utf-8")
-    expected = 'price: { label: "价格", color: "rgba(22, 35, 43, 0.38)", dash: "", width: 2.15 }'
+    expected = 'price: { label: "收盘价", color: "rgba(44, 56, 73, 0.42)", dash: "", width: 2.15 }'
     assert expected in source
     assert "extendOverlayToLatestCandle" in source
     assert "visiblePointInViewport" in source
@@ -56,6 +56,14 @@ def test_structure_price_line_is_visually_subdued() -> None:
     assert "月线样本不足" in source
     assert "${buildLayerToggleMarkup()}" in source
     assert '<div class="structure-legend-toggles">' in source
+
+
+def test_structure_confidence_missing_values_are_not_rendered_as_zero() -> None:
+    source = (ROOT / "app/static/pages/structure.js").read_text(encoding="utf-8")
+
+    assert "candidate?.confidence ?? 0" not in source
+    assert "overall.overall_confidence ?? overall.confidence ?? 0" not in source
+    assert "confidence: 0," not in source
 
 
 def test_structure_page_does_not_render_internal_detail_cards() -> None:
@@ -112,12 +120,39 @@ console.log(JSON.stringify(samples));
 
 def test_analysis_uses_canonical_latest_mark_independent_of_timeframe() -> None:
     source = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
+    assert "let escapeHtml;" in source
+    assert "escapeHtml," in source
     assert "let markPayload = bundle.mark || null;" in source
     assert "getAnalysisBundle" in source
     assert "getLatestMark" in source
     assert "enhanceLatestMark" in source
     assert "{ preferLive = false }" in source
+    assert "enhanceLatestMark(token, { preferLive: true })" in source
     assert "let allCandles = normalizeOhlcCandles" in source
+
+
+def test_price_chart_uses_distinct_ema_colors_and_vwap_line_hierarchy() -> None:
+    source = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
+
+    # Short EMA = bright + thin; long EMA = deep + thick (active vs stable anchor).
+    assert 'lineDataset("EMA30", analysis.ema30, "#dcbe88", { borderWidth: 1.6 })' in source
+    assert 'lineDataset("EMA60", analysis.ema60, "#a89569", { borderWidth: 2.0 })' in source
+    assert 'lineDataset("EMA120", analysis.ema120, "#5a7d8e", { borderWidth: 2.6 })' in source
+    # Short VWAP = brighter + dotted thin; long VWAP = deeper + dashed thick.
+    assert '"VWAP50", analysis.vwapValues.vwap50, "#a594c2", { borderDash: [2, 4], borderWidth: 1.5 }' in source
+    assert '"VWAP100", analysis.vwapValues.vwap100, "#5d4e7e", { borderDash: [10, 5], borderWidth: 2.4 }' in source
+
+
+def test_monitoring_translates_legacy_technical_state_tags() -> None:
+    source = (ROOT / "app/static/core/judgement.js").read_text(encoding="utf-8")
+    for state, label in {
+        "BULLISH": "看多",
+        "BEARISH": "看空",
+        "EXPANDED": "波动扩张",
+        "NORMAL": "正常",
+    }.items():
+        assert f'{state}: "{label}"' in source
+    assert 'stateLabel: contextualState || "状态待确认"' in source
 
 
 def test_event_translation_refresh_is_real_queue_and_no_default_pending_chip() -> None:

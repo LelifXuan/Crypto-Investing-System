@@ -43,3 +43,10 @@ def test_alerts_page_avoids_business_title_tooltips() -> None:
     assert "knowledgeTooltip(" in source
     assert "knowledgeTooltipWrap(" in source
     assert "scheduleIdlePrecompute(" in source
+
+
+def test_alerts_missing_divergence_confidence_is_not_rendered_as_zero() -> None:
+    source = ALERTS_PAGE.read_text(encoding="utf-8", errors="ignore")
+
+    assert "confidence: 0," not in source
+    assert "confidence: null" in source

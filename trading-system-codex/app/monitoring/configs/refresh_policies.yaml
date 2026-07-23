@@ -382,6 +382,48 @@ refresh_policies:
     cron_expr: 37 8,14,20 * * 1-5
     timezone: UTC
     priority: 7
+  - indicator_key: fed_iorb
+    scope_type: global
+    mode: cron
+    cron_expr: 37 8,14,20 * * 1-5
+    timezone: UTC
+    priority: 7
+  - indicator_key: fed_on_rrp_rate
+    scope_type: global
+    mode: cron
+    cron_expr: 37 8,14,20 * * 1-5
+    timezone: UTC
+    priority: 7
+  - indicator_key: fed_soma_treasury
+    scope_type: global
+    mode: cron
+    cron_expr: 0 12 * * FRI
+    timezone: UTC
+    priority: 7
+  - indicator_key: fed_soma_mbs
+    scope_type: global
+    mode: cron
+    cron_expr: 0 12 * * FRI
+    timezone: UTC
+    priority: 7
+  - indicator_key: fed_srf_usage
+    scope_type: global
+    mode: cron
+    cron_expr: 37 8,14,20 * * 1-5
+    timezone: UTC
+    priority: 7
+  - indicator_key: fed_discount_window
+    scope_type: global
+    mode: cron
+    cron_expr: 37 8,14,20 * * 1-5
+    timezone: UTC
+    priority: 7
+  - indicator_key: fed_tga_net_change_4w
+    scope_type: global
+    mode: cron
+    cron_expr: 0 13 * * FRI
+    timezone: UTC
+    priority: 7
   - indicator_key: m2
     scope_type: global
     mode: cron

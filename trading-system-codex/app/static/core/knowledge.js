@@ -388,6 +388,7 @@ const structureItems = [
     family: "swing",
     summary: "枢轴点用局部高低点识别短期转折。",
     how_to_use: "枢轴越靠近高周期关键位，信号价值越高；孤立低周期分形容易产生噪声。",
+    risk_note: "低周期分形高度敏感，单根反向 K 线就会重画；不要把孤立的低周期枢轴当独立信号，必须结合高周期结构（HH/HL/LH/LL）和成交量一起判断。",
     page_refs: ["market-structure"],
     tags: ["structure"],
   }),
@@ -654,6 +655,7 @@ const alertItems = [
     family: "derivatives",
     summary: "基差衡量合约价格相对现货或指数价格的升贴水。",
     how_to_use: "正基差扩大常见于杠杆多头拥挤，负基差扩大常见于恐慌或空头拥挤。基差 Z-Score 用来判断当前偏离是否异常。",
+    risk_note: "基差变化不直接告诉你哪个方向拥挤到极致，绝对值小（接近 0）也可能只是流动性差。永远把基差和资金费率、OI 联合看，不要单独用来决定加减仓。",
     page_refs: ["alert-center", "monitoring-overview"],
     tags: ["derivatives"],
   }),
@@ -662,6 +664,7 @@ const alertItems = [
     family: "derivatives",
     summary: "标记价是合约风控参考价，影响未实现盈亏和强平风险。",
     how_to_use: "成交价相对标记价偏离过大，说明短期成交可能被流动性冲击扭曲，市价单和杠杆都应降级。",
+    risk_note: "标记价由交易所聚合计算，不同交易所规则不同（资金费率、指数成分、现货篮子）。跨交易所对比时务必先确认标记价口径一致；做对冲时以本交易所的标记价为强平依据。",
     page_refs: ["market-analysis", "alert-center"],
     tags: ["derivatives"],
   }),
@@ -678,6 +681,7 @@ const alertItems = [
     family: "derivatives",
     summary: "价格偏离衡量最新成交价相对标记价或指数价的偏离程度。",
     how_to_use: "偏离过大时，短线成交质量下降，追价和止损滑点风险上升。",
+    risk_note: "偏离在极端行情（插针 / 流动性冲击）下会瞬间扩张并快速修复；不要把一次插针造成的偏离当长期趋势；市价单和止损单应优先用标记价 / 指数价做基准。",
     page_refs: ["alert-center"],
     tags: ["derivatives"],
   }),
@@ -688,6 +692,7 @@ const alertItems = [
     how_to_use: "价格上涨且 OI 上升，说明新仓参与增加；价格上涨且 OI 下降，可能是空头回补。价格下跌且 OI 上升，可能是新空或多头被套加剧。",
     risk_note: "OI 本身不告诉多空方向，必须结合价格、CVD 和资金费率。",
     page_refs: ["alert-center", "monitoring-overview"],
+    related_terms: ["open-interest", "funding-rate", "basis-rate"],
     tags: ["microstructure"],
   }),
   term("cvd", "CVD 累计成交量差", {
@@ -754,6 +759,7 @@ const alertItems = [
     family: "risk",
     summary: "仓位 sizing 把信号强度转成实际资金风险。",
     how_to_use: "仓位上限应同时考虑状态置信、交易触发、盘口执行、波动、强平距离和单笔风险。方向再强，也不能绕过风险门控。",
+    risk_note: "杠杆不是确定性放大器。BTC 单日波动经常超过 5%，50x 合约意味着 1% 行情 ≈ 50% 账户波动；高杠杆只在低波动 + 强确认 + 紧止损下短暂使用，不能作为常态。",
     page_refs: ["alert-center", "risk"],
     tags: ["risk"],
   }),
@@ -890,6 +896,7 @@ const macroItems = [
     tags: ["macro", "rates"],
   }),
   term("real_yield", "Real Yield / 实际收益率", {
+    aliases: ["real_yield_10y", "tips_real_yield", "10Y TIPS", "TIPS 实际收益率", "实际利率"],
     family: "rates",
     summary: "实际收益率约等于名义收益率扣除通胀预期。",
     how_to_use: "实际收益率上升通常压制黄金、BTC 等无现金流资产；下降则改善流动性和估值环境。",
@@ -1169,7 +1176,6 @@ const macroItems = [
 ];
 
 const dataQualityItems = [
-  ),
   term("cache_state", "Cache State / 缓存状态", {
     aliases: ["fresh", "stale", "missing", "updating", "error"],
     family: "quality",
@@ -1199,8 +1205,6 @@ const dataQualityItems = [
     page_refs: ["market-analysis"],
     tags: ["quality"],
   }),
-  ),
-  ),
   term("mvrv", "MVRV / 市值实现价值比", {
     family: "onchain",
     summary: "MVRV 比较市场市值和链上实现价值，用于观察周期估值。",
@@ -1229,6 +1233,8 @@ const dataQualityItems = [
   term("active_addresses", "Active Addresses / 活跃地址", {
     family: "onchain",
     summary: "活跃地址衡量链上使用活跃度，但不能直接等同于买盘。",
+    how_to_use: "活跃地址上升 + 价格上涨 = 真实参与；活跃地址上升 + 价格横盘 = 链上交互多但未必是买盘。",
+    risk_note: "活跃地址 ≠ 买盘。一个地址可以是空投机器人、合约调用或自转；同一控制人的多个地址也会重复计数。看活跃地址时务必结合转账金额、UTXO 分布和实体聚类算法。",
     page_refs: ["monitoring-overview"],
     tags: ["onchain"],
   }),
@@ -1238,7 +1244,16 @@ const dataQualityItems = [
     page_refs: ["monitoring-overview", "alert-center"],
     tags: ["onchain", "quality"],
   }),
-  ),
+  term("portable_proxy_detection", "Portable Proxy Detection / 便携代理检测", {
+    family: "quality",
+    level: "basic",
+    summary: "便携版启动时检测系统代理和运行时代理配置，决定 live 数据源是否可直接访问。",
+    definition: "代理检测会把当前网络路径标记为 direct、system_proxy、portable_proxy 或 unavailable，供数据源健康度和降级策略使用。",
+    how_to_use: "如果宏观、ETF 或行情源同时变成 unavailable，先检查代理检测状态，再判断是市场数据缺失还是本地网络问题。",
+    risk_note: "代理可用只说明网络路径存在，不代表上游 API 数据一定新鲜。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["portable", "proxy", "quality"],
+  }),
   term("macro_seed_cache", "Macro Seed Cache / 宏观种子缓存", {
     family: "cache",
     level: "basic",
@@ -1268,8 +1283,26 @@ const dataQualityItems = [
     page_refs: ["monitoring-overview", "knowledge-base"],
     tags: ["score", "quality"],
   }),
-  ),
-  ),
+  term("api_healthcheck", "API Healthcheck / API 健康检查", {
+    family: "quality",
+    level: "basic",
+    summary: "API 健康检查记录数据源是否可连通、是否超时、是否返回可解析内容。",
+    definition: "它不是交易信号，而是判断页面数据能否参与评分、是否需要读取缓存或展示 unavailable 的基础状态。",
+    how_to_use: "当监控总览的来源状态出现 updating/error，先看 healthcheck，再决定是否手动刷新或等待后台预计算。",
+    risk_note: "健康检查通过不代表数据适合交易；还要看时间戳、样本成熟度和评分准入。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["api", "healthcheck", "quality"],
+  }),
+  term("source_priority_chain", "Source Priority Chain / 数据源优先链", {
+    family: "quality",
+    level: "intermediate",
+    summary: "同一指标可能有 live、runtime cache、seed cache 和 placeholder 多个来源，优先链决定使用顺序。",
+    definition: "优先链通常按 live -> runtime cache -> seed cache -> placeholder 降级，并在页面暴露来源和置信度。",
+    how_to_use: "看到 BTC 或宏观指标来自低优先级来源时，只把它当背景信息，不让它覆盖最新的价格、结构和风险信号。",
+    risk_note: "错误的优先链会把旧数据包装成新信号，是监控和策略页最危险的数据质量问题之一。",
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["source", "priority", "quality"],
+  }),
   term("macro_never_empty_contract", "Macro Never Empty Contract / 宏观永不空契约", {
     family: "quality",
     level: "advanced",
@@ -1335,7 +1368,18 @@ const etfItems = [
       "风险因素包括：政策转向、融资成本上升、大宗商品价格剧烈波动、长周期资本开支周期拐点。",
     ].join("\n"),
   }),
-  ),
+  term("ashare_etf_quote_source", "A股 ETF 行情源", {
+    aliases: ["ETF quote source", "A股ETF行情", "A-share ETF quotes"],
+    category: "ashare-etf",
+    family: "data-source",
+    level: "basic",
+    summary: "A股 ETF 行情源说明 ETF 页价格、成交额、涨跌幅和折溢价观察来自哪里。",
+    definition: "它用于标记 ETF 数据的来源、时间戳和可用性，避免把延迟、缺失或缓存数据误当作实时跨市场信号。",
+    how_to_use: "ETF 页只把行情源作为观察层，不能把单个 ETF 的涨跌直接写入 BTC 技术或策略触发。",
+    risk_note: "A股交易时间、涨跌停和基金申赎机制与 BTC 永续合约完全不同，跨市场解释必须降权。",
+    page_refs: ["ashare-etf", "monitoring-overview", "knowledge-base"],
+    tags: ["quote", "source", "etf"],
+  }),
   term("etf_vs_perp_spot", "ETF vs 永续合约/现货", {
     aliases: ["ETF vs Perp", "ETF vs Spot", "ETF和永续合约区别"],
     category: "ashare-etf",
@@ -1356,6 +1400,7 @@ const etfItems = [
     page_refs: ["ashare-etf"],
     tags: ["dividend", "cash-flow"],
     summary: "股息现金流关注企业把经营结果转化为可分配现金的能力，是红利和防御型资产的重要观察口径。",
+    risk_note: "高分红不等于可持续现金流。要看经营现金流 / 自由现金流是否覆盖分红；周期股在景气顶部的高分红往往不可持续；A 股 ETF 的'近 12 月股息率'还会受除权除息日影响，需要对齐会计期间才能横向比较。",
     definition: "相比只看利润，现金流更强调钱是否真的回到企业账上并具备分配空间。对 ETF 来说，它通常通过成分股筛选、分红率和现金回报质量间接体现。",
     how_to_use: "当现金流 ETF 强于高弹性成长资产时，市场可能更偏好确定性和分红；当它明显走弱，说明防御资金也可能在撤退。",
   }),
@@ -1468,7 +1513,7 @@ const derivativesItems = [
     family: "options-history",
     level: "basic",
     page_refs: ["btc-derivatives"],
-    related_terms: ["call-wall", "put-wall", "max-pain", "open-interest-change"],
+    related_terms: ["open_interest", "call-wall", "put-wall", "max-pain", "open-interest-change"],
     tags: ["options", "open-interest", "positioning"],
     summary: "Open Interest 是某一行权价上当前未平仓的期权合约总数。",
     definition: "Open Interest（OI）是某一行权价上当前仍未平仓的期权合约总数。买入一张合约 + 卖出一张合约 = OI 增加 1；任何一方平仓 = OI 减少 1；双方换月 = OI 不变。",
@@ -1673,56 +1718,415 @@ const derivativesItems = [
     example: "BTC ETF 决议前 24h，30D ATM IV = 90%（历史百分位 95%）。决议通过后 4h，IV 跌至 65%（跌幅 28%）。你若在决议前 long 跨式（押注大波动）= 方向可能对但仍亏（方向盈利 < IV 暴跌）。你若在决议后 1h 卖出跨式 = 赚 theta + 享受 IV 暴跌 25%。这就是'事件后卖跨式'的经典盈利。",
     risk_note: "IV Crush 不是'必然事件'。若事件本身超出预期（如 ETF 决议被拒），IV 不会暴跌反而可能继续飙升。永远把 IV Crush 视为'大概率 + 高赔率'策略，不要 100% 押注。BTC 重大事件后做'事件后卖跨式'，仓位要轻（不超过组合 5%），并设好止损（IV 继续飙升时及时平仓）。",
   }),
+  term("skew_25d", "25D Skew / 25 Delta 偏度", {
+    aliases: ["25 Delta Skew", "25D 偏度", "风险逆转差", "skew"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["delta", "risk-reversal-25d", "iv-term-structure", "implied-volatility"],
+    tags: ["options", "skew", "25D"],
+    summary: "25-delta put 与 call IV 之差，正值表示 put 较贵（市场偏空），负值表示 call 较贵（市场偏多）。",
+    definition: "25D Skew 是 25-delta put IV 减去 25-delta call IV 的差值（Risk Reversal 取反）。它衡量在两个方向上各移动 ~25% delta 所需的隐含波动率不对称性。",
+    why_it_matters: "25D Skew 是判断市场情绪倾斜最纯净的指标。put 比 call 贵（正 skew）通常对应下行保护需求上升；call 比 put 贵（负 skew）通常对应追涨需求。BTC 在 ETF 决议前、FOMC 前、监管公告前会出现显著 skew 偏移。",
+    how_to_use: "把 25D Skew 看作'市场愿意为下跌付多少保险费'。正 skew 扩大 = 下行对冲需求增加；负 skew 扩大 = 上行赌博需求增加。BTC skew 与现货价格背离时，是衍生品端领先信号。",
+    useful_when: [
+      "BTC 现货横盘但 25D Skew 持续上升（put 变贵）= 大资金在为下行买保险，先减仓。",
+      "BTC 上涨但 25D Skew 走平或转正 = 追涨信心不足，衍生品端不配合上涨，不要追高。",
+      "事件（FOMC / ETF 决议）前 24h 看 25D Skew 历史百分位：> 80% = 过度恐慌对冲；< 20% = 过度乐观。",
+    ],
+    example: "BTC 现货 65000。25D put IV = 70%，25D call IV = 50%。skew_25d = +20%（+0.20）。这意味着市场愿意为 25-delta 的下行保护付 20 个 IV 点的溢价，远高于历史中位 +5%。通常对应 ETF 流出预期、监管风险或大型清算前的对冲。",
+    risk_note: "25D Skew 是相对值，单一数字没有方向意义。绝对值高（>30%）不一定贵，绝对值低（<5%）不一定便宜——必须看历史百分位和滚动分位数。BTC 衍生品页的 skew 曲线会同时给原始值和 Z-Score，看 Z-Score 而不是绝对值做决策。",
+  }),
+  term("risk_reversal_25d", "25D Risk Reversal", {
+    aliases: ["25D RR", "Risk Reversal", "方向性期权价差"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "advanced",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["skew_25d", "delta", "iv-term-structure"],
+    tags: ["options", "risk-reversal", "25D"],
+    summary: "25-delta call IV 减去 25-delta put IV，等于 25D Skew 的相反数。",
+    definition: "Risk Reversal = call_iv_25d - put_iv_25d = -skew_25d。它表达的是'市场为上涨付多少保险费'，与 25D Skew 方向相反。",
+    why_it_matters: "做市商和大型对冲基金常用 Risk Reversal 来表达方向性赌注。BTC 25D RR 转正（call 比 put 贵）= 大资金在做'温和看多'的方向性对冲（买 OTM call + 卖 OTM put）。它比现货端更早反映主流意图。",
+    how_to_use: "Risk Reversal 为 0 = call/put 平衡；转正 = 市场为上涨付溢价；转负 = 市场为下跌付溢价。把它和 25D Skew 一起看，两者互为相反数但表达角度不同。",
+    useful_when: [
+      "BTC 25D Risk Reversal 从 -10% 反弹到 +5% = 主流从'对冲下行'转向'温和看多'，是衍生品端领先信号。",
+      "Risk Reversal 与价格背离（价格上涨但 RR 转负）= 衍生品端怀疑趋势可持续性。",
+    ],
+    example: "25D call IV = 50%，25D put IV = 70%。Risk Reversal = 50% - 70% = -20%。这与 25D Skew = +20% 是同一信息但表达不同：RR 说'市场愿为上涨付 -20 的溢价（即不愿付）'，skew 说'市场为下跌付 +20 的溢价'。",
+    risk_note: "Risk Reversal 是 IV 之差，不等于收益预期。一个 -20% 的 RR 不代表 call 一定亏钱——还取决于 IV 实际波动是否兑现方向。RR 是'对冲成本'，不是'方向胜率'。",
+  }),
+  term("delta_band", "Delta 带（exact_25d / near_25d / outside_band）", {
+    aliases: ["Delta Band", "25D 命中精度"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "advanced",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["skew_25d", "delta"],
+    tags: ["options", "delta", "skew"],
+    summary: "标记当前 25D skew 计算的 delta 是否真的在 25D 附近。",
+    definition: "delta_band 标记 skew_25d 内部 delta 插值的精度：exact_25d = 真实 lower/upper 插值两端夹住 0.25；near_25d = 单点最接近且 |delta| 落在 [0.10, 0.40] 容差内；outside_band = 链上离 25D 最近的 strike 也不在容差内。",
+    why_it_matters: "当衍生品页用 cached_history 绘出 25D Skew 曲线时，每个点都带一个 delta_band 标签。exact_25d 才是稳定可比的口径；near_25d 是次优；outside_band 是次次优。用户必须知道这个区别才能判断 25D 曲线的可靠度。",
+    how_to_use: "在 cache 字段 `skew_25d_delta_band` 中查每个点的 band。exact_25d 主导时，曲线可以直接跨期对比；near_25d 较多时，曲线只是'近似 25D'的代理；outside_band 出现时，应该降权该点或独立成另一条曲线。",
+    useful_when: [
+      "策略决策：仅当曲线中 exact_25d 点占比 > 70% 时，认为 25D Skew 信号有效。",
+      "数据质量：BChain 短历史早期（< 5 个 DTE）经常是 outside_band，需要剔除。",
+      "模型选择：near_25d 占主导时，可以用插值模型补全 exact_25d 缺失点，但要标注估算。",
+    ],
+    example: "cache 中 19 个点：12 个 exact_25d、5 个 near_25d、2 个 outside_band。outside_band 来自 60D+ 远月的 OTM 链（strike 离 25D 太远），near_25d 来自 weeklies（DTE 短，25D 落在 strike 间隙）。评估：曲线以 exact_25d 为主，可比性较好。",
+    risk_note: "near_25d 和 outside_band 在不同到期日 / 不同 IV 环境下可能不可比。比如 near_25d delta=0.18 的点 vs exact_25d delta=0.25 的点，前者的'25D IV'实际是 |delta|=0.18 处的 IV，与后者不同 delta 上的 IV 直接比较会有偏。不要混合 band 直接画一条 25D Skew 线。",
+  }),
+  term("cross_expiry_fallback", "跨到期日回退 / Cross Expiry Fallback", {
+    aliases: ["跨到期日回退", "Cross Expiry", "借链回退"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "advanced",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["skew_25d", "delta-source", "constant-maturity"],
+    tags: ["options", "fallback", "skew"],
+    summary: "当主链（effective_expiry）算不出 25D call/put 时，借相邻 standard expiry 的 quote 凑成对。",
+    definition: "skew_25d 计算时，主链（effective_expiry）上的 quotes 可能因为 OTM 链稀疏或 strike 离 25D 太远而无法形成 25D call 或 25D put。此时只把缺失的那一侧从相邻 standard expiry 链上借一组 quotes 来凑成对，保留主链已有的那一侧。",
+    why_it_matters: "BTC 临近周度到期时，主链可能只剩 7 天 DTE，OTM 链 25D 附近没 strike；同时月度链（30-40 天 DTE）还有完整的 25D call/put。跨到期日回退让 25D Skew 曲线不会突然断线。用户在 cache 点上看到 `delta_source='cross_expiry'` 标签时，知道这点的 skew 来自混合两个到期日的链。",
+    how_to_use: "看 cache 字段 `delta_source`：`provider` = 25D 数据来自主链；`model_estimate` = 25D 来自 model 估算（仍是主链）；`cross_expiry` = 至少一侧来自相邻 expiry；`unavailable` = 算不出。`cross_expiry` 仍可用，但要做敏感性分析：换一个相邻 expiry 看结果差多少。",
+    useful_when: [
+      "BTC 短 DTE 临近到期（如周度到期前 3 天）时，主链 25D 缺失是常态，cross_expiry 让曲线连续。",
+      "对比两个相邻 expiry（08-28 vs 09-25）的 25D Skew 差值，如果 > 5 个 IV 点，说明 cross_expiry 借来的那一侧有结构性偏移，需要审慎。",
+      "回测 25D Skew 信号时，标记所有 cross_expiry 点，在回测中把它们降权或独立分组。",
+    ],
+    example: "主链 2026-08-28：DTE = 1 天，OTM 链上没有 delta=0.25 的 strike（链已收缩）。相邻 2026-09-25：DTE = 29 天，OTM 链完整。计算时：call 25D 缺失 → 借 09-25 的 call 25D；put 25D 缺失 → 借 09-25 的 put 25D。delta_source = 'cross_expiry'。",
+    risk_note: "跨到期日拼接会引入到期日结构偏差（Term Structure）。两个不同 DTE 的 25D IV 不可直接比较。回退到 cross_expiry 后的 skew 应当作'近似 25D'，不是'严格 25D'。结合 iv_term_structure 一起看，如果两个相邻 expiry 已经在 contango / backwardation 极端区，跨借的数据会偏。",
+  }),
+  term("series_break", "期权序列断点 / Series Break", {
+    aliases: ["Series Break", "序列断开", "series_break_reason"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["expiry_rollover", "method_change", "roll_expiry"],
+    tags: ["options", "sequence", "break"],
+    summary: "到期日或计算口径切换时人为 NULL 化序列点，标注'序列不可比'。",
+    definition: "service._break_legacy_rolls 在相邻 cache 点的 source_expiry 变化（expiry_rollover）或 selection_method 变化（method_change）时，把当前点的 call/put/debit 三个保护成本键置 NULL，标注 series_break_reason。这样下游绘图时序列会断成两段，annotation 显示'到期日切换：MM-DD → MM-DD'或'方法切换：X → Y'。",
+    why_it_matters: "跨到期日或跨口径的序列直接连起来画会让用户误以为 cost 跳变是真实信号。series_break 让用户看到断点 + 原因（'为什么这里断'），而不是误读为价格异动。",
+    how_to_use: "看 cache 字段 `series_break_reason`：如果存在（truthy），这点的 cost 值是 NULL，必须看 annotation 解释。在 BTC 衍生品页 '保护成本历史' 图表上，断点显示为竖线 + 中文标签。",
+    useful_when: [
+      "BTC 主链从 08-28 切到 09-25 时（expiry_rollover），序列断。",
+      "selection_method 从 'otm_estimate' 切到 'constant_delta' 时（method_change），序列断。",
+      "观察断点频率：频繁断点说明链不稳定或服务在切换口径，需要看 cache 是否同步。",
+    ],
+    example: "cache 连续 3 天：08-28/4H/otm_estimate/cost=0.0255；08-28/4H/otm_estimate/cost=0.0307；09-25/4H/otm_estimate/cost=NULL/sb=expiry_rollover。序列在第 3 点断开，annotation：'到期日切换：08-28 → 09-25'。",
+    risk_note: "series_break 只在 cost 序列上工作，不影响 skew 序列（skew 自身有 cross_expiry 机制）。所以你会看到 cost 曲线断但 skew 曲线连续——这是预期行为，不是 bug。",
+  }),
+  term("roll_expiry", "期权到期换月 / Roll Expiry", {
+    aliases: ["Roll Expiry", "换月", "Rollover"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["constant-maturity", "series_break", "expiry_rollover"],
+    tags: ["options", "roll", "expiry"],
+    summary: "当前 selected_expiry 接近到期时，把主链换到下一个 standard expiry。",
+    definition: "constant-maturity 模式下，service 会跟踪 target_dte（如 60D）选择最接近的 standard expiry。当当前选中的 expiry DTE < 7 天（即将到期）时，下一次 force refresh 切到下一个 standard expiry（按月换月）。这个切换是 series_break 中 expiry_rollover 触发的根本原因。",
+    why_it_matters: "理解换月机制 = 理解为什么 25D Skew 曲线在某些日期前后有 1-2 天空白。换月不是'数据缺失'，是到期自然推进；用户应该看换月前后的 IV 跳跃，而不是把它当异常。",
+    how_to_use: "看 cache 字段 `source_expiry` 和 `source_dte`。DTE 接近 0 时预期换月；换月后 series_break_reason = 'expiry_rollover'。结合 constant-maturity 模式看，每隔约 30 天会换一次月。",
+    useful_when: [
+      "BTC 周度到期（每周五）前 3-7 天，主链如果卡在周度 expiry，DTE 快速收敛；constant-maturity 模式会自动跳过周度，使用月度 standard expiry。",
+      "换月后第一天的 cost / skew 通常与换月前不可比；不要用换月前一天的下沿止损当今天的入场信号。",
+      "如果换月频率异常（远高于 30 天），可能 constant_maturity 选择逻辑出错，需要看 maturity_selection 状态。",
+    ],
+    example: "主链 2026-08-28：DTE = 3 天，nearest standard expiry 仍是 08-28；下一日 DTE = 2 天，maturity_selection 切到 2026-09-25（DTE = 30 天），series_break_reason = 'expiry_rollover'，annotation: '到期日切换：08-28 → 09-25'。",
+    risk_note: "换月本身不影响'25D Skew 跨期'的可比性（skew 仍是 IV 之差，无量纲），但会影响'绝对保护成本'（cost 取决于 DTE × IV × spot）。看 cost 跨换月时务必换算成相同 DTE。",
+  }),
+  term("iv_term_structure", "IV 期限结构 / IV Term Structure", {
+    aliases: ["IV Term Structure", "IV 期限结构", "Term Structure"],
+    category: "btc-derivatives",
+    family: "options-history",
+    level: "intermediate",
+    page_refs: ["btc-derivatives"],
+    related_terms: ["implied-volatility", "contango-backwardation", "skew_25d", "constant-maturity"],
+    tags: ["options", "iv", "term-structure"],
+    summary: "不同到期日 IV 的曲线；Contango 远月贵，Backwardation 近月贵。",
+    definition: "Term Structure 是把 7D / 14D / 30D / 60D / 90D 等不同 DTE 的 ATM IV 串成的曲线。Contango = 远月 IV > 近月 IV（市场预期长期波动上升）；Backwardation = 近月 IV > 远月 IV（市场预期近期有事件，IV 短期飙升）。",
+    why_it_matters: "Term Structure 形状告诉你'市场在押什么事件 / 什么时候'。Contango 暗示平静；Backwardation 暗示短期有大事（FOMC / 减半 / 监管）。它直接影响跨期期权组合的相对价值（买远卖近 vs 买近卖远）。",
+    how_to_use: "看 BTC 衍生品页'IV 期限结构'图。如果曲线在 30D 处凸起 = 近月有事件；如果曲线单调上升 = 平静；如果曲线倒挂（Backwardation）= 短期恐慌。",
+    useful_when: [
+      "FOMC 决议前 1-2 周：Term Structure 通常出现 Backwardation（7D / 14D IV 飙升），决议后 1 周内回归 Contango。",
+      "BTC ETF 通过前后：长期 IV 下降（市场认为'事件已落地'），但近月 IV 短期可能再次回升。",
+      "组合对冲：Backwardation 时卖远 IV（高估值）买近 IV（事件已过回归）= 经典 calendar spread。",
+    ],
+    example: "BTC 7D ATM IV = 60%，14D = 55%，30D = 50%，60D = 48%，90D = 47%。曲线是 Contango + 短期凸起。意味着市场预期短期（7D-14D）有事件，长期（30D+）回归正常。事件如果是 FOMC，决议后 1-2 周曲线大概率平滑，IV 普遍跌 5-10 个点。",
+    risk_note: "Term Structure 只看 ATM IV，**不含 skew**。一个 30D IV = 50% 的市场，可能是 ATM 平价（skew = 0）也可能是 25D put IV = 70% + call IV = 30%（skew = +40%）。两个市场的'IV Term Structure'看起来一样但交易机会完全不同。结合 25D Skew 一起看才完整。",
+  }),
 ];
 
 const pageGuidesItems = [
-  ),
-  ),
-  ),
+  term("monitoring-overview", "监控总览页", {
+    type: "guide",
+    category: "page-guide",
+    family: "monitoring",
+    level: "basic",
+    summary: "监控总览页把宏观、技术、结构、告警和数据源状态压缩成一个交易前检查面板。",
+    purpose: "在开仓、加仓或复盘前，快速确认 BTC 当前环境是否允许进入下一步策略判断。",
+    when_to_use: [
+      "每天首次打开系统时，确认宏观总分、技术观测和告警状态是否已经可读。",
+      "BTC 出现突破或急跌时，先看技术观测和终端摘要是否支持追随。",
+      "准备执行 AI 策略建议前，检查数据源状态和缓存新鲜度。",
+    ],
+    page_walkthrough: [
+      "先看顶部状态和来源标签，确认 Gate.io、FRED、市场事件、A股ETF 是否有明显异常。",
+      "再读左侧宏观环境和终端摘要，判断当前是风险偏好、收缩还是等待状态。",
+      "最后看右侧技术观测，确认 EMA、RSI、MACD、ATR、VWAP 等短线证据是否与宏观方向一致。",
+    ],
+    data_lineage: [
+      "monitoring snapshot -> macro overview cache -> analysis bundle -> alerts bundle -> terminal summary",
+    ],
+    caveats: [
+      "总览页是交易前筛选器，不替代技术指标页、结构页或风险页的完整复核。",
+      "stale 或 seed 来源可以展示背景，但不应当单独触发交易。",
+    ],
+    related_pages: ["ai-strategy", "market-analysis", "market-structure", "alert-center"],
+    page_refs: ["monitoring-overview", "knowledge-base"],
+    tags: ["guide", "monitoring", "dashboard"],
+  }),
+  term("ai-strategy", "AI 策略页", {
+    type: "guide",
+    category: "page-guide",
+    family: "strategy",
+    level: "intermediate",
+    summary: "AI 策略页把环境、技术、结构和风险证据合成为候选交易计划。",
+    purpose: "在已有市场假设后，检查系统给出的方向、入场、止损、止盈和置信度是否可执行。",
+    when_to_use: [
+      "监控总览显示数据就绪后，用 AI 策略页生成或复核 BTC 交易计划。",
+      "趋势和结构信号互相冲突时，查看策略页如何降低仓位或进入观察。",
+      "计划交易前，确认 risk/reward、触发状态和失效条件是否清楚。",
+    ],
+    page_walkthrough: [
+      "先看策略状态、置信度和推荐动作，确认是 trade、observe 还是 wait。",
+      "再检查入场触发、止损、止盈和仓位建议是否与自己的账户风险匹配。",
+      "最后回到监控总览和结构页，验证关键证据没有过期或互相矛盾。",
+    ],
+    data_lineage: [
+      "analysis bundle + monitoring decision brief + structure bundle + alerts bundle -> strategy bundle",
+    ],
+    caveats: [
+      "策略建议是证据聚合，不是自动下单指令。",
+      "当数据质量低、结构未确认或波动率异常时，应优先降低仓位或等待。",
+    ],
+    related_pages: ["monitoring-overview", "market-analysis", "market-structure", "alert-center"],
+    page_refs: ["ai-strategy", "knowledge-base"],
+    tags: ["guide", "strategy", "risk"],
+  }),
+  term("btc-derivatives", "BTC 衍生品页", {
+    type: "guide",
+    category: "page-guide",
+    family: "derivatives",
+    level: "advanced",
+    summary: "BTC 衍生品页用于观察期权墙、最大痛点、隐含波动率、期限结构和杠杆压力。",
+    purpose: "在现货和永续信号之外，判断到期日附近的磁吸、对冲压力和波动率风险。",
+    when_to_use: [
+      "临近周度或月度期权到期时，检查 Call Wall、Put Wall 和 Max Pain。",
+      "BTC 快速接近关键行权价时，判断突破是否可能被做市商对冲压制。",
+      "重大事件前后，观察 IV 是否过高、是否存在 IV Crush 或期限结构异常。",
+    ],
+    page_walkthrough: [
+      "先看关键期权价位与现货距离，判断这些墙是否足够近。",
+      "再看 OI Change、IV、Term Structure 和 Constant Maturity，判断风险是在价格端还是波动率端。",
+      "最后把衍生品信号回填到策略页，只作为仓位和时机修正，不单独替代趋势确认。",
+    ],
+    data_lineage: [
+      "derivatives source cache -> options positioning transforms -> btc derivatives dashboard widgets",
+    ],
+    caveats: [
+      "期权墙和最大痛点会随仓位迁移快速失效。",
+      "衍生品信号更适合调整时机和风险，不适合脱离价格结构单独交易。",
+    ],
+    related_pages: ["monitoring-overview", "ai-strategy", "market-analysis", "market-events"],
+    page_refs: ["btc-derivatives", "knowledge-base"],
+    tags: ["guide", "options", "volatility"],
+  }),
 ];
+
+function hasUsefulWhen(value) {
+  return Array.isArray(value) && value.filter(Boolean).length >= 3;
+}
+
+function primaryName(item) {
+  return String(item.term || item.id || "该指标").split("/")[0].trim();
+}
+
+function defaultUsefulWhen(item) {
+  const name = primaryName(item);
+  const family = String(item.family || "").toLowerCase();
+  const category = String(item.category || "").toLowerCase();
+  const pages = new Set(item.page_refs || []);
+  if (category === "ashare-etf" || pages.has("ashare-etf")) {
+    return [
+      `用 ${name} 判断 A 股 ETF 观察对象是否只是跟随大盘，还是有独立现金流、行业或工具属性。`,
+      `BTC 风险偏好和 A 股 ETF 资金轮动背离时，用 ${name} 避免把跨市场信号误读成直接交易触发。`,
+      `做组合风险复盘时，用 ${name} 区分 ETF、现货和永续合约的流动性、交易时间和尾部风险。`,
+    ];
+  }
+  if (family.includes("macro") || family.includes("liquidity") || pages.has("macro-calendar")) {
+    return [
+      `FOMC、CPI、NFP 或流动性数据公布前，用 ${name} 判断是否需要降低 BTC 杠杆和隔夜仓位。`,
+      `BTC 技术突破但宏观条件转弱时，用 ${name} 检查突破是否缺少风险偏好支持。`,
+      `宏观总分变化较大时，用 ${name} 解释分数来自利率、美元、就业、通胀还是流动性。`,
+    ];
+  }
+  if (family.includes("cache") || family.includes("quality") || family.includes("security")) {
+    return [
+      `监控总览、策略页或宏观页显示 stale/missing/error 时，用 ${name} 判断数据是否还能参与交易评分。`,
+      `刷新后指标仍为空时，用 ${name} 区分是上游 API、缓存窗口、代理还是样本不足的问题。`,
+      `执行交易前，用 ${name} 确认页面没有把旧缓存、占位值或低置信来源当成实时信号。`,
+    ];
+  }
+  if (family.includes("onchain")) {
+    return [
+      `BTC 周期估值和链上活动与价格趋势背离时，用 ${name} 判断是否只是背景风险而非入场触发。`,
+      `链上数据源不可用或延迟时，用 ${name} 决定是否降权链上证据，改看价格、结构和资金费率。`,
+      `中长期仓位复盘时，用 ${name} 观察筹码盈亏、交易所流向或活跃度是否支持趋势延续。`,
+    ];
+  }
+  if (pages.has("market-structure") || family.includes("structure") || family.includes("level")) {
+    return [
+      `BTC 接近前高、前低、成交密集区或流动性池时，用 ${name} 判断突破、假突破和回踩质量。`,
+      `趋势指标给出方向但入场点不清楚时，用 ${name} 找到更具体的触发价、止损位和失效条件。`,
+      `价格快速扫过关键位后，用 ${name} 区分真实结构改变和短暂流动性清扫。`,
+    ];
+  }
+  if (pages.has("alert-center") || family.includes("risk") || family.includes("execution")) {
+    return [
+      `策略页给出候选交易后，用 ${name} 检查告警、仓位、止损和盈亏比是否满足执行门槛。`,
+      `BTC 波动突然放大时，用 ${name} 判断是否需要缩小仓位、推迟入场或改为观察。`,
+      `已有仓位接近关键价位时，用 ${name} 复核止盈、止损、追踪和失效条件是否仍然有效。`,
+    ];
+  }
+  if (family.includes("volume")) {
+    return [
+      `BTC 突破关键位时，用 ${name} 判断是否有真实成交参与，而不是低量假突破。`,
+      `价格横盘但成交或筹码分布变化时，用 ${name} 观察吸筹、派发或换手是否正在发生。`,
+      `策略信号互相冲突时，用 ${name} 辅助判断哪一侧更有资金确认。`,
+    ];
+  }
+  if (family.includes("volatility")) {
+    return [
+      `BTC 波动率压缩或突破后，用 ${name} 判断适合等待方向确认、降低杠杆还是扩大止损距离。`,
+      `ATR、布林带宽度或隐含波动率异常变化时，用 ${name} 调整仓位和止损，而不是只看方向。`,
+      `事件前后价格剧烈波动时，用 ${name} 区分趋势机会和单纯噪音放大。`,
+    ];
+  }
+  if (family.includes("momentum")) {
+    return [
+      `BTC 已经接近阻力或支撑时，用 ${name} 判断动量是否仍支持追随。`,
+      `价格创新高但动量没有同步增强时，用 ${name} 识别背离和追高风险。`,
+      `震荡行情中，用 ${name} 辅助判断超买、超卖和等待确认的时机。`,
+    ];
+  }
+  if (family.includes("trend") || family.includes("price") || family.includes("timeframe")) {
+    return [
+      `BTC 多周期方向需要统一时，用 ${name} 判断日线、4h 和 1h 是否同向。`,
+      `趋势回踩或均线纠缠时，用 ${name} 区分顺势加仓机会和趋势衰减。`,
+      `策略页给出交易方向后，用 ${name} 复核入场周期是否和大周期趋势一致。`,
+    ];
+  }
+  return [
+    `BTC 交易前，用 ${name} 补充解释当前页面信号的来源、含义和适用边界。`,
+    `当监控总览、技术指标和策略页结论不一致时，用 ${name} 找到冲突来自数据、结构还是风险。`,
+    `复盘亏损或错过交易时，用 ${name} 检查当时是否忽略了关键上下文。`,
+  ];
+}
+
+function defaultExample(item) {
+  const name = primaryName(item);
+  const family = String(item.family || "").toLowerCase();
+  const category = String(item.category || "").toLowerCase();
+  const pages = new Set(item.page_refs || []);
+  if (category === "ashare-etf" || pages.has("ashare-etf")) {
+    return `例如 BTC 日线仍在震荡，但 A 股现金流和 HALO 观察对象同步走强。此时 ${name} 可以作为跨市场风险偏好的旁证，但不能直接替代 BTC 自身的结构突破和止损设置。`;
+  }
+  if (family.includes("macro") || family.includes("liquidity") || pages.has("macro-calendar")) {
+    return `例如 BTC 4h 突破前高，但 ${name} 显示美元或利率压力正在上升。策略上可以保留多头假设，但降低仓位，等待收盘确认和波动率回落后再执行。`;
+  }
+  if (family.includes("cache") || family.includes("quality") || family.includes("security")) {
+    return `例如监控总览显示技术观测为空但宏观缓存可读，先用 ${name} 判断这是数据质量问题还是行情信号缺失；在状态恢复前，只把旧快照当背景，不让它触发新仓。`;
+  }
+  if (family.includes("onchain")) {
+    return `例如 BTC 已经连续上涨两周，但 ${name} 没有同步改善，说明链上证据不足。可以继续跟随价格趋势，但不把链上项计入高置信加仓理由。`;
+  }
+  if (pages.has("market-structure") || family.includes("structure") || family.includes("level")) {
+    return `例如 BTC 扫过 4h 前低后快速收回，${name} 帮助判断这是流动性清扫还是结构跌破。若随后重新站回成交密集区，空头追击需要降权。`;
+  }
+  if (pages.has("alert-center") || family.includes("risk") || family.includes("execution")) {
+    return `例如 AI 策略给出多头候选，但 ${name} 显示止损距离过大或告警未确认。此时应等待更近的回踩触发，或把仓位降到计划风险以内。`;
+  }
+  if (family.includes("volume")) {
+    return `例如 BTC 突破 70000 时，${name} 同步放大并高于近 20 根均值，说明突破更可能有资金参与；如果成交萎缩，则把突破当作待确认。`;
+  }
+  if (family.includes("volatility")) {
+    return `例如 BTC 日线布林带收窄后突然放量突破，${name} 提醒波动率已经扩张。此时不宜用压缩期的小止损，需要按 ATR 或结构位重新计算仓位。`;
+  }
+  if (family.includes("momentum")) {
+    return `例如 BTC 价格创新高但 ${name} 走弱，说明追多胜率下降。更稳妥的处理是等待回踩确认，或把止盈前移而不是继续加仓。`;
+  }
+  if (family.includes("trend") || family.includes("price") || family.includes("timeframe")) {
+    return `例如 BTC 1d 仍在 EMA20 上方，而 4h 回踩到趋势支撑附近，${name} 可用来判断这是顺势回踩还是趋势转弱；只有收盘确认后才考虑加仓。`;
+  }
+  return `例如监控总览和策略页对 BTC 给出不同结论时，用 ${name} 回到定义和使用场景，确认这个词条应当影响方向、仓位、时机还是仅作为风险提示。`;
+}
+
+function enrichKnowledgeItems(items) {
+  return items.map((item) => {
+    if (item.type === "guide" || item.category === "btc-derivatives") return item;
+    return {
+      ...item,
+      useful_when: hasUsefulWhen(item.useful_when) ? item.useful_when : defaultUsefulWhen(item),
+      example: String(item.example || "").trim() ? item.example : defaultExample(item),
+    };
+  });
+}
 
 export const knowledgeSections = [
   {
     id: "page-guides",
     title: "页面使用指南",
-    description: "每个页面的使用时机、阅读顺序、数据依赖与注意点",
+    description: "各核心页面的使用入口和阅读顺序。监控总览、AI 策略、BTC 衍生品三个页面均提供 📘 浮动按钮，页内可同时查阅。",
     items: pageGuidesItems,
   },
   {
     id: "technical",
     title: "技术指标与图表",
     description: "趋势、动量、波动和成交量指标的计算口径与使用方式。",
-    items: technicalItems,
+    items: enrichKnowledgeItems(technicalItems),
   },
   {
     id: "structure",
     title: "形态结构",
     description: "摆动结构、关键位、成交量轮廓和市场状态。",
-    items: structureItems,
+    items: enrichKnowledgeItems(structureItems),
   },
   {
     id: "alerts",
     title: "告警、筹码与风险执行",
     description: "把信号转换成交易前需要经过的证据、风险和仓位门控。",
-    items: alertItems,
+    items: enrichKnowledgeItems(alertItems),
   },
   {
     id: "macro",
     title: "宏观与跨市场变量",
     description: "利率、美元、就业、通胀和流动性变量如何影响风险资产。",
-    items: macroItems,
+    items: enrichKnowledgeItems(macroItems),
   },
   {
     id: "quality",
     title: "数据质量与链上可选项",
     description: "数据新鲜度、样本成熟度、源可用性和链上数据可用性。",
-    items: dataQualityItems,
+    items: enrichKnowledgeItems(dataQualityItems),
   },
   {
     id: "ashare-etf",
     title: "A股ETF",
     description: "现金流、HALO 行业篮子和 A 股 ETF 行情源的独立观察口径。",
-    items: etfItems,
+    items: enrichKnowledgeItems(etfItems),
   },
   {
     id: "btc-derivatives",
@@ -1753,6 +2157,16 @@ for (const section of knowledgeSections) {
     for (const alias of item.aliases || []) register(item, alias);
     for (const tag of item.tags || []) register(item, tag);
   }
+}
+
+// Page guides are no longer rendered in the /knowledge-page section but
+// are still surfaced as per-page floating FABs (see ui/pageGuideFab.js).
+// Register them in the lookup so findKnowledgeTerm(termId) resolves.
+for (const item of pageGuidesItems) {
+  register(item, item.id);
+  register(item, item.term);
+  for (const alias of item.aliases || []) register(item, alias);
+  for (const tag of item.tags || []) register(item, tag);
 }
 
 export function findKnowledgeTerm(termName) {

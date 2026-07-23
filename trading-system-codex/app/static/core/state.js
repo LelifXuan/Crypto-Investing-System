@@ -54,6 +54,7 @@ const STORAGE_KEYS = {
   timeframe: "terminal.timeframe",
   viewWindow: "terminal.view_window",
   eventsTranslate: "terminal.events.translate",
+  guideExpandedPrefix: "terminal.guide.expanded.",
 };
 
 function safeRead(key, fallback) {
@@ -92,4 +93,25 @@ export function getWindowProfile(timeframe, viewWindow) {
 
 export function getInstrumentMeta(instrumentId) {
   return ANALYSIS_INSTRUMENTS.find((item) => item.id === instrumentId) || ANALYSIS_INSTRUMENTS[0];
+}
+
+export function readGuideExpanded(termId) {
+  if (!termId) return false;
+  try {
+    return localStorage.getItem(`${STORAGE_KEYS.guideExpandedPrefix}${termId}`) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function writeGuideExpanded(termId, expanded) {
+  if (!termId) return;
+  try {
+    localStorage.setItem(
+      `${STORAGE_KEYS.guideExpandedPrefix}${termId}`,
+      expanded ? "true" : "false",
+    );
+  } catch {
+    // ignore localStorage failures in local desktop mode
+  }
 }

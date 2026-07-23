@@ -10,6 +10,7 @@ from app.schemas.structure import (
     StructureSystemJudgementRead,
     StructureTabSnapshotRead,
 )
+from app.services.range_regime import classify_range
 
 from .common import STRUCTURE_DETECTOR_VERSION, direction_from_score, to_float
 
@@ -35,6 +36,10 @@ async def read_snapshot(
         else []
     )
     diagnostics = snapshot.diagnostics_json or {}
+    range_classification = classify_range(
+        regime=snapshot.regime,
+        structure_score=to_float(snapshot.overall_score),
+    )
     overall = StructureOverallJudgementRead(
         overall_bias=snapshot.overall_bias,
         score=to_float(snapshot.score),
@@ -42,6 +47,7 @@ async def read_snapshot(
         overall_score=to_float(snapshot.overall_score),
         overall_confidence=to_float(snapshot.overall_confidence),
         regime=snapshot.regime,
+        **range_classification.as_dict(),
         weight_template=snapshot.weight_template,
         weights={
             "swing": to_float(snapshot.weight_swing),

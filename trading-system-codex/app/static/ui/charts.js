@@ -110,16 +110,30 @@ export function formatChartValue(value, valueFormat = "raw") {
   return numeric.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
 }
 
+function isDateOnlyLabel(text) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(text || ""));
+}
+
 function formatXAxisTick(value, labels = []) {
   const raw = labels?.[value] ?? value;
   const text = String(raw ?? "");
+  if (isDateOnlyLabel(text)) {
+    const [, month, day] = text.match(/^\d{4}-(\d{2})-(\d{2})$/) || [];
+    return `${month}-${day}`;
+  }
   const date = new Date(text);
-  if (!Number.isNaN(date.getTime()) && /T|\d{4}-\d{2}-\d{2}/.test(text)) {
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hour = String(date.getHours()).padStart(2, "0");
-    const minute = String(date.getMinutes()).padStart(2, "0");
-    return `${month}-${day} ${hour}:${minute}`;
+  if (!Number.isNaN(date.getTime()) && /T/.test(text)) {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date).map((part) => [part.type, part.value]),
+    );
+    return `${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
   }
   const numeric = finiteChartNumber(text);
   if (numeric !== null && Math.abs(numeric) >= 1000) {
@@ -206,14 +220,22 @@ function deepMerge(base, override) {
   return output;
 }
 
-function sanitizeDatasets(datasets) {
-  return (datasets || []).map((dataset) => ({
-    ...dataset,
-    data: sanitizeChartSeries(dataset?.data),
-    candles: dataset?.renderAsCandles
-      ? (dataset.candles || []).map(sanitizeCandle)
-      : dataset?.candles,
-  }));
+export function sanitizeDatasets(datasets) {
+  return (datasets || []).map((dataset) => {
+    // The backend writes the per-axis binding as `y_axis_id` (snake_case, to
+    // match the JSON schema). Chart.js reads `dataset.yAxisID` at render time,
+    // so we translate here. Existing yAxisID wins to keep render behaviour
+    // deterministic when both fields are set (e.g. tests, future plugins).
+    const yAxisID = dataset.yAxisID || dataset.y_axis_id || undefined;
+    return {
+      ...dataset,
+      ...(yAxisID ? { yAxisID } : {}),
+      data: sanitizeChartSeries(dataset?.data),
+      candles: dataset?.renderAsCandles
+        ? (dataset.candles || []).map(sanitizeCandle)
+        : dataset?.candles,
+    };
+  });
 }
 
 const adaptiveAxisPlugin = {
@@ -358,8 +380,8 @@ const candlestickOverlayPlugin = {
         const yClose = yScale.getPixelForValue(close);
         if (![yOpen, yHigh, yLow, yClose].every(Number.isFinite)) return;
         const bullish = close >= open;
-        const stroke = bullish ? (dataset.upStrokeColor || "#0f766e") : (dataset.downStrokeColor || "#b45309");
-        const fill = bullish ? (dataset.upColor || "rgba(15,118,110,0.18)") : (dataset.downColor || "rgba(180,83,9,0.22)");
+        const stroke = bullish ? (dataset.upStrokeColor || "#16a34a") : (dataset.downStrokeColor || "#dc2626");
+        const fill = bullish ? (dataset.upColor || "rgba(124,155,138,0.32)") : (dataset.downColor || "rgba(194,114,90,0.30)");
         const bodyTop = Math.min(yOpen, yClose);
         const bodyHeight = Math.max(Math.abs(yClose - yOpen), 1.5);
 
@@ -406,6 +428,24 @@ function baseOptions() {
         titleColor: "#f8fafc",
         bodyColor: "#e2e8f0",
         displayColors: true,
+        callbacks: {
+          title(items) {
+            const raw = items?.[0]?.label || "";
+            if (!/T/.test(raw)) return raw;
+            const date = new Date(raw);
+            if (Number.isNaN(date.getTime())) return raw;
+            const formatted = new Intl.DateTimeFormat("zh-CN", {
+              timeZone: "Asia/Shanghai",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hourCycle: "h23",
+            }).format(date);
+            return `${formatted} 北京时间`;
+          },
+        },
       },
     },
     scales: {
@@ -591,10 +631,10 @@ export function candleDataset(label, candles, extra = {}) {
     fill: false,
     renderAsCandles: true,
     candles: sanitizedCandles,
-    upStrokeColor: "#0f766e",
-    upColor: "rgba(15, 118, 110, 0.16)",
-    downStrokeColor: "#c35a1d",
-    downColor: "rgba(195, 90, 29, 0.22)",
+    upStrokeColor: "#16a34a",
+    upColor: "rgba(124, 155, 138, 0.32)",
+    downStrokeColor: "#dc2626",
+    downColor: "rgba(194, 114, 90, 0.30)",
     ...extra,
   };
 }

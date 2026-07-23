@@ -76,6 +76,19 @@ def test_transition_mode_badge_visible(base_url):
             text = badge.first.inner_text()
             assert "波动率压缩" in text or "vol_compression" in text
 
+            # Regression guard: the link target must be /indicators-page
+            # (the technical indicator page), NOT /market-analysis which
+            # would 404 and leave the user with a blank screen.
+            link = badge.first.locator("a.status-mode-link")
+            assert link.count() == 1
+            href = link.first.get_attribute("href")
+            assert href is not None
+            assert href.startswith("/indicators-page"), (
+                f"Expected transition-mode badge link to point at "
+                f"/indicators-page, got {href!r}"
+            )
+            assert "focus=breakout" in href
+
         ctx.close()
         browser.close()
 

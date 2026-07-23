@@ -75,5 +75,5 @@ class OnchainRegimeEngine:
             return "链上维度可参与长期流动性和风险偏好确认，但不直接触发短线入场。"
         if data_status == "stale":
             return "链上维度降为低权重观察，长期配置置信度下调。"
-        missing = ", ".join(str(item) for item in (missing_inputs or [])) or "onchain observations"
+        missing = ", ".join(str(item) for item in (missing_inputs or [])) or "链上观测数据"
         return f"缺少 {missing}；链上维度不参与强方向加权，需先由监控 / 链上页面补齐。"

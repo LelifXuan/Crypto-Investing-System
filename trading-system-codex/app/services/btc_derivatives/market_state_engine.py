@@ -3,6 +3,8 @@ from __future__ import annotations
 from math import isfinite
 from typing import Any, Mapping
 
+from app.services.range_regime import classify_range
+
 VALID_DATA_STATES = {"ok", "live", "stale", "partial"}
 HIGH_QUALITY_STATES = {"ok", "live", "stale"}
 
@@ -313,6 +315,7 @@ def build_market_state(
     hedge_cost_state: str = "data_insufficient",
     technical_bias: str | None = None,
     options_wall_signal: Mapping[str, Any] | None = None,
+    options_direction: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     helps_long: list[str] = []
     hurts_long: list[str] = []
@@ -424,14 +427,27 @@ def build_market_state(
         futures_implication = "风险释放不等于趋势反转，但晚追空的赔率下降。"
         futures_tone = "deleveraging"
 
-    options_conclusion = "期权市场未形成明显方向偏好"
-    options_implication = "IV 与 Skew 均未明显倾斜，期权层当前不给出额外方向增量。"
+    direction_axis = dict(options_direction or {})
+    direction_state = str(direction_axis.get("state") or "")
+    options_conclusion = "期权方向相对平衡"
+    options_implication = "标准到期日的 25D Skew 暂未形成方向倾斜。"
     options_tone = "neutral"
-    if skew_state == "put_skew_high":
+    if direction_state == "DATA_INSUFFICIENT" or skew_state == "data_insufficient":
+        options_conclusion = "期权方向数据不足"
+        options_implication = str(
+            direction_axis.get("primary_reason")
+            or "25D Skew 尚不可可靠计算，不能将缺失数据解释为方向平衡。"
+        )
+        options_tone = "data_insufficient"
+    elif direction_state == "TERM_DIVERGENCE":
+        options_conclusion = "近远期限方向分化"
+        options_implication = "不同标准到期日的保护需求相反，暂不形成统一方向增量。"
+        options_tone = "mixed"
+    elif direction_state == "DOWNSIDE_PROTECTION" or skew_state == "put_skew_high":
         options_conclusion = "下行保护需求偏高"
         options_implication = "单纯追多的置信度下降；现货或多网格可比较 Put Spread 保护成本。"
         options_tone = "bearish"
-    elif skew_state == "call_skew_high":
+    elif direction_state == "UPSIDE_DEMAND" or skew_state == "call_skew_high":
         options_conclusion = "上行追涨或逼空保护需求升高"
         options_implication = "空网格或空头仓位应关注 Call / Call Spread 保护成本。"
         options_tone = "bullish"
@@ -528,10 +544,16 @@ def build_market_state(
         for group in evidence_groups.values()
         for item in group["display_items"]
     ]
+    range_classification = classify_range(
+        regime=state,
+        composite_score=score,
+        data_status=data_quality_status,
+    )
     return {
         "market_state": state,
         "confidence": _overall_confidence(evidence_groups),
         "score": score,
+        **range_classification.as_dict(),
         "helps_long": helps_long,
         "hurts_long": hurts_long,
         "helps_short": helps_short,
@@ -565,6 +587,7 @@ def build_market_state(
         "key_levels_axis": key_levels_axis,
         "derivatives_axes": {
             "key_levels_axis": key_levels_axis,
+            "options_direction": direction_axis,
         },
         "direct_command": "none; evidence layer only",
         "warnings": warnings,
@@ -585,6 +608,7 @@ def decision_cards(analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
         {
             "id": "market_state",
             "label": "当前衍生品状态",
+            "market_state_label": str(analysis.get("range_label") or "状态待确认"),
             "state": str(futures.get("tone", "neutral")),
             "confidence": str(futures.get("confidence", "low")),
             "summary": str(futures.get("conclusion", "当前数据不足以形成清晰判断")),

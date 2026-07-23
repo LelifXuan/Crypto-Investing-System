@@ -211,7 +211,7 @@ async def get_monitoring_dashboard(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(
-        instrument_id, timeframe, allow_refresh=False
+        instrument_id, timeframe, allow_refresh=True
     )
 
 

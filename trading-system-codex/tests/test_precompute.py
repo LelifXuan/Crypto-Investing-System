@@ -13,7 +13,7 @@ from app.db.models.instrument import Instrument
 from app.main import create_app
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import PrecomputeHintRequest
-from app.services.precompute import precompute_service
+from app.services.precompute import PrecomputeService, PrecomputeTaskPlanner, precompute_service
 
 
 @pytest.fixture()
@@ -95,6 +95,9 @@ async def test_precompute_hint_analysis_expands_related_tasks(precompute_db) -> 
 
 @pytest.mark.asyncio
 async def test_precompute_hint_strategy_expands_market_context_task(precompute_db) -> None:
+    precompute_service._queue.clear()  # noqa: SLF001
+    precompute_service._queued.clear()  # noqa: SLF001
+    precompute_service._last_seen_at.clear()  # noqa: SLF001
     response = await precompute_service.enqueue_hint(
         PrecomputeHintRequest(
             current_page="ai-strategy",
@@ -107,6 +110,10 @@ async def test_precompute_hint_strategy_expands_market_context_task(precompute_d
 
     assert response.status in {"accepted", "deduped"}
     if response.status != "deduped":
+        assert any(
+            key.startswith("strategy_unified:btc-usdt-perp:")
+            for key in response.queued_keys
+        )
         for timeframe in ("30d", "1w", "1d", "4h", "1h", "15m"):
             assert any(
                 key.startswith(f"strategy_bundle:btc-usdt-perp:{timeframe}:")
@@ -116,6 +123,91 @@ async def test_precompute_hint_strategy_expands_market_context_task(precompute_d
                 key.startswith(f"market_context:btc-usdt-perp:{timeframe}:")
                 for key in response.queued_keys
             )
+
+
+def test_precompute_planner_strategy_unified_candidate() -> None:
+    tasks = PrecomputeTaskPlanner().build_tasks(
+        PrecomputeHintRequest(
+            current_page="strategy",
+            instrument_id="btc-usdt-perp",
+            timeframe="1d",
+            reason="startup_critical_snapshot",
+            visible=False,
+            candidates=["strategy_unified"],
+            priority=2,
+        )
+    )
+
+    unified = [task for task in tasks if task.task_type == "strategy_unified"]
+    assert len(unified) == 1
+    assert unified[0].page_type == "strategy_unified"
+    assert unified[0].cache_key.startswith("strategy_unified:btc-usdt-perp:")
+
+
+@pytest.mark.asyncio
+async def test_precompute_strategy_unified_task_persists_snapshot(monkeypatch) -> None:
+    saved: dict = {}
+
+    class DummyRepository:
+        async def upsert_page_snapshot_cache(self, **kwargs):  # noqa: ANN003
+            saved.update(kwargs)
+            return object()
+
+    async def fake_build(self, instrument_id: str = "btc-usdt-perp", *, force: bool = False):
+        return {
+            "instrument_id": instrument_id,
+            "status": "ready",
+            "generated_at": "2026-07-12T00:00:00+00:00",
+            "refresh_state": "requested",
+            "refresh_limitations": [],
+            "unified_state": {
+                "code": "TACTICAL_LONG",
+                "label": "看多",
+                "instruction": "后台预热完成",
+                "permission": "conditional",
+                "risk_level": "medium",
+            },
+            "horizon_views": {},
+            "horizon_governance": {"position_cap": "reduced"},
+            "market_operation": {"chain": {}},
+            "timeframe_stack": [],
+            "trade_plans": [],
+            "risk_alerts": [],
+            "risk_groups": {},
+            "monitoring_focus": [],
+            "event_watch": [],
+            "evidence_trace": [],
+            "narrative": {"headline": "后台预热完成", "layers": [], "watchlist": [], "action": ""},
+            "snapshot_key": "btc-usdt-perp:abc",
+            "payload_hash": "abc",
+        }
+
+    monkeypatch.setattr(
+        "app.services.strategy_unified.unified_service.UnifiedStrategyService.build_unified_strategy",
+        fake_build,
+    )
+    task = next(
+        task
+        for task in PrecomputeTaskPlanner().build_tasks(
+            PrecomputeHintRequest(
+                current_page="strategy",
+                instrument_id="btc-usdt-perp",
+                timeframe="1d",
+                reason="startup_critical_snapshot",
+                visible=False,
+                candidates=["strategy_unified"],
+                priority=2,
+            )
+        )
+        if task.task_type == "strategy_unified"
+    )
+
+    await PrecomputeService()._execute_task(DummyRepository(), task)  # noqa: SLF001
+
+    assert saved["cache_key"].startswith("strategy_unified:btc-usdt-perp:")
+    assert saved["page_type"] == "strategy_unified"
+    assert saved["payload_json"]["unified_state"]["label"] == "看多"
+    assert saved["cache_state"] == "fresh"
 
 
 @pytest.mark.asyncio

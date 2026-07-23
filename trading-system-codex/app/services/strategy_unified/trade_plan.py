@@ -25,9 +25,11 @@ class UnifiedTradePlanEngine:
         governance: HorizonGovernance,
         nodes: Sequence[TimeframeNode],
         bundles: Mapping[str, Mapping[str, Any]],
+        trade_decision: Mapping[str, Any] | None = None,
     ) -> list[TradePlan]:
-        if state.get("permission") == "no_trade" or governance.position_cap == "no_trade":
-            return [self._no_trade_plan()]
+        execution_blocked = (
+            state.get("permission") == "no_trade" or governance.position_cap == "no_trade"
+        )
         plans: list[TradePlan] = []
         strategic = horizon_views["strategic"]
         tactical = horizon_views["tactical"]
@@ -41,7 +43,112 @@ class UnifiedTradePlanEngine:
         else:
             plans.append(self._wait_range_plan(execution, nodes, governance))
         plans.append(self._execution_trigger_plan(execution, tactical, nodes, governance))
+        decision = trade_decision or {}
+        if decision.get("order_type") in {"MARKET", "CONDITIONAL_LIMIT"} and not any(
+            plan.direction == decision.get("side") and str(plan.type).startswith("TACTICAL_")
+            for plan in plans
+        ):
+            plans.insert(0, self._order_plan_from_decision(decision, nodes))
+        for plan in plans:
+            plan.recommended_leverage = float(decision.get("recommended_leverage") or 0)
+            plan.max_leverage = float(decision.get("max_leverage") or 0)
+            plan.leverage_status = str(decision.get("leverage_status") or "blocked")
+            plan.leverage_reason = str(
+                decision.get("leverage_reason") or "当前计划不建议使用杠杆。"
+            )
+            if plan.direction == decision.get("side") and (
+                str(plan.type).startswith("TACTICAL_") or plan.type == "CURRENT_ORDER_PLAN"
+            ):
+                plan.order_type = str(decision.get("order_type") or "NONE")
+                plan.order_status = str(decision.get("order_status") or "NO_DIRECTION")
+                plan.execution_price = first_float(decision.get("execution_price"))
+                plan.limit_price = first_float(decision.get("limit_price"))
+                plan.conflict_timeframe = str(decision.get("conflict_timeframe") or "")
+                plan.confirmation_timeframe = str(
+                    decision.get("confirmation_timeframe") or ""
+                )
+                plan.filter_timeframe = str(decision.get("filter_timeframe") or "")
+                plan.price_condition = str(decision.get("price_condition") or "")
+                plan.confirmation_condition = str(
+                    decision.get("confirmation_condition") or ""
+                )
+                plan.activation_conditions = list(
+                    decision.get("activation_conditions") or []
+                )
+                plan.price_protection = dict(decision.get("price_protection") or {})
+                plan.valid_until = str(decision.get("valid_until") or "")
+                plan.valid_until_iso = str(decision.get("valid_until_iso") or "")
+                plan.plan_distance_pct = float(
+                    decision.get("plan_distance_pct") or 0
+                )
+                plan.plan_stale_score = int(
+                    decision.get("plan_stale_score") or 0
+                )
+                plan.plan_stale_reason = str(
+                    decision.get("plan_stale_reason") or ""
+                )
+                plan.planned_leverage = float(decision.get("planned_leverage") or 0)
+                plan.trade_timeframe = str(decision.get("trade_timeframe") or "4h")
+                plan.direction_timeframes = list(
+                    decision.get("direction_timeframes") or ["1d", "4h"]
+                )
+                plan.execution_timeframes = list(
+                    decision.get("execution_timeframes") or ["1h", "15m"]
+                )
+                plan.lifecycle_state = str(
+                    decision.get("lifecycle_state") or "SETUP_DETECTED"
+                )
+                plan.activated_at = str(decision.get("activated_at") or "")
+                plan.invalidated_at = str(decision.get("invalidated_at") or "")
+                plan.invalidation_reason = str(
+                    decision.get("invalidation_reason") or ""
+                )
+                plan.levels_active = bool(decision.get("levels_active", True))
+                if decision.get("entry_zone"):
+                    plan.entry_zone = list_floats(decision.get("entry_zone"))
+                if plan.order_type == "MARKET":
+                    plan.label = plan.title = "市价执行计划"
+                elif plan.order_type == "CONDITIONAL_LIMIT":
+                    plan.label = plan.title = "条件限价计划"
+                    plan.trigger = {
+                        "price": plan.price_condition,
+                        "confirmation": plan.confirmation_condition,
+                        "all_required": True,
+                    }
+        if execution_blocked:
+            # Keep the derived plans as an audit trail, but make it impossible for
+            # callers to mistake their historical levels for executable orders.
+            for plan in plans:
+                plan.permission = "no_trade"
+                plan.levels_active = False
+                plan.recommended_leverage = 0.0
+                plan.max_leverage = 0.0
+                plan.leverage_status = "blocked"
+            plans.insert(0, self._no_trade_plan())
         return plans
+
+    @staticmethod
+    def _order_plan_from_decision(
+        decision: Mapping[str, Any], nodes: Sequence[TimeframeNode]
+    ) -> TradePlan:
+        return TradePlan(
+            id="current_order_plan",
+            type="CURRENT_ORDER_PLAN",
+            plan_type="CURRENT_ORDER_PLAN",
+            label="当前订单计划",
+            title="当前订单计划",
+            direction=str(decision.get("side") or "NEUTRAL"),
+            horizon="current",
+            source_timeframes=[node.timeframe for node in nodes if node.timeframe in {"1d", "4h", "1h", "15m"}],
+            entry_logic=str(decision.get("entry_condition") or "等待订单条件确认。"),
+            entry_zone=list_floats(decision.get("entry_zone")),
+            stop_loss=first_float(decision.get("invalidation")),
+            take_profit=[],
+            take_profit_text="等待统一价格计划生成目标位。",
+            invalidation="1D 方向失效、风险门禁触发或计划过期时取消。",
+            position_rule="只在统一订单合同允许后执行。",
+            permission=str(decision.get("permission") or "conditional"),
+        )
 
     def _no_trade_plan(self) -> TradePlan:
         return TradePlan("no_trade", "NO_TRADE", "NO_TRADE", "禁止交易计划", "禁止交易计划", "NO_TRADE", "current", [s.logical for s in TIMEFRAME_SPECS], "风险门禁触发，当前不建立新交易计划。", [], None, [], "-", "解除风险门禁后重新计算统一策略。", "暂停新开仓。", "no_trade")
@@ -136,7 +243,7 @@ class UnifiedTradePlanEngine:
         )
 
     def _wait_range_plan(self, execution: HorizonView, nodes: Sequence[TimeframeNode], governance: HorizonGovernance) -> TradePlan:
-        return TradePlan("wait_range", "WAIT_RANGE", "WAIT_RANGE", "区间等待计划", "区间等待计划", "NEUTRAL", "1W-8W", execution.source_timeframes, "多周期方向优势不足，等待区间突破或关键结构确认。", [], None, [], "-", "任一高周期重新形成明确方向后失效。", "不主动开新方向仓位。", "observe", execution.evidence[:3])
+        return TradePlan("wait_range", "WAIT_RANGE", "WAIT_RANGE", "等待区间方向确认", "等待区间方向确认", "NEUTRAL", "1W-8W", execution.source_timeframes, "多周期方向优势不足，等待区间突破或关键结构确认。", [], None, [], "-", "任一高周期重新形成明确方向后失效。", "不主动开新方向仓位。", "observe", execution.evidence[:3])
 
     def _execution_trigger_plan(self, execution: HorizonView, tactical: HorizonView, nodes: Sequence[TimeframeNode], governance: HorizonGovernance) -> TradePlan:
         h1 = node_by_tf(nodes, "1h")

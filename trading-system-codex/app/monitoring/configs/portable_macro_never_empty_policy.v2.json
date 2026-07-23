@@ -315,7 +315,6 @@
       "runtime_env",
       "portable_runtime.lock.json",
       "requirements-portable.txt",
-      "start_portable.bat",
       "TradingSystemLauncher.exe"
     ]
   }

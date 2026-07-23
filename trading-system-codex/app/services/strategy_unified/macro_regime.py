@@ -44,13 +44,13 @@ class MacroRegimeEngine:
             state = "RISK_APPETITE_SUPPORTIVE"
             bias = "LONG"
             score = float(macro_features.get("total_score") or macro_overview.get("total_score") or 62)
-            human = f"宏观环境风险偏好回升（operation_bias={operation_bias}, regime_key={regime_key}）。"
+            human = "宏观环境风险偏好回升，对多头仓位更友好；但仍需要价格结构或资金流确认后再执行。"
             evidence = [human]
         elif any(key in lower_bias for key in ("risk_off", "tight", "bear", "pressure", "negative")):
             state = "RISK_APPETITE_PRESSURE"
             bias = "SHORT"
             score = float(macro_features.get("total_score") or macro_overview.get("total_score") or 62)
-            human = f"宏观环境风险偏好下行（operation_bias={operation_bias}, regime_key={regime_key}）。"
+            human = "宏观环境风险偏好下行，追多胜率下降；反弹失败或跌破关键位时应优先控制回撤。"
             evidence = [human]
         else:
             if not macro_features and not macro_overview:

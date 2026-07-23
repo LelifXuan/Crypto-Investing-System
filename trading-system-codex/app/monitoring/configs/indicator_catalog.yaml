@@ -2119,3 +2119,172 @@ indicators:
   use_cases:
   - fx_rate
   is_enabled: true
+# --- Federal Reserve operations (FRED series) ---
+# Added to close the 6-item "missing" gap shown on the monitoring page.
+# Each series is published by FRED on a daily cadence (workdays).
+- indicator_key: fed_iorb
+  display_name: Fed IORB (Interest on Reserve Balances)
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: IORB
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_policy
+  is_enabled: true
+- indicator_key: fed_on_rrp_rate
+  display_name: Fed ON-RRP Rate
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: RRPONTSYAWARD
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_policy
+  is_enabled: true
+- indicator_key: fed_soma_treasury
+  display_name: Fed SOMA Treasury Holdings
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: WSHOMCB
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_balance_sheet
+  is_enabled: true
+- indicator_key: fed_soma_mbs
+  display_name: Fed SOMA MBS Holdings
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: WSHOMCB-MBS
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_balance_sheet
+  is_enabled: true
+- indicator_key: fed_srf_usage
+  display_name: Fed Standing Repo Facility (SRF) Usage
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: RPTSYD
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_liquidity
+  is_enabled: true
+- indicator_key: fed_discount_window
+  display_name: Fed Discount Window Borrowing
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: raw_series
+  calc_engine: raw
+  calc_params:
+    external_symbol: WLCFLPCL
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_liquidity
+  is_enabled: true
+# --- Derived liquidity flow ---
+# TGA 4-week rolling diff. Derived from FRED WTREGEN series (already on the
+# upstream `tga` indicator); uses the weekly_diff_rolling_4w transform wired
+# into _transform_macro_result.
+- indicator_key: fed_tga_net_change_4w
+  display_name: Fed TGA Net Change (4W Rolling)
+  category: macro
+  family: liquidity_credit
+  source_provider: fred
+  source_kind: derived
+  calc_engine: raw
+  calc_params:
+    external_symbol: WTREGEN
+    transform: weekly_diff_rolling_4w
+  supported_assets:
+  - global
+  supported_timeframes:
+  - 1d
+  output_fields:
+  - value
+  signal_states:
+  - rising
+  - neutral
+  - falling
+  default_thresholds: {}
+  use_cases:
+  - fed_liquidity
+  is_enabled: true

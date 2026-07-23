@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import shutil
 import socket
@@ -11,15 +12,16 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED_PYTHONS = {(3, 11), (3, 14)}
-DEV_COMMANDS = {"install", "dev", "dev-local", "test", "lint", "check", "release-v16"}
+DEV_COMMANDS = {"install", "dev", "dev-local", "test", "lint", "check", "release-v18"}
 COMMAND_DEPENDENCIES = {
     "dev": ("uvicorn",),
     "dev-local": ("uvicorn",),
     "test": ("pytest",),
     "lint": ("ruff",),
     "check": ("ruff", "pytest"),
-    "release-v16": ("ruff", "pytest", "playwright"),
+    "release-v18": ("ruff", "pytest", "playwright"),
 }
+
 
 class TaskError(RuntimeError):
     """Raised when a task cannot run in the current environment."""
@@ -61,10 +63,10 @@ def ensure_virtualenv(command: str) -> None:
         return
     raise TaskError(
         f"{command} must run inside an activated virtual environment. "
-        "Create one outside the source tree with "
-        "`py -3.11 -m venv ..\\runtime_dev\\.venv` or "
-        "`py -3.14 -m venv ..\\runtime_dev\\.venv`, then activate it before "
-        "running this task. On Windows you can also run `scripts\\dev_env.ps1 -StartServer`."
+        "The project now runs against the active Python interpreter with "
+        "its dependencies installed there (e.g. `pip install -r "
+        "requirements.txt`). On Windows you can also run "
+        "`scripts\\dev_env.ps1 -StartServer`."
     )
 
 
@@ -207,7 +209,7 @@ def run_check() -> None:
     steps = build_check_steps()
     passed = 0
     for i, step in enumerate(steps):
-        label = f"[{i+1}/{len(steps)}] {' '.join(step[:3])}..."
+        label = f"[{i + 1}/{len(steps)}] {' '.join(step[:3])}..."
         try:
             run_step(step)
             passed += 1
@@ -226,42 +228,6 @@ def run_release_zip() -> None:
     run_step([sys.executable, "scripts/create_release_zip.py"])
 
 
-def run_portable_preflight() -> None:
-    portable_root = PROJECT_ROOT / "dist" / "portable_bundle"
-    embedded_python = portable_root / "runtime_env" / "python" / "python.exe"
-    if not embedded_python.exists():
-        raise TaskError(
-            "portable-preflight requires a built portable bundle. "
-            "Run `python scripts/tasks.py build-portable` first."
-        )
-    run_step_with_env(
-        [str(embedded_python), "scripts/portable_preflight.py"],
-        {"APP_DISTRIBUTION_MODE": "portable", "APP_BUNDLE_ROOT": str(portable_root)},
-        cwd=portable_root,
-    )
-
-
-def run_build_portable() -> None:
-    run_step_with_env(
-        [sys.executable, "scripts/build_portable_bundle.py"],
-        {"APP_DISTRIBUTION_MODE": "portable", "APP_BUNDLE_ROOT": str(PROJECT_ROOT)},
-    )
-
-
-def run_release_v16() -> None:
-    run_check()
-    run_step(
-        [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            "scripts/sync_portable_local.ps1",
-        ]
-    )
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Project task runner for local Windows-first development."
@@ -277,9 +243,6 @@ def parse_args() -> argparse.Namespace:
             "check",
             "clean",
             "release-zip",
-            "portable-preflight",
-            "build-portable",
-            "release-v16",
         ],
     )
     return parser.parse_args()
@@ -300,9 +263,6 @@ def main() -> int:
             "check": run_check,
             "clean": run_clean,
             "release-zip": run_release_zip,
-            "portable-preflight": run_portable_preflight,
-            "build-portable": run_build_portable,
-            "release-v16": run_release_v16,
         }[command]()
     except TaskError as exc:
         print(f"error: {exc}", file=sys.stderr)

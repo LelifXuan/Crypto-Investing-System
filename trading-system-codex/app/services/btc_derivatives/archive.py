@@ -172,6 +172,53 @@ class DerivativesArchive:
                 )
             ]
 
+    def read_records(
+        self,
+        *,
+        data_type: str,
+        underlying: str = "BTC",
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read persisted records in capture order.
+
+        Portable updates intentionally clear the transient cache while preserving
+        this archive. Historical charts therefore use the archive as their source
+        of truth and merge the cache only as a recent acceleration layer.
+        """
+        clauses = ["data_type = ?", "underlying = ?"]
+        params: list[Any] = [data_type, underlying.upper()]
+        if start is not None:
+            clauses.append("captured_at >= ?")
+            params.append(start.astimezone(timezone.utc).isoformat())
+        if end is not None:
+            clauses.append("captured_at <= ?")
+            params.append(end.astimezone(timezone.utc).isoformat())
+        query = (
+            "SELECT captured_at, relative_path FROM partitions WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY captured_at"
+        )
+        with self._connect() as connection:
+            rows = list(connection.execute(query, params))
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            path = self.root / row["relative_path"]
+            try:
+                with gzip.open(path, "rt", encoding="utf-8") as handle:
+                    envelope = json.loads(handle.readline())
+            except (OSError, json.JSONDecodeError):
+                continue
+            captured_at = str(envelope.get("captured_at") or row["captured_at"])
+            for item in envelope.get("records") or []:
+                if not isinstance(item, dict):
+                    continue
+                payload = dict(item)
+                payload.setdefault("timestamp", captured_at)
+                payload.setdefault("archive_captured_at", captured_at)
+                records.append(payload)
+        return records
+
     def migrate_legacy(self, legacy_root: Path) -> int:
         legacy_root = Path(legacy_root)
         created = 0

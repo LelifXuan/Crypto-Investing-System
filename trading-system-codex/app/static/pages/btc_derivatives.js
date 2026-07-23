@@ -13,14 +13,62 @@ import {
   lineDataset,
   renderChart,
 } from "../ui/charts.js";
+import { judgementMeta } from "../core/judgement.js?v=semantic-v3";
+import { rangeStateLabel } from "../core/rangeState.js";
+import { mountPageGuide } from "../ui/pageGuideFab.js";
 
-const CHART_COLORS = [
-  "#0f766e",
-  "#c35a1d",
-  "#2563eb",
-  "#8b5cf6",
-  "#b7791f",
-  "#64748b",
+// Semantic color lock — same series always wears the same color regardless
+// of which chart it appears in. Canonical palette shared with analysis.js + structure.js.
+// Monet-aligned: pale + muted, sat 25-50%. Within each period-family:
+//   short period = brighter + thinner (active, fleeting reference),
+//   long period  = deeper + thicker  (stable long-term anchor).
+// Combine this with the lineDataset borderWidth choices in analysis.js.
+const CHART_COLORS = {
+  "BTC 价格": "#2c3849",
+  "Spot": "#2c3849",
+  "收盘价": "#2c3849",
+  "EMA12": "#dcb09a",
+  "EMA20": "#cba071",
+  "EMA30": "#a89569",
+  "EMA50": "#7ba39d",
+  "EMA60": "#6a8fa0",
+  "EMA120": "#4d6485",
+  "EMA200": "#3a5170",
+  "VWAP20": "#d5c8e0",
+  "VWAP50": "#a594c2",
+  "VWAP100": "#5d4e7e",
+  "OI": "#6a8fa0",
+  "聚合 OI": "#6a8fa0",
+  "Open Interest": "#6a8fa0",
+  "OI 24h变化": "#6a8fa0",
+  "Funding Z": "#8a86b5",
+  "Funding": "#8a86b5",
+  "Funding Rate": "#8a86b5",
+  "Basis": "#b8924a",
+  "年化 Basis": "#b8924a",
+  "ATM IV": "#9686b9",
+  "IV": "#9686b9",
+  "Call IV": "#9686b9",
+  "Put IV": "#9686b9",
+  "Call OI": "#8eb098",
+  "Put OI": "#c2725a",
+  "Call Wall": "#8eb098",
+  "Put Wall": "#c2725a",
+  "Max Pain": "#5a6a7c",
+  "25D Skew": "#9686b9",
+  "Put/Call OI": "#7ba39d",
+  "Put/Call Volume": "#b8924a",
+  "Call 保护成本": "#8eb098",
+  "Put 保护成本": "#c2725a",
+  "借记价差成本": "#5a6a7c",
+  "成交量": "#b8924a",
+  "Volume": "#b8924a",
+  "RSI": "#a896c8",
+  "MACD": "#7ba39d",
+  "信号线": "#dcbe88",
+};
+const FALLBACK_PALETTE = [
+  "#6e9b94", "#c2725a", "#7ba39d", "#9686b9", "#b8924a", "#5a6a7c",
 ];
 const FALLBACK_CHART_IDS = [
   "leverage_pressure_timeline",
@@ -34,6 +82,7 @@ const FALLBACK_CHART_IDS = [
 let requestController = null;
 let dashboard = null;
 let autoRefreshAttempted = false;
+let pageGuideFab = null;
 let hedgePlan = null;
 let riskChartMode = "sentiment";
 let filters = {
@@ -90,11 +139,12 @@ function allCharts() {
 
 function syncFiltersFromDashboard() {
   const selection = dashboard?.selection || {};
+  const expiryMode = selection.expiry_mode || "constant_maturity";
   filters = {
     window: selection.window || "",
-    expiryMode: selection.expiry_mode || "constant_maturity",
+    expiryMode,
     maturityBucket: selection.maturity_bucket || "60D",
-    selectedExpiry: selection.selected_expiry || "",
+    selectedExpiry: expiryMode === "fixed" ? (selection.selected_expiry || "") : "",
     strikeRangePct: selection.strike_range_pct || "30",
   };
 }
@@ -152,7 +202,10 @@ function selectOptions(values, selected, labeler = (value) => value) {
 }
 
 function renderChartToolbar() {
-  const expiries = dashboard?.options?.expiries || [];
+  const expiries = dashboard?.options?.standard_expiries || dashboard?.options?.expiries || [];
+  const maturity = dashboard?.maturity_selection || {};
+  const sourceText = (maturity.interpolation_sources || [])
+    .map((item) => `${item.expiry}（DTE ${item.dte}）`).join(" / ");
   return `
     <form class="card btc-chart-toolbar" id="btc-chart-controls">
       <label>
@@ -180,10 +233,13 @@ function renderChartToolbar() {
         </select>
       </label>
       <label>
-        <span>期权链到期日</span>
-        <select name="selected_expiry">
+        <span>${filters.expiryMode === "fixed" ? "标准到期日" : "恒定期限来源"}</span>
+        <select name="selected_expiry" ${filters.expiryMode === "fixed" ? "" : "disabled"}>
           ${selectOptions(expiries, filters.selectedExpiry)}
         </select>
+        ${filters.expiryMode === "constant_maturity"
+          ? `<small class="btc-expiry-source">${escapeHtml(sourceText || "等待标准到期日数据")}</small>`
+          : ""}
       </label>
       <label>
         <span>行权价范围</span>
@@ -237,6 +293,9 @@ function renderDecisionCards() {
             <span>${escapeHtml(card.label)}</span>
             <b>${escapeHtml(confidenceLabel(card.confidence))}</b>
           </div>
+          ${card.id === "market_state" && dashboard?.joint_analysis?.range_state && dashboard.joint_analysis.range_state !== "NONE"
+            ? `<p class="btc-market-state-label">${escapeHtml(card.market_state_label || rangeStateLabel(dashboard.joint_analysis))}</p>`
+            : ""}
           <h2>${escapeHtml(card.conclusion || card.summary)}</h2>
           <p class="btc-decision-label">依据</p>
           <div class="btc-evidence-chips">
@@ -244,6 +303,32 @@ function renderDecisionCards() {
           </div>
         </article>
       `).join("")}
+    </section>
+  `;
+}
+
+function renderIndicatorJudgements() {
+  const items = dashboard?.indicator_judgements || [];
+  if (!items.length) return "";
+  return `
+    <section class="card btc-indicator-semantics">
+      <div class="btc-section-heading">
+        <div><p class="eyebrow">INDICATOR ROLES</p><h2>指标状态与交易作用</h2></div>
+        <p>拥挤度、波动和关键价位不会被直接解释为多空方向。</p>
+      </div>
+      <div class="btc-decision-grid">
+        ${items.map((item) => {
+          const meta = judgementMeta(item);
+          return `
+            <article class="btc-decision-card">
+              <span>${escapeHtml(meta.axisLabel)}</span>
+              <strong>${escapeHtml(meta.stateLabel)}</strong>
+              <p>${escapeHtml(item.reason || "等待指标更新。")}</p>
+              <small>${escapeHtml(`${meta.effectLabel} · ${meta.dataLabel}`)}</small>
+            </article>
+          `;
+        }).join("")}
+      </div>
     </section>
   `;
 }
@@ -268,6 +353,7 @@ function chartInsight(chartId) {
 
 function chartCard(chartId, layout = {}) {
   const chart = allCharts()[chartId] || {};
+  const hasData = chart.status === "ok" && Number(chart.metadata?.data_points || 0) > 0;
   const span = Number(layout.span) || 12;
   const density = layout.density || "standard";
   const metadata = chart.metadata || {};
@@ -284,7 +370,7 @@ function chartCard(chartId, layout = {}) {
     `
     : "";
   return `
-    <article class="card btc-chart-card btc-card-span-${span} btc-chart-density-${escapeHtml(density)}">
+    <article class="card btc-chart-card btc-card-span-${span} btc-chart-density-${escapeHtml(density)}${hasData ? "" : " is-empty"}">
       <div class="btc-chart-head">
         <div>
           <p class="eyebrow">图表</p>
@@ -293,12 +379,11 @@ function chartCard(chartId, layout = {}) {
         </div>
         <div class="btc-chart-head-actions">
           ${riskModeControls}
-          <p class="btc-chart-insight">${escapeHtml(chartInsight(chartId))}</p>
+          <p class="btc-chart-insight">${escapeHtml(hasData ? chartInsight(chartId) : "数据不足")}</p>
         </div>
       </div>
       <div class="chart-wrap btc-chart-wrap">
-        <canvas id="btc-chart-${escapeHtml(chartId)}" aria-label="${escapeHtml(chart.title || chartId)}"></canvas>
-        ${chart.status !== "ok" ? `<div class="btc-chart-empty">${escapeHtml(chart.empty_reason || "暂无数据")}</div>` : ""}
+        ${hasData ? `<canvas id="btc-chart-${escapeHtml(chartId)}" aria-label="${escapeHtml(chart.title || chartId)}"></canvas>` : `<div class="btc-chart-empty">${escapeHtml(chart.empty_reason || "暂无数据")}</div>`}
       </div>
     </article>
   `;
@@ -432,6 +517,76 @@ function renderKeyLevelStrip() {
           </article>
         `;
       }).join("") || "<article class=\"btc-level-card\"><p>当前链数据不足</p></article>"}
+    </section>
+  `;
+}
+
+function optionDirectionLabel(value) {
+  return {
+    UPSIDE_DEMAND: "上行需求",
+    DOWNSIDE_PROTECTION: "下行保护",
+    BALANCED: "方向平衡",
+    TERM_DIVERGENCE: "期限分化",
+    DATA_INSUFFICIENT: "数据不足",
+  }[value] || "状态待确认";
+}
+
+function maturityBandLabel(value) {
+  return { near_term: "近月", medium_term: "中期", far_term: "远月" }[value] || "期限待确认";
+}
+
+function renderMaturityLadder() {
+  const rows = dashboard?.options?.maturity_ladder || [];
+  const direction = dashboard?.options?.metrics?.options_direction || {};
+  const protection = dashboard?.options?.metrics?.protection_cost_regime || {};
+  if (!rows.length) return "";
+  return `
+    <section class="card btc-maturity-ladder">
+      <div class="btc-section-heading">
+        <div>
+          <p class="eyebrow">STANDARD EXPIRIES</p>
+          <h2>标准到期日期限矩阵</h2>
+        </div>
+        <p>${escapeHtml(direction.label || "期权方向数据不足")} · ${escapeHtml(protection.label || "保护成本待评估")}</p>
+      </div>
+      <p class="btc-maturity-summary">${escapeHtml(direction.primary_reason || "按标准月度与季度到期日比较近远期限，不跨到期日直接累加持仓。")}</p>
+      ${(direction.term_conflicts || []).length
+        ? `<div class="btc-term-conflicts">${direction.term_conflicts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`
+        : ""}
+      <div class="btc-table-wrap" tabindex="0" aria-label="标准到期日期限矩阵，可横向滚动">
+        <table class="btc-table btc-maturity-table">
+          <thead><tr>
+            <th>期限</th><th>到期日</th><th>DTE</th><th>方向需求</th>
+            <th>Put Wall</th><th>Max Pain</th><th>Call Wall</th>
+            <th>25D RR</th><th>ATM IV</th><th>Put保护成本</th><th>数据</th>
+          </tr></thead>
+          <tbody>${rows.map((row) => {
+            const skew = row.skew_25d || {};
+            const cost = row.protection_cost || {};
+            const directionState = skew.status !== "ok"
+              ? "DATA_INSUFFICIENT"
+              : Number(skew.put_call_skew) >= 0.03
+              ? "DOWNSIDE_PROTECTION"
+              : Number(skew.put_call_skew) <= -0.03
+              ? "UPSIDE_DEMAND"
+              : "BALANCED";
+            return `<tr>
+              <td><b>${escapeHtml(maturityBandLabel(row.maturity_band))}</b><small>${row.cycle === "QUARTERLY" ? "季度" : "月度"}</small></td>
+              <td>${escapeHtml(row.expiry)}</td>
+              <td>${number(row.dte, 0)}</td>
+              <td><span class="btc-term-state" data-state="${escapeHtml(directionState)}">${escapeHtml(optionDirectionLabel(directionState))}</span></td>
+              <td>${money(row.put_wall)}<small>${percent(row.put_wall_concentration)} 集中度</small></td>
+              <td>${money(row.max_pain)}</td>
+              <td>${money(row.call_wall)}<small>${percent(row.call_wall_concentration)} 集中度</small></td>
+              <td>${skew.status === "ok" ? percent(skew.put_call_skew) : "数据不足"}<small>${escapeHtml(skew.delta_source === "model_estimate" ? "模型Delta" : skew.delta_source === "provider" ? "交易所Delta" : "Delta缺失")}</small></td>
+              <td>${percent(row.atm_iv)}</td>
+              <td>${percent(cost.put_protection_cost_pct)}<small>${escapeHtml(cost.liquidity_status === "usable" ? "流动性可用" : "流动性降级")}</small></td>
+              <td>${escapeHtml(row.data_status === "ok" ? "可用" : "部分可用")}</td>
+            </tr>`;
+          }).join("")}</tbody>
+        </table>
+      </div>
+      <p class="btc-maturity-note">期权墙只表示各期限内部的持仓集中区；保护成本绝对变化只进入风险判断，不单独生成多空方向。</p>
     </section>
   `;
 }
@@ -630,25 +785,28 @@ function renderLiveSourceStatus() {
         </div>
       </div>
       <p class="${snapshotState === "live" ? "" : "btc-fixture-warning"}">${escapeHtml(stateMessage)}</p>
-      <div class="btc-provider-grid">
-        ${providers.map((item) => `
-          <article class="btc-provider-card" data-status="${escapeHtml(item.status || "unknown")}">
-            <div><strong>${escapeHtml(item.provider || item.name || "unknown")}</strong><span>${escapeHtml(displayState(item.status))}</span></div>
-            <p>${escapeHtml((item.capabilities || []).join(" / ") || "能力未知")}</p>
-            <small>延迟 ${item.latency_ms == null ? "—" : `${Math.round(item.latency_ms)}ms`} · 最近成功 ${escapeHtml(formatDateTime(item.last_success_at))}</small>
-            ${item.last_error ? `<small class="btc-provider-error">${escapeHtml(item.last_error)}</small>` : ""}
-            ${item.circuit_open_until ? `<small>熔断至 ${escapeHtml(formatDateTime(item.circuit_open_until))}</small>` : ""}
-          </article>
-        `).join("") || "<p>暂无数据源健康记录，可点击探测。</p>"}
-      </div>
-      <details class="btc-quality-details">
-        <summary>查看缺失字段、陈旧快照与方法警告</summary>
-        <div class="btc-quality-grid">
-          <article><h3>缺失字段</h3><p>${escapeHtml((quality.missing_fields || []).join(" / ") || "无")}</p></article>
-          <article><h3>陈旧快照</h3><p>${escapeHtml((quality.stale_snapshots || []).join(" / ") || "无")}</p></article>
-          <article><h3>历史积累</h3><p>${quality.history_available ? "可用" : "真实样本积累中"}</p></article>
+      <details class="btc-source-details">
+        <summary>查看数据源明细、缺失字段与方法警告</summary>
+        <div class="btc-provider-grid">
+          ${providers.map((item) => `
+            <article class="btc-provider-card" data-status="${escapeHtml(item.status || "unknown")}">
+              <div><strong>${escapeHtml(item.provider || item.name || "unknown")}</strong><span>${escapeHtml(displayState(item.status))}</span></div>
+              <p>${escapeHtml((item.capabilities || []).join(" / ") || "能力未知")}</p>
+              <small>延迟 ${item.latency_ms == null ? "—" : `${Math.round(item.latency_ms)}ms`} · 最近成功 ${escapeHtml(formatDateTime(item.last_success_at))}</small>
+              ${item.last_error ? `<small class="btc-provider-error">${escapeHtml(item.last_error)}</small>` : ""}
+              ${item.circuit_open_until ? `<small>熔断至 ${escapeHtml(formatDateTime(item.circuit_open_until))}</small>` : ""}
+            </article>
+          `).join("") || "<p>暂无数据源健康记录，可点击探测。</p>"}
         </div>
-        <ul>${(quality.warnings || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        <details class="btc-quality-details">
+          <summary>查看缺失字段、陈旧快照与方法警告</summary>
+          <div class="btc-quality-grid">
+            <article><h3>缺失字段</h3><p>${escapeHtml((quality.missing_fields || []).join(" / ") || "无")}</p></article>
+            <article><h3>陈旧快照</h3><p>${escapeHtml((quality.stale_snapshots || []).join(" / ") || "无")}</p></article>
+            <article><h3>历史积累</h3><p>${quality.history_available ? "可用" : "真实样本积累中"}</p></article>
+          </div>
+          <ul>${(quality.warnings || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        </details>
       </details>
       <small>生成时间：${escapeHtml(formatDateTime(dashboard?.generated_at))}</small>
     </section>
@@ -692,7 +850,9 @@ function renderPageShell(banner = "", freshness = "") {
     <div class="btc-derivatives-page">
       ${renderHero({ banner, freshness })}
       ${renderDecisionCards()}
+      ${renderIndicatorJudgements()}
       ${renderChartToolbar()}
+      ${renderMaturityLadder()}
       ${renderKeyLevelStrip()}
       ${renderOptionsWallSignal()}
       ${renderChartSections()}
@@ -711,18 +871,89 @@ function datasetVisibleInRiskMode(label) {
     : !hedgeCostLabels.has(label);
 }
 
+function interpolateChartLabel(start, end, ratio) {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+    return new Date(
+      startDate.getTime() + (endDate.getTime() - startDate.getTime()) * ratio,
+    ).toISOString();
+  }
+  return `${start} / ${end}`;
+}
+
+export function expandFundingZeroCrossings(labels, datasets) {
+  const funding = (datasets || []).find((dataset) => dataset.label === "Funding Z");
+  if (!funding) return { labels: labels || [], datasets: datasets || [] };
+  const expandedLabels = [];
+  const expandedData = (datasets || []).map(() => []);
+  (labels || []).forEach((label, index) => {
+    expandedLabels.push(label);
+    datasets.forEach((dataset, datasetIndex) => {
+      expandedData[datasetIndex].push(dataset.data?.[index] ?? null);
+    });
+    if (index >= labels.length - 1) return;
+    const start = Number(funding.data?.[index]);
+    const end = Number(funding.data?.[index + 1]);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start * end >= 0) return;
+    const ratio = Math.abs(start) / (Math.abs(start) + Math.abs(end));
+    expandedLabels.push(interpolateChartLabel(label, labels[index + 1], ratio));
+    datasets.forEach((dataset, datasetIndex) => {
+      const left = Number(dataset.data?.[index]);
+      const right = Number(dataset.data?.[index + 1]);
+      expandedData[datasetIndex].push(
+        dataset.label === "Funding Z"
+          ? 0
+          : Number.isFinite(left) && Number.isFinite(right)
+            ? left + (right - left) * ratio
+            : null,
+      );
+    });
+  });
+  return {
+    labels: expandedLabels,
+    datasets: datasets.map((dataset, index) => ({ ...dataset, data: expandedData[index] })),
+  };
+}
+
+export function splitFundingZSeries(values) {
+  return {
+    positive: (values || []).map((value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+    }),
+    negative: (values || []).map((value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) && numeric <= 0 ? numeric : null;
+    }),
+  };
+}
+
+function finiteSeriesPointCount(values) {
+  return (values || []).reduce((count, value) => {
+    if (value === null || value === undefined || value === "") return count;
+    return Number.isFinite(Number(value)) ? count + 1 : count;
+  }, 0);
+}
+
 function renderSingleChart(chartId) {
   const chart = allCharts()[chartId];
-  if (!chart || chart.status !== "ok") return;
+  if (!chart || chart.status !== "ok" || Number(chart.metadata?.data_points || 0) <= 0) return;
   const canvas = document.getElementById(`btc-chart-${chartId}`);
-  const datasets = (chart.datasets || []).map((dataset, index) => {
-    const color = CHART_COLORS[index % CHART_COLORS.length];
+  const expanded = expandFundingZeroCrossings(chart.labels || [], chart.datasets || []);
+  const datasets = expanded.datasets.flatMap((dataset, index) => {
+    const color = CHART_COLORS[dataset.label] ?? FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
     const extra = {
       yAxisID: dataset.y_axis_id || "y",
       valueFormat: dataset.value_format,
       unit: dataset.unit,
       ...(dataset.style || {}),
     };
+    if (dataset.chart_type !== "bar" && finiteSeriesPointCount(dataset.data) === 1) {
+      extra.pointRadius = Math.max(Number(extra.pointRadius) || 0, 4);
+      extra.pointHoverRadius = Math.max(Number(extra.pointHoverRadius) || 0, 6);
+      extra.pointHitRadius = Math.max(Number(extra.pointHitRadius) || 0, 18);
+    }
     const rendered = dataset.chart_type === "bar"
       ? barDataset(dataset.label, dataset.data, color, extra)
       : lineDataset(dataset.label, dataset.data, color, extra);
@@ -730,25 +961,41 @@ function renderSingleChart(chartId) {
       rendered.hidden = !datasetVisibleInRiskMode(dataset.label);
       rendered.modeHidden = rendered.hidden;
     }
-    return rendered;
+    if (dataset.label !== "Funding Z") return [rendered];
+    const split = splitFundingZSeries(dataset.data);
+    const positive = lineDataset(dataset.label, split.positive, color, {
+      ...extra,
+      borderDash: [],
+      spanGaps: false,
+    });
+    const negative = lineDataset(dataset.label, split.negative, color, {
+      ...extra,
+      borderDash: [6, 4],
+      spanGaps: false,
+    });
+    negative.fundingZLegendDuplicate = true;
+    return [positive, negative];
   });
+  const legendFilter = (item, data) =>
+    !data.datasets[item.datasetIndex]?.modeHidden
+    && !data.datasets[item.datasetIndex]?.fundingZLegendDuplicate;
   renderChart(`btc-derivatives-${chartId}`, canvas, {
     type: chart.type === "mixed" ? "line" : chart.type,
     axes: chart.axes || {},
     annotations: chart.annotations || [],
-    data: { labels: chart.labels || [], datasets },
-    options: chartId === "options_risk_premium_history"
-      ? {
-          plugins: {
-            legend: {
-              labels: {
-                filter: (item, data) =>
-                  !data.datasets[item.datasetIndex]?.modeHidden,
-              },
-            },
+    data: { labels: expanded.labels, datasets },
+    options: {
+      scales: expanded.labels.length === 1
+        ? { x: { offset: true } }
+        : {},
+      plugins: {
+        legend: {
+          labels: {
+            filter: legendFilter,
           },
-        }
-      : {},
+        },
+      },
+    },
   });
 }
 
@@ -772,7 +1019,9 @@ function updateFiltersFromControls(form) {
     window: String(values.get("window") || ""),
     expiryMode: String(values.get("expiry_mode") || "constant_maturity"),
     maturityBucket: String(values.get("maturity_bucket") || "60D"),
-    selectedExpiry: String(values.get("selected_expiry") || ""),
+    selectedExpiry: String(values.get("expiry_mode") || "constant_maturity") === "fixed"
+      ? String(values.get("selected_expiry") || "")
+      : "",
     strikeRangePct: String(values.get("strike_range_pct") || "30"),
   };
 }
@@ -931,12 +1180,19 @@ async function loadDashboard({ refresh = false } = {}) {
 
 export async function renderBtcDerivatives() {
   autoRefreshAttempted = false;
+  if (!pageGuideFab) {
+    pageGuideFab = mountPageGuide("btc-derivatives");
+  }
   const ready = loadDashboard().catch((error) => {
     if (error?.name !== "AbortError") showError(error);
   });
   return {
     ready,
     unmount() {
+      if (pageGuideFab) {
+        pageGuideFab.unmount();
+        pageGuideFab = null;
+      }
       requestController?.abort();
       destroyChartsForPage("btc-derivatives-");
     },

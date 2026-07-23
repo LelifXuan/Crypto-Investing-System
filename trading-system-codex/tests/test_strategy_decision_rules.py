@@ -239,3 +239,13 @@ def test_v16_event_risk_waits_instead_of_triggering():
 
     assert decision["strategy_state"] == "EVENT_WAIT"
     assert decision["strategy_permission"] == "observe_only"
+
+
+def test_missing_strategy_snapshot_confidence_is_not_zero() -> None:
+    from app.services.strategy_signal.service import StrategySignalService
+
+    decision = StrategySignalService._empty_decision()
+
+    assert decision["strategy_state"] == "NO_EDGE"
+    assert decision["direction_confidence"] is None
+    assert decision["confidence_score"] is None

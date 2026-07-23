@@ -314,11 +314,11 @@ def test_dashboard_allows_expiry_selection_and_enqueues_refresh() -> None:
         expiry = initial["options"]["expiries"][-1]
         selected = client.get(
             "/api/v1/btc-derivatives/dashboard",
-            params={"expiry": expiry},
+            params={"expiry": expiry, "expiry_mode": "fixed"},
         )
         refreshed = client.post(
             "/api/v1/btc-derivatives/dashboard/refresh",
-            params={"expiry": expiry},
+            params={"expiry": expiry, "expiry_mode": "fixed"},
         )
 
     assert selected.status_code == 200
@@ -354,13 +354,14 @@ def test_dashboard_supports_window_constant_maturity_and_strike_range_params() -
 
     assert response.status_code == 200
     data = response.json()
-    assert data["selection"] == {
-        "expiry_mode": "constant_maturity",
-        "maturity_bucket": "30D",
-        "selected_expiry": data["options"]["selected_expiry"],
-        "window": "7D",
-        "strike_range_pct": "10",
-    }
+    assert data["selection"]["expiry_mode"] == "constant_maturity"
+    assert data["selection"]["maturity_bucket"] == "30D"
+    assert data["selection"]["selected_expiry"] == data["options"]["selected_expiry"]
+    assert data["selection"]["effective_expiry"] == data["options"]["selected_expiry"]
+    assert data["selection"]["effective_dte"] > 0
+    assert data["selection"]["selection_status"] == "ok"
+    assert data["selection"]["window"] == "7D"
+    assert data["selection"]["strike_range_pct"] == "10"
     assert data["maturity_selection"]["target_dte"] == 30
     leverage = data["futures"]["charts"]["leverage_pressure_timeline"]
     assert len(leverage["labels"]) <= 7

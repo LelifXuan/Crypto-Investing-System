@@ -1,4 +1,16 @@
-import { directionLabel, verdictLabel } from "./adapter.js";
+import { directionLabel } from "./adapter.js";
+import { rangeStateLabel } from "../../core/rangeState.js";
+
+const STRUCTURE_STATE_LABELS = {
+  BULLISH: "上涨结构",
+  BEARISH: "下跌结构",
+  UPWARD_RANGE: "上行震荡",
+  DOWNWARD_RANGE: "下行震荡",
+  NEUTRAL_RANGE: "中性震荡",
+  RANGE: "区间状态待分类",
+  TRANSITION: "结构转换中",
+  DATA_UNAVAILABLE: "数据不足",
+};
 
 function safeNumber(value) {
   const n = Number(value);
@@ -15,7 +27,9 @@ function confidenceFromNode(node) {
 export function renderHorizonStack(model, helpers) {
   const { escapeHtml, formatNumber } = helpers;
   const rows = model.timeframe_stack.map((node) => {
-    const verdict = verdictLabel(node.verdict_code || "RANGE_NO_EDGE");
+    const structureState = node.range_state && node.range_state !== "NONE"
+      ? rangeStateLabel(node)
+      : STRUCTURE_STATE_LABELS[node.timeframe_state] || "数据不足";
     const confidence = formatNumber(confidenceFromNode(node), 0);
     return `
       <tr>
@@ -24,7 +38,7 @@ export function renderHorizonStack(model, helpers) {
         <td>${escapeHtml(directionLabel(node.direction))}</td>
         <td>${escapeHtml(confidence)}</td>
         <td>${escapeHtml(formatNumber(node.long_score, 0))} / ${escapeHtml(formatNumber(node.short_score, 0))}</td>
-        <td>${escapeHtml(verdict)}</td>
+        <td>${escapeHtml(structureState)}</td>
       </tr>
     `;
   }).join("");
@@ -39,7 +53,7 @@ export function renderHorizonStack(model, helpers) {
       <div class="table-shell">
         <table class="data-table">
           <thead>
-            <tr><th>周期</th><th>视野</th><th>方向</th><th>置信</th><th>多/空分</th><th>结论</th></tr>
+            <tr><th>周期</th><th>视野</th><th>方向</th><th>置信</th><th>多/空分</th><th>结构状态</th></tr>
           </thead>
           <tbody>${rows || `<tr><td colspan="6" class="empty-row">暂无周期证据</td></tr>`}</tbody>
         </table>

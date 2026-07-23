@@ -692,7 +692,7 @@
       "transform": "weekly_diff_rolling_4w",
       "sources": [
         {
-          "source": "fred_derived",
+          "source": "fred",
           "symbol": "WTREGEN"
         }
       ]

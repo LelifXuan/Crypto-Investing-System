@@ -431,6 +431,27 @@ class StrategyGenerator:
             side, entry, stop, tp1, tp2, price, atr, min_rr=self.thresholds.get("min_rr_trade", 1.5)
         )
         rr = levels["rr1"] if levels["is_valid"] else None
+        monitoring = snapshot.get("monitoring") or {}
+        observations = monitoring.get("technical_observations") or []
+        liquidity = next(
+            (
+                item
+                for item in observations
+                if str(item.get("indicator_key") or "") == "slippage_bps"
+            ),
+            {},
+        )
+        liquidity_values = liquidity.get("value_json") or {}
+        spread_bps = number(liquidity_values.get("spread_bps"), None)
+        slippage_bps = number(
+            liquidity_values.get("buy_slippage_bps" if side == "long" else "sell_slippage_bps"),
+            None,
+        )
+        chase_distance_atr = (
+            abs(price - levels["entry"]) / atr
+            if price and levels.get("entry") and atr > 0
+            else None
+        )
         return {
             "pattern_type": pattern,
             "pattern_label": STRATEGY_TYPE_LABELS[pattern],
@@ -464,7 +485,12 @@ class StrategyGenerator:
             "risk_reward_1": round(rr, 2) if rr is not None else None,
             "risk_reward_label": risk_reward_label(rr),
             "capital_pct": round(0 if not active else min(12, max(3, side_score / 10)), 2),
-            "max_leverage": 3 if active else 0,
+            "max_leverage": 5 if active else 0,
+            "chase_distance_atr": round(chase_distance_atr, 4)
+            if chase_distance_atr is not None
+            else None,
+            "spread_bps": round(spread_bps, 4) if spread_bps is not None else None,
+            "slippage_bps": round(slippage_bps, 4) if slippage_bps is not None else None,
             "strategy_logic": "综合趋势结构、动量、资金流、衍生品确认与执行质量生成的市场策略信号。",
             "entry_conditions": conditions,
             "confirmation_criteria": conditions,

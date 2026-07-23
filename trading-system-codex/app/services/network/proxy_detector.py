@@ -5,13 +5,14 @@ import os
 import platform
 import socket
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 COMMON_PROXY_PORTS = [7890, 7897, 7899, 1080, 10808, 10809, 20170, 2080, 8080]
-COMMON_PROXY_HOSTS = ["127.0.0.1", "localhost"]
+COMMON_PROXY_HOSTS = ["127.0.0.1"]
 
 
 @dataclass
@@ -33,15 +34,12 @@ class ProxyDetectionResult:
     checked_at: str
 
 
-def _tcp_port_open(host: str, port: int, timeout: float = 0.3) -> bool:
+def _tcp_port_open(host: str, port: int, timeout: float = 0.08) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except OSError:
         return False
-
-
-ROOT = Path(__file__).resolve().parents[3]
 
 
 def _env_proxy_candidates() -> list[ProxyCandidate]:
@@ -158,32 +156,80 @@ def _common_port_candidates() -> list[ProxyCandidate]:
     return out
 
 
+def _dedupe_candidates(candidates: list[ProxyCandidate]) -> list[ProxyCandidate]:
+    seen = set()
+    unique: list[ProxyCandidate] = []
+    for candidate in candidates:
+        key = (candidate.protocol, candidate.host, candidate.port)
+        if key in seen or not candidate.host or not candidate.port:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _check_candidates(
+    candidates: list[ProxyCandidate],
+    *,
+    timeout: float = 0.08,
+    parallel: bool = False,
+) -> list[ProxyCandidate]:
+    unique = _dedupe_candidates(candidates)
+    if not unique:
+        return []
+    if not parallel:
+        for candidate in unique:
+            candidate.reachable = _tcp_port_open(candidate.host, candidate.port, timeout=timeout)
+        return unique
+
+    max_workers = min(12, len(unique))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_tcp_port_open, candidate.host, candidate.port, timeout): candidate
+            for candidate in unique
+        }
+        for future in as_completed(futures):
+            candidate = futures[future]
+            try:
+                candidate.reachable = bool(future.result())
+            except OSError:
+                candidate.reachable = False
+    return unique
+
+
+def _select_proxy(candidates: list[ProxyCandidate]) -> ProxyCandidate | None:
+    selected = next(
+        (item for item in candidates if item.reachable and item.protocol in {"http", "https"}),
+        None,
+    )
+    if selected is None:
+        selected = next((item for item in candidates if item.reachable), None)
+    return selected
+
+
 def detect_proxy() -> ProxyDetectionResult:
     from datetime import datetime, timezone
 
-    candidates = (
-        _env_proxy_candidates()
-        + _windows_system_proxy_candidates()
-        + _winhttp_proxy_candidates()
-        + _common_port_candidates()
+    checked: list[ProxyCandidate] = []
+    priority_candidates = _check_candidates(
+        _env_proxy_candidates() + _windows_system_proxy_candidates() + _winhttp_proxy_candidates(),
+        timeout=0.08,
     )
-    seen = set()
-    unique: list[ProxyCandidate] = []
-    for c in candidates:
-        key = (c.protocol, c.host, c.port)
-        if key in seen or not c.host or not c.port:
-            continue
-        seen.add(key)
-        c.reachable = _tcp_port_open(c.host, c.port)
-        unique.append(c)
-    selected = next((c for c in unique if c.reachable and c.protocol in {"http", "https"}), None)
+    checked.extend(priority_candidates)
+    selected = _select_proxy(priority_candidates)
     if selected is None:
-        selected = next((c for c in unique if c.reachable), None)
+        common_candidates = _check_candidates(
+            _common_port_candidates(),
+            timeout=0.05,
+            parallel=True,
+        )
+        checked.extend(common_candidates)
+        selected = _select_proxy(common_candidates)
     return ProxyDetectionResult(
         proxy_detected=selected is not None,
         selected_proxy=selected.url if selected else None,
         selected_source=selected.source if selected else "none",
-        candidates=[asdict(c) for c in unique[:20]],
+        candidates=[asdict(c) for c in _dedupe_candidates(checked)[:20]],
         checked_at=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -230,7 +276,12 @@ def write_proxy_state(
     result: ProxyDetectionResult,
     path: Path | None = None,
 ) -> Path:
-    target = path or ROOT / "runtime" / "config" / "proxy_state.json"
+    if path is None:
+        from app.core.paths import app_paths
+
+        target = app_paths.config_dir / "proxy_state.json"
+    else:
+        target = path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         json.dumps(safe_proxy_state(result), ensure_ascii=False, indent=2),

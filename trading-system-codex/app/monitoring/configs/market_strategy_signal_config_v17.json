@@ -164,7 +164,8 @@
       "1w": 8,
       "1d": 10,
       "4h": 12,
-      "1h": 16
+      "1h": 16,
+      "15m": 20
     },
     "lower_tf_trigger_min_score": 60,
     "lower_tf_momentum_min_score": 55,

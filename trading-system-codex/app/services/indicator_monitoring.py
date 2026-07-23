@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from io import StringIO
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -1104,6 +1105,11 @@ class IndicatorMonitoringService:
             )
             return [obs]
 
+        if indicator_key == "us_nfp":
+            refreshed = await self._sync_nfp_release_definition(definition, run_id)
+            if refreshed:
+                return refreshed
+
         release_key = policy.release_key or indicator_key
         latest = await self.repository.latest_macro_event(release_key, released_only=True)
         if latest is None:
@@ -1156,10 +1162,133 @@ class IndicatorMonitoringService:
         )
         return [obs]
 
+    async def _sync_nfp_release_definition(
+        self,
+        definition: IndicatorDefinition,
+        run_id: str,
+    ) -> list[IndicatorObservation]:
+        symbol = str((definition.calc_params_json or {}).get("external_symbol") or "")
+        source_provider = canonical_provider_key(definition.source_provider)
+        symbols = self._get_fallback_symbols("us_nfp", symbol, source_provider)
+        last_error: Exception | None = None
+        for sym in symbols:
+            provider_key = (
+                source_provider if sym == symbol else self._provider_for_fallback("us_nfp", sym)
+            )
+            provider = self.macro_provider_registry.resolve(
+                source_provider=provider_key,
+                source_kind="raw_series",
+            )
+            fetch_history = getattr(provider, "fetch_history", None)
+            if provider is None or not callable(fetch_history):
+                continue
+            started_at = time_module.perf_counter()
+            try:
+                history = await fetch_history(sym, lookback_points=4)
+                points = [
+                    (point.observation_ts, point.value)
+                    for point in history
+                    if getattr(point, "observation_ts", None) is not None
+                ]
+                computed = macro_transforms.compute_mom_change(points)
+                if computed is None:
+                    raise ValueError(f"insufficient NFP history for {sym}")
+                value, observation_ts = computed
+                latency_ms = int((time_module.perf_counter() - started_at) * 1000)
+                provider_name = getattr(provider, "provider_key", provider_key)
+                await self._record_macro_source_health(
+                    provider_key=provider_name,
+                    source_key=sym,
+                    status="live",
+                    message=None,
+                    latency_ms=latency_ms,
+                    payload_json={
+                        "indicator_key": "us_nfp",
+                        "release_key": "us_nfp",
+                        "transform": "mom_change",
+                    },
+                )
+                await self._upsert_nfp_release_event(
+                    value=value,
+                    observation_ts=observation_ts,
+                    provider_key=provider_name,
+                    source_symbol=sym,
+                )
+                obs = await self._persist_observation(
+                    definition=definition,
+                    run_id=run_id,
+                    country_code="US",
+                    timeframe="event",
+                    observation_ts=observation_ts,
+                    value_num=value,
+                    value_json={
+                        "actual": str(value),
+                        "release_key": "us_nfp",
+                        "transform": "mom_change",
+                        "source_symbol": sym,
+                        "policy_link": "NFP affects Fed rate-cut/hike expectations",
+                    },
+                    signal_state=self._macro_state("us_nfp", value),
+                    source_provider=provider_name,
+                    source_ref=f"{provider_name}:{sym}",
+                    source_granularity="1mo",
+                )
+                return [obs]
+            except Exception as exc:
+                last_error = exc
+                await self._record_macro_source_health(
+                    provider_key=getattr(provider, "provider_key", provider_key),
+                    source_key=sym,
+                    status="stale",
+                    message=str(exc),
+                    latency_ms=int((time_module.perf_counter() - started_at) * 1000),
+                    payload_json={"indicator_key": "us_nfp", "release_key": "us_nfp"},
+                )
+                continue
+        logger.warning("NFP release sync failed: %s", last_error)
+        return []
+
+    async def _upsert_nfp_release_event(
+        self,
+        *,
+        value: Decimal,
+        observation_ts: datetime,
+        provider_key: str,
+        source_symbol: str,
+    ) -> None:
+        release_at = self._first_weekday_release(observation_ts.year, observation_ts.month, 4)
+        status = "released"
+        await self.repository.upsert_macro_event(
+            MacroEventCalendar(
+                event_id=self._stable_id("mec", "bls", "us_nfp", release_at.isoformat()),
+                provider_key="bls",
+                event_key="us_nfp",
+                country_code="US",
+                title=f"US NFP ({observation_ts.year}-{observation_ts.month:02d})",
+                scheduled_at=release_at,
+                actual_value_num=value if status == "released" else None,
+                consensus_value_num=None,
+                previous_value_num=None,
+                surprise_num=None,
+                importance="high",
+                status=status,
+                source_ref=f"{provider_key}:{source_symbol}",
+                payload_json={
+                    "source_provider": provider_key,
+                    "source_symbol": source_symbol,
+                    "series_observation_month": observation_ts.date().isoformat(),
+                    "transform": "mom_change",
+                    "unit": "thousand_persons",
+                    "policy_sensitivity": "fed_rate_expectations",
+                    "market_impact": "Nonfarm payrolls can shift rate-cut or hike expectations.",
+                },
+            )
+        )
+
     async def _transform_macro_result(self, definition, result, provider):
         transform = str((definition.calc_params_json or {}).get("transform") or "")
         metadata = dict(result.metadata or {})
-        if transform not in {"mom_pct", "yoy_pct"} or provider is None:
+        if transform not in {"mom_pct", "yoy_pct", "mom_change", "weekly_diff_rolling_4w"} or provider is None:
             return result.value, metadata
         fetch_history = getattr(provider, "fetch_history", None)
         if not callable(fetch_history):
@@ -1176,11 +1305,14 @@ class IndicatorMonitoringService:
             for point in history
             if point.observation_ts is not None
         ]
-        computed = (
-            macro_transforms.compute_mom_pct(points)
-            if transform == "mom_pct"
-            else macro_transforms.compute_yoy_pct(points)
-        )
+        if transform == "mom_pct":
+            computed = macro_transforms.compute_mom_pct(points)
+        elif transform == "mom_change":
+            computed = macro_transforms.compute_mom_change(points)
+        elif transform == "weekly_diff_rolling_4w":
+            computed = macro_transforms.compute_weekly_diff_rolling_4w(points, window=4)
+        else:
+            computed = macro_transforms.compute_yoy_pct(points)
         if computed is None:
             return result.value, metadata
         value, transformed_at = computed
@@ -1813,7 +1945,9 @@ class IndicatorMonitoringService:
         current = date(year, month, 1)
         while current.weekday() != weekday:
             current += timedelta(days=1)
-        return datetime.combine(current, time(13, 30), tzinfo=UTC)
+        eastern = ZoneInfo("America/New_York")
+        local_release = datetime.combine(current, time(8, 30), tzinfo=eastern)
+        return local_release.astimezone(UTC)
 
     @staticmethod
     def _stable_id(prefix: str, *parts: str) -> str:

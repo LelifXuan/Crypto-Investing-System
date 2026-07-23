@@ -23,7 +23,7 @@ def test_structure_page_local_filters_only_rerender() -> None:
     assert source.count("renderFromBundle(state.bundle);") >= 3
 
 
-def test_structure_page_does_not_auto_live_sync_on_open() -> None:
+def test_structure_page_recovers_a_missing_snapshot_once_on_open() -> None:
     source = STRUCTURE_PAGE.read_text(encoding="utf-8", errors="ignore")
     load_data_start = source.index("async function loadData")
     # V1.5.x: loadData is now invoked via .catch() so the page
@@ -35,7 +35,10 @@ def test_structure_page_does_not_auto_live_sync_on_open() -> None:
     except ValueError:
         load_data_end = source.index("await loadData();", load_data_start)
     load_data_source = source[load_data_start:load_data_end]
-    assert "api.refreshStructure" not in load_data_source
+    assert "!state.recoveryKeys.has(recoveryKey)" in load_data_source
+    assert "state.recoveryKeys.add(recoveryKey)" in load_data_source
+    assert "await api.refreshStructure(instrumentId, timeframe)" in load_data_source
+    assert "force: true" in load_data_source
     assert "async function loadData({ forceRefresh = false } = {})" in source
 
 

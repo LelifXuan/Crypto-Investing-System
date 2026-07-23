@@ -2,7 +2,39 @@ from __future__ import annotations
 
 from app.schemas.market import MonitoringDashboardRead
 from app.services.monitoring_dashboard import MonitoringDashboardService
-from app.services.terminal_summary_engine import TerminalSummaryEngine
+from app.services.terminal_summary_engine import (
+    StructureSummaryAdapter,
+    TerminalSummaryEngine,
+)
+
+
+def test_structure_module_surfaces_range_substate_when_transition_regime_carries_pivot_signal() -> None:
+    """When the upstream regime is 'transition' but the swing / pivot
+    pipeline already produced a range_state (upward / downward / neutral),
+    surface the range sub-classification instead of the generic '结构切换'.
+    Range with directional bias is itself a verdict."""
+    summary = StructureSummaryAdapter().summarize(
+        {
+            "regime": "transition",
+            "bias": "neutral",
+            "score": 0.05,
+            "overall": {
+                "range_state": "UPWARD_RANGE",
+                "range_label": "上行震荡",
+            },
+        }
+    )
+    assert summary.state == "上行震荡"
+    assert "摆动高点" in summary.reason
+
+
+def test_structure_module_falls_back_to_transition_when_no_range_substate() -> None:
+    """Without an upstream range_state the module keeps the legacy
+    '结构切换' verdict so we never silently invent a sub-direction."""
+    summary = StructureSummaryAdapter().summarize(
+        {"regime": "transition", "bias": "neutral", "score": 0.0}
+    )
+    assert summary.state == "结构切换"
 
 
 def test_terminal_summary_contains_required_contract() -> None:
@@ -630,9 +662,28 @@ def test_decision_brief_demotes_tone_when_evidence_strength_low() -> None:
         assert row["evidence_strength"] == 0.0
         assert row["tone"] == "warning"
         if row["key"] != "key_risk":
-            # Summary is prefixed with an explicit uncertainty note.
-            assert "证据强度" in row["summary"]
-            assert "置信度有限" in row["summary"]
+            # Strength = 0 means no independent evidence: the message must
+            # therefore say "no conclusion can be drawn", not "limited
+            # confidence", which would still imply a verdict exists.
+            assert "证据强度 0%" in row["summary"]
+            assert "无法得出方向结论" in row["summary"]
+            assert "置信度有限" not in row["summary"]
+
+
+def test_decision_brief_partial_evidence_uses_limited_confidence_message() -> None:
+    """Strength between 0 and the 0.5 threshold still admits a verdict,
+    just at low confidence — distinct wording from the 0% case."""
+    from app.services.terminal_summary_engine import _apply_evidence_strength
+
+    row = _apply_evidence_strength({"summary": "原始判断"}, 0.3)
+    assert row["tone"] == "warning"
+    assert "证据强度 30%" in row["summary"]
+    assert "置信度有限" in row["summary"]
+    assert "无法得出方向结论" not in row["summary"]
+
+    zero_row = _apply_evidence_strength({"summary": "原始判断"}, 0.0)
+    assert "证据强度 0%" in zero_row["summary"]
+    assert "无法得出方向结论" in zero_row["summary"]
 
 
 def test_decision_brief_partial_evidence_keeps_directional_tone() -> None:

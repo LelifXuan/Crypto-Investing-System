@@ -14,6 +14,7 @@ from app.db.models.market import MarketEvent, MarketEventTranslationMap
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import MarketEventCreate, MarketEventQueryResponse, MarketEventRead
 from app.services.market import MarketService
+from app.services.translation.normalizer import looks_like_english
 
 UTC = timezone.utc
 logger = logging.getLogger(__name__)
@@ -215,7 +216,7 @@ async def get_translation_status(
         events = await repo.list_recent_market_events(limit=500)
         translatable = 0
         for event in events:
-            if event.title and _looks_translatable(event.title):
+            if event.title and looks_like_english(event.title):
                 translatable += 1
         total = translatable
 
@@ -227,14 +228,6 @@ async def get_translation_status(
         "disabled": False,
         **base_response,
     }
-
-
-def _looks_translatable(text: str) -> bool:
-    if not text:
-        return False
-    latin_count = sum(1 for ch in text if ch.isascii() and ch.isalpha())
-    cjk_count = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff" or "\u3040" <= ch <= "\u309f")
-    return latin_count >= 3 and cjk_count == 0
 
 
 @router.post("/translations/refresh")
