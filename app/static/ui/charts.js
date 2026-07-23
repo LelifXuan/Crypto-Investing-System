@@ -419,6 +419,8 @@ function baseOptions() {
           font: { family: "IBM Plex Sans, Noto Sans SC, sans-serif", size: 12, weight: "600" },
         },
       },
+      // User-facing timestamps on this app are Beijing time without suffix.
+      // See the policy comment in app/static/core/dom.js#formatDateTime.
       tooltip: {
         backgroundColor: "rgba(21, 35, 42, 0.92)",
         borderColor: "rgba(255,255,255,0.06)",
@@ -443,7 +445,7 @@ function baseOptions() {
               minute: "2-digit",
               hourCycle: "h23",
             }).format(date);
-            return `${formatted} 北京时间`;
+            return formatted;
           },
         },
       },

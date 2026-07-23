@@ -140,6 +140,15 @@ export function formatPercent(value, digits = 2) {
   })}%`;
 }
 
+// User-facing time policy (2026-07-23):
+// All user-facing timestamps on this app are Beijing time (Asia/Shanghai).
+// Do NOT add a literal Beijing-time-of-day suffix (e.g. the four-Chinese-
+// character phrase) or "CST" / "UTC+8" — the dashboard's default zone is
+// already Beijing, so any suffix is noise. Server logs and OpenAPI
+// responses stay UTC; this rule applies only to human-visible strings.
+// See tests/test_timezone_label_removed.py for the regression guard.
+// (The naive substring test forbids the literal phrase in source files,
+// so this comment deliberately describes the rule without naming it.)
 export function formatDateTime(value) {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
@@ -155,7 +164,7 @@ export function formatDateTime(value) {
       hourCycle: "h23",
     }).formatToParts(date).map((part) => [part.type, part.value]),
   );
-  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute} 北京时间`;
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 export function formatDateOnly(value) {

@@ -4,6 +4,8 @@
 // operation card; we prefer those, and only fall back to the legacy
 // relative phrasing when the schema field is absent.
 
+// User-facing timestamps on this app are Beijing time without suffix.
+// See the policy comment in app/static/core/dom.js#formatDateTime.
 export function formatIsoShort(iso) {
   if (!iso) return "";
   const date = iso instanceof Date ? iso : new Date(iso);
@@ -19,7 +21,7 @@ export function formatIsoShort(iso) {
       hourCycle: "h23",
     }).formatToParts(date).map((part) => [part.type, part.value]),
   );
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} 北京时间`;
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 export function formatLegacyNextCheck(raw) {
