@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.schemas.btc_derivatives import BtcDerivativesDashboardResponse
 from app.services.btc_derivatives.chart_builder import (
     REQUIRED_CHART_IDS,
     build_consolidated_dashboard_charts,
 )
+
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def _inputs() -> dict:
@@ -202,3 +207,72 @@ def test_term_structure_keeps_basis_curves_when_futures_basis_is_available() -> 
     assert term["labels"] == ["2026-07-31"]
     assert datasets["年化 Basis"] == [0.121]
     assert datasets["Basis"] == [0.012]
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-23: split the buggy "exchange_crowding_snapshot" mixed chart
+# (mixed-axis confusion between venue names and date strings) into a
+# per-venue table + a standalone 90D aggregate-OI line chart. The chart
+# payload still exists in the API response (any non-page consumer can use
+# it), but the page no longer renders it as a <canvas>.
+# ---------------------------------------------------------------------------
+
+
+def test_crowding_snapshot_no_longer_renders_as_chart() -> None:
+    """The page JS must NOT dispatch renderSingleChart for the
+    'exchange_crowding_snapshot' id any more — neither as a literal call
+    nor as part of the chart-id list that renderChartSections iterates."""
+    content = (REPO / "app" / "static" / "pages" / "btc_derivatives.js").read_text(encoding="utf-8")
+    forbidden = (
+        'renderSingleChart("exchange_crowding_snapshot")',
+        "renderSingleChart('exchange_crowding_snapshot')",
+        # Indirect dispatch via the chart-id list in any section.charts
+        # array. The chart id must not appear in any string-literal
+        # context that drives a renderSingleChart dispatch.
+        '"exchange_crowding_snapshot"',
+    )
+    for pattern in forbidden:
+        assert pattern not in content, (
+            f"btc_derivatives.js still renders the buggy mixed chart "
+            f"via {pattern!r}; replace with renderCrowdingTable + "
+            f"renderAggregateOiChart."
+        )
+
+
+def test_btc_derivatives_exposes_render_crowding_table() -> None:
+    """The page JS must expose a per-venue crowding table renderer and
+    consume the per-venue cross-section. The function may be named
+    renderFuturesTable or renderCrowdingTable — both are accepted. The
+    contract is that the futures section renders a <table> populated
+    from the cross-section payload, not a <canvas>."""
+    content = (REPO / "app" / "static" / "pages" / "btc_derivatives.js").read_text(encoding="utf-8")
+    has_crowding = "renderCrowdingTable" in content or "renderFuturesTable" in content
+    assert has_crowding, (
+        "btc_derivatives.js must expose a per-venue crowding table "
+        "renderer (renderCrowdingTable or renderFuturesTable)"
+    )
+    # Match either `dashboard.futures.rows` or `futures?.rows` (optional chaining).
+    has_rows_read = (
+        "futures.rows" in content
+        or "futures?.rows" in content
+    )
+    assert has_rows_read, (
+        "the crowding renderer must read from dashboard.futures.rows "
+        "(or futures?.rows with optional chaining); the API already "
+        "returns the per-venue cross-section in this field"
+    )
+
+
+def test_btc_derivatives_exposes_aggregate_oi_90d_chart() -> None:
+    """The page JS must define renderAggregateOiChart that consumes the
+    existing leverage_pressure_timeline chart payload (the 聚合 OI
+    dataset)."""
+    content = (REPO / "app" / "static" / "pages" / "btc_derivatives.js").read_text(encoding="utf-8")
+    assert "renderAggregateOiChart" in content, (
+        "btc_derivatives.js must define renderAggregateOiChart for the "
+        "new 90D aggregate-OI line chart"
+    )
+    assert "leverage_pressure_timeline" in content, (
+        "renderAggregateOiChart must read from the existing "
+        "leverage_pressure_timeline chart payload (aggregate_oi_usd series)"
+    )

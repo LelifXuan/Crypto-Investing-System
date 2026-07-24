@@ -53,17 +53,24 @@ def test_internal_snapshot_state_codes_are_mapped_to_chinese_copy() -> None:
 
 
 def test_page_renders_six_chart_layout_from_backend_metadata() -> None:
+    # 2026-07-23: the per-venue cross-section chart was replaced by a
+    # per-venue HTML table + a standalone 90D aggregate-OI line chart.
+    # The 6th layout slot is now the table (renderFuturesTable) rather
+    # than a <canvas>. We still assert the 5 remaining chart ids are
+    # referenced in the page JS, and add the new aggregate_oi_90d id.
     source = PAGE.read_text(encoding="utf-8")
 
     for chart_id in {
         "leverage_pressure_timeline",
-        "exchange_crowding_snapshot",
+        "aggregate_oi_90d",
         "term_structure",
         "strike_surface",
         "key_levels_history",
         "options_risk_premium_history",
     }:
-        assert chart_id in source
+        assert chart_id in source, (
+            f"chart_id {chart_id!r} is missing from the page JS"
+        )
 
     assert "dashboard?.chart_layout?.sections" in source
     assert "dashboard?.chart_layout?.cards" in source
@@ -74,6 +81,9 @@ def test_page_renders_six_chart_layout_from_backend_metadata() -> None:
     assert "renderDecisionCards" in source
     assert "renderHedgePlanner" in source
     assert "renderDataQuality" in source
+    assert "renderFuturesTable" in source, (
+        "the per-venue crowding table renderer must be present"
+    )
     assert "destroyChartsForPage" in source
 
 

@@ -3,6 +3,7 @@ import {
   escapeHtml,
   formatDateTime,
   formatNumber,
+  hydrateKnowledgeTooltips,
   knowledgeTooltip,
   setRoot,
   statusBanner,
@@ -72,7 +73,6 @@ const FALLBACK_PALETTE = [
 ];
 const FALLBACK_CHART_IDS = [
   "leverage_pressure_timeline",
-  "exchange_crowding_snapshot",
   "term_structure",
   "strike_surface",
   "key_levels_history",
@@ -142,10 +142,20 @@ function dashboardQuery() {
 }
 
 function allCharts() {
-  return {
+  // 2026-07-23: filter out the legacy per-venue cross-section chart id
+  // because it is no longer rendered as a <canvas>; it is replaced by
+  // renderFuturesTable() + the standalone aggregate_oi_90d chart. The
+  // payload still exists in the API response (for any non-page consumer
+  // such as test_btc_derivatives_chart_consolidation.py) but the page
+  // does not iterate it as a canvas chart any more.
+  const knownCharts = new Set(FALLBACK_CHART_IDS);
+  const merged = {
     ...(dashboard?.futures?.charts || {}),
     ...(dashboard?.options?.charts || {}),
   };
+  return Object.fromEntries(
+    Object.entries(merged).filter(([chartId]) => knownCharts.has(chartId))
+  );
 }
 
 function syncFiltersFromDashboard() {
@@ -351,7 +361,6 @@ function inferenceBlock(id) {
 function chartInsight(chartId) {
   const map = {
     leverage_pressure_timeline: "杠杆方向",
-    exchange_crowding_snapshot: "交易所拥挤",
     term_structure: "期限结构",
     strike_surface: "行权价分布",
     key_levels_history: "墙位迁移",
@@ -406,7 +415,13 @@ function fallbackSections() {
     {
       id: "futures",
       title: "期货 / 永续",
-      charts: ["exchange_crowding_snapshot", "term_structure"],
+      // 2026-07-23: the per-venue cross-section snapshot is now rendered as
+      // a HTML table by renderCrowdingTable() and a standalone 90D OI
+      // line chart by renderAggregateOiChart() — both injected into this
+      // section by renderChartSections(). Only term_structure remains as
+      // a <canvas> chart.
+      charts: ["term_structure"],
+      auxRenderers: ["crowding_table", "aggregate_oi_90d"],
     },
     {
       id: "options",
@@ -435,11 +450,52 @@ function sectionInterpretation(sectionId) {
   return "";
 }
 
+// 2026-07-23: the previous cross-section chart (one bar per venue
+// overlaid with line series for funding/basis) was broken on render:
+// mixed-axis confusion between venue names and date strings because
+// formatXAxisTick parsed labels as dates. It is now replaced by:
+//   1. renderFuturesTable()  — a per-venue HTML table (see further below).
+//   2. renderAggregateOiChart() — a standalone 90D single-series line
+//      chart sourced from the existing leverage_pressure_timeline payload
+//      (the 聚合 OI dataset). The dataset is already in the API response,
+//      so no backend changes were needed.
+function renderAggregateOiChart(d) {
+  const source = d?.futures?.charts?.leverage_pressure_timeline;
+  if (!source) return "";
+  const labels = Array.isArray(source.labels) ? source.labels : [];
+  const oiSeries = (source.datasets || []).find((item) => item.label === "聚合 OI");
+  if (!oiSeries || !Array.isArray(oiSeries.data) || !labels.length) return "";
+  const metadata = source.metadata || {};
+  const windowLabel = metadata.actual_window || "90D";
+  const sourceLabel = (metadata.providers || []).join(" / ");
+  const canvasId = "btc-chart-aggregate_oi_90d";
+  return `
+    <article class="card btc-chart-card btc-aggregate-oi-card">
+      <header class="btc-card-head">
+        <div>
+          <p class="eyebrow">AGGREGATE OI · ${escapeHtml(String(windowLabel))}</p>
+          <h3>聚合持仓 OI</h3>
+        </div>
+        <p>来源 ${escapeHtml(sourceLabel || "—")}</p>
+      </header>
+      <div class="btc-chart-canvas-wrap">
+        <canvas id="${canvasId}"></canvas>
+      </div>
+    </article>
+  `;
+}
+
 function renderChartSections() {
   const sections = dashboard?.chart_layout?.sections || fallbackSections();
   const cards = dashboard?.chart_layout?.cards || {};
   const knownCharts = new Set(FALLBACK_CHART_IDS);
-  return sections.map((section) => `
+  return sections.map((section) => {
+    const auxParts = (section.auxRenderers || []).map((key) => {
+      if (key === "crowding_table") return renderFuturesTable();
+      if (key === "aggregate_oi_90d") return renderAggregateOiChart(dashboard);
+      return "";
+    }).join("");
+    return `
     <section class="btc-chart-section" data-chart-section="${escapeHtml(section.id)}">
       <div class="btc-section-heading">
         <div>
@@ -448,6 +504,7 @@ function renderChartSections() {
         </div>
         <p>${escapeHtml(sectionInterpretation(section.id))}</p>
       </div>
+      ${auxParts}
       <div class="btc-dashboard-grid">
         ${(section.charts || [])
           .filter((chartId) => knownCharts.has(chartId) && allCharts()[chartId])
@@ -455,7 +512,8 @@ function renderChartSections() {
           .join("")}
       </div>
     </section>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function renderFuturesTable() {
@@ -947,6 +1005,52 @@ function finiteSeriesPointCount(values) {
   }, 0);
 }
 
+// 2026-07-23: single-series line chart for the 聚合 OI 90D view.
+// Sourced from dashboard.futures.charts.leverage_pressure_timeline, but
+// rendered separately because allCharts() does not include this derived
+// chart (it would conflict with the 3-dataset time-series chart on the
+// summary section).
+function renderAggregateOiSingleChart() {
+  const source = dashboard?.futures?.charts?.leverage_pressure_timeline;
+  if (!source) return;
+  const labels = Array.isArray(source.labels) ? source.labels : [];
+  const oiSeries = (source.datasets || []).find((item) => item.label === "聚合 OI");
+  if (!oiSeries || !Array.isArray(oiSeries.data) || !labels.length) return;
+  const canvas = document.getElementById("btc-chart-aggregate_oi_90d");
+  if (!canvas) return;
+  const color = CHART_COLORS["聚合 OI"] ?? FALLBACK_PALETTE[0];
+  const dataset = lineDataset(
+    "聚合 OI",
+    oiSeries.data,
+    color,
+    {
+      yAxisID: "y_oi",
+      valueFormat: oiSeries.value_format || "compact_usd",
+      unit: oiSeries.unit || "USD",
+      fill: true,
+      tension: 0.18,
+    },
+  );
+  renderChart(
+    "btc-derivatives-aggregate_oi_90d",
+    canvas,
+    {
+      type: "line",
+      axes: {
+        y_oi: {
+          profile: "volume",
+          position: "left",
+          unit: "USD",
+          padding_ratio: 0.08,
+        },
+      },
+      annotations: [],
+      data: { labels, datasets: [dataset] },
+      options: {},
+    },
+  );
+}
+
 function renderSingleChart(chartId) {
   const chart = allCharts()[chartId];
   if (!chart || chart.status !== "ok" || Number(chart.metadata?.data_points || 0) <= 0) return;
@@ -1012,6 +1116,13 @@ function renderSingleChart(chartId) {
 
 function renderCharts() {
   Object.keys(allCharts()).forEach(renderSingleChart);
+  // 2026-07-23: the new aggregate_oi_90d chart is derived from
+  // leverage_pressure_timeline (single dataset) and not in allCharts();
+  // render it explicitly so it picks up the canvas we emitted in
+  // renderAggregateOiChart().
+  if (document.getElementById("btc-chart-aggregate_oi_90d")) {
+    renderAggregateOiSingleChart();
+  }
 }
 
 function updateRiskChartHeaderInsight() {
@@ -1185,6 +1296,7 @@ async function loadDashboard({ refresh = false } = {}) {
   syncFiltersFromDashboard();
   destroyChartsForPage("btc-derivatives-");
   setRoot(renderPageShell("", refresh ? "衍生品快照已刷新" : ""));
+  await hydrateKnowledgeTooltips(document.getElementById("page-root"));
   bindEvents();
   renderCharts();
 }
