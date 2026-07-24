@@ -405,3 +405,63 @@ def test_collector_merges_price_history_with_cached() -> None:
             "2026-07-18", "2026-07-19", "2026-07-20",
             "2026-07-21", "2026-07-22",
         ], f"expected 5 days merged, got {merged_days}"
+
+
+def test_collector_persists_price_history_to_archive() -> None:
+    """LiveCollector must also push the latest daily row into the
+    DerivativesArchive under data_type='daily_metrics' with the same
+    series_key, so a cache rebuild can recover the most recent
+    snapshot."""
+    from pathlib import Path
+    import shutil
+    import tempfile
+
+    from app.services.btc_derivatives.archive import DerivativesArchive
+    from app.services.btc_derivatives.sources.cache import LiveSourceCache
+    from app.services.btc_derivatives.sources.collector import LiveCollector
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
+
+    tmp = tempfile.mkdtemp()
+    try:
+        cache = LiveSourceCache(root=Path(tmp))
+        archive = DerivativesArchive(root=Path(tmp) / "archive")
+        collector = LiveCollector(cache=cache, archive=archive)
+
+        result = AdapterResult(provider="binance_futures")
+        for day in ("2026-07-20", "2026-07-21", "2026-07-22"):
+            result.history.append({
+                "timestamp": day,
+                "spot_price": 67000.0,
+                "aggregate_oi_usd": 4_200_000_000.0,
+                "funding_rate": 0.00018,
+                "funding_zscore": 0.5,
+                "provider": "binance_futures",
+            })
+        collector._persist_price_history([result])
+
+        # Read only the daily_metrics archive rows; ignore other writes
+        # the collector may have made for key_levels etc.
+        archive_rows = archive.read_records(data_type="daily_metrics")
+        assert archive_rows, (
+            "expected at least one daily_metrics archive row, got 0"
+        )
+        # The most recent day must be the one persisted.
+        latest_day = max(
+            str(r.get("timestamp") or "") for r in archive_rows
+        )
+        assert latest_day == "2026-07-22", (
+            f"expected archive to keep the latest day 2026-07-22, got {latest_day}"
+        )
+        # That row must carry the same series_key + an archive_captured_at stamp.
+        latest_row = next(
+            r for r in archive_rows
+            if str(r.get("timestamp") or "") == latest_day
+        )
+        assert latest_row.get("series_key") == "binance_futures:BTC", (
+            f"archive row missing series_key, got {latest_row}"
+        )
+        assert latest_row.get("archive_captured_at"), (
+            f"archive row missing archive_captured_at stamp, got {latest_row}"
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

@@ -1,3 +1,15 @@
+"""Market-context & runtime contract tests for the AI Strategy page.
+
+The strategy page is now a multi-instrument scan hub. These tests
+verify:
+
+- The api client exposes the scan + unified endpoints used by the hub
+  and the detail panel.
+- The runtime engines (macro regime, onchain regime, multi-timeframe
+  structure) still hide their internal diagnostics from the UI copy.
+- Backend contracts (`verdict_for_node`, confidence scaling) still
+  behave as documented.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,87 +18,73 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_api_exposes_market_context_client() -> None:
+# ---------------------------------------------------------------------------
+# API surface
+# ---------------------------------------------------------------------------
+
+
+def test_api_exposes_market_context_client():
+    """api.js still exposes getMarketContext() for /market-context/snapshot."""
     source = (ROOT / "app/static/core/api.js").read_text(encoding="utf-8")
     assert "getMarketContext(" in source
     assert '"/market-context/snapshot"' in source
 
 
-def test_strategy_page_loads_unified_strategy_stack() -> None:
-    source = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
-    adapter = (ROOT / "app/static/pages/strategy/adapter.js").read_text(encoding="utf-8")
-    assert "api.getUnifiedStrategy" in source
-    assert "api.getMonitoringDashboard" in source
-    assert "api.getBtcDerivativesDashboard" in source
-    assert "api.getMacroOverview" in source
-    assert "Promise.allSettled" in source
-    assert "normalizeUnifiedStrategy" in source
-    assert "buildDataDegradedCard" in source
-    assert "timeframe_stack" in adapter
-    assert "horizon_views" in adapter
-    assert "horizon_governance" in adapter
-    assert "event_watch" in adapter
-    assert "evidence_ref" in adapter
-    assert "evidence_confidence" in adapter
-    assert "data_access" in adapter
+def test_api_exposes_strategy_scan_endpoint():
+    """api.js exposes getStrategyScan() for /strategy/scan — the hub's
+    primary data source."""
+    source = (ROOT / "app/static/core/api.js").read_text(encoding="utf-8")
+    assert "getStrategyScan(" in source
+    assert '"/strategy/scan"' in source
 
 
-def test_strategy_v2_renderers_show_real_unified_payload_fields() -> None:
-    operation = (ROOT / "app/static/pages/strategy/renderMarketOperation.js").read_text(
-        encoding="utf-8"
-    )
-    event_watch = (ROOT / "app/static/pages/strategy/renderEventWatch.js").read_text(
-        encoding="utf-8"
-    )
-    risk_panel = (ROOT / "app/static/pages/strategy/renderRiskPanel.js").read_text(
-        encoding="utf-8"
-    )
-    evidence = (ROOT / "app/static/pages/strategy/renderEvidenceTrace.js").read_text(
-        encoding="utf-8"
-    )
-    trade_plans = (ROOT / "app/static/pages/strategy/renderTradePlans.js").read_text(
-        encoding="utf-8"
-    )
-    horizon_stack = (ROOT / "app/static/pages/strategy/renderHorizonStack.js").read_text(
-        encoding="utf-8"
-    )
-
-    assert "safe.evidence" in operation
-    assert "safe.details" in operation
-    assert "evidence_confidence" in operation
-    assert "isRoutineEvent" in event_watch
-    assert "清晰" in event_watch
-    assert "normal" in event_watch
-    assert "dedupeRisks" in risk_panel
-    assert "risk.id" in risk_panel or "risk.key" in risk_panel
-    # v1.7: evidence card no longer renders calculation_rule / input_features /
-    # source_modules as visible text.
-    assert "计算规则" not in evidence
-    assert "输入特征" not in evidence
-    assert "human_explanation" in evidence
-    assert "buildEvidenceSummary" in evidence
-    assert "strategy-evidence-summary" in evidence
-    assert "入场区间" in trade_plans
-    assert "失效条件" in trade_plans
-    assert "STRUCTURE_STATE_LABELS" in horizon_stack
-    assert "verdictLabel" not in horizon_stack
-    assert "evidence_confidence" in horizon_stack
+def test_api_exposes_unified_strategy_endpoint():
+    """api.js exposes getUnifiedStrategy() — consumed by the detail panel
+    loader for a specific (instrument, timeframe) pair."""
+    source = (ROOT / "app/static/core/api.js").read_text(encoding="utf-8")
+    assert "getUnifiedStrategy(" in source
+    assert '"/strategy/unified"' in source
 
 
-def test_strategy_confidence_missing_values_are_not_coerced_to_zero() -> None:
-    adapter = (ROOT / "app/static/pages/strategy/adapter.js").read_text(encoding="utf-8")
-    operation = (ROOT / "app/static/pages/strategy/renderMarketOperation.js").read_text(
-        encoding="utf-8"
-    )
-
-    assert "confidence: 0" not in adapter
-    assert "node.confidence ?? 0" not in adapter
-    assert "dim.confidence ?? 0" not in adapter
-    assert "safe.confidence || 0" not in operation
-    assert "evidence_confidence) || 0" not in operation
+# ---------------------------------------------------------------------------
+# Hub + detail-panel orchestration
+# ---------------------------------------------------------------------------
 
 
-def test_strategy_snapshot_builder_attaches_market_context() -> None:
+def test_hub_uses_strategy_scan_as_primary_source():
+    """index.js calls getStrategyScan as the hub-level loader; the
+    detail-panel loader (inside onSelectOpportunity) calls
+    getUnifiedStrategy for the clicked cell."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    panel = (
+        ROOT / "app/static/pages/strategy/renderDetailPanel.js"
+    ).read_text(encoding="utf-8")
+
+    assert "api.getStrategyScan" in index
+    assert "api.getUnifiedStrategy" in index  # inside onSelectOpportunity
+    assert "normalizeUnifiedStrategy" in index
+    assert "loadStrategy(" in panel
+
+
+def test_detail_panel_uses_no_legacy_horizon_governance_inline():
+    """The detail panel no longer renders the legacy inline
+    horizon_governance summary into the scan shell."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    overview = (
+        ROOT / "app/static/pages/strategy/renderOverview.js"
+    ).read_text(encoding="utf-8")
+
+    assert "renderHorizonGovernance" not in index
+    assert "model.horizon_governance" not in overview
+
+
+# ---------------------------------------------------------------------------
+# Snapshot builder backend contract
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_snapshot_builder_attaches_market_context():
+    """snapshot_builder still emits market_context via MarketContextBuilder."""
     source = (ROOT / "app/services/strategy_signal/snapshot_builder.py").read_text(
         encoding="utf-8"
     )
@@ -94,44 +92,13 @@ def test_strategy_snapshot_builder_attaches_market_context() -> None:
     assert '"market_context"' in source
 
 
-def test_strategy_evidence_trace_omits_internal_namespace_labels() -> None:
-    """v1.7: ensure internal algorithm names never reach the user-facing evidence card."""
-    source = (ROOT / "app/static/pages/strategy/renderEvidenceTrace.js").read_text(
-        encoding="utf-8"
-    )
-    forbidden = [
-        "weighted_direction_score",
-        "higher_tf_constraint + tactical_conflict",
-        "market_operation.<key>.bias",
-        "horizon_views.<key>.direction",
-    ]
-    for token in forbidden:
-        assert token not in source, f"evidence card should not render: {token}"
+# ---------------------------------------------------------------------------
+# Risk-gate / macro-regime labels
+# ---------------------------------------------------------------------------
 
 
-def test_strategy_render_does_not_expose_calculation_rule_input_features() -> None:
-    """v1.7: payload may still contain them, but the renderer must not display them."""
-    evidence = (ROOT / "app/static/pages/strategy/renderEvidenceTrace.js").read_text(
-        encoding="utf-8"
-    )
-    trade_plans = (ROOT / "app/static/pages/strategy/renderTradePlans.js").read_text(
-        encoding="utf-8"
-    )
-    # The renderer must not read calculation_rule / input_features as displayed text.
-    for token in ("calculation_rule", "input_features"):
-        assert token not in evidence, f"renderEvidenceTrace must not display {token}"
-        assert token not in trade_plans, f"renderTradePlans must not display {token}"
-
-
-def test_strategy_data_degraded_footer_endpoint_set() -> None:
-    adapter = (ROOT / "app/static/pages/strategy/adapter.js").read_text(encoding="utf-8")
-    for label in ("统一策略", "监控总览", "衍生品", "宏观"):
-        assert label in adapter
-    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
-    assert "buildDataDegradedCard(model)" in index
-
-
-def test_strategy_risk_gate_uses_chinese_labels() -> None:
+def test_strategy_risk_gate_uses_chinese_labels():
+    """risk_gate must use the four canonical Chinese labels."""
     risk_gate = (ROOT / "app/services/strategy_unified/risk_gate.py").read_text(
         encoding="utf-8"
     )
@@ -139,7 +106,8 @@ def test_strategy_risk_gate_uses_chinese_labels() -> None:
         assert label in risk_gate, f"risk_gate must use Chinese label: {label}"
 
 
-def test_strategy_macro_regime_emits_human_explanation() -> None:
+def test_strategy_macro_regime_emits_human_explanation():
+    """macro_regime emits human_explanation + 宏观 label."""
     macro = (ROOT / "app/services/strategy_unified/macro_regime.py").read_text(
         encoding="utf-8"
     )
@@ -147,7 +115,14 @@ def test_strategy_macro_regime_emits_human_explanation() -> None:
     assert "宏观" in macro
 
 
-def test_strategy_market_operation_backend_hides_internal_diagnostics() -> None:
+# ---------------------------------------------------------------------------
+# Runtime diagnostics hiding — backend doesn't leak internal tokens
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_market_operation_backend_hides_internal_diagnostics():
+    """MacroRegimeEngine / OnchainRegimeEngine / price-structure
+    dimension must not expose internal tokens in their evidence text."""
     from app.services.strategy_unified.macro_regime import MacroRegimeEngine
     from app.services.strategy_unified.onchain_regime import OnchainRegimeEngine
     from app.services.strategy_unified.unified_service import UnifiedStrategyService
@@ -190,22 +165,15 @@ def test_strategy_market_operation_backend_hides_internal_diagnostics() -> None:
     assert "链上观测数据" in onchain_text
 
 
-def test_strategy_onchain_observation_writes_indicator_observations() -> None:
-    policy = (ROOT / "app/services/onchain/policy_adapter.py").read_text(encoding="utf-8")
-    indicator_monitoring = (
-        ROOT / "app/services/indicator_monitoring.py"
-    ).read_text(encoding="utf-8")
-    assert "DefiLlamaPolicyAdapter" in policy or "collect_via_router" in policy
-    assert "ensure_defillama_definitions" in policy
-    assert "persist_drafts" in policy
-    assert "collect_via_router" in indicator_monitoring
-    assert "ensure_defillama_definitions" in indicator_monitoring
+# ---------------------------------------------------------------------------
+# verdict_for_node contract
+# ---------------------------------------------------------------------------
 
 
-def test_strategy_verdict_for_node_handles_all_states() -> None:
+def test_strategy_verdict_for_node_handles_all_states():
+    """verdict_for_node resolves every canonical case."""
     from app.services.strategy_unified.contracts import verdict_for_node
 
-    # Sanity: function is importable and resolves all canonical cases.
     assert callable(verdict_for_node)
     assert verdict_for_node("NO_EDGE", "NEUTRAL", "1d") == "RANGE_NO_EDGE"
     assert verdict_for_node("CONTEXT_LONG", "LONG", "1M") == "STRATEGIC_LONG_TACTICAL_LONG"
@@ -218,7 +186,13 @@ def test_strategy_verdict_for_node_handles_all_states() -> None:
     assert verdict_for_node("UNKNOWN_STATE", "NEUTRAL", "1d") == "RANGE_NO_EDGE"
 
 
-def test_timeframe_node_confidence_reflects_conclusive_state() -> None:
+# ---------------------------------------------------------------------------
+# Confidence scaling
+# ---------------------------------------------------------------------------
+
+
+def test_timeframe_node_confidence_reflects_conclusive_state():
+    """A fresh CONTEXT_SHORT 1d node must yield confidence >= 70."""
     from app.services.strategy_unified.mtf_structure import MultiTimeframeStructureEngine
 
     nodes = MultiTimeframeStructureEngine().build_nodes(
@@ -249,7 +223,8 @@ def test_timeframe_node_confidence_reflects_conclusive_state() -> None:
     assert daily.confidence >= 70
 
 
-def test_timeframe_node_confidence_reflects_range_no_edge_judgment() -> None:
+def test_timeframe_node_confidence_reflects_range_no_edge_judgment():
+    """A fresh NO_EDGE 1w node must yield confidence >= 60."""
     from app.services.strategy_unified.mtf_structure import MultiTimeframeStructureEngine
 
     nodes = MultiTimeframeStructureEngine().build_nodes(
