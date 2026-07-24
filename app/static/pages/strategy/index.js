@@ -1,273 +1,158 @@
+// app/static/pages/strategy/index.js
 import { api } from "../../core/api.js";
-import { appState, getInstrumentMeta, persistState } from "../../core/state.js";
+import { appState } from "../../core/state.js";
 import {
-  emptyState,
-  degradedState,
-  errorState,
-  escapeHtml,
-  formatDateTime,
-  formatNumber,
-  setRoot,
-  statusBanner,
+  escapeHtml, formatNumber, formatDateTime, setRoot,
+  statusBanner, loadingState,
 } from "../../core/dom.js";
-import { normalizeUnifiedStrategy, buildDataDegradedCard } from "./adapter.js?v=trade-4h-v1";
-import { renderEventWatch } from "./renderEventWatch.js?v=compact-v3";
-import { renderMarketOperation } from "./renderMarketOperation.js?v=decision-text-cleanup";
-import { renderOverview } from "./renderOverview.js?v=trade-4h-v1";
-import { renderRiskPanel } from "./renderRiskPanel.js?v=compact-v3";
-import { renderExecutionPlan } from "./renderExecutionPlan.js?v=trade-4h-v1";
-import { renderEvidenceStack } from "./renderEvidenceStack.js?v=compact-v3";
-import { renderDecisionAudit } from "./renderDecisionAudit.js?v=auditable-v1";
+import { normalizeUnifiedStrategy } from "./adapter.js?v=trade-4h-v1";
+import { renderScanMatrix, bindScanMatrix } from "./renderScanMatrix.js";
+import { renderScanRanked, bindScanRanked } from "./renderScanRanked.js";
+import { openDetailPanel } from "./renderDetailPanel.js";
 import { mountPageGuide } from "../../ui/pageGuideFab.js";
 
-let activeController = null;
-let requestToken = 0;
 let mounted = false;
-let coldStartRetryTimer = null;
-let coldStartRetryCount = 0;
+let activeController = null;
+let scanData = null; // cached ScanResult for resume
 
-const helpers = {
-  emptyState,
-  errorState,
-  escapeHtml,
-  formatDateTime,
-  formatNumber,
-};
-
-function renderInstrumentOptions() {
-  return appState.instruments.map((item) => `
-    <option value="${escapeHtml(item.id)}" ${item.id === appState.selectedInstrumentId ? "selected" : ""}>
-      ${escapeHtml(item.code)} · ${escapeHtml(item.name)}
-    </option>
-  `).join("");
-}
-
-function renderShell() {
-  const instrument = getInstrumentMeta(appState.selectedInstrumentId);
+function renderScanShell() {
   setRoot(`
-    <section class="strategy-v2-page">
+    <section class="strategy-v2-page strategy-scan-page">
       <section class="strategy-v2-toolbar card">
         <div>
-          <p class="eyebrow">AI STRATEGY V2</p>
-          <h1>跨周期统一推演</h1>
-          <p>${escapeHtml(instrument.code || appState.selectedInstrumentId)} · 六周期固定证据栈</p>
+          <p class="eyebrow">OPPORTUNITY SCANNER</p>
+          <h1>跨品种跨周期机会扫描</h1>
+          <p>自动扫描全部品种 · 周线/日线/4H · 综合评分排序</p>
         </div>
-        <label class="strategy-v2-select">
-          <span>标的</span>
-          <select id="strategy-instrument">${renderInstrumentOptions()}</select>
-        </label>
         <div class="strategy-v2-actions">
-          <button type="button" class="secondary-button" id="strategy-save-snapshot">保存战术快照</button>
-          <button type="button" class="primary-button" id="strategy-refresh">刷新推演</button>
+          <button type="button" class="primary-button" id="strategy-scan-refresh">刷新扫描</button>
         </div>
       </section>
-      <div id="strategy-status">${statusBanner("正在读取统一策略缓存", "info")}</div>
-      <div id="strategy-content" class="strategy-v2-content">
-        ${emptyState("统一策略推演加载中")}
-      </div>
-      <section id="strategy-review" class="strategy-v2-review"></section>
+      <div id="strategy-scan-status"></div>
+      <section class="grid cols-2 strategy-scan-grid">
+        <section class="card" id="strategy-scan-matrix-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">MATRIX</p>
+              <h2>机会矩阵</h2>
+              <p class="section-summary">品种 × 级别 一览</p>
+            </div>
+          </div>
+          <div id="strategy-scan-matrix"></div>
+        </section>
+        <section class="card" id="strategy-scan-ranked-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">RANKED</p>
+              <h2>机会排序</h2>
+              <p class="section-summary">按综合评分降序，仅显示有方向的信号</p>
+            </div>
+          </div>
+          <div id="strategy-scan-ranked"></div>
+        </section>
+      </section>
     </section>
   `);
 }
 
-function renderModel(model) {
-  const content = document.getElementById("strategy-content");
-  if (!content) return;
-  content.innerHTML = `
-    ${renderOverview(model, helpers)}
-    ${renderExecutionPlan(model, helpers)}
-    ${renderDecisionAudit(model, helpers)}
-    ${renderEvidenceStack(model, helpers)}
-    ${renderMarketOperation(model, helpers)}
-    ${renderRiskPanel(model, helpers)}
-    ${renderEventWatch(model, helpers)}
-    ${buildDataDegradedCard(model)}
-  `;
-}
+function renderScanResults(data) {
+  scanData = data;
 
-function renderReview(review) {
-  const el = document.getElementById("strategy-review");
-  if (!el) return;
-  const items = Array.isArray(review?.recent_reviews) ? review.recent_reviews : [];
-  const rows = items.slice(0, 5).map((item) => `
-    <li>
-      <strong>${escapeHtml(item.outcome || item.status || "复盘记录")}</strong>
-      <span>${escapeHtml(item.note || item.summary || (item.generated_at ? formatDateTime(item.generated_at) : ""))}</span>
-    </li>
-  `).join("");
-  const isEmpty = rows.length === 0;
-  el.innerHTML = `
-    <details class="strategy-v2-section strategy-collapsible strategy-review-panel card" ${isEmpty ? "" : "open"}>
-      <summary class="strategy-collapsible-summary">
-        <div>
-          <p class="eyebrow">TACTICAL REVIEW</p>
-          <h2>1d 战术快照与复盘辅助</h2>
-          <small>${isEmpty ? "暂无战术复盘记录" : `${rows.length} 条近期记录`}</small>
-        </div>
-        <span class="strategy-collapse-control" aria-hidden="true"></span>
-      </summary>
-      ${isEmpty ? "" : `<div class="strategy-collapsible-body"><ul class="strategy-monitor-list">${rows}</ul></div>`}
-    </details>
-  `;
-}
+  const status = document.getElementById("strategy-scan-status");
+  const oppCount = data.ranked?.length || 0;
+  const totalCells = (data.instruments?.length || 0) * (data.timeframes?.length || 0);
+  const sourceLabel = data.cache_meta?.source === "cache" ? "（缓存）" : "";
 
-async function loadReview() {
-  try {
-    const review = await api.getStrategyReview(appState.selectedInstrumentId, "1d");
-    renderReview(review);
-  } catch (error) {
-    console.debug("strategy:review:skipped", error);
+  if (status) {
+    status.innerHTML = statusBanner(
+      oppCount > 0
+        ? `发现 ${oppCount} 个交易机会 / 共扫描 ${totalCells} 个级别组合 ${sourceLabel}`
+        : `当前无明确交易机会 ${sourceLabel}`,
+      oppCount > 0 ? "success" : "neutral"
+    );
+  }
+
+  const matrixEl = document.getElementById("strategy-scan-matrix");
+  if (matrixEl) {
+    matrixEl.innerHTML = renderScanMatrix(data.matrix || [], appState.instruments, onSelectOpportunity);
+    bindScanMatrix(onSelectOpportunity);
+  }
+
+  const rankedEl = document.getElementById("strategy-scan-ranked");
+  if (rankedEl) {
+    rankedEl.innerHTML = renderScanRanked(data.ranked || [], onSelectOpportunity);
+    bindScanRanked(onSelectOpportunity);
   }
 }
 
-async function loadUnifiedStrategy({ force = false, bypassCache = false } = {}) {
-  const token = ++requestToken;
-  if (coldStartRetryTimer) {
-    clearTimeout(coldStartRetryTimer);
-    coldStartRetryTimer = null;
-  }
+function renderScanLoading() {
+  const status = document.getElementById("strategy-scan-status");
+  if (status) status.innerHTML = statusBanner("正在扫描全部品种×级别...", "info");
+  const matrixEl = document.getElementById("strategy-scan-matrix");
+  if (matrixEl) matrixEl.innerHTML = loadingState("正在计算各品种各周期策略...");
+  const rankedEl = document.getElementById("strategy-scan-ranked");
+  if (rankedEl) rankedEl.innerHTML = loadingState("等待扫描完成...");
+}
+
+function onSelectOpportunity(instrumentId, timeframe) {
+  const loadStrategy = async (iid, tf) => {
+    const payload = await api.getUnifiedStrategy(iid, { force: false, timeoutMs: 20000 });
+    const code = appState.instruments.find((i) => i.id === iid)?.code || iid;
+    const model = normalizeUnifiedStrategy(payload, {});
+    model.instrument_code = code;
+    model.data_access = { unified: payload, monitoring: null, derivatives: null, macro: null };
+    model.data_access_failures = { unified: null, monitoring: null, derivatives: null, macro: null };
+    return model;
+  };
+  openDetailPanel(instrumentId, timeframe, loadStrategy, () => {
+    // Panel closed — no action needed
+  });
+}
+
+async function loadScan(force = false) {
   activeController?.abort();
   activeController = new AbortController();
-  const status = document.getElementById("strategy-status");
-  if (status) status.innerHTML = statusBanner(force ? "正在刷新统一策略推演" : "正在读取统一策略缓存", "info");
-  const instrumentId = appState.selectedInstrumentId;
-  const { signal } = activeController;
-  const results = await Promise.allSettled([
-    api.getUnifiedStrategy(instrumentId, {
-      force,
-      bypassCache: bypassCache || coldStartRetryCount > 0,
-      signal,
-    }),
-    api.getMonitoringDashboard(instrumentId, "1d", { signal }),
-    api.getBtcDerivativesDashboard({ signal }),
-    api.getMacroOverview({ signal }),
-  ]);
-  if (!mounted || token !== requestToken) return;
-  const failed = results.filter((r) => r.status === "rejected");
-  const dataAccess = {
-    unified: results[0].status === "fulfilled" ? results[0].value : null,
-    monitoring: results[1].status === "fulfilled" ? results[1].value : null,
-    derivatives: results[2].status === "fulfilled" ? results[2].value : null,
-    macro: results[3].status === "fulfilled" ? results[3].value : null,
-  };
-  const dataAccessFailures = {
-    unified: results[0].status === "rejected" ? results[0].reason?.message || "读取失败" : null,
-    monitoring: results[1].status === "rejected" ? results[1].reason?.message || "读取失败" : null,
-    derivatives: results[2].status === "rejected" ? results[2].reason?.message || "读取失败" : null,
-    macro: results[3].status === "rejected" ? results[3].reason?.message || "读取失败" : null,
-  };
-  if (!dataAccess.unified) {
-    if (status) status.innerHTML = statusBanner("策略推演暂时不可用，已自动触发后台预热", "warning");
-    const content = document.getElementById("strategy-content");
-    if (content) content.innerHTML = degradedState(
-      "策略推演暂时不可用",
-      "统一策略服务正在恢复，已自动触发后台预热。"
-    );
-    // Re-trigger prewarm in case the mount-time fire failed
-    api.prewarmStrategy(instrumentId).catch(() => {});
-    return;
+  try {
+    const data = await api.getStrategyScan({ force, signal: activeController.signal, timeoutMs: 60000 });
+    if (!mounted) return;
+    renderScanResults(data);
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    console.error("strategy:scan:error", err);
+    const status = document.getElementById("strategy-scan-status");
+    if (status) status.innerHTML = statusBanner("扫描失败，请稍后重试", "error");
   }
-  if (failed.length === 4) {
-    if (status) status.innerHTML = statusBanner("所有数据源不可用，已自动触发后台预热", "warning");
-    const content = document.getElementById("strategy-content");
-    if (content) content.innerHTML = degradedState(
-      "所有数据源不可用",
-      "监控、衍生品、宏观、统一策略全部失败。"
-    );
-    api.prewarmStrategy(instrumentId).catch(() => {});
-    return;
-  }
-  const model = normalizeUnifiedStrategy(dataAccess.unified, dataAccess);
-  model.data_access = dataAccess;
-  model.data_access_failures = dataAccessFailures;
-  renderModel(model);
-  const shouldAutoRetryColdStart = !force
-    && model.degraded_components?.includes("strategy_unified_cache_missing");
-  if (failed.length === 0 && !model.degraded) {
-    if (status) status.innerHTML = statusBanner("统一策略推演已更新", "success");
-  } else if (model.degraded) {
-    const components = (model.degraded_components || []).join("、") || "部分组件";
-    if (status) status.innerHTML = statusBanner(`策略已渲染；${components} 降级，后台预热中`, "warning");
-  } else {
-    if (status) status.innerHTML = statusBanner(`统一策略已更新；${failed.length}/4 数据源不可用`, "warning");
-  }
-  if (shouldAutoRetryColdStart) {
-    api.prewarmStrategy(instrumentId).catch(() => {});
-    coldStartRetryCount += 1;
-    if (status) {
-      status.innerHTML = statusBanner(
-        `统一策略快照尚未就绪，后台预热中 (${coldStartRetryCount})`,
-        "warning"
-      );
-    }
-    coldStartRetryTimer = setTimeout(() => {
-      if (mounted) void loadUnifiedStrategy({ force: false, bypassCache: true });
-    }, Math.min(8000, 1500 + coldStartRetryCount * 1000));
-  } else {
-    coldStartRetryCount = 0;
-  }
-  await loadReview();
-}
-
-function attachEvents() {
-  document.getElementById("strategy-instrument")?.addEventListener("change", async (event) => {
-    appState.selectedInstrumentId = event.target.value;
-    persistState();
-    renderShell();
-    attachEvents();
-    await loadUnifiedStrategy();
-  });
-  document.getElementById("strategy-refresh")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    try {
-      await loadUnifiedStrategy({ force: true });
-    } finally {
-      button.disabled = false;
-    }
-  });
-  document.getElementById("strategy-save-snapshot")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    const status = document.getElementById("strategy-status");
-    button.disabled = true;
-    try {
-      await api.saveStrategySnapshot(appState.selectedInstrumentId, "1d");
-      if (status) status.innerHTML = statusBanner("1d 战术快照已保存", "success");
-      await loadReview();
-    } catch (error) {
-      if (status) status.innerHTML = statusBanner("战术快照保存失败", "error");
-    } finally {
-      button.disabled = false;
-    }
-  });
 }
 
 export async function renderStrategy() {
   mounted = true;
-  renderShell();
-  attachEvents();
+  renderScanShell();
+  renderScanLoading();
+
+  document.getElementById("strategy-scan-refresh")?.addEventListener("click", () => {
+    renderScanLoading();
+    loadScan(true);
+  });
+
   const guideFab = mountPageGuide("ai-strategy");
+
+  // Auto-scan on mount
+  const scanPromise = loadScan(false);
+
   return {
     mount: async () => {
-      // Fire-and-forget background prewarm (don't await)
-      api.prewarmStrategy(appState.selectedInstrumentId).catch(() => {});
-      coldStartRetryCount = 0;
-      await loadUnifiedStrategy();
+      if (scanData) renderScanResults(scanData);
+      else await scanPromise;
     },
     unmount: async () => {
       guideFab.unmount();
       mounted = false;
-      if (coldStartRetryTimer) {
-        clearTimeout(coldStartRetryTimer);
-        coldStartRetryTimer = null;
-      }
-      coldStartRetryCount = 0;
       activeController?.abort();
       activeController = null;
     },
     pause: async () => {},
     resume: async () => {
-      if (mounted) await loadUnifiedStrategy();
+      if (mounted && !scanData) await loadScan(false);
     },
   };
 }
