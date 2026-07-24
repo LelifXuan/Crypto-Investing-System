@@ -215,6 +215,25 @@ class OpportunityScanner:
 - 切换机会时：面板内容平滑更新（不关闭再打开）
 - 关闭方式：点击返回按钮 / 点击面板外遮罩 / 按 Esc
 
+### 5.6 设计语言合规
+
+所有新增 UI 必须使用项目现有 Monet 玻璃卡片设计系统，**不得引入新的 CSS 框架或自定义样式**：
+
+| 用途 | 使用的现有模式 |
+|---|---|
+| 扫描面板容器 | `.card` + `.section-head` + `.eyebrow` / `h2` / `.section-summary` |
+| 机会矩阵表格 | `.table-wrap` > `table` + 项目 `.impact-chip`（bullish/bearish/neutral） |
+| 排序推荐列表 | `.card` 列表 + `.impact-chip` 方向标记 + `.chip` 级别标签 |
+| 侧拉面板 | `.card` + `.section-head`，复用 `strategy-v2-*` 现有 CSS 类 |
+| 加载/空/错误状态 | `.data-state` + `.data-state-loading` / `.data-state-empty` / `.data-state-error` |
+| 状态提示 | `.status-banner` + `.status-*` 色调 |
+| 操作按钮 | `.primary-button` / `.secondary-button`，复用 `.toolbar.compact-toolbar` |
+| 网格布局 | `.grid.cols-2` / `.grid.cols-3`（与监控总览、BTC衍生品等页一致） |
+| 数据色调 | `data-tone="bullish"` / `"bearish"` / `"neutral"`（与衍生品页一致） |
+| 字体层级 | `.eyebrow`（分区标签）→ `h2`（标题）→ `.section-summary`（说明）|
+
+**参考页面**：BTC 衍生品页（`.btc-derivatives-page`）的卡片布局、监控总览页（`.monitoring-surface`）的网格系统、AI 策略页（`.strategy-v2-*`）的现有类名体系。
+
 ---
 
 ## 六、数据流
