@@ -139,7 +139,7 @@ function onSelectOpportunity(instrumentId, timeframe) {
 async function loadScan(force = false, opts = {}) {
   activeController?.abort();
   activeController = new AbortController();
-  // 2026-07-24: cold-load reliability. First cold scan can take 60+
+  // 2026-07-24 v2: cold-load reliability. First cold scan can take 60+
   // seconds (rebuilds every cell's unified strategy from scratch).
   // Default 60s frontend timeout trips before the scan completes.
   // Use a 120s timeout on cold scans, drop back to 60s after a
@@ -152,21 +152,20 @@ async function loadScan(force = false, opts = {}) {
       timeoutMs,
     });
     if (!mounted) return data;
-    // Backend signals "warming" via cache_meta.source when cache is
-    // empty + force=false. Show warming banner, then auto-retry once
-    // after a short delay so the warmup can finish populating caches.
-    if (!force && data?.cache_meta?.source === "warming" && !opts._retried) {
-      renderWarmingStatus(data.cache_meta.message);
-      await new Promise((r) => setTimeout(r, 5000));
-      if (!mounted) return data;
-      return loadScan(false, { _retried: true, timeoutMs: 90000 });
+    // 2026-07-24 v2: Backend signals "warming" via cache_meta.source
+    // when cache is empty + force=false. The warming response has
+    // empty matrix / empty ranked — we must NOT treat that as
+    // "no opportunities found". Return a tagged object so
+    // pollWhileWarming() can keep the warming banner up and retry.
+    if (!force && data?.cache_meta?.source === "warming") {
+      return { __state: "warming", payload: data };
     }
     renderScanResults(data);
     return data;
   } catch (err) {
     if (err?.name === "AbortError") return null;
     console.error("strategy:scan:error", err);
-    // 2026-07-24: one retry for transient failures (network blip /
+    // 2026-07-24 v2: one retry for transient failures (network blip /
     // 5xx) before showing the error banner. Bounded — single retry.
     if (!opts._retried && !opts._skipRetry) {
       console.warn("strategy:scan:retrying once after transient failure");
@@ -177,12 +176,41 @@ async function loadScan(force = false, opts = {}) {
     const status = document.getElementById("strategy-scan-status");
     if (status) {
       status.innerHTML = statusBanner(
-        "扫描失败，请稍后重试（后台仍在预热数据）",
+        "扫描失败，请稍后重试",
         "error"
       );
     }
     return null;
   }
+}
+
+// 2026-07-24 v2: poll the backend while it returns 'warming'.
+// Up to WARMING_RETRY_LIMIT attempts at WARMING_RETRY_DELAY_MS apart.
+// Each attempt calls loadScan(); warming responses keep the banner up,
+// data responses go through the normal render path, errors show
+// the error banner (which loadScan handles internally).
+const WARMING_RETRY_LIMIT = 6;
+const WARMING_RETRY_DELAY_MS = 5000;
+
+async function pollWhileWarming(attempt = 0) {
+  if (!mounted) return;
+  if (attempt >= WARMING_RETRY_LIMIT) {
+    // Graceful give-up. Distinct from the error banner — this means
+    // "the system is just slow, please manually retry", NOT a fault.
+    renderWarmingStatus(
+      "后台仍在预热数据，请点击「刷新扫描」按钮重试"
+    );
+    return;
+  }
+  await new Promise((r) => setTimeout(r, WARMING_RETRY_DELAY_MS));
+  if (!mounted) return;
+  const result = await loadScan(false, { timeoutMs: 90000 });
+  if (!mounted) return;
+  if (result && result.__state === "warming") {
+    pollWhileWarming(attempt + 1);
+    return;
+  }
+  // loadScan already rendered real data or the error banner.
 }
 
 export async function renderStrategy() {
@@ -202,9 +230,16 @@ export async function renderStrategy() {
 
   const guideFab = mountPageGuide("ai-strategy");
 
-  // Auto-scan on mount (force=false). loadScan handles warming short-circuit
-  // and retry-once internally.
-  const scanPromise = loadScan(false);
+  // Auto-scan on mount (force=false). If the first scan returns
+  // 'warming', kick off the bounded poll loop instead of treating the
+  // empty matrix as a real "no opportunities" result.
+  const scanPromise = (async () => {
+    const first = await loadScan(false);
+    if (first && first.__state === "warming") {
+      pollWhileWarming(0);
+    }
+    return first;
+  })();
 
   return {
     mount: async () => {

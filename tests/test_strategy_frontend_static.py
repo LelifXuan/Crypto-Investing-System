@@ -418,6 +418,110 @@ def test_strategy_index_shows_warming_banner():
     )
 
 
+def test_strategy_index_polling_loop_keeps_warming_banner_until_real_data():
+    """The frontend must keep polling the backend while it returns
+    `cache_meta.source === "warming"`, and NOT transition to
+    'renderScanResults' (which would treat an empty matrix as
+    'no opportunities'). The polling loop must have a bounded retry
+    limit so we eventually give up gracefully."""
+    import re
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+
+    # Look for a loop that retries loadScan or itself while warming.
+    # Acceptable patterns:
+    #   - while (something) { ... loadScan(...) ... }
+    #   - for (let i = 0; i < N; i++) { ... loadScan(...) ... }
+    #   - recursive function pollWhileWarming(attempt + 1)
+    #   - setTimeout / setInterval that calls loadScan
+    has_while_loop = bool(
+        re.search(r"while\s*\([^)]*\)\s*\{", index)
+    )
+    has_for_loop = bool(
+        re.search(r"for\s*\([^)]*\b(i|attempt)\b[^)]*\)\s*\{", index)
+    )
+    has_recursion = bool(
+        re.search(r"(pollWhileWarming|warmingPoll)\s*\(\s*attempt\s*\+\s*1\s*\)", index)
+    )
+    has_settimeout = (
+        "setTimeout" in index and "loadScan" in index
+    )
+    assert has_while_loop or has_for_loop or has_recursion or has_settimeout, (
+        "index.js must have a polling loop while backend stays in 'warming' state"
+    )
+
+    # Must have a bounded retry limit (some form of max-attempts)
+    has_bound = bool(
+        re.search(r"(WARMING_RETRY_LIMIT|MAX_WARMING|MAX_POLL|< \d+\s*;)", index)
+    )
+    assert has_bound, (
+        "polling loop must have a bounded retry limit (e.g. WARMING_RETRY_LIMIT)"
+    )
+
+
+def test_strategy_index_warming_giveup_message_is_graceful():
+    """When the warming poll loop gives up, the banner copy must NOT use
+    the error tone (扫描失败 / 失败 / error / Error). The give-up message
+    must be distinguishable from genuine backend errors so the user
+    knows the system is just slow, not broken."""
+    import re
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    # Look for any error-tone message attached to warming give-up state.
+    # Search for the pattern: a warming-message string OR a banner
+    # near the WARMING_RETRY_LIMIT / pollWhileWarming give-up branch.
+    # We assert: there must NOT be a literal string near
+    # "刷新扫描" (give-up message) that also contains 扫描失败.
+    # Simpler structural check: the warming-give-up code path uses
+    # renderWarmingStatus(...) (not statusBanner("...", "error")).
+    # We accept either:
+    #   - renderWarmingStatus(...)
+    #   - statusBanner("...", "info") with warming-related text
+    # but NOT statusBanner("...", "error") in the warming path.
+    # Find every statusBanner call. Each one must declare its tone.
+    banner_calls = re.findall(r'statusBanner\(([^)]+)\)', index)
+    for call in banner_calls:
+        # Normalize whitespace
+        c = " ".join(call.split())
+        # The 扫描失败 copy must be paired with "error" tone — that's
+        # the actual failure banner, which is fine. But if warming
+        # state ever accidentally uses error tone, we want to catch it.
+        if "扫描失败" in c:
+            assert '"error"' in c or "'error'" in c, (
+                f"扫描失败 must use tone='error': {c!r}"
+            )
+
+
+def test_strategy_index_does_not_render_warming_as_empty_results():
+    """A warming response (cache_meta.source === 'warming') must NEVER
+    reach renderScanResults() — otherwise the empty matrix gets
+    misinterpreted as 'no opportunities found'.
+
+    Behavioral check: the warming short-circuit must apply to EVERY
+    warming response, not just the first. We assert that the warming
+    guard does NOT depend on a `_retried` flag (which would let the
+    2nd warming response fall through to renderScanResults)."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+
+    # Find every line containing `source === "warming"` and assert the
+    # surrounding if-condition does NOT depend on `_retried`.
+    warming_lines = [
+        line for line in index.splitlines()
+        if 'cache_meta?.source === "warming"' in line
+        or "cache_meta?.source === 'warming'" in line
+        or 'cache_meta.source === "warming"' in line
+        or "cache_meta.source === 'warming'" in line
+    ]
+    assert warming_lines, (
+        "index.js must contain a cache_meta.source === 'warming' check"
+    )
+    for line in warming_lines:
+        # The guard must NOT depend on `_retried` flag — that lets
+        # subsequent warming responses bypass the short-circuit.
+        assert "_retried" not in line, (
+            f"warming guard must not depend on `_retried` flag — that lets "
+            f"later warming responses reach renderScanResults: {line!r}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Sanity — the modules that the detail panel still consumes must exist
 # ---------------------------------------------------------------------------

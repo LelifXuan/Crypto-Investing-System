@@ -216,3 +216,118 @@ def test_scan_handles_instruments_list_error(monkeypatch):
     body = response.json()
     assert body["matrix"] == []
     assert body["cache_meta"]["source"] in {"error", "warming"}
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-24 v2: warming cache must NOT be overwritten as 'cache' on hit.
+# If the cache row has cache_meta.source='warming', the endpoint must
+# preserve that signal so the frontend's poll loop keeps the warming
+# banner up.
+# ---------------------------------------------------------------------------
+
+
+def test_scan_preserves_warming_source_on_cache_hit(monkeypatch):
+    """When the cache row was written by the warming short-circuit,
+    its payload has cache_meta.source='warming'. On cache hit, the
+    endpoint must return that payload WITHOUT overwriting the source
+    to 'cache' — otherwise the frontend interprets the empty matrix
+    as 'no opportunities' and the warming banner never appears."""
+
+    from datetime import datetime, timezone
+
+    warming_payload = {
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "instruments": [],
+        "timeframes": ["1w", "1d", "4h"],
+        "matrix": [],
+        "ranked": [],
+        "cache_meta": {
+            "fresh_until": datetime.now(timezone.utc).isoformat(),
+            "source": "warming",
+            "instruments_scanned": 0,
+            "opportunities_found": 0,
+            "message": "首次访问，正在后台预热数据缓存，预计 5-10 秒后自动出结果。",
+        },
+    }
+
+    async def warming_cache(self, cache_key):  # noqa: ARG001
+        return SimpleNamespace(
+            cache_key=cache_key,
+            payload_json=warming_payload,
+            cache_state="warming",
+            status="warming",
+            expires_at=None,  # expired — we want to hit the cache-hit branch
+        )
+
+    async def no_instruments(self):
+        return []
+
+    async def no_upsert(self, **kwargs):  # noqa: ARG001
+        return None
+
+    app = _build_app(
+        monkeypatch,
+        cache_lookup=warming_cache,
+        list_instruments=no_instruments,
+        upsert_cache=no_upsert,
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/strategy/scan")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cache_meta"]["source"] == "warming", (
+        f"warming cache hit must preserve 'warming' source; "
+        f"endpoint returned {body['cache_meta']}"
+    )
+    assert body["matrix"] == []
+
+
+def test_scan_real_cache_hit_overwrites_source_to_cache(monkeypatch):
+    """Conversely, a non-warming cache hit MUST overwrite the source
+    to 'cache' so the frontend knows it's serving a real cached result
+    (not a warming short-circuit)."""
+
+    from datetime import datetime, timezone
+
+    real_payload = {
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "instruments": ["btc-usdt-perp"],
+        "timeframes": ["1d"],
+        "matrix": [],
+        "ranked": [],
+        "cache_meta": {
+            "fresh_until": datetime.now(timezone.utc).isoformat(),
+            "source": "live",  # backend cache source
+            "instruments_scanned": 1,
+            "opportunities_found": 0,
+        },
+    }
+
+    async def real_cache(self, cache_key):  # noqa: ARG001
+        return SimpleNamespace(
+            cache_key=cache_key,
+            payload_json=real_payload,
+            cache_state="fresh",
+            status="ready",
+            expires_at=None,
+        )
+
+    async def no_instruments(self):
+        return []
+
+    async def no_upsert(self, **kwargs):  # noqa: ARG001
+        return None
+
+    app = _build_app(
+        monkeypatch,
+        cache_lookup=real_cache,
+        list_instruments=no_instruments,
+        upsert_cache=no_upsert,
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/strategy/scan")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cache_meta"]["source"] == "cache", (
+        f"real cache hit must overwrite to 'cache'; got {body['cache_meta']['source']!r}"
+    )

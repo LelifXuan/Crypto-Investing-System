@@ -361,6 +361,14 @@ def cache_status(cache: PageSnapshotCache | None, now: datetime | None = None) -
     current_state = cache.cache_state or cache.status
     if current_state in {"updating", "refreshing"}:
         return "updating"
+    # 2026-07-24 v2: warming is its own state. We must NOT let a stale
+    # warming record look "stale" — that would cause the strategy
+    # scan endpoint to fall through to the cold-load short-circuit
+    # again and confuse the frontend. Preserve the warming signal
+    # so consumers can decide whether to treat it as "still
+    # computing, please wait" or "real result ready".
+    if current_state == "warming":
+        return "warming"
     if current_state in {"error", "missing", "stale"}:
         return current_state
     return "fresh" if is_page_cache_fresh(cache, now=now) else "stale"

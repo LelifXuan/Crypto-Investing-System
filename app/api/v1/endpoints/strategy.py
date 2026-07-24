@@ -524,7 +524,13 @@ async def get_strategy_scan(
         if cache is not None and cache.payload_json and status not in {"missing", "error"}:
             payload = dict(cache.payload_json)
             payload.setdefault("cache_meta", {})
-            payload["cache_meta"]["source"] = "cache"
+            # 2026-07-24 v2: preserve the warming signal so the
+            # frontend's poll loop keeps the warming banner up.
+            # Otherwise the empty matrix would be misinterpreted as
+            # "no opportunities found" on the very first request
+            # after the warming short-circuit fires.
+            if payload["cache_meta"].get("source") != "warming":
+                payload["cache_meta"]["source"] = "cache"
             return payload
 
     # Cold-load short-circuit: kick off prewarm, return a fast warming
