@@ -276,3 +276,132 @@ def test_btc_derivatives_exposes_aggregate_oi_90d_chart() -> None:
         "renderAggregateOiChart must read from the existing "
         "leverage_pressure_timeline chart payload (aggregate_oi_usd series)"
     )
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-23: cumulative cache for price_history. Each per-day row from
+# binance_futures must be appended to the existing LiveSourceCache +
+# DerivativesArchive so the time-series chart fills in gaps over time.
+# ---------------------------------------------------------------------------
+
+
+def test_collector_persists_price_history_to_cache() -> None:
+    """LiveCollector must call cache.append_daily() for every per-day
+    row in result.history, with a stable series_key so the row is
+    deduped across re-runs."""
+    from pathlib import Path
+    import tempfile
+
+    from app.services.btc_derivatives.sources.cache import LiveSourceCache
+    from app.services.btc_derivatives.sources.collector import LiveCollector
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = LiveSourceCache(root=Path(tmp))
+        collector = LiveCollector(cache=cache)
+        result = AdapterResult(provider="binance_futures")
+        for day in ("2026-07-20", "2026-07-21", "2026-07-22"):
+            result.history.append({
+                "timestamp": day,
+                "spot_price": 67000.0,
+                "aggregate_oi_usd": 4_200_000_000.0,
+                "funding_rate": 0.00018,
+                "funding_zscore": 0.5,
+                "provider": "binance_futures",
+            })
+        collector._persist_price_history([result])
+        cached = cache.read_history()
+        cached_days = {row.get("timestamp"): row for row in cached}
+        assert set(cached_days) == {"2026-07-20", "2026-07-21", "2026-07-22"}, (
+            f"expected 3 cached rows, got {list(cached_days)}"
+        )
+        for day, row in cached_days.items():
+            assert row.get("series_key") == "binance_futures:BTC", (
+                f"row for {day} missing series_key, got {row}"
+            )
+
+
+def test_collector_dedupes_price_history_by_day() -> None:
+    """A second persist call with overlapping days must replace (not
+    duplicate) the same day's row in the cache. The freshest value wins."""
+    from pathlib import Path
+    import tempfile
+
+    from app.services.btc_derivatives.sources.cache import LiveSourceCache
+    from app.services.btc_derivatives.sources.collector import LiveCollector
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = LiveSourceCache(root=Path(tmp))
+        collector = LiveCollector(cache=cache)
+
+        r1 = AdapterResult(provider="binance_futures")
+        r1.history.append({
+            "timestamp": "2026-07-22", "spot_price": 67000.0,
+            "aggregate_oi_usd": 4_200_000_000.0, "funding_rate": 0.00018,
+            "funding_zscore": 0.5, "provider": "binance_futures",
+        })
+        collector._persist_price_history([r1])
+
+        r2 = AdapterResult(provider="binance_futures")
+        r2.history.append({
+            "timestamp": "2026-07-22", "spot_price": 67500.0,
+            "aggregate_oi_usd": 4_300_000_000.0, "funding_rate": 0.00020,
+            "funding_zscore": 0.6, "provider": "binance_futures",
+        })
+        r2.history.append({
+            "timestamp": "2026-07-23", "spot_price": 68000.0,
+            "aggregate_oi_usd": 4_400_000_000.0, "funding_rate": 0.00022,
+            "funding_zscore": 0.7, "provider": "binance_futures",
+        })
+        collector._persist_price_history([r2])
+
+        cached = cache.read_history()
+        days = sorted({row.get("timestamp") for row in cached})
+        assert days == ["2026-07-22", "2026-07-23"], (
+            f"expected 2 unique days after dedup, got {days}"
+        )
+        row_22 = next(r for r in cached if r.get("timestamp") == "2026-07-22")
+        assert row_22.get("spot_price") == 67500.0, (
+            f"expected 67500 (latest), got {row_22.get('spot_price')}"
+        )
+
+
+def test_collector_merges_price_history_with_cached() -> None:
+    """When upstream returns a partial history, the merge function must
+    combine fresh + cached to produce a complete time-series, with
+    fresh values winning for overlapping days."""
+    from pathlib import Path
+    import tempfile
+
+    from app.services.btc_derivatives.sources.cache import LiveSourceCache
+    from app.services.btc_derivatives.sources.collector import LiveCollector
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = LiveSourceCache(root=Path(tmp))
+        collector = LiveCollector(cache=cache)
+
+        old_result = AdapterResult(provider="binance_futures")
+        for day in ("2026-07-18", "2026-07-19", "2026-07-20"):
+            old_result.history.append({
+                "timestamp": day, "spot_price": 66000.0,
+                "aggregate_oi_usd": 4_100_000_000.0, "funding_rate": 0.0001,
+                "funding_zscore": 0.0, "provider": "binance_futures",
+            })
+        collector._persist_price_history([old_result])
+
+        new_result = AdapterResult(provider="binance_futures")
+        for day in ("2026-07-21", "2026-07-22"):
+            new_result.history.append({
+                "timestamp": day, "spot_price": 67000.0,
+                "aggregate_oi_usd": 4_200_000_000.0, "funding_rate": 0.00018,
+                "funding_zscore": 0.5, "provider": "binance_futures",
+            })
+
+        merged = collector._merge_price_history(new_result.history)
+        merged_days = sorted({row.get("timestamp") for row in merged})
+        assert merged_days == [
+            "2026-07-18", "2026-07-19", "2026-07-20",
+            "2026-07-21", "2026-07-22",
+        ], f"expected 5 days merged, got {merged_days}"

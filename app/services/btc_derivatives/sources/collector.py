@@ -120,7 +120,7 @@ class LiveCollector:
             (item.options for item in results if item.provider == primary), []
         )
         perps = [perp for item in results for perp in item.perps]
-        history = next(
+        fresh_history = next(
             (item.history for item in results if item.provider == "binance_futures"), []
         )
         statuses = self.statuses(results)
@@ -131,7 +131,7 @@ class LiveCollector:
             data_timestamp=datetime.now(timezone.utc) if usable else None,
             options=options,
             perps=perps,
-            price_history=history,
+            price_history=self._merge_price_history(fresh_history),
             source_status=statuses,
             primary_option_provider=primary,
             missing_reasons=[] if usable else ["所有公开数据源当前均不可用"],
@@ -165,6 +165,11 @@ class LiveCollector:
                     records=[item.model_dump(mode="json") for item in perps],
                 )
             self.archive.maintain(now=captured_at)
+            # 2026-07-23: persist the price_history cumulative cache so
+            # the time-series chart on the BTC derivatives page fills in
+            # gaps over time. Done after the snapshot is written so a
+            # cache failure does not block the live snapshot.
+            self._persist_price_history(results)
         return envelope
 
     async def snapshot(
@@ -230,4 +235,72 @@ class LiveCollector:
             generated_at=datetime.now(timezone.utc),
             providers=statuses,
             endpoints=endpoints,
+        )
+
+    # 2026-07-23: cumulative cache for price_history. Each per-day row
+    # from binance_futures' result.history is appended to the existing
+    # LiveSourceCache + DerivativesArchive so the time-series chart on
+    # the BTC derivatives page fills in gaps over time. Mirrors the
+    # existing key_level_history flow.
+    PRICE_HISTORY_SERIES_KEY = "binance_futures:BTC"
+
+    def _persist_price_history(self, results) -> None:
+        """Append each per-day row from binance_futures' result.history
+        to the cumulative cache and the archive. Idempotent: re-adding
+        the same (day, series_key) replaces the older row."""
+        history = next(
+            (item.history for item in results if item.provider == "binance_futures"),
+            [],
+        )
+        if not history:
+            return
+        for row in history:
+            point = {**row, "series_key": self.PRICE_HISTORY_SERIES_KEY}
+            self.cache.append_daily(point)
+        # Persist the most recent daily snapshot to the archive so it
+        # survives a cache rebuild.
+        latest = max(
+            history,
+            key=lambda item: str(item.get("timestamp") or ""),
+        )
+        captured_at = datetime.now(timezone.utc)
+        self.archive.append(
+            provider="binance_futures",
+            underlying="BTC",
+            data_type="daily_metrics",
+            captured_at=captured_at,
+            records=[{
+                **latest,
+                "series_key": self.PRICE_HISTORY_SERIES_KEY,
+                "archive_captured_at": captured_at.isoformat(),
+            }],
+        )
+
+    def _merge_price_history(self, fresh_history) -> list[dict]:
+        """Merge the fresh upstream response with the cumulative cache to
+        produce a complete time-series. Dedupes by (timestamp,
+        series_key). When upstream returns a partial response, the cache
+        fills in older days. The freshest value wins for overlapping
+        days (so today's partial update replaces yesterday's stale
+        cache)."""
+        cached = [
+            row for row in self.cache.read_history()
+            if row.get("series_key") == self.PRICE_HISTORY_SERIES_KEY
+        ]
+        merged: dict[str, dict] = {}
+        # Cache entries go in first; fresh entries overwrite on the same
+        # day so the most recent value wins.
+        for row in cached:
+            day = str(row.get("timestamp") or "")
+            if day:
+                merged[day] = row
+        for row in fresh_history:
+            day = str(row.get("timestamp") or "")
+            if not day:
+                continue
+            entry = {**row, "series_key": self.PRICE_HISTORY_SERIES_KEY}
+            merged[day] = entry
+        return sorted(
+            merged.values(),
+            key=lambda item: str(item.get("timestamp") or ""),
         )
