@@ -22,6 +22,8 @@ from app.services.cache_registry import (
     CACHE_SOURCE_VERSION,
     cache_status,
     expires_at_for_page,
+    expires_at_for_scan,
+    strategy_scan_cache_key,
     strategy_unified_cache_key,
 )
 from app.services.market import MarketService
@@ -486,3 +488,57 @@ async def get_strategy_review(
         _instrument(instrument_id) if instrument_id else None,
         _timeframe(timeframe) if timeframe else None,
     )
+
+
+@router.get("/scan")
+async def get_strategy_scan(
+    force: bool = Query(default=False),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+):
+    """Scan all configured instruments × core timeframes for opportunities."""
+    from app.services.strategy_unified.opportunity_scanner import OpportunityScanner
+
+    repository = MarketRepository(session)
+    cache_key = strategy_scan_cache_key()
+
+    # Cache-first
+    if not force:
+        cache = await repository.get_page_snapshot_cache(cache_key)
+        status = cache_status(cache)
+        if cache is not None and cache.payload_json and status not in {"missing", "error"}:
+            payload = dict(cache.payload_json)
+            payload.setdefault("cache_meta", {})
+            payload["cache_meta"]["source"] = "cache"
+            return payload
+
+    # Fresh scan — list instruments from DB
+    instruments = await repository.list_instruments()
+    instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
+    instrument_codes = {}
+    for i in instruments:
+        code = getattr(i, 'code', None) or i.instrument_id
+        instrument_codes[i.instrument_id] = code
+
+    scanner = OpportunityScanner(repository)
+    result = await scanner.scan_all(instrument_ids, instrument_codes)
+
+    # Convert ScanResult to dict for JSON response and cache storage
+    import dataclasses
+    result_dict = dataclasses.asdict(result)
+
+    # Write cache
+    now = datetime.now(timezone.utc)
+    await repository.upsert_page_snapshot_cache(
+        cache_key=cache_key,
+        page_type="strategy_scan",
+        payload_json=result_dict,
+        status="ready",
+        cache_state="fresh",
+        snapshot_at=now,
+        data_ts=now,
+        expires_at=expires_at_for_scan(now),
+        source_version=CACHE_SOURCE_VERSION,
+    )
+
+    return result_dict

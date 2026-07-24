@@ -256,6 +256,10 @@ def knowledge_catalog_cache_key(version: str = KNOWLEDGE_CATALOG_VERSION) -> str
     return f"knowledge_catalog:{version}"
 
 
+def strategy_scan_cache_key(source_version: str = CACHE_SOURCE_VERSION) -> str:
+    return f"strategy_scan:v{source_version}"
+
+
 def strategy_ttl_seconds_for_timeframe(timeframe: str) -> int:
     normalized = normalize_timeframe_for_cache(timeframe)
     if normalized == "30d":
@@ -284,6 +288,7 @@ def ttl_seconds_for_page(page_type: str) -> int:
         "strategy": settings.page_snapshot_analysis_ttl_seconds,
         "strategy_unified": settings.page_snapshot_analysis_ttl_seconds,
         "market_context": settings.page_snapshot_monitoring_ttl_seconds,
+        "strategy_scan": 900,
     }
     return mapping.get(page_type, settings.page_snapshot_analysis_ttl_seconds)
 
@@ -309,6 +314,11 @@ def dataset_ttl_seconds(dataset_type: str) -> int:
 def expires_at_for_page(page_type: str, now: datetime | None = None) -> datetime:
     now = now or datetime.now(UTC)
     return now + timedelta(seconds=ttl_seconds_for_page(page_type))
+
+
+def expires_at_for_scan(now: datetime | None = None) -> datetime:
+    now = now or datetime.now(UTC)
+    return now + timedelta(seconds=ttl_seconds_for_page("strategy_scan"))
 
 
 def expires_at_for_strategy(timeframe: str, now: datetime | None = None) -> datetime:
