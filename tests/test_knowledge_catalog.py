@@ -1055,6 +1055,11 @@ globalThis.document = {{
           }}
         }},
         get innerHTML() {{ return pageRootInnerHTML; }},
+        // 2026-07-23: hydrateKnowledgeTooltips() runs querySelectorAll
+        // on the root after setRoot(); provide a no-op so the stub
+        // satisfies the call without needing real DOM nodes.
+        querySelectorAll() {{ return []; }},
+        querySelector() {{ return null; }},
       }};
     }}
     return elements.get(id) || null;
@@ -1160,6 +1165,11 @@ globalThis.document = {{
           }}
         }},
         get innerHTML() {{ return pageRootInnerHTML; }},
+        // 2026-07-23: hydrateKnowledgeTooltips() runs querySelectorAll
+        // on the root after setRoot(); provide a no-op so the stub
+        // satisfies the call without needing real DOM nodes.
+        querySelectorAll() {{ return []; }},
+        querySelector() {{ return null; }},
       }};
     }}
     return elements.get(id) || null;
@@ -1268,6 +1278,11 @@ globalThis.document = {{
           }}
         }},
         get innerHTML() {{ return pageRootInnerHTML; }},
+        // 2026-07-23: hydrateKnowledgeTooltips() runs querySelectorAll
+        // on the root after setRoot(); provide a no-op so the stub
+        // satisfies the call without needing real DOM nodes.
+        querySelectorAll() {{ return []; }},
+        querySelector() {{ return null; }},
       }};
     }}
     return elements.get(id) || null;
