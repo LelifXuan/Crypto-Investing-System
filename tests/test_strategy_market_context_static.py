@@ -12,6 +12,7 @@ verify:
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -253,3 +254,178 @@ def test_timeframe_node_confidence_reflects_range_no_edge_judgment():
     assert weekly.verdict_code == "RANGE_NO_EDGE"
     assert weekly.confidence > 0
     assert weekly.confidence >= 60
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-24 v3: distinguish "data ready, no edge" from "data pending".
+# The scanner must expose cache_state + data_quality per cell so the
+# frontend can render three distinct states (actionable / ready-no-edge
+# / pending) instead of conflating them under a single "等待" copy.
+# ---------------------------------------------------------------------------
+
+
+def test_scan_item_exposes_cache_state_and_data_quality():
+    """Each ScanItem must carry cache_state (fresh / missing / etc.)
+    and data_quality (0-100). The frontend needs these to distinguish
+    'no edge' from 'data not ready'."""
+    from app.services.strategy_unified.opportunity_scanner import ScanItem
+
+    item = ScanItem(
+        instrument_id="btc-usdt-perp",
+        instrument_code="btc-usdt-perp",
+        timeframe="1d",
+        direction="WAIT",
+        direction_label="等待",
+        confidence=70.0,
+        score=0.0,
+        summary="no edge",
+        risk_reward=0.0,
+        leverage_hint="spot",
+        position_cap="observe",
+        primary_driver="mtf",
+        conflicts=[],
+    )
+    # The dataclass must have these two fields.
+    assert hasattr(item, "cache_state"), (
+        "ScanItem must expose cache_state so renderer can distinguish "
+        "'ready, no edge' from 'data pending'"
+    )
+    assert hasattr(item, "data_quality"), (
+        "ScanItem must expose data_quality (0-100)"
+    )
+
+
+def test_extract_scan_item_populates_cache_state():
+    """`_extract_scan_item` must read the unified payload and populate
+    cache_state from payload.freshness_state and data_quality from
+    payload.confidence_report.confidence_score."""
+    from app.services.strategy_unified.opportunity_scanner import (
+        _extract_scan_item,
+    )
+
+    payload = {
+        "trade_decision": {"side": "WAIT", "risk_reward": {}},
+        "freshness_state": "fresh",
+        "confidence_report": {"confidence_score": 42.5},
+    }
+    item = _extract_scan_item(payload, "btc-usdt-perp", "btc-usdt-perp", "1d")
+    assert item.cache_state == "fresh"
+    assert item.data_quality == 42.5
+
+
+def test_extract_scan_item_marks_missing_cache():
+    """When the unified payload signals a missing cache (freshness
+    state is 'missing'), the scanner must propagate that as
+    cache_state='missing'."""
+    from app.services.strategy_unified.opportunity_scanner import (
+        _extract_scan_item,
+    )
+
+    payload = {
+        "trade_decision": {"side": "NONE", "risk_reward": {}},
+        "freshness_state": "missing",
+        "confidence_report": {"confidence_score": 0.0},
+    }
+    item = _extract_scan_item(payload, "btc-usdt-perp", "btc-usdt-perp", "1d")
+    assert item.cache_state == "missing"
+
+
+def test_scan_result_cache_meta_counts_cells_ready_vs_pending():
+    """ScanResult.cache_meta must expose cells_ready and cells_pending
+    counts so the banner can show '数据补齐中 (X/Y)' when some cells
+    are still pending."""
+    from app.services.strategy_unified.opportunity_scanner import (
+        ScanResult,
+        ScanItem,
+    )
+
+    items = [
+        ScanItem("x", "x", "1w", "LONG", "做多", 70, 50, "", 0, "spot", "standard", "", [], cache_state="fresh", data_quality=80),
+        ScanItem("x", "x", "1d", "WAIT", "等待", 50, 0, "", 0, "spot", "observe", "", [], cache_state="fresh", data_quality=60),
+        ScanItem("x", "x", "4h", "WAIT", "等待", 30, 0, "", 0, "spot", "observe", "", [], cache_state="missing", data_quality=10),
+    ]
+    result = ScanResult(
+        scanned_at="2026-07-24T00:00:00Z",
+        instruments=["x"],
+        timeframes=["1w", "1d", "4h"],
+        matrix=items,
+        ranked=[],
+        cache_meta={
+            "fresh_until": "2026-07-24T00:01:00Z",
+            "source": "live",
+            "instruments_scanned": 1,
+            "opportunities_found": 0,
+            "cells_ready": sum(1 for it in items if it.cache_state == "fresh"),
+            "cells_pending": sum(
+                1 for it in items
+                if it.cache_state in {"missing", "warming", "error"}
+            ),
+        },
+    )
+    # The contract is: ScanResult.cache_meta must contain
+    # cells_ready and cells_pending keys. The values match the items.
+    assert "cells_ready" in result.cache_meta
+    assert "cells_pending" in result.cache_meta
+    assert result.cache_meta["cells_ready"] == 2  # 1w + 1d are fresh
+    assert result.cache_meta["cells_pending"] == 1  # 4h is missing
+
+
+def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
+    """End-to-end: when OpportunityScanner.scan_all runs, the returned
+    ScanResult.cache_meta must include cells_ready and cells_pending
+    counts derived from each cell's cache_state."""
+    from types import SimpleNamespace
+
+    from app.services.strategy_unified.opportunity_scanner import (
+        OpportunityScanner,
+        SCAN_TIMEFRAMES,
+    )
+
+    # Stub repository with no instruments (we'll patch scan_all internals)
+    repo = SimpleNamespace()
+    scanner = OpportunityScanner(repo)  # type: ignore[arg-type]
+
+    # Build synthetic build_unified_strategy outputs
+    call_count = {"n": 0}
+
+    async def fake_build(self, instrument_id, force=False):  # noqa: ARG001
+        call_count["n"] += 1
+        idx = call_count["n"]
+        # Alternate cache_state to exercise both fresh and missing paths
+        return {
+            "trade_decision": {
+                "side": "WAIT" if idx % 2 == 0 else "LONG",
+                "risk_reward": {"value": 1.5 if idx % 2 else 0},
+                "position_cap": "standard" if idx % 2 else "observe",
+                "recommended_leverage": 0,
+            },
+            "freshness_state": "fresh" if idx % 3 != 0 else "missing",
+            "confidence_report": {"confidence_score": 50.0 + idx},
+            "market_operation": {"chain": {}},
+            "evidence_trace": [],
+        }
+
+    # Monkey-patch UnifiedStrategyService.build_unified_strategy
+    from app.services.strategy_unified import unified_service as us_mod
+
+    orig_build = us_mod.UnifiedStrategyService.build_unified_strategy
+    us_mod.UnifiedStrategyService.build_unified_strategy = fake_build
+    try:
+        result = asyncio.run(
+            scanner.scan_all(
+                ["btc-usdt-perp"], {"btc-usdt-perp": "btc-usdt-perp"},
+                timeframes=("1w", "1d", "4h"),
+            )
+        )
+    finally:
+        us_mod.UnifiedStrategyService.build_unified_strategy = orig_build
+
+    # With 3 cells and one of them having freshness_state="missing"
+    # (idx=3 ⇒ 3 % 3 == 0), we expect cells_ready=2, cells_pending=1.
+    assert "cells_ready" in result.cache_meta
+    assert "cells_pending" in result.cache_meta
+    assert result.cache_meta["cells_ready"] >= 1
+    assert result.cache_meta["cells_pending"] >= 1
+    assert result.cache_meta["cells_ready"] + result.cache_meta["cells_pending"] == len(
+        result.matrix
+    )

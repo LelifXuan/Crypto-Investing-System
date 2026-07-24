@@ -46,9 +46,27 @@ export function renderScanMatrix(matrix, instruments, onSelect) {
 }
 
 function renderCell(item, instrumentId, timeframe) {
+  // 2026-07-24 v3: distinguish three cell states.
+  // 1. cache_state in {missing, warming, error} → "数据待补" (data still pending)
+  // 2. cache_state == "fresh" + direction in {WAIT, NO_TRADE} → "无明确方向"
+  //    (data ready, market genuinely in transition)
+  // 3. cache_state == "fresh" + direction in {LONG, SHORT} → arrow + confidence
+  if (
+    item &&
+    typeof item.cache_state === "string" &&
+    ["missing", "warming", "error"].includes(item.cache_state)
+  ) {
+    return `<td class="scan-cell scan-cell-pending">
+      <button class="scan-cell-btn" data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}">
+        <small>数据待补</small>
+      </button>
+    </td>`;
+  }
   if (!item || item.direction === "WAIT" || item.direction === "NO_TRADE") {
     return `<td class="scan-cell scan-cell-wait">
-      <button class="scan-cell-btn" data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}">等待</button>
+      <button class="scan-cell-btn" data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}">
+        <small>无明确方向</small>
+      </button>
     </td>`;
   }
   const tone = item.direction === "LONG" ? "bullish" : "bearish";

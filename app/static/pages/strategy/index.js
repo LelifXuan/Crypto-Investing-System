@@ -63,14 +63,30 @@ function renderScanResults(data) {
   const oppCount = data.ranked?.length || 0;
   const totalCells = (data.instruments?.length || 0) * (data.timeframes?.length || 0);
   const sourceLabel = data.cache_meta?.source === "cache" ? "（缓存）" : "";
+  // 2026-07-24 v3: per-cell readiness from backend.
+  const meta = data.cache_meta || {};
+  const cellsReady = Number.isFinite(meta.cells_ready) ? meta.cells_ready : totalCells;
+  const cellsPending = Number.isFinite(meta.cells_pending) ? meta.cells_pending : 0;
+
+  // 2026-07-24 v3: three-way banner. The previous "当前无明确交易机会"
+  // copy was misleading when data was still pending — users thought
+  // the system was broken.
+  let bannerText;
+  let bannerTone;
+  if (oppCount > 0) {
+    bannerText = `发现 ${oppCount} 个交易机会 / 共扫描 ${totalCells} 个级别组合 ${sourceLabel}`;
+    bannerTone = "success";
+  } else if (cellsPending > 0) {
+    bannerText = `数据补齐中（${cellsReady}/${totalCells} 已就绪），尚无明确交易机会 ${sourceLabel}`;
+    bannerTone = "info";
+  } else {
+    // All cells ready, no opportunities — market is genuinely in transition.
+    bannerText = `全部数据已就绪，当前无明确交易方向 ${sourceLabel}`;
+    bannerTone = "neutral";
+  }
 
   if (status) {
-    status.innerHTML = statusBanner(
-      oppCount > 0
-        ? `发现 ${oppCount} 个交易机会 / 共扫描 ${totalCells} 个级别组合 ${sourceLabel}`
-        : `当前无明确交易机会 ${sourceLabel}`,
-      oppCount > 0 ? "success" : "neutral"
-    );
+    status.innerHTML = statusBanner(bannerText, bannerTone);
   }
 
   const matrixEl = document.getElementById("strategy-scan-matrix");
@@ -81,7 +97,13 @@ function renderScanResults(data) {
 
   const rankedEl = document.getElementById("strategy-scan-ranked");
   if (rankedEl) {
-    rankedEl.innerHTML = renderScanRanked(data.ranked || [], onSelectOpportunity);
+    // 2026-07-24 v3: pass hasPending to renderScanRanked so the
+    // empty-state copy matches the banner.
+    rankedEl.innerHTML = renderScanRanked(
+      data.ranked || [],
+      onSelectOpportunity,
+      cellsPending > 0,
+    );
     bindScanRanked(onSelectOpportunity);
   }
 }

@@ -9,8 +9,18 @@ const LEVEL_LABELS = { "1w": "战略级", "1d": "战术级", "4h": "执行级" }
  * @param {Function} onSelect - callback(instrumentId, timeframe)
  */
 export function renderScanRanked(ranked, onSelect) {
+  // 2026-07-24 v3: callers can pass an optional second argument
+  // `hasPending` to switch between two empty-state messages:
+  //   - hasPending=true  → "数据补齐中..." (cells still computing)
+  //   - hasPending=false → "当前无明确交易机会..." (data ready, no edge)
+  // We accept either signature: ranked alone (legacy) or (ranked, hasPending).
   if (!ranked.length) {
-    return `<div class="data-state data-state-empty">当前无明确交易机会。所有品种×级别均处于等待状态。</div>`;
+    const args = Array.from(arguments);
+    const hasPending = Boolean(args[1]);
+    const emptyMsg = hasPending
+      ? "数据补齐中，稍后将有方向出现。"
+      : "当前无明确交易机会。所有品种×级别均处于等待状态。";
+    return `<div class="data-state data-state-empty">${escapeHtml(emptyMsg)}</div>`;
   }
 
   const cards = ranked

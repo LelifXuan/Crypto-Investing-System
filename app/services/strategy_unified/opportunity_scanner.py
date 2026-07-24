@@ -68,6 +68,12 @@ class ScanItem:
     position_cap: str       # "standard" | "reduced" | "observe"
     primary_driver: str
     conflicts: list[str] = field(default_factory=list)
+    # 2026-07-24 v3: per-cell cache_state + data_quality so the renderer
+    # can distinguish "data ready, no edge" from "data pending".
+    # Without these, "等待" / "无明确交易机会" was conflated with
+    # "数据还没准备好" — user thought the system was broken.
+    cache_state: str = "unknown"   # "fresh" | "missing" | "stale" | "warming" | "error" | "unknown"
+    data_quality: float = 0.0      # 0-100, from payload.confidence_report.confidence_score
 
 
 @dataclass(slots=True)
@@ -125,6 +131,16 @@ class OpportunityScanner:
                 "source": "live",
                 "instruments_scanned": len(instrument_ids),
                 "opportunities_found": len(ranked),
+                # 2026-07-24 v3: per-cell readiness counts so the
+                # frontend banner can distinguish "data补齐中" from
+                # "全部数据已就绪，当前无明确交易方向".
+                "cells_ready": sum(
+                    1 for item in items if item.cache_state == "fresh"
+                ),
+                "cells_pending": sum(
+                    1 for item in items
+                    if item.cache_state in {"missing", "warming", "error"}
+                ),
             },
         )
 
@@ -142,6 +158,22 @@ def _extract_scan_item(
     if direction in ("NONE",):
         direction = "WAIT"
     direction_label = {"LONG": "做多", "SHORT": "做空"}.get(direction, "等待")
+
+    # 2026-07-24 v3: per-cell cache_state + data_quality.
+    # Read from payload.freshness_state (set by unified_service) and
+    # confidence_report.confidence_score. If absent, default to
+    # 'unknown' / 0.0 so the renderer can fall back gracefully.
+    freshness_raw = (
+        payload.get("freshness_state")
+        or payload.get("cache_state")
+        or ""
+    )
+    cache_state = str(freshness_raw).lower() or "unknown"
+    conf_report = payload.get("confidence_report") or {}
+    try:
+        data_quality = float(conf_report.get("confidence_score") or 0.0)
+    except (TypeError, ValueError):
+        data_quality = 0.0
 
     # Build modules direction tally from market_operation chain
     market_op = payload.get("market_operation") or {}
@@ -233,4 +265,6 @@ def _extract_scan_item(
         position_cap=decision.get("position_cap") or "standard",
         primary_driver=primary_driver,
         conflicts=conflicts,
+        cache_state=cache_state,
+        data_quality=round(data_quality, 1),
     )
