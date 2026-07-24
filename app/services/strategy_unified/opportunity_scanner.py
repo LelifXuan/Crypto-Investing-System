@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -94,26 +93,21 @@ class OpportunityScanner:
         *,
         timeframes: tuple[str, ...] = SCAN_TIMEFRAMES,
     ) -> ScanResult:
-        """并行扫描所有品种x级别。"""
+        """Sequentially scan all instruments × timeframes (shared DB session)."""
         now = datetime.now(timezone.utc)
+        items: list[ScanItem] = []
 
-        async def _scan_one(instrument_id: str, code: str, tf: str) -> ScanItem | None:
-            try:
-                service = UnifiedStrategyService(self._repository)
-                payload = await service.build_unified_strategy(instrument_id, force=False)
-                return _extract_scan_item(payload, instrument_id, code, tf)
-            except Exception:
-                logger.exception("opportunity_scanner: failed %s %s", instrument_id, tf)
-                return None
-
-        tasks = [
-            _scan_one(iid, instrument_codes.get(iid, iid), tf)
-            for iid in instrument_ids
-            for tf in timeframes
-        ]
-        results = await asyncio.gather(*tasks)
-
-        items = [r for r in results if r is not None]
+        for iid in instrument_ids:
+            code = instrument_codes.get(iid, iid)
+            for tf in timeframes:
+                try:
+                    service = UnifiedStrategyService(self._repository)
+                    payload = await service.build_unified_strategy(iid, force=False)
+                    item = _extract_scan_item(payload, iid, code, tf)
+                    if item is not None:
+                        items.append(item)
+                except Exception:
+                    logger.exception("opportunity_scanner: failed %s %s", iid, tf)
         ranked = sorted(
             [it for it in items if it.direction not in ("WAIT", "NO_TRADE", "RANGE_NO_EDGE")],
             key=lambda it: it.score,
