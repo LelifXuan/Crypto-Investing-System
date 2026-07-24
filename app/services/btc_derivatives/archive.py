@@ -219,6 +219,22 @@ class DerivativesArchive:
                 records.append(payload)
         return records
 
+    @staticmethod
+    def _parse_timestamp(value: object) -> datetime:
+        """Parse a legacy timestamp string into an offset-aware datetime.
+
+        `daily_history.json` records are produced by multiple writers over
+        the project's history; some emit offset-aware ISO strings, others
+        emit naive ones. Mixing them in `max()` raised TypeError on
+        Python 3.11+. We normalize naive datetimes to UTC so comparison
+        always works.
+        """
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        text = str(value).replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(text)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
     def migrate_legacy(self, legacy_root: Path) -> int:
         legacy_root = Path(legacy_root)
         created = 0
@@ -262,9 +278,7 @@ class DerivativesArchive:
             ]
             if real_history:
                 captured_at = max(
-                    datetime.fromisoformat(
-                        str(item["timestamp"]).replace("Z", "+00:00")
-                    )
+                    self._parse_timestamp(item["timestamp"])
                     for item in real_history
                 )
                 result = self.append(

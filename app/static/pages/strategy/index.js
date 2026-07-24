@@ -14,6 +14,7 @@ import { mountPageGuide } from "../../ui/pageGuideFab.js";
 let mounted = false;
 let activeController = null;
 let scanData = null; // cached ScanResult for resume
+let prewarmed = false; // 2026-07-24: only fire prewarm once per page module load
 
 function renderScanShell() {
   setRoot(`
@@ -94,6 +95,32 @@ function renderScanLoading() {
   if (rankedEl) rankedEl.innerHTML = loadingState("等待扫描完成...");
 }
 
+// 2026-07-24: cold-load reliability. Shows a banner distinct from the
+// regular loading dots so the user knows the system is warming caches
+// (not stuck).
+function renderWarmingStatus(message) {
+  const text = message || "首次访问，正在后台预热数据缓存，预计 5-10 秒后出结果";
+  const status = document.getElementById("strategy-scan-status");
+  if (status) status.innerHTML = statusBanner(text, "info");
+  const matrixEl = document.getElementById("strategy-scan-matrix");
+  if (matrixEl) matrixEl.innerHTML = loadingState("正在预热数据缓存...");
+  const rankedEl = document.getElementById("strategy-scan-ranked");
+  if (rankedEl) rankedEl.innerHTML = loadingState("等待预热完成...");
+}
+
+// 2026-07-24: fire-and-forget prewarm so cold cache isn't blocking the
+// first scan for 60+ s. Module-level guard via `prewarmed` flag.
+async function tryPrewarm() {
+  if (prewarmed) return;
+  prewarmed = true;
+  try {
+    await api.prewarmStrategy("btc-usdt-perp", { timeoutMs: 3000 });
+  } catch (err) {
+    // Prewarm is best-effort; if it fails, loadScan still proceeds.
+    console.warn("strategy:prewarm:noop", err?.message || err);
+  }
+}
+
 function onSelectOpportunity(instrumentId, timeframe) {
   const loadStrategy = async (iid, tf) => {
     const payload = await api.getUnifiedStrategy(iid, { force: false, timeoutMs: 20000 });
@@ -109,25 +136,64 @@ function onSelectOpportunity(instrumentId, timeframe) {
   });
 }
 
-async function loadScan(force = false) {
+async function loadScan(force = false, opts = {}) {
   activeController?.abort();
   activeController = new AbortController();
+  // 2026-07-24: cold-load reliability. First cold scan can take 60+
+  // seconds (rebuilds every cell's unified strategy from scratch).
+  // Default 60s frontend timeout trips before the scan completes.
+  // Use a 120s timeout on cold scans, drop back to 60s after a
+  // successful first response, and retry once on transient failure.
+  const timeoutMs = opts.timeoutMs ?? (force ? 60000 : 120000);
   try {
-    const data = await api.getStrategyScan({ force, signal: activeController.signal, timeoutMs: 60000 });
-    if (!mounted) return;
+    const data = await api.getStrategyScan({
+      force,
+      signal: activeController.signal,
+      timeoutMs,
+    });
+    if (!mounted) return data;
+    // Backend signals "warming" via cache_meta.source when cache is
+    // empty + force=false. Show warming banner, then auto-retry once
+    // after a short delay so the warmup can finish populating caches.
+    if (!force && data?.cache_meta?.source === "warming" && !opts._retried) {
+      renderWarmingStatus(data.cache_meta.message);
+      await new Promise((r) => setTimeout(r, 5000));
+      if (!mounted) return data;
+      return loadScan(false, { _retried: true, timeoutMs: 90000 });
+    }
     renderScanResults(data);
+    return data;
   } catch (err) {
-    if (err?.name === "AbortError") return;
+    if (err?.name === "AbortError") return null;
     console.error("strategy:scan:error", err);
+    // 2026-07-24: one retry for transient failures (network blip /
+    // 5xx) before showing the error banner. Bounded — single retry.
+    if (!opts._retried && !opts._skipRetry) {
+      console.warn("strategy:scan:retrying once after transient failure");
+      await new Promise((r) => setTimeout(r, 2000));
+      if (!mounted) return null;
+      return loadScan(force, { _retried: true, timeoutMs: 120000 });
+    }
     const status = document.getElementById("strategy-scan-status");
-    if (status) status.innerHTML = statusBanner("扫描失败，请稍后重试", "error");
+    if (status) {
+      status.innerHTML = statusBanner(
+        "扫描失败，请稍后重试（后台仍在预热数据）",
+        "error"
+      );
+    }
+    return null;
   }
 }
 
 export async function renderStrategy() {
   mounted = true;
   renderScanShell();
-  renderScanLoading();
+  renderWarmingStatus();
+
+  // 2026-07-24: fire-and-forget prewarm so the cold-cache scan doesn't
+  // block 60+ seconds before responding. Module-level guard ensures we
+  // only fire this once per page module load (avoids precompute queue spam).
+  await tryPrewarm();
 
   document.getElementById("strategy-scan-refresh")?.addEventListener("click", () => {
     renderScanLoading();
@@ -136,7 +202,8 @@ export async function renderStrategy() {
 
   const guideFab = mountPageGuide("ai-strategy");
 
-  // Auto-scan on mount
+  // Auto-scan on mount (force=false). loadScan handles warming short-circuit
+  // and retry-once internally.
   const scanPromise = loadScan(false);
 
   return {

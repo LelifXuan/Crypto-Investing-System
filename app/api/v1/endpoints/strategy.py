@@ -496,49 +496,137 @@ async def get_strategy_scan(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    """Scan all configured instruments × core timeframes for opportunities."""
-    from app.services.strategy_unified.opportunity_scanner import OpportunityScanner
+    """Scan all configured instruments × core timeframes for opportunities.
+
+    Cold-load reliability (2026-07-24):
+    - On a cold cache + force=false, do NOT block the request for the
+      ~60+ s it takes to rebuild every cell's unified strategy. Instead,
+      enqueue a prewarm and return a fast `warming` response.
+    - Wrap every operation in try/except so any unhandled error degrades
+      to HTTP 200 with cache_meta.source="error" rather than a 5xx that
+      the frontend flattens into the "扫描失败" banner.
+    """
+    from app.services.strategy_unified.opportunity_scanner import OpportunityScanner, SCAN_TIMEFRAMES
+    from app.schemas.market import PrecomputeHintRequest
 
     repository = MarketRepository(session)
     cache_key = strategy_scan_cache_key()
+    now = datetime.now(timezone.utc)
 
     # Cache-first
     if not force:
-        cache = await repository.get_page_snapshot_cache(cache_key)
-        status = cache_status(cache)
+        try:
+            cache = await repository.get_page_snapshot_cache(cache_key)
+        except Exception:
+            logger.exception("strategy/scan cache lookup failed")
+            cache = None
+        status = cache_status(cache) if cache else "missing"
         if cache is not None and cache.payload_json and status not in {"missing", "error"}:
             payload = dict(cache.payload_json)
             payload.setdefault("cache_meta", {})
             payload["cache_meta"]["source"] = "cache"
             return payload
 
-    # Fresh scan — list instruments from DB
-    instruments = await repository.list_instruments()
-    instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
-    instrument_codes = {}
-    for i in instruments:
-        code = getattr(i, 'code', None) or i.instrument_id
-        instrument_codes[i.instrument_id] = code
+    # Cold-load short-circuit: kick off prewarm, return a fast warming
+    # response (HTTP 200) so the frontend can show its "warming" UI
+    # instead of holding the connection open for 60+ s.
+    if not force:
+        try:
+            await precompute_service.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page="strategy",
+                    instrument_id="btc-usdt-perp",
+                    timeframe="1d",
+                    reason="strategy_scan_cold",
+                    visible=False,
+                    candidates=[
+                        "strategy_unified",
+                        "monitoring",
+                        "macro",
+                        "btc_derivatives",
+                    ],
+                    priority=3,
+                )
+            )
+        except Exception:
+            logger.exception("strategy/scan prewarm enqueue failed")
 
-    scanner = OpportunityScanner(repository)
-    result = await scanner.scan_all(instrument_ids, instrument_codes)
+        warming_payload = {
+            "scanned_at": now.isoformat(),
+            "instruments": [],
+            "timeframes": list(SCAN_TIMEFRAMES),
+            "matrix": [],
+            "ranked": [],
+            "cache_meta": {
+                "fresh_until": now.isoformat(),
+                "source": "warming",
+                "instruments_scanned": 0,
+                "opportunities_found": 0,
+                "message": "首次访问，正在后台预热数据缓存，预计 5-10 秒后自动出结果。",
+            },
+        }
+        try:
+            from datetime import timedelta
+            await repository.upsert_page_snapshot_cache(
+                cache_key=cache_key,
+                page_type="strategy_scan",
+                payload_json=warming_payload,
+                status="warming",
+                cache_state="warming",
+                snapshot_at=now,
+                data_ts=now,
+                expires_at=now + timedelta(seconds=10),
+                source_version=CACHE_SOURCE_VERSION,
+            )
+        except Exception:
+            logger.exception("strategy/scan warming cache write failed")
+        return warming_payload
 
-    # Convert ScanResult to dict for JSON response and cache storage
-    import dataclasses
-    result_dict = dataclasses.asdict(result)
+    # force=true: do the full scan, but never let an exception escape
+    # as an HTTP 5xx.
+    try:
+        instruments = await repository.list_instruments()
+        instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
+        instrument_codes = {}
+        for i in instruments:
+            code = getattr(i, 'code', None) or i.instrument_id
+            instrument_codes[i.instrument_id] = code
 
-    # Write cache
-    now = datetime.now(timezone.utc)
-    await repository.upsert_page_snapshot_cache(
-        cache_key=cache_key,
-        page_type="strategy_scan",
-        payload_json=result_dict,
-        status="ready",
-        cache_state="fresh",
-        snapshot_at=now,
-        data_ts=now,
-        expires_at=expires_at_for_scan(now),
-        source_version=CACHE_SOURCE_VERSION,
-    )
+        scanner = OpportunityScanner(repository)
+        result = await scanner.scan_all(instrument_ids, instrument_codes)
+
+        import dataclasses
+        result_dict = dataclasses.asdict(result)
+    except Exception:
+        logger.exception("strategy/scan forced execution failed")
+        return {
+            "scanned_at": now.isoformat(),
+            "instruments": [],
+            "timeframes": [],
+            "matrix": [],
+            "ranked": [],
+            "cache_meta": {
+                "fresh_until": now.isoformat(),
+                "source": "error",
+                "instruments_scanned": 0,
+                "opportunities_found": 0,
+                "message": "扫描服务暂时不可用，请稍后重试。",
+            },
+        }
+
+    try:
+        await repository.upsert_page_snapshot_cache(
+            cache_key=cache_key,
+            page_type="strategy_scan",
+            payload_json=result_dict,
+            status="ready",
+            cache_state="fresh",
+            snapshot_at=now,
+            data_ts=now,
+            expires_at=expires_at_for_scan(now),
+            source_version=CACHE_SOURCE_VERSION,
+        )
+    except Exception:
+        logger.exception("strategy/scan cache write failed; returning fresh result anyway")
 
     return result_dict

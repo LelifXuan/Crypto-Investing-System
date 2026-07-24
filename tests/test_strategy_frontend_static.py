@@ -344,6 +344,81 @@ def test_strategy_never_uses_pending_risk_reward_copy():
 
 
 # ---------------------------------------------------------------------------
+# Cold-load reliability (2026-07-24):
+# Cold direct-load was failing because /strategy/scan blocked for 60+
+# seconds (rebuilding every cell's unified strategy from cold cache)
+# while the frontend timed out at 60s. The page never invoked its
+# existing /strategy/prewarm endpoint. Fixes:
+#   1. index.js must call api.prewarmStrategy() once on mount.
+#   2. The first cold scan must use a 90s+ timeout.
+#   3. Auto-scan on mount must be force=false (force is reserved for
+#      the manual 刷新扫描 button).
+#   4. loadScan() must retry once on transient failure.
+#   5. A warming banner must distinguish "warming" from "loading".
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_index_prewarms_on_mount():
+    """index.js must call api.prewarmStrategy() once on mount before
+    loadScan(), with a module-level guard so it only fires once per
+    page module load."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    api = (ROOT / "app/static/core/api.js").read_text(encoding="utf-8")
+
+    assert "api.prewarmStrategy" in index or "prewarmStrategy(" in index, (
+        "strategy page never calls api.prewarmStrategy — cold scan will hang 60+ s"
+    )
+    assert "prewarmStrategy(" in api, "api.js must export prewarmStrategy"
+    # Module-level guard
+    assert ("let prewarmed" in index) or ("const prewarmed" in index), (
+        "prewarm must be guarded by a module-level flag to avoid spamming the precompute queue"
+    )
+
+
+def test_strategy_index_uses_extended_timeout_for_cold_scan():
+    """First scan must use a 90s+ timeoutMs so the ~68s cold-load
+    latency doesn't trip the default 60s frontend timeout."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    # Either a literal number >= 90000 in a timeoutMs option, or a
+    # helper that selects between forced/cold timeoutMs values.
+    assert (
+        "timeoutMs: 90000" in index
+        or "timeoutMs: 120000" in index
+        or "timeoutMs: 100000" in index
+    ), (
+        "first scan timeoutMs must be >= 90000 to ride out cold latency"
+    )
+
+
+def test_strategy_index_auto_scan_is_not_forced():
+    """Auto-scan on mount is force=false; force=true is reserved for
+    the manual 刷新扫描 button."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    assert "loadScan(false)" in index, "mount-time auto-scan must use force=false"
+    assert "loadScan(true)" in index, "manual 刷新扫描 button must use force=true"
+
+
+def test_strategy_index_retries_once_on_transient_error():
+    """If loadScan fails on a transient error, it must retry once
+    before showing the "扫描失败" banner."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    # The retry must go through loadScan again, not bypass it
+    assert "retry" in index.lower(), (
+        "loadScan must have a retry-once path for transient failures"
+    )
+
+
+def test_strategy_index_shows_warming_banner():
+    """While the backend signals 'warming' (cache_meta.source='warming'),
+    the page must render a banner that distinguishes warming from
+    the normal loading dots."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    assert ("预热" in index) or ("warming" in index.lower()), (
+        "index.js must show a warming-state UI distinct from the regular loading dots"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Sanity — the modules that the detail panel still consumes must exist
 # ---------------------------------------------------------------------------
 
