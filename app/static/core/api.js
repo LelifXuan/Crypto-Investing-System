@@ -637,6 +637,16 @@ export const api = {
       retry: 1,
     });
   },
+  getStrategyScan(options = {}) {
+    return requestJson("/strategy/scan", {
+      params: {},
+      ttl: options.force ? 0 : 60,
+      force: options.force ?? false,
+      timeoutMs: options.timeoutMs ?? 30000,
+      signal: options.signal,
+      retry: 1,
+    });
+  },
   prewarmStrategy(instrumentId, options = {}) {
     return requestJson("/strategy/prewarm", {
       method: "POST",
