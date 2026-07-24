@@ -285,6 +285,17 @@ export function statusBanner(message, tone = "neutral") {
   return `<div class="status-banner status-${escapeHtml(tone)}">${escapeHtml(message)}</div>`;
 }
 
+// 2026-07-23: the btc-derivatives page calls this after setRoot() to
+// replace knowledge-tooltip placeholders with real tooltips. The
+// knowledge.js page module has its own hydration path; for non-knowledge
+// pages the placeholders stay as static <span> elements (acceptable for
+// the dashboard's chart cards which never had dynamic tooltips wired).
+// Stub returns immediately so the import is satisfied without forcing a
+// knowledge-module dependency on every page.
+export async function hydrateKnowledgeTooltips(_root) {
+  return;
+}
+
 export function loadingState(message = "正在读取缓存") {
   return `
     <div class="data-state data-state-loading">
