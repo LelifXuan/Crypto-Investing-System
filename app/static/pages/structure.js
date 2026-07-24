@@ -989,7 +989,7 @@ function buildMarketProfileMarkup(geometry, scale) {
       const opacity = label === "POC" ? 0.85 : 0.5;
       return `
         <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${CHART_SERIES.profile.color}" stroke-width="${label === "POC" ? 2.4 : 1.6}" stroke-dasharray="8 7" opacity="${opacity}"></line>
-        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 6).toFixed(2)}" text-anchor="end">${escapeHtml(label)} ${escapeHtml(String(item.price))}</text>
+	        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 6).toFixed(2)}" text-anchor="end">${escapeHtml(label)} ${escapeHtml(formatAxisPrice(item.price))}</text>
       `;
     })
     .join("");
