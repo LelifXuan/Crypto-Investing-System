@@ -280,6 +280,12 @@ class Settings(BaseSettings):
     precompute_min_seconds_between_same_key: int = Field(
         default=120, alias="PRECOMPUTE_MIN_SECONDS_BETWEEN_SAME_KEY"
     )
+    # How often the precompute worker re-enqueues low-priority hints for all
+    # instruments × critical page/timeframe combos, keeping caches warm independently
+    # of page visits.  Set to 0 to disable periodic refresh entirely.
+    cache_refresh_scan_seconds: int = Field(
+        default=120, alias="CACHE_REFRESH_SCAN_SECONDS"
+    )
     page_snapshot_analysis_ttl_seconds: int = Field(
         default=180, alias="PAGE_SNAPSHOT_ANALYSIS_TTL_SECONDS"
     )
