@@ -416,3 +416,31 @@ def test_funding_z_legend_hide_toggles_both_positive_and_negative_datasets() -> 
     assert "_fundingZSibling" in source and "isDatasetVisible" in source, (
         "legend.onClick must check both isDatasetVisible (default toggle path) and _fundingZSibling metadata"
     )
+
+
+def test_btc_derivatives_expiry_mode_dropdown_only_shows_fixed_expiry() -> None:
+    # 2026-07-25 user feedback: the 到期模式 dropdown offered two modes
+    # ("固定到期日" / "恒定期限") but the user only cares about picking
+    # a concrete expiry date. Hide the "恒定期限" entry from the UI;
+    # the backend still accepts both Literal values for backward
+    # compatibility with stored links / dashboards.
+    source = PAGE.read_text(encoding="utf-8")
+
+    select_block_start = source.index('name="expiry_mode"')
+    select_block_end = source.index("</select>", select_block_start)
+    select_block = source[select_block_start:select_block_end]
+    assert "恒定期限" not in select_block, (
+        "到期模式 dropdown must not surface the 恒定期限 entry "
+        "(users only pick a fixed expiry date now)"
+    )
+    assert "固定到期日" in select_block, (
+        "到期模式 dropdown must keep the 固定到期日 entry"
+    )
+    import re
+    api = Path("app/api/v1/endpoints/btc_derivatives.py").read_text(encoding="utf-8")
+    assert re.search(
+        r"expiry_mode:\s*Literal\[[\"']fixed[\"'],\s*[\"']constant_maturity[\"']\]",
+        api,
+    ), (
+        "backend should still accept both expiry_mode values for backward compat"
+    )

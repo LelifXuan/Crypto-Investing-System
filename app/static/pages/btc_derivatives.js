@@ -107,7 +107,7 @@ const AUTO_REFRESH_MS = 60_000;
 let autoRefreshTimer = null;
 let filters = {
   window: "",
-  expiryMode: "constant_maturity",
+  expiryMode: "fixed",
   maturityBucket: "60D",
   selectedExpiry: "",
   strikeRangePct: "30",
@@ -253,7 +253,7 @@ function renderChartToolbar() {
       <label>
         <span>到期模式</span>
         <select name="expiry_mode">
-          ${selectOptions(["constant_maturity", "fixed"], filters.expiryMode, (value) => value === "fixed" ? "固定到期日" : "恒定期限")}
+          ${selectOptions(["fixed"], filters.expiryMode, () => "固定到期日")}
         </select>
       </label>
       <label>
@@ -1190,9 +1190,9 @@ function updateFiltersFromControls(form) {
   const values = new FormData(form);
   filters = {
     window: String(values.get("window") || ""),
-    expiryMode: String(values.get("expiry_mode") || "constant_maturity"),
+    expiryMode: String(values.get("expiry_mode") || "fixed"),
     maturityBucket: String(values.get("maturity_bucket") || "60D"),
-    selectedExpiry: String(values.get("expiry_mode") || "constant_maturity") === "fixed"
+    selectedExpiry: String(values.get("expiry_mode") || "fixed") === "fixed"
       ? String(values.get("selected_expiry") || "")
       : "",
     strikeRangePct: String(values.get("strike_range_pct") || "30"),
