@@ -190,38 +190,63 @@ class IndicatorMonitoringService:
                 )
             )
 
+        # 2026-07-25 (Fix B): each YAML entry that targets
+        # `scope_type: instrument` without specifying instrument_id
+        # used to default to one hard-coded default. Now we expand to
+        # all enabled instruments in the DB so the strategy page's
+        # multi-instrument scan has real indicator_features for every
+        # (instrument, timeframe) pair, not just btc-usdt-perp.
+        instruments = await self.repository.list_instruments()
+        instrument_ids = [
+            i.instrument_id
+            for i in instruments
+            if getattr(i, "instrument_id", None)
+        ]
+        if not instrument_ids:
+            instrument_ids = [default_instrument_id]
+
         for row in load_refresh_policies():
-            instrument_id = row.get("instrument_id")
-            if row.get("scope_type") == "instrument" and instrument_id is None:
-                instrument_id = default_instrument_id
-            await self.repository.upsert_monitoring_policy(
-                IndicatorMonitoringPolicy(
-                    policy_id=self._stable_id(
-                        "pol",
-                        row["indicator_key"],
-                        row.get("scope_type", "global"),
-                        instrument_id or "",
-                        row.get("asset_code") or "",
-                        row.get("timeframe") or "",
-                    ),
-                    indicator_key=row["indicator_key"],
-                    scope_type=row.get("scope_type", "global"),
-                    instrument_id=instrument_id,
-                    asset_code=row.get("asset_code"),
-                    timeframe=row.get("timeframe"),
-                    mode=row["mode"],
-                    interval_seconds=row.get("interval_seconds"),
-                    cron_expr=row.get("cron_expr"),
-                    timezone=row.get("timezone"),
-                    event_key=row.get("event_key"),
-                    calendar_source=row.get("calendar_source"),
-                    release_key=row.get("release_key"),
-                    fallback_interval_seconds=row.get("fallback_interval_seconds"),
-                    priority=int(row.get("priority", 5)),
-                    is_enabled=True,
-                    next_run_at=datetime.now(timezone.utc),
+            scope_type = row.get("scope_type", "global")
+            yaml_instrument_id = row.get("instrument_id")
+            # When the YAML entry is instrument-scoped without an
+            # explicit instrument_id, fan out across all enabled
+            # instruments. Existing single-instrument entries
+            # (where instrument_id is already set) are left alone.
+            if scope_type == "instrument" and yaml_instrument_id is None:
+                target_instrument_ids = instrument_ids
+            elif scope_type == "instrument" and yaml_instrument_id:
+                target_instrument_ids = [yaml_instrument_id]
+            else:
+                target_instrument_ids = [None]  # global policy
+            for instrument_id in target_instrument_ids:
+                await self.repository.upsert_monitoring_policy(
+                    IndicatorMonitoringPolicy(
+                        policy_id=self._stable_id(
+                            "pol",
+                            row["indicator_key"],
+                            scope_type,
+                            instrument_id or "",
+                            row.get("asset_code") or "",
+                            row.get("timeframe") or "",
+                        ),
+                        indicator_key=row["indicator_key"],
+                        scope_type=scope_type,
+                        instrument_id=instrument_id,
+                        asset_code=row.get("asset_code"),
+                        timeframe=row.get("timeframe"),
+                        mode=row["mode"],
+                        interval_seconds=row.get("interval_seconds"),
+                        cron_expr=row.get("cron_expr"),
+                        timezone=row.get("timezone"),
+                        event_key=row.get("event_key"),
+                        calendar_source=row.get("calendar_source"),
+                        release_key=row.get("release_key"),
+                        fallback_interval_seconds=row.get("fallback_interval_seconds"),
+                        priority=int(row.get("priority", 5)),
+                        is_enabled=True,
+                        next_run_at=datetime.now(timezone.utc),
+                    )
                 )
-            )
 
         for row in load_alert_rules():
             await self.repository.upsert_alert_rule(

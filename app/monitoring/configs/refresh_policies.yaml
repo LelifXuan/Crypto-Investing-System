@@ -71,6 +71,152 @@ refresh_policies:
     event_key: market.candle.closed
     fallback_interval_seconds: 300
     priority: 3
+  # 2026-07-25 (Fix B): extend technical indicator coverage to 4h/1d so
+  # the AI Strategy page's multi-timeframe structure engine has real
+  # indicator_features to read for 4h/1d horizons. Without these, the
+  # engine fell back to zero-confidence fallbacks on those horizons,
+  # biasing long_score/short_score toward 50/50 and labeling every
+  # cell as WAIT/NO_EDGE.
+  - indicator_key: ema_20
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: ema_20
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
+  - indicator_key: ema_50
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: ema_50
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
+  - indicator_key: ema_200
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 4
+  - indicator_key: ema_200
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 4
+  - indicator_key: adx_14
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 4
+  - indicator_key: adx_14
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 4
+  - indicator_key: macd_12_26_9
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: macd_12_26_9
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
+  - indicator_key: rsi_14
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 2
+  - indicator_key: rsi_14
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 2
+  - indicator_key: atr_14
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: atr_14
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
+  - indicator_key: natr_14
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: natr_14
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
+  - indicator_key: bbands_20_2
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: bbands_20_2
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
+  - indicator_key: obv
+    scope_type: instrument
+    timeframe: 4h
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 14400
+    priority: 3
+  - indicator_key: obv
+    scope_type: instrument
+    timeframe: 1d
+    mode: event_driven_preferred
+    event_key: market.candle.closed
+    fallback_interval_seconds: 86400
+    priority: 3
   - indicator_key: volume_surge_ratio
     scope_type: instrument
     timeframe: 1m
