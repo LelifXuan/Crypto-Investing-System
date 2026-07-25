@@ -297,37 +297,57 @@ def test_scan_item_exposes_cache_state_and_data_quality():
 
 def test_extract_scan_item_populates_cache_state():
     """`_extract_scan_item` must read the unified payload and populate
-    cache_state from payload.freshness_state and data_quality from
-    payload.confidence_report.confidence_score."""
+    cache_state from payload.status / payload.degraded_components
+    and data_quality from payload.signal_coverage.confidence_score."""
     from app.services.strategy_unified.opportunity_scanner import (
         _extract_scan_item,
     )
 
     payload = {
         "trade_decision": {"side": "WAIT", "risk_reward": {}},
-        "freshness_state": "fresh",
-        "confidence_report": {"confidence_score": 42.5},
+        "status": "ready",
+        "signal_coverage": [
+            {"module": "price_structure", "confidence": 70.0},
+            {"module": "macro_regime", "confidence": 30.0},
+            {"module": "derivatives", "confidence": 40.0},
+        ],
     }
     item = _extract_scan_item(payload, "btc-usdt-perp", "btc-usdt-perp", "1d")
     assert item.cache_state == "fresh"
-    assert item.data_quality == 42.5
+    # (70 + 30 + 40) / 3 = 46.67 → rounded to 1 decimal = 46.7
+    assert item.data_quality == 46.7
 
 
 def test_extract_scan_item_marks_missing_cache():
-    """When the unified payload signals a missing cache (freshness
-    state is 'missing'), the scanner must propagate that as
-    cache_state='missing'."""
+    """When the unified payload signals degraded status (status='degraded'
+    OR non-empty degraded_components), the scanner must propagate that
+    as cache_state='missing'."""
     from app.services.strategy_unified.opportunity_scanner import (
         _extract_scan_item,
     )
 
     payload = {
         "trade_decision": {"side": "NONE", "risk_reward": {}},
-        "freshness_state": "missing",
-        "confidence_report": {"confidence_score": 0.0},
+        "status": "degraded",
+        "degraded_components": ["analysis", "monitoring"],
     }
     item = _extract_scan_item(payload, "btc-usdt-perp", "btc-usdt-perp", "1d")
     assert item.cache_state == "missing"
+
+
+def test_extract_scan_item_marks_ready_with_warnings_as_fresh():
+    """status='ready_with_warnings' should still be cache_state='fresh' —
+    a warning is not a data dependency failure."""
+    from app.services.strategy_unified.opportunity_scanner import (
+        _extract_scan_item,
+    )
+
+    payload = {
+        "trade_decision": {"side": "WAIT", "risk_reward": {}},
+        "status": "ready_with_warnings",
+    }
+    item = _extract_scan_item(payload, "btc-usdt-perp", "btc-usdt-perp", "1d")
+    assert item.cache_state == "fresh"
 
 
 def test_scan_result_cache_meta_counts_cells_ready_vs_pending():
@@ -391,7 +411,13 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
     async def fake_build(self, instrument_id, force=False):  # noqa: ARG001
         call_count["n"] += 1
         idx = call_count["n"]
-        # Alternate cache_state to exercise both fresh and missing paths
+        # Alternate status to exercise both fresh and missing paths.
+        # idx=3 (mod 3 == 0) returns status="degraded" so we get a
+        # cache_state="missing" cell.
+        if idx % 3 == 0:
+            cell_status = "degraded"
+        else:
+            cell_status = "ready"
         return {
             "trade_decision": {
                 "side": "WAIT" if idx % 2 == 0 else "LONG",
@@ -399,8 +425,10 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
                 "position_cap": "standard" if idx % 2 else "observe",
                 "recommended_leverage": 0,
             },
-            "freshness_state": "fresh" if idx % 3 != 0 else "missing",
-            "confidence_report": {"confidence_score": 50.0 + idx},
+            "status": cell_status,
+            "signal_coverage": [
+                {"module": "price_structure", "confidence": 50.0 + idx},
+            ],
             "market_operation": {"chain": {}},
             "evidence_trace": [],
         }

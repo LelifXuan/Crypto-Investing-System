@@ -160,19 +160,39 @@ def _extract_scan_item(
     direction_label = {"LONG": "做多", "SHORT": "做空"}.get(direction, "等待")
 
     # 2026-07-24 v3: per-cell cache_state + data_quality.
-    # Read from payload.freshness_state (set by unified_service) and
-    # confidence_report.confidence_score. If absent, default to
-    # 'unknown' / 0.0 so the renderer can fall back gracefully.
-    freshness_raw = (
-        payload.get("freshness_state")
-        or payload.get("cache_state")
-        or ""
-    )
-    cache_state = str(freshness_raw).lower() or "unknown"
-    conf_report = payload.get("confidence_report") or {}
-    try:
-        data_quality = float(conf_report.get("confidence_score") or 0.0)
-    except (TypeError, ValueError):
+    # The unified payload exposes `status` ("degraded"/"ready_with_warnings"
+    # /"ready") and `degraded_components` (list of failing component names).
+    # Rule:
+    #   - status == "degraded" OR degraded_components non-empty → "missing"
+    #   - otherwise → "fresh"
+    #   - if payload has no status field at all → "unknown"
+    status_raw = (payload.get("status") or "").strip()
+    degraded_components = payload.get("degraded_components") or []
+    if status_raw == "degraded" or (isinstance(degraded_components, list) and degraded_components):
+        cache_state = "missing"
+    elif status_raw in {"ready", "ready_with_warnings"}:
+        cache_state = "fresh"
+    else:
+        cache_state = "unknown"
+
+    # data_quality: pull from signal_coverage list (each signal has
+    # `confidence` 0-100). Average the confidences so the per-cell
+    # data_quality reflects how many signals the cell has, not just
+    # one. Fall back to 0.0 if absent.
+    sig_cov = payload.get("signal_coverage") or []
+    if isinstance(sig_cov, list) and sig_cov:
+        confidences = []
+        for item in sig_cov:
+            if isinstance(item, dict):
+                c = item.get("confidence")
+                if c is None:
+                    c = item.get("score")
+                try:
+                    confidences.append(float(c))
+                except (TypeError, ValueError):
+                    continue
+        data_quality = round(sum(confidences) / len(confidences), 1) if confidences else 0.0
+    else:
         data_quality = 0.0
 
     # Build modules direction tally from market_operation chain
