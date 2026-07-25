@@ -9944,8 +9944,14 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   position: fixed;
   top: 0;
   right: 0;
-  width: 66%;
-  max-width: 960px;
+  /* 2026-07-25: widen the slide-in detail panel so the multi-horizon
+     reasoning chain (Overview / ExecutionPlan / DecisionAudit / EvidenceStack
+     / MarketOperation / RiskPanel / EventWatch / DataAccess) gets enough
+     horizontal space to render the cross-module tables without truncation.
+     The previous 66% / 960px cap held the panel at ~50% on common 1280px
+     viewports. min(72%, 1280px) lands in the 67-72% band the user wants,
+     and falls back to 100% only on phones. */
+  width: min(72%, 1280px);
   height: 100vh;
   background: var(--bg);
   border-left: 1px solid var(--border);
@@ -9988,6 +9994,15 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+@media (max-width: 1100px) {
+  .strategy-detail-panel {
+    /* Mid-screen: keep ~75% width on common laptop heights so the
+       multi-horizon chain still reads, while the 1280px cap clamps on
+       taller desktop viewports. */
+    width: 75%;
+  }
 }
 
 @media (max-width: 900px) {
