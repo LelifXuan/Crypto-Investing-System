@@ -324,3 +324,65 @@ def test_page_has_scoped_responsive_styles() -> None:
     assert ".btc-level-title .tooltip-icon" in styles
     assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in styles
     assert 'body[data-page="btc-derivatives"]' in styles
+
+
+def test_btc_derivatives_page_auto_refreshes_via_interval() -> None:
+    # 2026-07-25: user complaint — the wall-migration chart on the
+    # btc-derivatives page freezes on whatever labels arrived at the
+    # first load. The expiry matrix above it never ages because those
+    # are forward-dated contract expiries, but the historical chart
+    # ages every minute. The fix: a 60s setInterval-driven auto-refresh
+    # wired into renderBtcDerivatives mount/unmount/pause/resume, with
+    # a document.hidden guard so we don't fire when the tab is in the
+    # background.
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "AUTO_REFRESH_MS" in source, (
+        "page must export an AUTO_REFRESH_MS constant to drive the loop"
+    )
+    assert "function scheduleAutoRefresh" in source, (
+        "page must define scheduleAutoRefresh()"
+    )
+    assert "function clearAutoRefresh" in source, (
+        "page must define clearAutoRefresh() so pause/unmount can cancel"
+    )
+    assert "scheduleAutoRefresh()" in source, (
+        "renderBtcDerivatives must call scheduleAutoRefresh() after initial load"
+    )
+
+    import re
+
+    def _extract_block(label):
+        m = re.search(rf"{label}\s*\(\)\s*\{{", source)
+        assert m, f"{label} not found"
+        start = m.end() - 1
+        depth = 1
+        i = start + 1
+        while i < len(source) and depth > 0:
+            ch = source[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            i += 1
+        return source[start:i]
+
+    unmount_block = _extract_block("unmount")
+    assert "clearAutoRefresh" in unmount_block, (
+        "unmount() must call clearAutoRefresh() to avoid a leaked timer"
+    )
+    assert "requestController?.abort" in unmount_block, (
+        "unmount() must still abort the in-flight request controller"
+    )
+    assert "destroyChartsForPage" in unmount_block, (
+        "unmount() must still destroy chart instances"
+    )
+
+    pause_block = _extract_block("pause")
+    assert "clearAutoRefresh" in pause_block, (
+        "pause() must call clearAutoRefresh() so the timer doesn't fire while the user is on another page"
+    )
+    resume_block = _extract_block("resume")
+    assert "scheduleAutoRefresh" in resume_block, (
+        "resume() must restart the loop when navigating back to the page"
+    )

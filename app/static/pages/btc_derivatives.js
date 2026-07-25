@@ -96,6 +96,15 @@ let autoRefreshAttempted = false;
 let pageGuideFab = null;
 let hedgePlan = null;
 let riskChartMode = "sentiment";
+// 2026-07-25: the wall-migration chart (and the rest of the
+// dashboard) age every minute, but the page had no auto-refresh —
+// users would leave the tab open across a session and see stale
+// labels frozen at first load. Drive a cheap cache-first reload
+// every AUTO_REFRESH_MS so the chart catches up without manual
+// clicks. Manual "刷新" still uses refresh=true (job+force); this
+// loop is read-only and aborts cleanly on unmount/pause.
+const AUTO_REFRESH_MS = 60_000;
+let autoRefreshTimer = null;
 let filters = {
   window: "",
   expiryMode: "constant_maturity",
@@ -1309,9 +1318,11 @@ export async function renderBtcDerivatives() {
   const ready = loadDashboard().catch((error) => {
     if (error?.name !== "AbortError") showError(error);
   });
+  scheduleAutoRefresh();
   return {
     ready,
     unmount() {
+      clearAutoRefresh();
       if (pageGuideFab) {
         pageGuideFab.unmount();
         pageGuideFab = null;
@@ -1319,7 +1330,38 @@ export async function renderBtcDerivatives() {
       requestController?.abort();
       destroyChartsForPage("btc-derivatives-");
     },
-    pause() {},
-    resume() {},
+    pause() {
+      clearAutoRefresh();
+    },
+    resume() {
+      scheduleAutoRefresh();
+    },
   };
+}
+
+function clearAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearTimeout(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+function scheduleAutoRefresh() {
+  if (autoRefreshTimer) return;
+  autoRefreshTimer = setTimeout(async () => {
+    autoRefreshTimer = null;
+    if (typeof document !== "undefined" && document.hidden) {
+      scheduleAutoRefresh();
+      return;
+    }
+    try {
+      await loadDashboard();
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.warn("btc-derivatives:auto-refresh", error);
+      }
+    } finally {
+      scheduleAutoRefresh();
+    }
+  }, AUTO_REFRESH_MS);
 }
