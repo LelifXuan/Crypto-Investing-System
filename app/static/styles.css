@@ -9996,6 +9996,92 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 20px;
 }
 
+/* 2026-07-25: prominent banner shown at the top of the detail panel
+   when the unified strategy payload is degraded. Surfaces what's
+   missing and offers a manual rebuild button so the user doesn't
+   mistake the empty-state sub-cards ("暂无周期证据 / 数据不足") for
+   "the system says nothing". Tone: warning, not destructive. */
+.strategy-degraded-banner {
+  border-left: 4px solid #d97706;
+  background: linear-gradient(180deg, rgba(217, 119, 6, 0.08), rgba(217, 119, 6, 0.02));
+  border-radius: 14px;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.strategy-degraded-banner-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.strategy-degraded-banner-head .eyebrow {
+  color: #d97706;
+  font-weight: 600;
+}
+.strategy-degraded-banner-head strong {
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+
+.strategy-degraded-banner-body {
+  margin: 0;
+  color: var(--text-secondary, #555);
+  font-size: 0.95rem;
+}
+
+.strategy-degraded-banner-reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 16px;
+}
+.strategy-degraded-banner-reasons li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border: 1px dashed rgba(217, 119, 6, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.4);
+}
+.strategy-degraded-banner-reasons span {
+  font-size: 0.8rem;
+  color: var(--text-muted, #777);
+}
+.strategy-degraded-banner-reasons strong {
+  font-weight: 600;
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+
+.strategy-degraded-banner-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, #777);
+  font-style: italic;
+}
+
+.strategy-degraded-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.strategy-degraded-banner-actions small {
+  color: var(--text-muted, #777);
+  font-size: 0.82rem;
+}
+
+.strategy-degraded-banner button[data-strategy-rebuild]:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 @media (max-width: 1100px) {
   .strategy-detail-panel {
     /* Mid-screen: keep ~75% width on common laptop heights so the

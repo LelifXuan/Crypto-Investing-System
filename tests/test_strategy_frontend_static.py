@@ -190,6 +190,59 @@ def test_strategy_detail_panel_renders_unified_loaded_model():
     assert "body.innerHTML" in panel
 
 
+def test_strategy_detail_panel_surfaces_degraded_state_with_rebuild_button():
+    """2026-07-25: when the unified payload is degraded (cold cache / prewarm),
+    the panel must render a high-contrast '数据预热中' banner ABOVE the seven
+    reasoning renderers AND wire a force=true rebuild button that re-calls
+    loadStrategy(...)."""
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(
+        encoding="utf-8"
+    )
+
+    # The function-level helper that emits the banner
+    assert "renderDegradedBanner" in panel, (
+        "renderDetailPanel must define renderDegradedBanner to surface "
+        "degraded payloads explicitly."
+    )
+    # The banner is gated on model.degraded (not on every payload)
+    assert "model.degraded" in panel, (
+        "renderDetailPanel must gate the degraded banner on model.degraded so "
+        "healthy payloads don't get a warning banner."
+    )
+    # The rebuild handler accepts force=true so the user can break out of a
+    # cold-cache state.
+    assert "force: true" in panel, (
+        "renderDetailPanel must call loadStrategy(... { force: true }) from "
+        "the rebuild button — that's how the user manually escapes a "
+        "stale-degraded cache row."
+    )
+    assert "data-strategy-rebuild" in panel, (
+        "renderDetailPanel must emit a [data-strategy-rebuild] button so the "
+        "click handler can be attached after innerHTML replacement."
+    )
+
+
+def test_strategy_index_loadStrategy_propagates_force_flag():
+    """2026-07-25: openDetailPanel calls loadStrategy(iid, tf, opts) when the
+    user clicks '立即重建本单元'; index.js's loadStrategy must forward the
+    force flag to ALL four backend calls (unified, monitoring, derivatives,
+    macro) so the rebuild isn't bottlenecked by any one endpoint's cache."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(
+        encoding="utf-8"
+    )
+    # Accept either signature shape
+    assert "(iid, tf, loadOpts = {})" in index or "loadOpts = {}" in index, (
+        "index.js must accept an options bag in loadStrategy so the panel "
+        "can pass { force: true, timeoutMs: 60000 }."
+    )
+    # All four api endpoints must honour the forwarded force flag
+    force_count = index.count("force,")
+    assert force_count >= 4, (
+        f"index.js's loadStrategy must forward force to all four endpoints; "
+        f"saw only {force_count} `force,` occurrences."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Scan Matrix renderer
 # ---------------------------------------------------------------------------

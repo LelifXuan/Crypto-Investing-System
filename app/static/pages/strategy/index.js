@@ -144,13 +144,39 @@ async function tryPrewarm() {
 }
 
 function onSelectOpportunity(instrumentId, timeframe) {
-  const loadStrategy = async (iid, tf) => {
-    const payload = await api.getUnifiedStrategy(iid, { force: false, timeoutMs: 20000 });
+  // 2026-07-25: loadStrategy now accepts an options bag so the detail
+  // panel's "立即重建" button can pass { force: true, timeoutMs: 60000 }.
+  // We forward force to all four backend calls so the panel-level
+  // rebuild avoids serving the cached stale-degraded payload that
+  // triggered the rebuild in the first place.
+  const loadStrategy = async (iid, tf, loadOpts = {}) => {
+    const force = loadOpts.force ?? false;
+    const unifiedTimeoutMs = loadOpts.timeoutMs ?? (force ? 60000 : 20000);
+    const [unifiedResult, monitoringResult, derivativesResult, macroResult] =
+      await Promise.allSettled([
+        api.getUnifiedStrategy(iid, { force, timeoutMs: unifiedTimeoutMs }),
+        api.getMonitoringDashboard(iid, tf, { force, timeoutMs: loadOpts.timeoutMs ?? 10000 }),
+        api.getBtcDerivativesDashboard({}, { force, timeoutMs: loadOpts.timeoutMs ?? 10000 }),
+        api.getMacroOverview({ force, timeoutMs: loadOpts.timeoutMs ?? 10000 }),
+      ]);
+
     const code = appState.instruments.find((i) => i.id === iid)?.code || iid;
-    const model = normalizeUnifiedStrategy(payload, {});
+    const payload = unifiedResult.status === "fulfilled" ? unifiedResult.value : null;
+    const model = normalizeUnifiedStrategy(payload || {}, {});
     model.instrument_code = code;
-    model.data_access = { unified: payload, monitoring: null, derivatives: null, macro: null };
-    model.data_access_failures = { unified: null, monitoring: null, derivatives: null, macro: null };
+
+    model.data_access = {
+      unified: payload,
+      monitoring: monitoringResult.status === "fulfilled" ? monitoringResult.value : null,
+      derivatives: derivativesResult.status === "fulfilled" ? derivativesResult.value : null,
+      macro: macroResult.status === "fulfilled" ? macroResult.value : null,
+    };
+    model.data_access_failures = {
+      unified: unifiedResult.status === "rejected" ? (unifiedResult.reason?.message || String(unifiedResult.reason)) : null,
+      monitoring: monitoringResult.status === "rejected" ? (monitoringResult.reason?.message || String(monitoringResult.reason)) : null,
+      derivatives: derivativesResult.status === "rejected" ? (derivativesResult.reason?.message || String(derivativesResult.reason)) : null,
+      macro: macroResult.status === "rejected" ? (macroResult.reason?.message || String(macroResult.reason)) : null,
+    };
     return model;
   };
   openDetailPanel(instrumentId, timeframe, loadStrategy, () => {
