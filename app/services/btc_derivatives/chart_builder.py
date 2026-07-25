@@ -458,6 +458,26 @@ def build_consolidated_dashboard_charts(
                     "zscore",
                 ),
             ],
+            # 2026-07-25: surface upstream "series resumed after a
+            # null gap" markers so the user doesn't mistake the resume
+            # cliff for an anomalous data event. The collector sets
+            # `aggregate_oi_usd_resumed_after_gap` etc. on the first
+            # non-null row following a ≥3-day null run for any tracked
+            # field; here we turn those into a vertical-line annotation
+            # rendered at the resume timestamp on the y_price axis.
+            annotations=[
+                {
+                    "type": "verticalLine",
+                    "x": row["timestamp"],
+                    "label": "数据接续",
+                    "axis_id": "y_price",
+                }
+                for row in price_history
+                if row.get("aggregate_oi_usd_resumed_after_gap")
+                or row.get("spot_price_resumed_after_gap")
+                or row.get("funding_rate_resumed_after_gap")
+                or row.get("funding_zscore_resumed_after_gap")
+            ],
             chart_type="mixed",
         ),
         "exchange_crowding_snapshot": _chart(

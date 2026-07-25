@@ -386,3 +386,33 @@ def test_btc_derivatives_page_auto_refreshes_via_interval() -> None:
     assert "scheduleAutoRefresh" in resume_block, (
         "resume() must restart the loop when navigating back to the page"
     )
+
+
+def test_funding_z_legend_hide_toggles_both_positive_and_negative_datasets() -> None:
+    # 2026-07-25 user feedback: hiding the Funding Z legend entry
+    # only hid the positive half of the dashed line — the negative
+    # half stayed on the canvas because Chart.js's legend clicks
+    # toggle a single dataset at a time. Funding-Z is rendered as two
+    # parallel datasets sharing the same label so the positive and
+    # negative sides can have different borderDash styles. The fix is
+    # to wire a legend.onClick hook that flips both siblings together.
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "_fundingZSibling" in source, (
+        "Funding Z datasets must carry _fundingZSibling metadata so the legend hook can flip them together"
+    )
+    assert "legend" in source and "onClick" in source, (
+        "renderSingleChart must wire a plugins.legend.onClick hook to coordinate the toggle"
+    )
+    # The hook must call setDatasetVisibility on the sibling dataset.
+    assert "setDatasetVisibility" in source, (
+        "the legend.onClick hook must use setDatasetVisibility to flip sibling visibility"
+    )
+    # Make sure we still hit Chart.js's default toggle for non-funding
+    # entries by keeping the existing legendFilter path intact.
+    assert "legendFilter" in source
+    # Confirm the hook applies for the Funding Z sibling case but
+    # defaults behavior is preserved for everything else.
+    assert "_fundingZSibling" in source and "isDatasetVisible" in source, (
+        "legend.onClick must check both isDatasetVisible (default toggle path) and _fundingZSibling metadata"
+    )

@@ -282,7 +282,14 @@ class LiveCollector:
         series_key). When upstream returns a partial response, the cache
         fills in older days. The freshest value wins for overlapping
         days (so today's partial update replaces yesterday's stale
-        cache)."""
+        cache).
+
+        2026-07-25: when an OI/price row appears after a run of
+        all-null rows for the same fields, mark it with
+        ``series_resumed_after_gap=True``. The chart layer turns that
+        flag into a small vertical reference annotation so a user
+        doesn't mistake the resume for a "突变" data artifact.
+        """
         cached = [
             row for row in self.cache.read_history()
             if row.get("series_key") == self.PRICE_HISTORY_SERIES_KEY
@@ -300,7 +307,33 @@ class LiveCollector:
                 continue
             entry = {**row, "series_key": self.PRICE_HISTORY_SERIES_KEY}
             merged[day] = entry
-        return sorted(
+
+        sorted_rows = sorted(
             merged.values(),
             key=lambda item: str(item.get("timestamp") or ""),
         )
+        if not sorted_rows:
+            return sorted_rows
+        # Track the fields that, when reappearing after nulls, mean
+        # the chart line must resume. We check the key OI/price/funding
+        # surface only — not metadata fields like series_key.
+        resumable_fields = (
+            "aggregate_oi_usd",
+            "spot_price",
+            "funding_rate",
+            "funding_zscore",
+        )
+        RESUME_GAP_THRESHOLD = 3
+        null_runs: dict[str, int] = {field: 0 for field in resumable_fields}
+        for row in sorted_rows:
+            for field in resumable_fields:
+                value = row.get(field)
+                is_null = value is None or value == "" or (
+                    isinstance(value, float) and value != value  # NaN
+                )
+                # Only flag the FIRST non-null observation after a run of
+                # nulls; subsequent valid points keep the legacy behavior.
+                if not is_null and null_runs[field] >= RESUME_GAP_THRESHOLD:
+                    row[f"{field}_resumed_after_gap"] = True
+                null_runs[field] = null_runs[field] + 1 if is_null else 0
+        return sorted_rows

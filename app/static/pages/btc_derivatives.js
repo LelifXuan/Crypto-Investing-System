@@ -1098,7 +1098,16 @@ function renderSingleChart(chartId) {
       spanGaps: false,
     });
     negative.fundingZLegendDuplicate = true;
+    positive._fundingZSibling = [positive, negative];
+    negative._fundingZSibling = [positive, negative];
+    positive._fundingZSiblingRef = positive;
+    negative._fundingZSiblingRef = negative;
     return [positive, negative];
+  });
+  // Resolve the actual datasetIndex assigned by flatMap → Chart.js so the
+  // legend.onClick hook can flip both Funding Z siblings together.
+  datasets.forEach((entry, datasetIndex) => {
+    entry.__index = datasetIndex;
   });
   const legendFilter = (item, data) =>
     !data.datasets[item.datasetIndex]?.modeHidden
@@ -1116,6 +1125,39 @@ function renderSingleChart(chartId) {
         legend: {
           labels: {
             filter: legendFilter,
+          },
+          // 2026-07-25: Funding Z is split into positive/negative
+          // datasets; the legend filter only hides the duplicate
+          // label, but a click on the visible entry would otherwise
+          // only toggle the positive dataset, leaving the dashed
+          // negative line still drawn. We override onClick so the
+          // sibling is flipped in lock-step.
+          onClick(e, legendItem, legend) {
+            const chart = legend.chart;
+            const ds = chart.data.datasets[legendItem.datasetIndex];
+            if (ds && ds._fundingZSibling && ds._fundingZSibling.length > 1) {
+              const siblings = ds._fundingZSibling;
+              // If any sibling is currently visible, the user's intent
+              // on clicking the legend entry is to hide the line. If all
+              // are already hidden, the intent is to show it again.
+              const anyVisible = siblings.some(
+                (sibling) => sibling.__index !== undefined
+                  && chart.isDatasetVisible(sibling.__index),
+              );
+              const next = !anyVisible;
+              for (const sibling of siblings) {
+                if (sibling.__index !== undefined) {
+                  chart.setDatasetVisibility(sibling.__index, next);
+                }
+              }
+              chart.update();
+              return;
+            }
+            // Default Chart.js click: toggle just this dataset.
+            const idx = legendItem.datasetIndex;
+            if (typeof idx !== "number") return;
+            chart.setDatasetVisibility(idx, !chart.isDatasetVisible(idx));
+            chart.update();
           },
         },
       },
