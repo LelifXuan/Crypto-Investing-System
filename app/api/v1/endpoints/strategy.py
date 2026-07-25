@@ -242,7 +242,27 @@ async def get_unified_strategy(
     if not force:
         cache = await repository.get_page_snapshot_cache(cache_key)
         status = cache_status(cache)
-        if cache is not None and cache.payload_json and status not in {"missing", "error"}:
+        # 2026-07-25: the cache row may say "fresh" while the cached
+        # payload's status is "degraded" (e.g. row was written during a
+        # cold prewarm, or older rebuild races). Returning a degraded
+        # payload as if it were ready means the frontend renders a panel
+        # full of empty-state copies ("暂无周期证据 / 数据不足") with no
+        # signal that the system is still working. We treat such rows as
+        # "stale" so the read-path falls through to the cold-read branch
+        # below, which enqueues a rebuild and returns a payload with
+        # refresh_limitations + the proper banner-visible prewarm_status.
+        if cache is not None and cache.payload_json:
+            cached_payload_status = (cache.payload_json or {}).get("status")
+            if cached_payload_status == "degraded" and status not in {"missing", "error", "warming", "stale"}:
+                logger.info(
+                    "strategy_unified_cache_stale_degraded: instrument=%s, "
+                    "row_state=%s, components=%s — falling through to cold read",
+                    normalized_instrument,
+                    status,
+                    (cache.payload_json or {}).get("degraded_components"),
+                )
+                status = "stale"
+        if cache is not None and cache.payload_json and status not in {"missing", "error", "stale"}:
             payload = dict(cache.payload_json)
             payload.setdefault("instrument_id", normalized_instrument)
             payload["cache_state"] = status
@@ -599,7 +619,7 @@ async def get_strategy_scan(
             instrument_codes[i.instrument_id] = code
 
         scanner = OpportunityScanner(repository)
-        result = await scanner.scan_all(instrument_ids, instrument_codes)
+        result = await scanner.scan_all(instrument_ids, instrument_codes, force=force)
 
         import dataclasses
         result_dict = dataclasses.asdict(result)
