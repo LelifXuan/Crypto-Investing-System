@@ -89,19 +89,28 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
       if (!body) return;
 
       const instCode = model.instrument_code || instrumentId;
-      const dirLabel = model.trade_decision?.side || model.trade_decision?.direction || "";
+      const td = model.trade_decision || {};
+      const dirLabel = td.side === "LONG" ? "做多" : td.side === "SHORT" ? "做空" : "等待确认";
       if (title) title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
 
-      body.innerHTML = `
-        ${renderOverview(model, helpers)}
-        ${renderExecutionPlan(model, helpers)}
-        ${renderDecisionAudit(model, helpers)}
-        ${renderEvidenceStack(model, helpers)}
-        ${renderMarketOperation(model, helpers)}
-        ${renderRiskPanel(model, helpers)}
-        ${renderEventWatch(model, helpers)}
-        ${buildDataDegradedCard(model)}
-      `;
+      // 2026-07-25: bring back the full multi-horizon reasoning chain.
+      // Previously the panel short-circuited on side === NONE and
+      // showed only a single stub card, which hid the execution plan
+      // / decision audit / evidence stack / market operation / risk
+      // panel / event watch from the user. The engine still produces
+      // horizon views + evidence_trace + market_operation + risk_alerts
+      // even when there is no direction, so we must surface those so
+      // the user can see why the engine concluded there is no edge.
+      body.innerHTML = [
+        renderOverview(model, helpers),
+        renderExecutionPlan(model, helpers),
+        renderDecisionAudit(model, helpers),
+        renderEvidenceStack(model, helpers),
+        renderMarketOperation(model, helpers),
+        renderRiskPanel(model, helpers),
+        renderEventWatch(model, helpers),
+        buildDataDegradedCard(model),
+      ].join("");
     })
     .catch((err) => {
       const body = document.getElementById("strategy-detail-body");

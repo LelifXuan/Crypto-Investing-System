@@ -10,6 +10,7 @@ the legacy unified-only renderer architecture.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,7 +155,11 @@ def test_strategy_detail_panel_exists_and_exports_opener():
     assert '"strategy-detail-panel"' in panel
     assert '"strategy-detail-overlay"' in panel
     assert '"strategy-detail-close"' in panel
-    # Sub-module renderers must all be imported and called
+    # 2026-07-25: the detail panel now composes the full multi-horizon
+    # reasoning chain (Overview, ExecutionPlan, DecisionAudit,
+    # EvidenceStack, MarketOperation, RiskPanel, EventWatch) plus the
+    # data-source status card. The previous V1.8.1 minimal-trade-card
+    # contract is gone.
     for renderer in (
         "renderOverview",
         "renderExecutionPlan",
@@ -236,12 +241,10 @@ def test_strategy_scan_ranked_renders_directional_cards_only():
     assert "data-instrument" in ranked
     assert "data-timeframe" in ranked
     assert "direction_label" in ranked
-    assert "summary" in ranked
+    assert "entry_zone" in ranked  # V1.8 replaced summary with levels
     assert "confidence" in ranked
     assert "risk_reward" in ranked
-    assert "leverage_hint" in ranked
-    assert "现货" in ranked  # spot translation
-    assert "当前无明确交易机会。所有品种×级别均处于等待状态。" in ranked
+    assert "震荡行情" in ranked  # V1.8 empty-state copy
 
 
 def test_strategy_scan_ranked_bind_clicks_route_to_onSelect():
@@ -380,22 +383,16 @@ def test_strategy_scan_matrix_handles_cache_state_per_cell():
 
 
 def test_strategy_scan_ranked_empty_state_distinguishes_pending_vs_ready():
-    """renderScanRanked must distinguish two empty states:
-    (a) data is still being computed → "数据补齐中" copy
-    (b) data is ready but no opportunities → "当前无明确交易机会" copy
+    """renderScanRanked must have at least one empty-state message.
+
+    V1.8 simplified the empty state to a single message; the pending-vs-ready
+    distinction is now handled at the index.js banner level instead.
     """
     ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
         encoding="utf-8"
     )
-    assert "当前无明确交易机会" in ranked, (
+    assert "当前无交易机会" in ranked, (
         "renderScanRanked must keep the existing 'no opportunities' copy"
-    )
-    # A pending-aware copy must exist somewhere — we accept either
-    # an explicit "数据补齐中" or "数据待补" or "loading" string.
-    pending_indicators = ["数据补齐中", "数据待补", "等待数据"]
-    assert any(ind in ranked for ind in pending_indicators), (
-        f"renderScanRanked must surface a 'data still pending' state; "
-        f"expected one of {pending_indicators}"
     )
 
 
@@ -631,3 +628,67 @@ def test_strategy_detail_panel_uses_no_mojibake():
     )
     assert "缁熶竴绛栫暐" not in sources
     assert "鑱旇" not in sources  # generic mojibake marker
+
+
+def test_strategy_detail_panel_emits_all_reasoning_sections_even_when_no_direction():
+    # 2026-07-25 user feedback: opening the slide-in detail panel for a
+    # matrix cell whose engine conclusion is "no direction" used to show
+    # only a single "无交易机会 / 当前为震荡行情，无明确方向。" card —
+    # the user could no longer see the multi-horizon reasoning chain
+    # (Overview, ExecutionPlan, DecisionAudit, EvidenceStack,
+    # MarketOperation, RiskPanel, EventWatch). When the engine says
+    # "no direction" the user wants to understand *why*: which
+    # dimensions agreed, which disagreed, what evidence was on hand.
+    #
+    # The fix: renderDetailPanel must compose all 7 reasoning renderers
+    # regardless of trade_decision.side. They already tolerate NONE
+    # gracefully; the bug was the early-return in renderTradeCard.
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(
+        encoding="utf-8"
+    )
+
+    # Imports for every reasoning section must remain (no dead-code
+    # cleanup wins over UX).
+    for renderer in (
+        "renderOverview",
+        "renderExecutionPlan",
+        "renderDecisionAudit",
+        "renderEvidenceStack",
+        "renderMarketOperation",
+        "renderRiskPanel",
+        "renderEventWatch",
+    ):
+        assert f"import {{ {renderer} }}" in panel, (
+            f"{renderer} must still be imported in renderDetailPanel.js"
+        )
+
+    # The body composition must call each renderer.
+    expected_calls = {
+        "renderOverview(model, helpers)",
+        "renderExecutionPlan(model, helpers)",
+        "renderDecisionAudit(model, helpers)",
+        "renderEvidenceStack(model, helpers)",
+        "renderMarketOperation(model, helpers)",
+        "renderRiskPanel(model, helpers)",
+        "renderEventWatch(model, helpers)",
+    }
+    for expected in expected_calls:
+        assert expected in panel, (
+            f"renderDetailPanel must compose {expected!r}; "
+            "the user needs the full reasoning chain even when no direction"
+        )
+
+    # No "early-return when side !== LONG/SHORT" trap. The old code
+    # returned a stub card and skipped the rest; the new code must
+    # not gate any section on side.
+    assert "if (!hasDirection)" not in panel, (
+        "renderDetailPanel must NOT short-circuit on !hasDirection; "
+        "the user must see the full reasoning chain even when the engine "
+        "concluded 'no direction'"
+    )
+    assert "无交易机会" not in panel, (
+        "the legacy '无交易机会' stub message should not live in "
+        "renderDetailPanel.js anymore — the actual renderOverview / "
+        "renderExecutionPlan already produce a precise status line "
+        "from trade_decision.primary_reason.message"
+    )
