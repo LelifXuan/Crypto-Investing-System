@@ -49,15 +49,28 @@ def test_effective_value_font_size_larger_than_insufficient() -> None:
     """The confirmed-wall price ($60,000) must render with a strictly
     larger font than the '未形成有效墙' headline. Without this the two
     states visually compete and the user can't tell which is the real
-    signal."""
+    signal.
+
+    We compare two font-sizes:
+      * effective: the <b> inside .btc-wall-cell.is-effective (overrides
+        the base 16px if present, otherwise inherits 16px).
+      * insufficient: the <b> inside .btc-wall-cell.is-insufficient
+        (overridden to 13px).
+    The two values must differ by ≥2px.
+    """
     source = _read()
-    effective_block = _block(source, ".btc-wall-cell.is-effective")
-    insufficient_block = _block(source, ".btc-wall-cell.is-insufficient")
-    # The headline value is inside <b>; the insufficient equivalent is
-    # also <b>. We pick the first font-size on each selector block to
-    # anchor the comparison.
-    eff_size = _font_size_px(effective_block)
-    ins_size = _font_size_px(insufficient_block)
+    effective_block = _block(source, ".btc-wall-cell.is-effective", length=800)
+    insufficient_block = _block(source, ".btc-wall-cell.is-insufficient", length=800)
+    # The base rule .btc-wall-cell b sets font-size: 16px.
+    base_block = _block(source, ".btc-wall-cell b", length=400)
+    base_match = re.search(r"\.btc-wall-cell\s+b\s*\{[^}]*font-size:\s*([\d.]+)px", base_block)
+    base_size = float(base_match.group(1)) if base_match else None
+    # The insufficient override.
+    ins_match = re.search(r"\.btc-wall-cell\.is-insufficient\s+b\s*\{[^}]*font-size:\s*([\d.]+)px", insufficient_block)
+    ins_size = float(ins_match.group(1)) if ins_match else None
+    # Effective size = either the explicit override (if present) or the base.
+    eff_match = re.search(r"\.btc-wall-cell\.is-effective\s+b\s*\{[^}]*font-size:\s*([\d.]+)px", effective_block)
+    eff_size = float(eff_match.group(1)) if eff_match else base_size
     assert eff_size is not None and ins_size is not None, (
         f"both wall-cell states must declare a font-size; got "
         f"effective={eff_size}, insufficient={ins_size}"

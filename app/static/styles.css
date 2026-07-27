@@ -173,7 +173,7 @@ h2 {
 }
 
 .auth-card {
-  padding: 20px;
+  padding: var(--card-padding);
   background:
     linear-gradient(180deg, rgba(255, 252, 247, 0.94), rgba(248, 244, 236, 0.88));
 }
@@ -241,7 +241,7 @@ h2 {
   border: 1px solid rgba(170, 151, 124, 0.12);
   border-radius: 26px;
   background: rgba(255, 251, 245, 0.52);
-  box-shadow: 0 10px 28px rgba(23, 34, 39, 0.05);
+  box-shadow: var(--shadow-soft);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -302,9 +302,9 @@ body[data-page="knowledge-base"] .main-nav a[href="/knowledge-page"],
 body[data-page="ashare-etf"] .main-nav a[href="/ashare-etf-page"],
 body[data-page="ai-strategy"] .main-nav a[href="/strategy-page"] {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #f7fffd;
+  color: var(--surface);
   border-color: transparent;
-  box-shadow: 0 10px 26px rgba(15, 118, 110, 0.24);
+  box-shadow: var(--shadow-button);
 }
 
 body[data-page] .main-nav a[data-page-link].is-active,
@@ -317,9 +317,9 @@ body[data-page="knowledge-base"] .main-nav a[data-page-link="knowledge-base"],
 body[data-page="ashare-etf"] .main-nav a[data-page-link="ashare-etf"],
 body[data-page="ai-strategy"] .main-nav a[data-page-link="ai-strategy"] {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #f7fffd;
+  color: var(--surface);
   border-color: transparent;
-  box-shadow: 0 10px 26px rgba(15, 118, 110, 0.24);
+  box-shadow: var(--shadow-button);
 }
 
 main {
@@ -485,8 +485,8 @@ main {
 }
 
 .strategy-decision-card {
-  border-color: rgba(15, 118, 110, 0.22);
-  box-shadow: 0 22px 50px rgba(15, 118, 110, 0.12);
+  border-color: var(--accent-ghost);
+  box-shadow: var(--shadow-card);
 }
 
 .strategy-decision-head {
@@ -628,14 +628,14 @@ textarea {
 button {
   cursor: pointer;
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #ffffff;
+  color: var(--surface);
   border: none;
-  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.22);
+  box-shadow: var(--shadow-button);
 }
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.28);
+  box-shadow: var(--shadow-button-hover);
 }
 
 button.secondary {
@@ -646,7 +646,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.12);
+  box-shadow: var(--shadow-button);
 }
 
 input,
@@ -660,8 +660,8 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: rgba(15, 118, 110, 0.36);
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 4px var(--accent-ghost);
 }
 
 textarea {
@@ -1163,7 +1163,7 @@ tbody tr:hover {
   background:
     radial-gradient(circle at top right, rgba(15, 118, 110, 0.16), transparent 28%),
     linear-gradient(180deg, rgba(236, 248, 245, 0.98), rgba(244, 251, 248, 0.92));
-  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.14);
+  box-shadow: var(--shadow-card);
 }
 
 .analysis-live-card {
@@ -1191,7 +1191,7 @@ tbody tr:hover {
 .analysis-chart-card {
   display: grid;
   gap: 12px;
-  padding: 28px;
+  padding: var(--card-padding);
 }
 
 .analysis-chart-wide {
@@ -1346,23 +1346,23 @@ main:has(.tooltip-anchor:focus-within) {
 }
 
 .tooltip-anchor.tone-favorable .tooltip-icon {
-  background: rgba(13, 126, 115, 0.12);
-  color: #0d7e73;
+  background: var(--accent-ghost);
+  color: var(--accent-strong);
 }
 
 .tooltip-anchor.tone-neutral .tooltip-icon {
-  background: rgba(95, 114, 134, 0.12);
-  color: #5f7286;
+  background: var(--neutral-soft);
+  color: var(--muted-strong);
 }
 
 .tooltip-anchor.tone-adverse .tooltip-icon {
-  background: rgba(197, 91, 31, 0.12);
-  color: #c55b1f;
+  background: var(--bearish-soft);
+  color: var(--bearish);
 }
 
 .tooltip-anchor.tone-event .tooltip-icon {
-  background: rgba(177, 107, 18, 0.14);
-  color: #b16b12;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .tooltip-bubble {
@@ -1381,7 +1381,7 @@ main:has(.tooltip-anchor:focus-within) {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.6;
-  box-shadow: 0 18px 36px rgba(19, 30, 35, 0.24);
+  box-shadow: var(--shadow-card-hover);
   opacity: 0;
   visibility: hidden;
   pointer-events: auto;
@@ -1691,55 +1691,43 @@ main:has(.tooltip-anchor:focus-within) {
 }
 
 .macro-diff-value.favorable,
-.macro-impact-chip.favorable {
-  color: #0d7e73;
+.macro-impact-chip.favorable,
+.macro-bias-bullish {
+  color: var(--accent-strong);
 }
 
 .macro-diff-value.neutral,
-.macro-impact-chip.neutral {
-  color: #5f7286;
+.macro-impact-chip.neutral,
+.macro-bias-neutral {
+  color: var(--muted-strong);
 }
 
 .macro-diff-value.adverse,
-.macro-impact-chip.adverse {
-  color: #c55b1f;
+.macro-impact-chip.adverse,
+.macro-bias-bearish {
+  color: var(--bearish);
 }
 
 .macro-diff-value.event,
-.macro-impact-chip.event {
-  color: #b16b12;
+.macro-impact-chip.event,
+.macro-bias-event {
+  color: var(--warning);
 }
 
 .macro-impact-chip.favorable {
-  background: rgba(13, 126, 115, 0.12);
+  background: var(--accent-ghost);
 }
 
 .macro-impact-chip.neutral {
-  background: rgba(95, 114, 134, 0.12);
+  background: var(--neutral-soft);
 }
 
 .macro-impact-chip.adverse {
-  background: rgba(197, 91, 31, 0.12);
+  background: var(--bearish-soft);
 }
 
 .macro-impact-chip.event {
-  background: rgba(177, 107, 18, 0.14);
-}
-
-.macro-bias-bullish {
-  color: #0d7e73;
-}
-
-.macro-bias-neutral {
-  color: #5f7286;
-}
-
-.macro-bias-bearish {
-  color: #c55b1f;
-}
-
-.macro-bias-event {
-  color: #b16b12;
+  background: var(--warning-soft);
 }
 
 .monitoring-observation-grid {
@@ -1964,7 +1952,7 @@ body[data-page="macro-calendar"] .monitoring-side-card {
 
 .monitoring-side-card,
 .monitoring-pane {
-  padding: 24px;
+  padding: var(--card-padding);
 }
 
 .insight-stack {
@@ -2011,8 +1999,8 @@ body[data-page="macro-calendar"] .monitoring-side-card {
 }
 
 .chip.danger {
-  background: rgba(159, 18, 57, 0.12);
-  color: #9f1239;
+  background: var(--danger-soft);
+  color: var(--danger-strong);
 }
 
 .chip.warm {
@@ -2162,10 +2150,10 @@ button,
 .button-link {
   padding: 12px 18px;
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #f7fffd;
+  color: var(--surface);
   text-decoration: none;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(15, 118, 110, 0.24);
+  box-shadow: var(--shadow-button);
 }
 
 select {
@@ -2278,9 +2266,11 @@ select {
 
 .mini-card {
   padding: 16px 18px;
-  border-radius: 18px;
-  border: 1px solid rgba(170, 151, 124, 0.18);
-  background: rgba(255, 255, 255, 0.78);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-soft);
+  -webkit-backdrop-filter: var(--blur-soft);
 }
 
 .mini-card span,
@@ -2300,7 +2290,7 @@ select {
 }
 
 .signal-card {
-  padding: 22px;
+  padding: var(--card-padding);
 }
 
 .signal-value {
@@ -2415,23 +2405,23 @@ a.status-chip:focus-visible {
   font-weight: 700;
   line-height: 1;
   text-align: center;
-  background: rgba(90, 112, 140, 0.12);
-  color: #4f6481;
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 .tooltip-icon.tone-bullish {
-  background: rgba(15, 118, 110, 0.12);
+  background: var(--accent-ghost);
   color: var(--accent-strong);
 }
 
 .tooltip-icon.tone-bearish {
-  background: rgba(180, 83, 9, 0.12);
-  color: #b45309;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .tooltip-icon.tone-event {
-  background: rgba(183, 121, 31, 0.14);
-  color: #b7791f;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .macro-overview-card {
@@ -2660,15 +2650,15 @@ a.status-chip:focus-visible {
 }
 
 .macro-diff-neutral {
-  color: #4f6481;
+  color: var(--info);
 }
 
 .macro-diff-bearish {
-  color: #b45309;
+  color: var(--warning);
 }
 
 .macro-diff-event {
-  color: #b7791f;
+  color: var(--warning);
 }
 
 .tooltip-wrap {
@@ -2834,14 +2824,14 @@ a.status-chip:focus-visible {
 
 .primary-button {
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 11px 18px;
   font: inherit;
   font-weight: 700;
-  color: #f8fffd;
+  color: var(--surface);
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   cursor: pointer;
-  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.24);
+  box-shadow: var(--shadow-button);
 }
 
 .primary-button:disabled {
@@ -2917,7 +2907,7 @@ a.status-chip:focus-visible {
 }
 
 .hero-card {
-  padding: 24px 28px;
+  padding: var(--card-padding);
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(244, 249, 247, 0.92));
@@ -2988,24 +2978,24 @@ a.status-chip:focus-visible {
 }
 
 .status-banner.status-info {
-  background: rgba(29, 78, 216, 0.08);
-  color: #1d4ed8;
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 .status-banner.status-loading,
 .status-banner.status-success {
-  background: rgba(13, 148, 136, 0.1);
-  color: #0f766e;
+  background: var(--accent-ghost);
+  color: var(--accent-strong);
 }
 
 .status-banner.status-warning {
-  background: rgba(202, 138, 4, 0.12);
-  color: #854d0e;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .status-banner.status-danger {
-  background: rgba(180, 83, 9, 0.1);
-  color: #b45309;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .monitoring-hero-grid {
@@ -3129,7 +3119,7 @@ a.status-chip:focus-visible {
 }
 
 .macro-layer-chip.negative .mini-bar i {
-  background: #d97706;
+  background: var(--warning);
 }
 
 .macro-contribution-item .tiny-bar {
@@ -3150,7 +3140,7 @@ a.status-chip:focus-visible {
 }
 
 .macro-contribution-item .tiny-bar.negative i {
-  background: #d97706;
+  background: var(--warning);
 }
 
 .macro-indicator-grid {
@@ -3271,12 +3261,12 @@ a.status-chip:focus-visible {
 }
 
 .data-state-loading {
-  color: #0f766e;
+  color: var(--accent-strong);
 }
 
 .data-state-error {
-  border-color: rgba(180, 83, 9, 0.22);
-  color: #9a3412;
+  border-color: var(--danger-soft);
+  color: var(--danger);
   background: rgba(255, 247, 237, 0.86);
 }
 
@@ -3285,22 +3275,22 @@ a.status-chip:focus-visible {
   height: 10px;
   flex: 0 0 10px;
   border-radius: 50%;
-  background: #0f766e;
+  background: var(--accent-strong);
   box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.35);
   animation: loadingPulse 1.2s ease-in-out infinite;
 }
 
 @keyframes loadingPulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.34);
+    box-shadow: 0 0 0 0 var(--accent-ghost);
     opacity: 0.68;
   }
   70% {
-    box-shadow: 0 0 0 9px rgba(15, 118, 110, 0);
+    box-shadow: 0 0 0 9px transparent;
     opacity: 1;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0);
+    box-shadow: 0 0 0 0 transparent;
     opacity: 0.68;
   }
 }
@@ -3324,7 +3314,7 @@ a.status-chip:focus-visible {
   background:
     linear-gradient(180deg, rgba(255, 252, 247, 0.82), rgba(246, 241, 232, 0.72));
   border: 1px solid rgba(175, 154, 123, 0.2);
-  box-shadow: 0 18px 54px rgba(23, 34, 39, 0.1);
+  box-shadow: var(--shadow-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -3338,7 +3328,7 @@ a.status-chip:focus-visible {
 .structure-main-card {
   display: grid;
   gap: 16px;
-  padding: 24px;
+  padding: var(--card-padding);
 }
 
 .structure-main-head {
@@ -3351,7 +3341,7 @@ a.status-chip:focus-visible {
 .structure-summary-card {
   display: grid;
   gap: 12px;
-  padding: 18px;
+  padding: var(--card-padding);
   align-content: start;
 }
 
@@ -3456,7 +3446,7 @@ a.status-chip:focus-visible {
   border-color: rgba(15, 118, 110, 0.08);
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.72), rgba(246, 249, 246, 0.62));
-  box-shadow: 0 12px 28px rgba(23, 34, 39, 0.05);
+  box-shadow: var(--shadow-soft);
 }
 
 .structure-detail-grid {
@@ -3473,8 +3463,8 @@ a.status-chip:focus-visible {
   display: grid;
   gap: 14px;
   min-height: 0;
-  padding: 18px 20px;
-  border-radius: 22px;
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
   border: 1px solid rgba(15, 118, 110, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(244, 249, 246, 0.72));
@@ -3672,7 +3662,7 @@ a.status-chip:focus-visible {
 
 .tab-button.active {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #f7fffd;
+  color: var(--surface);
   border-color: transparent;
   transform: none;
   box-shadow: var(--shadow-button);
@@ -3685,10 +3675,10 @@ a.status-chip:focus-visible {
 .list-card {
   display: grid;
   gap: 10px;
-  padding: 18px 20px;
-  border-radius: 18px;
-  border: 1px solid rgba(170, 151, 124, 0.16);
-  background: rgba(255, 255, 255, 0.72);
+  padding: 20px 22px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-glass);
 }
 
 .list-card-head {
@@ -3764,23 +3754,23 @@ a.status-chip:focus-visible {
 }
 
 .structure-freshness-fresh {
-  background: rgba(15, 118, 110, 0.08);
-  color: #0f766e;
+  background: var(--accent-ghost);
+  color: var(--accent-strong);
 }
 
 .structure-freshness-stale {
-  background: rgba(217, 119, 6, 0.1);
-  color: #b45309;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .structure-freshness-refreshing {
-  background: rgba(29, 78, 216, 0.08);
-  color: #1d4ed8;
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 .structure-freshness-error {
-  background: rgba(185, 28, 28, 0.08);
-  color: #b91c1c;
+  background: var(--danger-soft);
+  color: var(--danger-strong);
 }
 
 .structure-svg {
@@ -3943,7 +3933,7 @@ a.status-chip:focus-visible {
 
 .structure-tab-strip button.active {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #f7fffd;
+  color: var(--surface);
   border-color: transparent;
 }
 
@@ -4073,7 +4063,7 @@ a.status-chip:focus-visible {
 .primary-button,
 button,
 .button-link {
-  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.18);
+  box-shadow: var(--shadow-button);
 }
 
 .primary-button:hover,
@@ -4296,7 +4286,7 @@ button:hover,
   background:
     linear-gradient(135deg, rgba(224, 246, 240, 0.72), rgba(255, 255, 255, 0.92)),
     var(--card-bg);
-  box-shadow: 0 18px 44px rgba(20, 129, 119, 0.12);
+  box-shadow: var(--shadow-card);
 }
 
 .alert-chip-primary-card h3 {
@@ -4843,6 +4833,8 @@ button:hover,
   border-radius: var(--radius-card);
   border: 1px solid var(--border-glass-soft);
   background: var(--surface-glass);
+  backdrop-filter: var(--blur-soft);
+  -webkit-backdrop-filter: var(--blur-soft);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   transition: border-color var(--transition-hover), box-shadow var(--transition-hover), background var(--transition-hover);
 }
@@ -5121,11 +5113,11 @@ body[data-page="ai-strategy"] main {
 }
 
 .strategy-score-bar.bear i {
-  background: #b45309;
+  background: var(--warning);
 }
 
 .strategy-score-bar.neutral i {
-  background: #6a7c87;
+  background: var(--muted);
 }
 
 .strategy-main-grid {
@@ -5277,7 +5269,7 @@ body[data-page="ai-strategy"] main {
 }
 
 .knowledge-section-count {
-  color: #5d6f72;
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -5294,7 +5286,7 @@ body[data-page="ai-strategy"] main {
 .knowledge-item-card.knowledge-highlight {
   border-color: rgba(15, 118, 110, 0.42);
   background: rgba(233, 252, 248, 0.92);
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12), 0 18px 36px rgba(15, 118, 110, 0.16);
+  box-shadow: 0 0 0 4px var(--accent-ghost), var(--shadow-card);
 }
 
 .knowledge-body {
@@ -5374,7 +5366,7 @@ body[data-page="ai-strategy"] main {
   background: var(--surface-elevated, #ffffff);
   border: 1px solid rgba(15, 118, 110, 0.15);
   border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-soft);
   font-size: 12px;
   line-height: 1.55;
   color: var(--text-primary, #1f2a3a);
@@ -5443,7 +5435,7 @@ body[data-page="ai-strategy"] main {
 }
 
 .knowledge-related {
-  color: #5d6f72;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
 }
@@ -5547,7 +5539,7 @@ body[data-page="ai-strategy"] main {
 
 .etf-group-tabs button.is-active {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #fff;
+  color: var(--surface);
   transform: none;
   box-shadow: var(--shadow-button);
 }
@@ -5606,12 +5598,12 @@ body[data-page="ai-strategy"] main {
 }
 
 .etf-change-up {
-  color: #087a6f;
+  color: var(--accent-strong);
   font-weight: 800;
 }
 
 .etf-change-down {
-  color: #b7522a;
+  color: var(--bearish);
   font-weight: 800;
 }
 
@@ -5675,7 +5667,7 @@ body[data-page="ai-strategy"] main {
     linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(250, 247, 239, 0.74));
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 14px 32px rgba(27, 41, 51, 0.06);
+  box-shadow: var(--shadow-soft);
   display: grid;
   gap: 12px;
   min-height: 164px;
@@ -6023,64 +6015,52 @@ body[data-page="ai-strategy"] main {
 }
 
 .etf-positive {
-  color: #087a6f;
+  color: var(--accent-strong);
   font-weight: 800;
 }
 
 .etf-negative {
-  color: #b7522a;
+  color: var(--bearish);
   font-weight: 800;
-}
-
-/* A股ETF执行后偏离文字色 token —— 仅 color,不动背景与边框 */
-:root {
-  --etf-state-on-target-text: #13715f;
-  --etf-state-underweight-text: #2d5f9a;
-  --etf-state-overweight-text: #99651f;
-  --etf-state-buy-text: #0f766e;
-  --etf-state-sell-text: #a24b38;
-  --etf-state-neutral-text: #53636b;
-  --etf-state-blocked-text: #6b675c;
-  --etf-state-warning-text: #8a6a00;
 }
 
 .etf-number-cell.etf-state-color--on-target {
-  color: var(--etf-state-on-target-text);
+  color: var(--accent-strong);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--underweight {
-  color: var(--etf-state-underweight-text);
+  color: var(--info);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--overweight {
-  color: var(--etf-state-overweight-text);
+  color: var(--warning);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--buy {
-  color: var(--etf-state-buy-text);
+  color: var(--info-strong);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--sell {
-  color: var(--etf-state-sell-text);
+  color: var(--bearish);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--neutral {
-  color: var(--etf-state-neutral-text);
+  color: var(--muted);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--blocked {
-  color: var(--etf-state-blocked-text);
+  color: var(--muted);
   font-weight: 800;
 }
 .etf-number-cell.etf-state-color--warning {
-  color: var(--etf-state-warning-text);
+  color: var(--warning);
   font-weight: 800;
 }
 
 /* 现金流ETF固定月投卡 */
 .etf-cashflow-fixed {
-  background: rgba(90, 112, 140, 0.14);
-  color: #4f6481;
+  background: var(--info-soft);
+  color: var(--info);
   font-size: 11px;
   padding: 4px 10px;
   letter-spacing: 0.02em;
@@ -6101,11 +6081,11 @@ body[data-page="ai-strategy"] main {
   list-style: none;
   margin: 0 0 12px;
   padding: 10px 12px;
-  background: rgba(183, 121, 31, 0.08);
-  border: 1px solid rgba(183, 121, 31, 0.28);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
   border-radius: 8px;
   font-size: 12px;
-  color: #8a6a00;
+  color: var(--warning);
   display: grid;
   gap: 6px;
 }
@@ -6252,7 +6232,7 @@ body[data-page="ai-strategy"] main {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #c17827, #0f766e);
+  background: linear-gradient(90deg, var(--warning), var(--accent-strong));
 }
 
 .macro-contribution-list {
@@ -6325,7 +6305,7 @@ body[data-page="ai-strategy"] main {
   background:
     linear-gradient(135deg, rgba(250, 253, 250, 0.94), rgba(255, 248, 237, 0.8)),
     var(--surface);
-  box-shadow: 0 22px 55px rgba(26, 38, 32, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .monitoring-layout {
@@ -6344,7 +6324,7 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   border-radius: 18px;
   background:
     linear-gradient(135deg, rgba(246, 252, 249, 0.9), rgba(255, 250, 242, 0.86));
-  box-shadow: 0 18px 45px rgba(26, 38, 32, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .monitoring-topbar.skeleton {
@@ -6454,7 +6434,7 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
 .source-dot-chip-bullish { background: var(--bullish); }
 .source-dot-chip-warning { background: var(--warning); }
 .source-dot-chip-bearish { background: var(--danger); }
-.source-dot-chip-neutral { background: #89a1ad; }
+.source-dot-chip-neutral { background: var(--neutral); }
 
 .monitoring-snapshot-grid {
   display: grid;
@@ -6521,7 +6501,7 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   font-size: clamp(3rem, 5vw, 4.15rem);
   font-weight: 850;
   line-height: 1;
-  color: #0f766e;
+  color: var(--accent-strong);
 }
 
 .macro-score-copy {
@@ -6638,7 +6618,7 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   border: 1px solid var(--border);
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(255, 253, 249, 0.92), rgba(247, 242, 233, 0.76));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-soft);
 }
 
 .technical-chip > div {
@@ -7185,8 +7165,8 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
 .strategy-v2-content > .card,
 .strategy-v2-review > .card {
   border: 0;
-  border-radius: 20px;
-  box-shadow: 0 1px 2px rgba(18, 35, 42, 0.04), 0 12px 32px rgba(18, 35, 42, 0.07), inset 0 0 0 1px rgba(18, 35, 42, 0.07);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }
 .strategy-v2-content h2,
 .strategy-v2-review h2 { color: var(--ink); text-wrap: balance; }
@@ -7450,13 +7430,13 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   background: rgba(15, 118, 110, 0.10);
   color: var(--accent-strong);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 118, 110, 0.08);
+  box-shadow: var(--shadow-soft);
   transition: background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 .strategy-collapse-control:hover {
   background: rgba(15, 118, 110, 0.22);
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(15, 118, 110, 0.16);
+  box-shadow: var(--shadow-button);
 }
 .strategy-collapse-control:focus-visible {
   outline: 2px solid rgba(15, 118, 110, 0.5);
@@ -7566,14 +7546,14 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
 
 body[data-page="gold-allocation"] [data-page-link="gold-allocation"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--surface);
 }
 
 body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #fff;
+  color: var(--surface);
   border-color: transparent;
-  box-shadow: 0 10px 26px rgba(15, 118, 110, 0.24);
+  box-shadow: var(--shadow-button);
 }
 
 .btc-derivatives-page {
@@ -7759,7 +7739,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .btc-chart-mode button.is-active {
   background: var(--accent);
-  color: #fff;
+  color: var(--surface);
   box-shadow: var(--shadow-button);
 }
 
@@ -7870,8 +7850,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .btc-term-conflicts span {
   padding: 7px 10px;
   border-radius: 10px;
-  background: rgba(194, 114, 90, 0.1);
-  color: #8c3a2a;
+  background: var(--bearish-soft);
+  color: var(--bearish);
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -7893,6 +7873,64 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   white-space: nowrap;
 }
 
+/* 2026-07-27: maturity-ladder wall cells previously rendered with the
+ * same visual weight for both effective walls ($60,000) and insufficient
+ * walls (未形成有效墙). The user could not scan a column and tell which
+ * rows had actionable levels. Split the styling so confirmed walls
+ * read as confident primary content and the 'no effective wall' rows
+ * visibly demote to a fallback state (smaller, muted, opacity < 1,
+ * dashed border-top). */
+.btc-wall-cell {
+  display: block;
+  padding-top: 6px;
+  border-top: 4px solid transparent;
+  line-height: 1.45;
+}
+
+.btc-wall-cell b {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.btc-wall-cell small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.btc-wall-cell.is-effective {
+  border-top-color: rgba(15, 118, 110, 0.55);
+}
+
+.btc-wall-cell.is-effective b {
+  color: #0f3a37;
+}
+
+.btc-wall-cell.is-effective small:nth-of-type(2) {
+  color: var(--accent-strong);
+}
+
+.btc-wall-cell.is-insufficient {
+  border-top: 4px dashed rgba(120, 110, 95, 0.35);
+  opacity: 0.86;
+}
+
+.btc-wall-cell.is-insufficient b {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.btc-wall-cell.is-insufficient small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .btc-term-state {
   display: inline-flex;
   padding: 5px 8px;
@@ -7904,18 +7942,18 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-term-state[data-state="UPSIDE_DEMAND"] {
-  background: rgba(86, 145, 119, 0.14);
-  color: #2f6f56;
+  background: var(--accent-ghost);
+  color: var(--accent-strong);
 }
 
 .btc-term-state[data-state="DOWNSIDE_PROTECTION"] {
-  background: rgba(194, 114, 90, 0.14);
-  color: #8c3a2a;
+  background: var(--bearish-soft);
+  color: var(--bearish);
 }
 
 .btc-term-state[data-state="TERM_DIVERGENCE"] {
-  background: rgba(184, 146, 74, 0.14);
-  color: #805f20;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .btc-chart-toolbar label {
@@ -7999,15 +8037,15 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-confidence-chip[data-tone="bearish"] {
-  background: rgba(159, 18, 57, 0.10);
-  border-color: rgba(159, 18, 57, 0.28);
-  color: #9f1239;
+  background: var(--danger-soft);
+  border-color: var(--danger-soft);
+  color: var(--danger-strong);
 }
 
 .btc-confidence-chip[data-tone="neutral"] {
-  background: rgba(120, 110, 95, 0.10);
-  border-color: rgba(120, 110, 95, 0.28);
-  color: #5b5142;
+  background: var(--neutral-soft);
+  border-color: var(--neutral-soft);
+  color: var(--muted-strong);
 }
 
 .btc-tone-chip {
@@ -8030,15 +8068,15 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-tone-chip[data-tone="bearish"] {
-  background: rgba(159, 18, 57, 0.10);
-  border-color: rgba(159, 18, 57, 0.30);
-  color: #9f1239;
+  background: var(--danger-soft);
+  border-color: var(--danger-soft);
+  color: var(--danger-strong);
 }
 
 .btc-tone-chip[data-tone="neutral"] {
-  background: rgba(120, 110, 95, 0.10);
-  border-color: rgba(120, 110, 95, 0.30);
-  color: #5b5142;
+  background: var(--neutral-soft);
+  border-color: var(--neutral-soft);
+  color: var(--muted-strong);
 }
 
 .btc-card-kicker span,
@@ -8246,7 +8284,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border: 1px solid rgba(15, 118, 110, 0.08);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.32);
-  box-shadow: 0 18px 48px rgba(23, 37, 34, 0.05);
+  box-shadow: var(--shadow-soft);
 }
 
 .btc-bottom-group-body {
@@ -8347,7 +8385,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .btc-expiry-tabs button.is-active {
   border-color: transparent;
   background: var(--accent);
-  color: #fff;
+  color: var(--surface);
 }
 
 .btc-level-strip {
@@ -8698,8 +8736,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .btc-hedge-form input:focus,
 .btc-hedge-form select:focus {
   outline: none;
-  border-color: rgba(15, 118, 110, 0.55);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--accent-ghost);
 }
 
 .btc-hedge-actions {
@@ -9748,10 +9786,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 16px;
   padding: 24px;
   margin: 24px 0;
-  background: rgba(255, 215, 130, 0.18);
-  border-left: 4px solid #d4a72c;
+  background: var(--warning-soft);
+  border-left: 4px solid var(--warning);
   border-radius: 8px;
-  color: #5a4612;
+  color: var(--warning);
 }
 
 .strategy-degraded-banner .degraded-icon {
@@ -9787,7 +9825,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(36, 48, 78, 0.18);
   border-radius: 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-soft);
 }
 .knowledge-guide-card.is-open {
   background: rgba(247, 251, 255, 0.98);
@@ -9859,10 +9897,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   padding: 12px 16px;
   margin: 10px 0 14px;
   background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  border: 1px solid var(--accent-ghost);
   border-radius: 14px;
-  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.06);
-  color: #1f3b3a;
+  box-shadow: var(--shadow-soft);
+  color: var(--ink);
   font-size: 14px;
   line-height: 1.4;
 }
@@ -9875,8 +9913,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   height: 36px;
   flex: 0 0 36px;
   border-radius: 10px;
-  background: rgba(15, 118, 110, 0.10);
-  color: #0f6f64;
+  background: var(--accent-ghost);
+  color: var(--accent-strong);
 }
 
 .status-mode-badge .regime-icon svg {
@@ -9896,14 +9934,14 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #5b7a78;
+  color: var(--muted);
   font-weight: 600;
 }
 
 .status-mode-badge .regime-title {
   font-size: 15px;
   font-weight: 600;
-  color: #0f3a37;
+  color: var(--ink);
   letter-spacing: -0.01em;
 }
 
@@ -9912,10 +9950,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.28);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-ghost);
   background: rgba(255, 255, 255, 0.6);
-  color: #0f6f64;
+  color: var(--accent-strong);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
@@ -9924,9 +9962,9 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .status-mode-badge .regime-action:hover {
-  background: rgba(15, 118, 110, 0.10);
-  border-color: rgba(15, 118, 110, 0.45);
-  color: #0a4f48;
+  background: var(--accent-ghost);
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
 }
 
 .status-mode-badge .regime-action:hover svg {
@@ -9941,33 +9979,33 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 /* Transition mode (V1.7.5) — keeps the same skeleton, only a few accents shift. */
 .status-mode-badge.transition-mode {
-  background: rgba(238, 244, 248, 0.85);
-  border-color: rgba(48, 84, 130, 0.20);
-  color: #1c2c3a;
+  background: var(--info-soft);
+  border-color: var(--info-soft);
+  color: var(--ink);
 }
 
 .status-mode-badge.transition-mode .regime-icon {
-  background: rgba(48, 84, 130, 0.12);
-  color: #2f5a86;
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 .status-mode-badge.transition-mode .regime-eyebrow {
-  color: #4a6781;
+  color: var(--info);
 }
 
 .status-mode-badge.transition-mode .regime-title {
-  color: #1c2c3a;
+  color: var(--ink);
 }
 
 .status-mode-badge.transition-mode .regime-action {
-  border-color: rgba(48, 84, 130, 0.32);
-  color: #2f5a86;
+  border-color: var(--info-soft);
+  color: var(--info);
 }
 
 .status-mode-badge.transition-mode .regime-action:hover {
-  background: rgba(48, 84, 130, 0.10);
-  border-color: rgba(48, 84, 130, 0.55);
-  color: #1f3f5e;
+  background: var(--info-soft);
+  border-color: var(--info);
+  color: var(--info);
 }
 
 @media (max-width: 720px) {
@@ -9985,10 +10023,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .status-focus-banner {
   margin: 12px 0;
   padding: 14px 18px;
-  background: linear-gradient(135deg, rgba(255, 235, 130, 0.35), rgba(255, 200, 100, 0.25));
-  border: 1px solid rgba(214, 165, 42, 0.55);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
   border-radius: 8px;
-  color: #6b4f12;
+  color: var(--warning);
 }
 .status-focus-banner h3 {
   margin: 0 0 6px 0;
@@ -10272,13 +10310,13 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .scan-cell[data-tone="bullish"] .scan-cell-btn {
-  background: rgba(76, 175, 80, 0.12);
-  color: #81c784;
+  background: var(--bullish-soft);
+  color: var(--accent-strong);
 }
 
 .scan-cell[data-tone="bearish"] .scan-cell-btn {
-  background: rgba(244, 67, 54, 0.12);
-  color: #ef9a9a;
+  background: var(--bearish-soft);
+  color: var(--bearish);
 }
 
 .scan-cell-wait .scan-cell-btn {
@@ -10434,8 +10472,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
    mistake the empty-state sub-cards ("暂无周期证据 / 数据不足") for
    "the system says nothing". Tone: warning, not destructive. */
 .strategy-degraded-banner {
-  border-left: 4px solid #d97706;
-  background: linear-gradient(180deg, rgba(217, 119, 6, 0.08), rgba(217, 119, 6, 0.02));
+  border-left: 4px solid var(--warning);
+  background: var(--warning-soft);
   border-radius: 14px;
   padding: 18px 22px;
   display: flex;
@@ -10450,7 +10488,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   flex-wrap: wrap;
 }
 .strategy-degraded-banner-head .eyebrow {
-  color: #d97706;
+  color: var(--warning);
   font-weight: 600;
 }
 .strategy-degraded-banner-head strong {
@@ -10558,12 +10596,12 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .page-guide-fab:hover {
   transform: scale(1.08);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-button-hover);
 }
 
 .page-guide-fab[aria-expanded="true"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--surface);
   border-color: var(--accent);
 }
 
@@ -10581,10 +10619,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 16px;
-  background: var(--bg-surface);
+  background: var(--surface-elevated);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-card-hover);
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
