@@ -67,6 +67,18 @@ const BIAS_LABELS = {
   no_clear_structure: "无清晰结构",
 };
 
+// 2026-07-27: the right-side system cards (摆动结构 / 经典图形 /
+// 成交量·市场轮廓) all show a '已确认' chip on the tile head. Tint
+// that chip with the system's directional bias so users can read the
+// verdict at a glance instead of having to compare the chip against
+// the per-card "偏多 / 偏空" title. Other neutral states (no_clear /
+// uncertain / missing) fall back to chip-neutral.
+function chipToneForDirection(direction) {
+  if (direction === "bullish" || direction === "weak_bullish") return "chip-bullish";
+  if (direction === "bearish" || direction === "weak_bearish") return "chip-bearish";
+  return "chip-neutral";
+}
+
 const STATUS_LABELS = {
   confirmed: "已确认",
   candidate: "候选",
