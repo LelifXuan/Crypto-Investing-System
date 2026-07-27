@@ -73,7 +73,6 @@ const FALLBACK_PALETTE = [
 ];
 const FALLBACK_CHART_IDS = [
   "leverage_pressure_timeline",
-  "exchange_crowding_snapshot",
   "term_structure",
   "strike_surface",
   "key_levels_history",
@@ -864,7 +863,7 @@ function renderHedgePlanner() {
           <fieldset class="btc-hedge-section">
             <legend>标的</legend>
             <label><span>组合类型</span><select name="portfolio_type"><option value="short_grid">空网格</option><option value="long_grid">多网格</option><option value="spot_only">现货</option><option value="neutral_grid">中性网格</option></select></label>
-            <label><span>现价 USD</span><input name="spot_price" type="number" min="1" value="${escapeHtml(String(context.spot_price || 61200))}" required></label>
+            <label><span>现价 USD</span><input name="spot_price" type="number" min="1" step="any" value="${escapeHtml(String(context.spot_price || 61200))}" required></label>
           </fieldset>
           <fieldset class="btc-hedge-section">
             <legend>网格区间</legend>
