@@ -2,6 +2,13 @@
 
 ## v1.8.1 (2026-07-27)
 
+### 形态结构图表延伸到最新 K 线
+
+- **前端**：`app/static/pages/structure.js` 的 `shouldExtendToLatest` 新增 `pattern_region` 与 `region` 角色；`extendOverlayToLatestCandle` 新增 polygon 右角延伸分支，把经典形态矩形 / 通道 / 三角形 / 楔形的多边形右边缘从形态确认时刻拉到最新 K 线 X。
+- **前端**：摆动骨架（zigzag / backbone / live_leg）末端 dot 改为锚定到最新 K 线的 high / low，按"与上一个 dot 距离更近"挑选，使蓝色折线在右侧收束到一个明显的活动 dot，而不是留下一段空白 trendline 外推。
+- **测试**：新增 `tests/test_structure_overlay_extension.py`，4 个静态断言：region 必须延伸、swing_zigzag 必须延伸、pattern_path 不能延伸、polygon 右角必须移动到 latestX。
+- **验证**：`tests/test_structure*.py` 全量 45 passed；Playwright 后端无快照时无法截屏验证视觉，依赖源码 + 静态测试作为回归门禁。
+
 ### BTC 衍生品页证据/保护规划上下两层重设计
 
 - **前端**：把“指标状态与多空证据”与“网格与现货保护规划”从并排改为上下两层（`btc-layout-row--evidence` 与 `btc-layout-row--protection` 各自独占一行），4 张证据子卡改为 `repeat(auto-fit, minmax(220px, 1fr))` + `grid-auto-rows: 1fr` 等高排版。
