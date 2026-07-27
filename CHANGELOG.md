@@ -2,6 +2,12 @@
 
 ## v1.8.1 (2026-07-27)
 
+### 期限矩阵 wall cell 视觉权重分层
+
+- **前端**：`app/static/styles.css` 新增 `.btc-wall-cell` 基础样式 + `.is-effective` / `.is-insufficient` 两个变体。有效墙（`$60,000` 等）字号 16px / ink 色 / 青绿 border-top / 单点·集群百分比用 accent 色；未形成有效墙字号 13px / muted 色 / dashed border / 整体 opacity 0.86，显著弱化。
+- **测试**：`tests/test_btc_maturity_wall_visual_weight.py` 静态守卫 3 个：两类选择器都存在、`<b>` 字号差 ≥ 2px、insufficient 必须有 opacity / dashed / muted 之一。
+- **验证**：`tests/test_btc_derivatives_*` 31 passed。
+
 ### 关键行权价迁移图叠加标准到期日 marker
 
 - **前端**：`app/static/ui/charts.js` 新增 `expiryAnchors` Chart.js 插件；`key_levels_history` 图表配置注入每个标准到期日（4D / 32D / 60D / 151D / 242D / 333D 等）的 marker：垂直虚线 + 3 个圆点（PUT WALL / MAX PAIN / CALL WALL）。让用户在一张图上同时看到 180D 历史 + 期限矩阵 6 行快照。

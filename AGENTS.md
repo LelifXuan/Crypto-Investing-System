@@ -227,6 +227,7 @@ with sync_playwright() as p:
 | 摆动骨架末端点滞后 | 蓝虚线最后 dot 在 07-26 22:00,新 K 线 07-27 08:00 之后没有 dot,trendline 外推只补一个空白点 | 之前只补 1 个外推点,缺少 live swing dot | `extendOverlayToLatestCandle` 在 swing 角色下额外 append 一锚定到最新 K 线 high/low 的 dot,选与上一个 dot 距离更近的一边 |
 | 系统 chip 单一灰色 | 右侧 3 张系统卡"已确认"chip 全部灰色,看不出"已确认的方向" | 状态 chip 默认 `chip-neutral`,未读 system.direction | 派生 `chipToneForDirection()` 把方向映射为 bull/bear/neutral;只动 system 卡片分支,避免影响 alerts / swing dot 内部 tooltip 里的"已确认"文本 |
 | 墙位迁移图与期限矩阵割裂 | 标准到期日期限矩阵（6 行）与关键行权价迁移图（180D 历史折线）割裂在不同视图,用户无法对照 | 图表只展示历史线,标准到期日的 PUT WALL / MAX PAIN / CALL WALL 没在图上呈现 | 新增 `expiryAnchors` Chart.js 插件,`buildMaturityExpiryAnchors()` 从 maturity_ladder 派生垂直虚线 + 3 个圆点;`key_levels_history` `span: 6 → 12` 独占整行 |
+| 期限矩阵 wall cell 视觉权重平等 | `$60,000` 与 `未形成有效墙` 两类信息块占据一样字号 / 颜色,用户扫不到主结论 | 容器只有 `is-effective` / `is-insufficient` class,没有 CSS 区分 | 新增 `.btc-wall-cell` 基础 + `.is-effective`（16px / ink / 青绿 border-top） / `.is-insufficient`（13px / muted / dashed border / opacity 0.86）两个变体;`<b>` 字号差 ≥ 2px,静态守卫 |
 | **架构重组后 6 页报错未发现** | 用户报告 market-events、ashare-etf 等页面报错,但之前声称"全部正常" | **1)** 只用 curl 检查 HTTP 200,未用 Playwright 渲染; **2)** 用户报告 A 页只修 A 页,不检查 B/C/D 页; **3)** 修复后不跑全量 verify_pages | **绝对禁止 curl-only 验证。架构/路由改动后必须 `verify_pages.py` 全量(冷启动+SPA)。修复任何一页后必须重跑全量。** |
 
 ### 六.4 修复后验证规则（强制）
