@@ -2,6 +2,14 @@
 
 ## v1.8.1 (2026-07-27)
 
+### BTC 衍生品页证据/保护规划上下两层重设计
+
+- **前端**：把“指标状态与多空证据”与“网格与现货保护规划”从并排改为上下两层（`btc-layout-row--evidence` 与 `btc-layout-row--protection` 各自独占一行），4 张证据子卡改为 `repeat(auto-fit, minmax(220px, 1fr))` + `grid-auto-rows: 1fr` 等高排版。
+- **设计**：新增 `.btc-confidence-chip` 三档配色（高/中/低）与 `.btc-tone-chip`（bullish/bearish/neutral）；保护规划表单拆 3 段（标的 / 网格区间 / 风控参数）使用 fieldset + legend；按钮带 SVG 箭头，提示文字置于按钮下方。
+- **修复**：删除原 `btc-hedge-result` 容器在无数据时输出的小字溢出（`min-height: 220px` 配合右浮小字）改为上下排版与表单同列。
+- **测试**：`tests/test_btc_derivatives_frontend_static.py` 更新 CSS class 引用 `.btc-hedge-grid` → `.btc-hedge-form` / `.btc-hedge-section`。
+- **验证**：Playwright 实测 4 张证据子卡等高 221.2px、3 段 fieldset、8 个字段、按钮 + 提示文字、0 console error / 0 page error。
+
 ### 市场状态卡冷静专业化
 
 - **前端**：技术指标页 `.status-mode-badge` 重新设计，从大面积琥珀色警告框改为冷白半透明、三段式（`.regime-icon` / `.regime-info` / `.regime-action`）的冷静专业风格。左侧 36px 圆角方形图标使用内嵌 SVG（range: 趋势柱线 / transition: 折线）+ 青绿色调；中部眉题 `市场状态 · RANGE|TRANSITION` + 主结论；右侧圆角幽灵按钮，内嵌 SVG 箭头替代文本字符 `→`，hover 时箭头右移。
