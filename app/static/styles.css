@@ -8900,7 +8900,15 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .strategy-v2-grid.five {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* 2026-07-25: bumped from repeat(5, minmax(0, 1fr)) to repeat(auto-fit,
+     minmax(280px, 1fr)) so the 6 market-operation dimension cards always
+     fit in either a 3×2 or 2×3 grid. The previous fixed-5 layout forced
+     a 5×1 row at most viewports — at 1280px panel-width that means
+     ~185px per card, which cramped the title row's flex container and
+     broke 2-character Chinese words ('看多' rendered as 看\n多). The
+     responsive floor of 280px lets each card breathe on wider viewports
+     and gracefully collapses to 2 columns on narrower ones. */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .strategy-v2-grid.evidence {
@@ -8919,6 +8927,61 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .strategy-v2-card h3,
 .strategy-evidence-item h3 {
   margin: 8px 0;
+}
+
+/* 2026-07-25: market-operation dimension card. Rendered as a <details>
+   whose <summary> contains an eyebrow, a title row (direction + status),
+   a meaning paragraph, and a 'click to expand' small. The previous flex
+   layout (`flex` + `justify-content: space-between`) crammed the
+   2-character Chinese direction ('看多') and the long status string
+   ('数据可用 · 置信 70%') onto overlapping lines inside a 200px card.
+   We stack the title row vertically so each piece is on its own line. */
+.strategy-operation-card {
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.strategy-operation-card > summary {
+  min-height: 190px;
+  padding: 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.strategy-operation-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.strategy-operation-card > summary small {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.strategy-operation-card-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 8px 0 12px;
+}
+
+.strategy-operation-card-title strong {
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.strategy-operation-card-title span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  /* 2026-07-25: when the status + confidence string is long enough to
+     wrap inside a 200px-wide card, drop the hyphenation and use natural
+     word breaks so '看多 / 数据可用 · 置信 70%' stays legible on one or
+     two lines instead of single-character-per-line. */
+  overflow-wrap: anywhere;
 }
 
 .strategy-v2-card p,
