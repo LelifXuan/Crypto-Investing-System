@@ -2,6 +2,21 @@
 
 ## v1.8.1 (2026-07-27)
 
+### 关键行权价迁移图叠加标准到期日 marker
+
+- **前端**：`app/static/ui/charts.js` 新增 `expiryAnchors` Chart.js 插件；`key_levels_history` 图表配置注入每个标准到期日（4D / 32D / 60D / 151D / 242D / 333D 等）的 marker：垂直虚线 + 3 个圆点（PUT WALL / MAX PAIN / CALL WALL）。让用户在一张图上同时看到 180D 历史 + 期限矩阵 6 行快照。
+- **前端**：`app/static/pages/btc_derivatives.js` 新增 `buildMaturityExpiryAnchors(labels)`，从 `dashboard.options.maturity_ladder` 派生 anchor 列表，按 chart x 轴格式（epoch ms / ISO）自适应转换到期日。
+- **后端**：`app/services/btc_derivatives/chart_builder.py` 把 `key_levels_history` 的 `span: 6` 改为 `span: 12`，使其在期权结构段单独占满整行，避免和 `options_risk_premium_history` 挤在同一半。
+- **测试**：`tests/test_btc_derivatives_chart_expiry_anchors.py` 静态守卫 3 个：插件存在、`maturity_ladder` 被读、`key_levels_history` 配置使用 overlay。
+- **验证**：`tests/test_btc_derivatives_*` 38 passed。
+
+### BTC 衍生品证据大卡片 4×2 统一网格
+
+- **前端**：`app/static/pages/btc_derivatives.js` 把"衍生品状态"4 张子项和"推理"4 张子项合并到同一个 `.btc-evidence-grid`（4 列 × 2 行，`grid-auto-rows: 1fr`），共享 `.btc-evidence-tile` 容器，消除原本两行之间的大段空白。
+- **设计**：删除原 `.btc-decision-card` 旧包装；衍生品状态子项现在使用与推理子项完全一致的容器与 chip（kind chip + 置信度 chip + 标题 + 影响），并通过新增的 `judgementTone()` 把 `stateLabel` 映射到 bull/bear/neutral 配色。
+- **测试**：`tests/test_btc_evidence_grid_unified.py` 静态守卫 4 个：使用统一网格、衍生品子项使用 `.btc-evidence-tile`、CSS 包含 `grid-auto-rows: 1fr` + `repeat(4`、CSS 定义 `.btc-evidence-tile`。
+- **验证**：Playwright 实测 8 张子卡等高 304.3px，证据层高度从 ~1100px 降到 750px（-32%），0 console error / 0 page error。
+
 ### 结构图"已确认"chip 方向色
 
 - **前端**：`app/static/pages/structure.js` 新增 `chipToneForDirection()` 工具函数，把系统方向（`bullish` / `weak_bullish` / `bearish` / `weak_bearish` / 其它）映射到现有 `.chip-bullish` / `.chip-bearish` / `.chip-neutral` CSS class。右侧 system 卡片（摆动结构 / 经典图形 / 成交量·市场轮廓）标题区"已确认"chip 改为随方向着色。
