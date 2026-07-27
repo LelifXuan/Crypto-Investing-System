@@ -7869,7 +7869,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   display: block;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   white-space: nowrap;
 }
 
@@ -8336,12 +8336,12 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .btc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .btc-table th,
 .btc-table td {
-  padding: 11px 10px;
+  padding: 12px 11px;
   border-bottom: 1px solid var(--border);
   text-align: right;
   white-space: nowrap;
