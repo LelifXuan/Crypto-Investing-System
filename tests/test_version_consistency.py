@@ -10,9 +10,9 @@ from app import __version__  # noqa: I001
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_app_version_is_1_8_0() -> None:
-    """Source of truth: app.__version__ must be 1.8.0."""
-    assert __version__ == "1.8.0"
+def test_app_version_is_1_8_1() -> None:
+    """Source of truth: app.__version__ must be 1.8.1."""
+    assert __version__ == "1.8.1"
 
 
 def test_pyproject_version_matches_app_version() -> None:

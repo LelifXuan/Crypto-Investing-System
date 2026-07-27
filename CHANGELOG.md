@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v1.8.1 (2026-07-27)
+
+### 市场状态卡冷静专业化
+
+- **前端**：技术指标页 `.status-mode-badge` 重新设计，从大面积琥珀色警告框改为冷白半透明、三段式（`.regime-icon` / `.regime-info` / `.regime-action`）的冷静专业风格。左侧 36px 圆角方形图标使用内嵌 SVG（range: 趋势柱线 / transition: 折线）+ 青绿色调；中部眉题 `市场状态 · RANGE|TRANSITION` + 主结论；右侧圆角幽灵按钮，内嵌 SVG 箭头替代文本字符 `→`，hover 时箭头右移。
+- **设计**：删除 emoji 风格不一致（📊 / ⚡），统一 SVG；删除文本下划线和黄色警告色；保留 RANGE / TRANSITION 模式结构，仅通过图标和强调色区分。
+- **响应式**：720px 以下允许操作按钮换行到下一行并右对齐。
+- **测试**：`tests/test_analysis_mode_badge.py` 新增 `test_mode_badge_markup_has_no_emoji_or_text_arrow` 静态断言，约束新结构。
+- **验证**：Playwright 实测 cold-load 0 错误、状态卡 bbox `{w:1368, h:64}`、hover 态箭头右移生效。
+
 ## v1.8.0 (2026-07-23)
 
 ### 知识百科 chip 压缩

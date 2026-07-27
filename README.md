@@ -2,9 +2,15 @@
 
 基于 `FastAPI + SQLite + Gate.io` 构建的 Windows 本地加密货币研究与交易管理应用。
 
-当前版本：**V1.8.0**（详见下方 [Release Timeline](#release-timeline)）。
+当前版本：**V1.8.1**（详见下方 [Release Timeline](#release-timeline)）。
 
 ## Release Timeline
+
+### V1.8.1 — 市场状态卡冷静专业化
+
+- **前端**：技术指标页 `.status-mode-badge` 重新设计为三段式冷白卡片（图标 / 信息 / 操作），删除 emoji 与文本箭头，改为内嵌 SVG 与圆角幽灵按钮。
+- **测试**：`tests/test_analysis_mode_badge.py` 新增静态断言，约束新结构和禁止 emoji 回归。
+- **验证**：Playwright 冷启动 0 错误，状态卡高度 64px，hover 态箭头右移生效。
 
 ### V1.8.0 — 知识百科 chip 压缩 + 版本号统一
 

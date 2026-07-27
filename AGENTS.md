@@ -221,6 +221,7 @@ with sync_playwright() as p:
 | 知识百科 5 bug | unmount 反向 render、hashchange 泄漏、isMounted 错位、过滤后点击无效、80+ 词条同步阻塞 | 知识百科是「架构」级页面但只跑了 `node --check` | 知识百科改动 = 架构,必须实例检查 |
 | 横栏点击 lag 100-300ms | click handler 同步 walk boot() 阻塞主线程 | 没有骨架占位,`node --check` 完全无法发现 | 实测耗时,verify_pages.py 的 SPA 切换测试 |
 | template `<script defer>` 阻塞 DCL | headless 验证时 market-analysis 30s 都拿不到 HTML | Chart.js 远程 CDN 慢时 `defer` 仍阻塞 DOMContentLoaded | 模板不引用外部 CDN,统一走 main.js 的 `loadScriptOnce` |
+| 状态卡 emoji/警告色过载 | `📊` / `⚡` 跨平台渲染不一致,大面积琥珀色背景像错误提示 | 直接借用 emoji 和告警色,未和现有设计语言(冷白半透明、青绿色)对齐 | 视觉组件统一使用内嵌 SVG;颜色仅在 RANGE/TRANSITION 模式用低饱和色微调;静态断言禁止 emoji/文本箭头 |
 | **架构重组后 6 页报错未发现** | 用户报告 market-events、ashare-etf 等页面报错,但之前声称"全部正常" | **1)** 只用 curl 检查 HTTP 200,未用 Playwright 渲染; **2)** 用户报告 A 页只修 A 页,不检查 B/C/D 页; **3)** 修复后不跑全量 verify_pages | **绝对禁止 curl-only 验证。架构/路由改动后必须 `verify_pages.py` 全量(冷启动+SPA)。修复任何一页后必须重跑全量。** |
 
 ### 六.4 修复后验证规则（强制）
