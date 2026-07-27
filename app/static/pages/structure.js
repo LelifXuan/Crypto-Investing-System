@@ -371,6 +371,22 @@ function shouldExtendToLatest(item, role) {
   if (meta.extend_to_latest === false) return false;
   if (meta.extend_to_latest === true) return true;
   const levelRoles = new Set(["support", "resistance", "neckline", "profile_poc", "profile_vah", "profile_val"]);
+  // 2026-07-25: swing skeleton (zigzag / backbone / live leg) must
+  // ALWAYS extend to the latest candle. Without this the dashed blue
+  // line stops at the last confirmed swing high/low and leaves a
+  // multi-day gap between the path and the live price action — the
+  // user reads that as 'swing detector broken'. V1.7.x dropped
+  // swing extension by accident when narrowing the levelRoles set;
+  // this restores it without re-introducing classic-pattern-path
+  // extension (which we still want to stop at breakIndex).
+  if (
+    role === "swing_zigzag"
+    || role === "swing_backbone"
+    || role === "swing_live_leg"
+    || item.kind === "swing_zigzag"
+    || item.kind === "swing_backbone"
+    || item.kind === "swing_live_leg"
+  ) return true;
   return levelRoles.has(role) || levelRoles.has(item.kind);
 }
 
@@ -669,6 +685,19 @@ function currentPriceGuide(snapshot, candles) {
     };
   }
 
+  // 2026-07-25: channel / rectangle / triangle / wedge all expose
+  // `breakout_confirm` and `breakdown_confirm` levels, but the
+  // semantic of those levels differs across pattern types. For
+  // CHANNEL specifically, breakout_confirm IS the upper boundary
+  // line — `close > upper boundary` does NOT mean 'broke out of the
+  // channel', it just means 'sat at the top of the channel'. The
+  // snapshot's overall.text_decision.resolved_state already encodes
+  // whether the close actually triggered a confirmed breakout. We
+  // trust the backend verdict here and only fall back to the raw
+  // level check when the snapshot verdict is missing.
+  const textDecision = snapshot?.overall?.text_decision || {};
+  const resolved = textDecision.resolved_state || null;
+
   const breakout = finiteLevel(levels.breakout_confirm);
   const breakdown = finiteLevel(levels.breakdown_confirm);
   const invalidation = finiteLevel(levels.invalidation);
@@ -688,7 +717,10 @@ function currentPriceGuide(snapshot, candles) {
       message: "最新收盘价已经触发经典图形失效位，旧形态不再作为入场依据；综合结论仍会参考摆动结构与市场轮廓。",
     };
   }
-  if (Number.isFinite(breakout) && close > breakout) {
+  // Only treat `close > breakout_confirm` as a true breakout if the
+  // backend agrees (resolved_state includes 'breakout') OR the
+  // backend didn't pass a resolved_state (legacy snapshots).
+  if (Number.isFinite(breakout) && close > breakout && (resolved === null || /breakout/i.test(resolved))) {
     return {
       state: "breakout",
       label: "经典图形上破",
@@ -698,7 +730,7 @@ function currentPriceGuide(snapshot, candles) {
       message: "最新收盘价站上经典图形突破确认位，后续重点观察回踩是否守住突破位；这不等同于综合系统已经转强。",
     };
   }
-  if (Number.isFinite(breakdown) && close < breakdown) {
+  if (Number.isFinite(breakdown) && close < breakdown && (resolved === null || /breakdown/i.test(resolved))) {
     return {
       state: "breakdown",
       label: "经典图形下破",
