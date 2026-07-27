@@ -19,7 +19,7 @@ CHART_LAYOUT = {
         "section": "summary",
     },
     "key_levels_history": {
-        "span": 6,
+        "span": 12,
         "density": "standard",
         "section": "options",
     },

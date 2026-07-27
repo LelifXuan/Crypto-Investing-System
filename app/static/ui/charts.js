@@ -2,6 +2,7 @@ const chartRegistry = new Map();
 let candlestickPluginRegistered = false;
 let adaptiveAxisPluginRegistered = false;
 let referenceLinePluginRegistered = false;
+let expiryAnchorsPluginRegistered = false;
 
 function finiteChartNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -346,6 +347,72 @@ const referenceLines = {
   },
 };
 
+// 2026-07-27: standard-expiry overlay for the wall-migration chart.
+// Each row of the maturity_ladder (maturity_band + expiry ts + put_wall /
+// max_pain / call_wall) becomes a vertical dashed line on the chart
+// plus three coloured dots placed at the corresponding price levels.
+// This lets users cross-reference the historical wall-migration lines
+// with the per-expiry rows in the standard-expiry matrix without
+// bouncing between two views.
+const expiryAnchors = {
+  id: "expiryAnchors",
+  afterDatasetsDraw(chart) {
+    const anchors = chart.options.plugins?.expiryAnchors?.items || [];
+    if (!anchors.length) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    if (!xScale || !yScale) return;
+    const xValues = chart.data.labels || [];
+    const xMin = xScale.min ?? (xValues.length ? Number(xValues[0]) : null);
+    const xMax = xScale.max ?? (xValues.length ? Number(xValues[xValues.length - 1]) : null);
+    anchors.forEach((anchor) => {
+      const ts = Number(anchor.ts ?? anchor.expiry_ts);
+      if (!Number.isFinite(ts)) return;
+      if (Number.isFinite(xMin) && ts < xMin) return;
+      if (Number.isFinite(xMax) && ts > xMax) return;
+      const x = xScale.getPixelForValue(ts);
+      if (!Number.isFinite(x)) return;
+      // Vertical dashed line.
+      ctx.save();
+      ctx.strokeStyle = "rgba(83, 99, 108, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Top-of-chart label, e.g. "60D".
+      if (anchor.label) {
+        ctx.fillStyle = "rgba(48, 84, 130, 0.85)";
+        ctx.font = "600 10px IBM Plex Sans, Noto Sans SC, sans-serif";
+        ctx.fillText(String(anchor.label), x + 4, chartArea.top + 12);
+      }
+      // Three dots: put_wall / max_pain / call_wall.
+      const dotSpec = [
+        { key: "put_wall", color: "#c2725a" },
+        { key: "max_pain", color: "#5a6a7c" },
+        { key: "call_wall", color: "#8eb098" },
+      ];
+      dotSpec.forEach(({ key, color }) => {
+        const v = Number(anchor[key]);
+        if (!Number.isFinite(v)) return;
+        const y = yScale.getPixelForValue(v);
+        if (!Number.isFinite(y)) return;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(x, y, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+      ctx.restore();
+    });
+  },
+};
+
 function renderChartError(canvas, message, detail = "") {
   const host = canvas?.closest(".chart-wrap");
   if (!host) return;
@@ -509,6 +576,10 @@ export function renderChart(key, canvas, config) {
       window.Chart.register(referenceLines);
       referenceLinePluginRegistered = true;
     }
+    if (!expiryAnchorsPluginRegistered) {
+      window.Chart.register(expiryAnchors);
+      expiryAnchorsPluginRegistered = true;
+    }
     const existing = chartRegistry.get(key);
     const datasets = sanitizeDatasets(config.data?.datasets);
     const data = { ...(config.data || {}), datasets };
@@ -547,6 +618,13 @@ export function renderChart(key, canvas, config) {
       existing.options = nextOptions;
       existing.update();
       return existing;
+    }
+    // 2026-07-27: forward expiry-anchor items (from
+    // buildMaturityExpiryAnchors) into chart options so the
+    // expiryAnchors plugin can render them on the canvas.
+    if (Array.isArray(config.expiryAnchors) && config.expiryAnchors.length) {
+      nextOptions.plugins = nextOptions.plugins || {};
+      nextOptions.plugins.expiryAnchors = { items: config.expiryAnchors };
     }
     destroyChart(key);
     const chart = new window.Chart(canvas, {

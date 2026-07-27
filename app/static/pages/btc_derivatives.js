@@ -636,9 +636,17 @@ function renderMaturityWall(row, side) {
   const strength = row[`${prefix}_strength`];
   const quality = wallQualityLabel(row[`${prefix}_quality`]);
   const reason = row[`${prefix}_reason`] || "尚未形成可审计的有效墙结论。";
+  // Prefer trade_meaning from interpretation layer over raw reason
+  const interpretation = dashboard?.options?.interpretation;
+  const wallEntry = interpretation?.wall_matrix?.find(function(w) {
+    return w.expiry === row.expiry && w.side === side.toUpperCase();
+  });
+  const tradeMeaning = wallEntry?.trade_meaning || "";
+  const tradingInstruction = wallEntry?.trading_instruction || "";
+  const title = tradeMeaning ? (tradeMeaning + (tradingInstruction ? "\n" + tradingInstruction : "")) : reason;
   if (value !== null && value !== undefined) {
     return `
-      <div class="btc-wall-cell is-effective" title="${escapeHtml(reason)}">
+      <div class="btc-wall-cell is-effective" title="${escapeHtml(title)}">
         <b>${money(value)}</b>
         <small>${escapeHtml(quality)} · 强度 ${number(strength, 0)}/100</small>
         <small>单点 ${percent(row[`${prefix}_concentration`])} · 集群 ${percent(row[`${prefix}_cluster_concentration`])}</small>
@@ -646,11 +654,57 @@ function renderMaturityWall(row, side) {
     `;
   }
   return `
-    <div class="btc-wall-cell is-insufficient" title="${escapeHtml(reason)}">
+    <div class="btc-wall-cell is-insufficient" title="${escapeHtml(title)}">
       <b>未形成有效墙</b>
-      <small>${escapeHtml(quality)}${candidate !== null && candidate !== undefined ? ` · 候选 ${money(candidate)}` : ""}</small>
+      <small>${tradeMeaning ? escapeHtml(tradeMeaning) : (escapeHtml(quality) + (candidate !== null && candidate !== undefined ? ' · 候选 ' + money(candidate) : ''))}</small>
       <small>原始最大 OI：${raw !== null && raw !== undefined ? money(raw) : "—"}</small>
     </div>
+  `;
+}
+
+function renderWallInterpretation() {
+  const interp = dashboard?.options?.interpretation;
+  if (!interp) return "";
+  const syn = interp.synthesis || {};
+  const narr = interp.narrative || {};
+  const wallRoles = {
+    RESISTANCE: "压力区", SUPPORT: "支撑区", PINNING_MAGNET: "到期钉住",
+    BREAKOUT_TRIGGER: "突破触发", PROTECTION_ZONE: "保护区", TARGET_ZONE: "目标区",
+    OBSERVATION_CLUSTER: "观察区", NONE: "无"
+  };
+  const matrix = interp.wall_matrix || [];
+  if (!matrix.length) return "";
+  return `
+    <section class="card btc-interpretation">
+      <div class="btc-section-heading">
+        <div>
+          <p class="eyebrow">WALL INTERPRETATION</p>
+          <h2>期权墙解释</h2>
+        </div>
+        <p>${escapeHtml(narr.headline || syn.summary || "")}</p>
+      </div>
+      <div class="btc-interp-grid">
+        ${matrix.map(function(w) {
+          return `
+            <div class="btc-interp-card" data-status="${w.status || ''}" data-role="${w.role || ''}">
+              <div class="btc-interp-header">
+                <span class="btc-interp-horizon">${escapeHtml(w.horizon || '—')}</span>
+                <span class="btc-interp-side ${(w.side||'').toLowerCase()}">${w.side === 'CALL' ? 'Call' : 'Put'}</span>
+                <span class="btc-interp-role">${wallRoles[w.role] || w.role || '—'}</span>
+              </div>
+              ${w.strike != null ? '<div class="btc-interp-strike">' + money(w.strike) + '</div>' : '<div class="btc-interp-strike">—</div>'}
+              <div class="btc-interp-meaning">${escapeHtml(w.trade_meaning || '')}</div>
+              <div class="btc-interp-instruction">${escapeHtml(w.trading_instruction || '')}</div>
+              <div class="btc-interp-meta">
+                <span>置信 ${escapeHtml(w.confidence || '—')}</span>
+                <span>评分 ${w.quality_score != null ? w.quality_score : '—'}</span>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      ${syn.trading_instruction ? '<p class="btc-interp-synopsis">' + escapeHtml(syn.trading_instruction) + '</p>' : ''}
+    </section>
   `;
 }
 
@@ -967,6 +1021,7 @@ function renderPageShell(banner = "", freshness = "") {
         ${renderSummarySection()}
       </div>
       ${renderMaturityLadder()}
+      ${renderWallInterpretation()}
       <div class="btc-layout-row btc-layout-row--charts">
         ${renderChartSections()}
       </div>
@@ -1100,6 +1155,54 @@ function renderAggregateOiSingleChart() {
   );
 }
 
+// 2026-07-27: build the standard-expiry anchor list that the wall-
+// migration chart uses to overlay per-row markers on the same canvas.
+// Each row of maturity_ladder becomes one anchor with a vertical
+// dashed line and three dots (put_wall / max_pain / call_wall). The
+// anchor's x value matches the chart's x-axis labels: if the labels
+// are ISO strings we convert the row.expiry date to a comparable
+// timestamp; if they are epoch ms we do the same conversion.
+function buildMaturityExpiryAnchors(chartLabels) {
+  const rows = dashboard?.options?.maturity_ladder || [];
+  if (!rows.length || !Array.isArray(chartLabels) || !chartLabels.length) return [];
+  const labelSample = chartLabels.find((value) => value !== null && value !== undefined && value !== "");
+  const labelsAreEpochMs = typeof labelSample === "number" && labelSample > 1e11;
+  const labelsAreIso = typeof labelSample === "string" && /\d{4}-\d{2}-\d{2}/.test(labelSample);
+  return rows
+    .map((row) => {
+      const ts = parseMaturityExpiryTs(row.expiry, labelsAreEpochMs);
+      if (!Number.isFinite(ts)) return null;
+      return {
+        ts,
+        label: row.dte != null ? `${row.dte}D` : String(row.expiry || ""),
+        put_wall: row.put_wall,
+        max_pain: row.max_pain,
+        call_wall: row.call_wall,
+      };
+    })
+    .filter(Boolean);
+}
+
+function parseMaturityExpiryTs(expiry, labelsAreEpochMs) {
+  if (!expiry) return NaN;
+  const text = String(expiry);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return NaN;
+  const [, y, m, d] = match;
+  const utc = Date.UTC(Number(y), Number(m) - 1, Number(d));
+  if (!labelsAreEpochMs) {
+    return labelsAreIsoToUtc(text);
+  }
+  return utc;
+}
+
+function labelsAreIsoToUtc(text) {
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return NaN;
+  const [, y, m, d] = match;
+  return `${y}-${m}-${d}T00:00:00Z`;
+}
+
 function renderSingleChart(chartId) {
   const chart = allCharts()[chartId];
   if (!chart || chart.status !== "ok" || Number(chart.metadata?.data_points || 0) <= 0) return;
@@ -1157,6 +1260,7 @@ function renderSingleChart(chartId) {
     axes: chart.axes || {},
     annotations: chart.annotations || [],
     data: { labels: expanded.labels, datasets },
+    expiryAnchors: chartId === "key_levels_history" ? buildMaturityExpiryAnchors(expanded.labels) : [],
     options: {
       scales: expanded.labels.length === 1
         ? { x: { offset: true } }
