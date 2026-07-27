@@ -7965,6 +7965,82 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 18px;
 }
 
+.btc-section-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 420px;
+  text-align: right;
+}
+
+.btc-section-meta p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.btc-confidence-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+
+.btc-confidence-chip[data-tone="bullish"] {
+  background: rgba(15, 118, 110, 0.10);
+  border-color: rgba(15, 118, 110, 0.30);
+  color: var(--accent-strong);
+}
+
+.btc-confidence-chip[data-tone="bearish"] {
+  background: rgba(159, 18, 57, 0.10);
+  border-color: rgba(159, 18, 57, 0.28);
+  color: #9f1239;
+}
+
+.btc-confidence-chip[data-tone="neutral"] {
+  background: rgba(120, 110, 95, 0.10);
+  border-color: rgba(120, 110, 95, 0.28);
+  color: #5b5142;
+}
+
+.btc-tone-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--accent-strong);
+  border: 1px solid rgba(15, 118, 110, 0.18);
+}
+
+.btc-tone-chip[data-tone="bullish"] {
+  background: rgba(15, 118, 110, 0.10);
+  border-color: rgba(15, 118, 110, 0.30);
+  color: var(--accent-strong);
+}
+
+.btc-tone-chip[data-tone="bearish"] {
+  background: rgba(159, 18, 57, 0.10);
+  border-color: rgba(159, 18, 57, 0.30);
+  color: #9f1239;
+}
+
+.btc-tone-chip[data-tone="neutral"] {
+  background: rgba(120, 110, 95, 0.10);
+  border-color: rgba(120, 110, 95, 0.30);
+  color: #5b5142;
+}
+
 .btc-card-kicker span,
 .btc-inline-state span {
   color: var(--muted);
@@ -8156,7 +8232,12 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-layout-row--evidence {
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.btc-layout-row--protection {
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -8385,15 +8466,27 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .btc-inference-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
+  grid-auto-rows: 1fr;
 }
 
 .btc-inference-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 16px;
   border: 1px solid rgba(15, 118, 110, 0.14);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.52);
+}
+
+.btc-inference-grid article header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .btc-inference-grid article > span {
@@ -8403,16 +8496,31 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-inference-grid h3 {
-  margin: 9px 0 14px;
-  font-size: 17px;
+  margin: 4px 0 6px;
+  font-size: 16px;
   line-height: 1.45;
 }
 
 .btc-inference-grid p {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--muted-strong);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.btc-inference-grid p strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btc-inference-basis {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .btc-inference-basis {
@@ -8469,43 +8577,124 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-hedge-layout {
-  grid-template-columns: minmax(420px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.btc-hedge-grid {
+.btc-hedge-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 22px;
+}
+
+.btc-hedge-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed rgba(15, 118, 110, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.45);
 }
 
-.btc-hedge-grid label {
+.btc-hedge-section legend {
+  grid-column: 1 / -1;
+  padding: 0 6px;
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.btc-hedge-form label {
   display: grid;
-  gap: 7px;
+  gap: 6px;
+  min-width: 0;
 }
 
-.btc-hedge-grid label span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 750;
+.btc-hedge-form label span {
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-.btc-hedge-grid input,
-.btc-hedge-grid select {
+.btc-hedge-form input,
+.btc-hedge-form select {
   width: 100%;
-  padding: 11px 12px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.82);
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
   color: var(--ink);
   font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.btc-hedge-grid .button {
-  grid-column: 1 / -1;
+.btc-hedge-form input:focus,
+.btc-hedge-form select:focus {
+  outline: none;
+  border-color: rgba(15, 118, 110, 0.55);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.btc-hedge-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 0 4px;
+}
+
+.btc-hedge-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+}
+
+.btc-hedge-actions .button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btc-hedge-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .btc-hedge-result {
-  min-height: 220px;
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+}
+
+.btc-hedge-result h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.btc-hedge-result--empty {
+  background: rgba(255, 251, 245, 0.62);
+  border-style: dashed;
+}
+
+.btc-hedge-result--empty h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--muted-strong);
+}
+
+@media (max-width: 720px) {
+  .btc-hedge-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .btc-plan-metrics {
@@ -8698,7 +8887,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   .btc-wall-signal-grid,
   .btc-wall-signal-context,
   .btc-quality-grid,
-  .btc-hedge-grid,
+  .btc-hedge-form,
+  .btc-hedge-section,
   .btc-plan-metrics,
   .btc-details-grid,
   .btc-chart-toolbar {
@@ -8717,8 +8907,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
     justify-content: flex-start;
   }
 
-  .btc-hedge-grid .button {
-    grid-column: auto;
+  .btc-hedge-actions {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -52,18 +52,16 @@ def test_internal_snapshot_state_codes_are_mapped_to_chinese_copy() -> None:
     assert "dashboard?.data_quality?.mode || \"fixture\"" not in source
 
 
-def test_page_renders_six_chart_layout_from_backend_metadata() -> None:
+def test_page_renders_current_chart_layout_from_backend_metadata() -> None:
     # 2026-07-23: the per-venue cross-section chart was replaced by a
     # per-venue HTML table + a standalone 90D aggregate-OI line chart.
-    # The 6th layout slot is now the table (renderFuturesTable) rather
-    # than a <canvas>. We still assert the 5 remaining chart ids are
-    # referenced in the page JS, and add the new aggregate_oi_90d id.
+    # The term-structure chart was later removed from the page. Keep the
+    # remaining chart ids and the aggregate-OI auxiliary renderer locked.
     source = PAGE.read_text(encoding="utf-8")
 
     for chart_id in {
         "leverage_pressure_timeline",
         "aggregate_oi_90d",
-        "term_structure",
         "strike_surface",
         "key_levels_history",
         "options_risk_premium_history",
@@ -318,7 +316,8 @@ def test_page_has_scoped_responsive_styles() -> None:
         assert f".btc-card-span-{span}" in styles
     for density in {"hero", "surface", "standard", "compact"}:
         assert f".btc-chart-density-{density}" in styles
-    assert ".btc-hedge-grid" in styles
+    assert ".btc-hedge-form" in styles
+    assert ".btc-hedge-section" in styles
     assert ".btc-details-drawer" in styles
     assert ".btc-chart-insight" in styles
     assert ".btc-level-title .tooltip-icon" in styles
@@ -380,7 +379,8 @@ def test_btc_derivatives_page_auto_refreshes_via_interval() -> None:
 
     pause_block = _extract_block("pause")
     assert "clearAutoRefresh" in pause_block, (
-        "pause() must call clearAutoRefresh() so the timer doesn't fire while the user is on another page"
+        "pause() must call clearAutoRefresh() so the timer doesn't fire while the "
+        "user is on another page"
     )
     resume_block = _extract_block("resume")
     assert "scheduleAutoRefresh" in resume_block, (
@@ -399,7 +399,8 @@ def test_funding_z_legend_hide_toggles_both_positive_and_negative_datasets() -> 
     source = PAGE.read_text(encoding="utf-8")
 
     assert "_fundingZSibling" in source, (
-        "Funding Z datasets must carry _fundingZSibling metadata so the legend hook can flip them together"
+        "Funding Z datasets must carry _fundingZSibling metadata so the legend hook "
+        "can flip them together"
     )
     assert "legend" in source and "onClick" in source, (
         "renderSingleChart must wire a plugins.legend.onClick hook to coordinate the toggle"
@@ -414,7 +415,8 @@ def test_funding_z_legend_hide_toggles_both_positive_and_negative_datasets() -> 
     # Confirm the hook applies for the Funding Z sibling case but
     # defaults behavior is preserved for everything else.
     assert "_fundingZSibling" in source and "isDatasetVisible" in source, (
-        "legend.onClick must check both isDatasetVisible (default toggle path) and _fundingZSibling metadata"
+        "legend.onClick must check both isDatasetVisible (default toggle path) and "
+        "_fundingZSibling metadata"
     )
 
 
@@ -444,3 +446,21 @@ def test_btc_derivatives_expiry_mode_dropdown_only_shows_fixed_expiry() -> None:
     ), (
         "backend should still accept both expiry_mode values for backward compat"
     )
+
+
+def test_option_wall_table_distinguishes_effective_wall_from_raw_max_oi() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "renderMaturityWall" in source
+    assert "有效 Put Wall" in source
+    assert "有效 Call Wall" in source
+    assert "未形成有效墙" in source
+    assert "原始最大 OI" in source
+    assert "期限 OI" in source
+    assert "8D–45D Delta" in source
+
+
+def test_empty_chart_sections_do_not_leave_orphan_titles() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert 'if (!auxParts && !chartParts) return "";' in source

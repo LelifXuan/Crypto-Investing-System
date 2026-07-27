@@ -73,6 +73,7 @@ const FALLBACK_PALETTE = [
 ];
 const FALLBACK_CHART_IDS = [
   "leverage_pressure_timeline",
+  "exchange_crowding_snapshot",
   "term_structure",
   "strike_surface",
   "key_levels_history",
@@ -181,6 +182,12 @@ function syncFiltersFromDashboard() {
 
 function confidenceLabel(value) {
   return { high: "高置信度", medium: "中等置信度", low: "低置信度" }[value] || "低置信度";
+}
+
+function confidenceChip(value) {
+  const label = confidenceLabel(value);
+  const tone = value === "high" ? "bullish" : value === "low" ? "bearish" : "neutral";
+  return `<span class="btc-confidence-chip" data-tone="${tone}">${escapeHtml(label)}</span>`;
 }
 
 function heroMarketVerdict() {
@@ -341,25 +348,19 @@ function renderIndicatorJudgements() {
   const items = dashboard?.indicator_judgements || [];
   if (!items.length) return "";
   return `
-    <section class="card btc-indicator-semantics">
-      <div class="btc-section-heading">
-        <div><p class="eyebrow">INDICATOR ROLES</p><h2>指标状态与交易作用</h2></div>
-        <p>拥挤度、波动和关键价位不会被直接解释为多空方向。</p>
-      </div>
-      <div class="btc-decision-grid">
-        ${items.map((item) => {
-          const meta = judgementMeta(item);
-          return `
-            <article class="btc-decision-card">
-              <span>${escapeHtml(meta.axisLabel)}</span>
-              <strong>${escapeHtml(meta.stateLabel)}</strong>
-              <p>${escapeHtml(item.reason || "等待指标更新。")}</p>
-              <small>${escapeHtml(`${meta.effectLabel} · ${meta.dataLabel}`)}</small>
-            </article>
-          `;
-        }).join("")}
-      </div>
-    </section>
+    <div class="btc-decision-grid">
+      ${items.map((item) => {
+        const meta = judgementMeta(item);
+        return `
+          <article class="btc-decision-card">
+            <span>${escapeHtml(meta.axisLabel)}</span>
+            <strong>${escapeHtml(meta.stateLabel)}</strong>
+            <p>${escapeHtml(item.reason || "等待指标更新。")}</p>
+            <small>${escapeHtml(`${meta.effectLabel} · ${meta.dataLabel}`)}</small>
+          </article>
+        `;
+      }).join("")}
+    </div>
   `;
 }
 
@@ -370,7 +371,6 @@ function inferenceBlock(id) {
 function chartInsight(chartId) {
   const map = {
     leverage_pressure_timeline: "杠杆方向",
-    term_structure: "期限结构",
     strike_surface: "行权价分布",
     key_levels_history: "墙位迁移",
     options_risk_premium_history: riskChartMode === "hedge_cost"
@@ -422,17 +422,6 @@ function fallbackSections() {
   return [
     { id: "summary", title: "总览", charts: ["leverage_pressure_timeline"] },
     {
-      id: "futures",
-      title: "期货 / 永续",
-      // 2026-07-23: the per-venue cross-section snapshot is now rendered as
-      // a HTML table by renderCrowdingTable() and a standalone 90D OI
-      // line chart by renderAggregateOiChart() — both injected into this
-      // section by renderChartSections(). Only term_structure remains as
-      // a <canvas> chart.
-      charts: ["term_structure"],
-      auxRenderers: ["crowding_table", "aggregate_oi_90d"],
-    },
-    {
       id: "options",
       title: "期权结构",
       charts: [
@@ -447,9 +436,6 @@ function fallbackSections() {
 function sectionInterpretation(sectionId) {
   if (sectionId === "summary") {
     return inferenceBlock("futures").implication || "当前杠杆层尚未提供明确增量。";
-  }
-  if (sectionId === "futures") {
-    return inferenceBlock("futures").conclusion || "比较交易所拥挤与期限结构。";
   }
   if (sectionId === "options") {
     const options = inferenceBlock("options").conclusion;
@@ -494,8 +480,35 @@ function renderAggregateOiChart(d) {
   `;
 }
 
-function renderChartSections() {
+function renderSummarySection() {
   const sections = dashboard?.chart_layout?.sections || fallbackSections();
+  const cards = dashboard?.chart_layout?.cards || {};
+  const summary = sections.find((s) => s.id === "summary");
+  if (!summary) return "";
+  const knownCharts = new Set(FALLBACK_CHART_IDS);
+  const chartParts = (summary.charts || [])
+    .filter((chartId) => knownCharts.has(chartId) && allCharts()[chartId])
+    .map((chartId) => chartCard(chartId, cards[chartId]))
+    .join("");
+  if (!chartParts) return "";
+  return `
+    <section class="btc-chart-section" data-chart-section="summary">
+      <div class="btc-section-heading">
+        <div>
+          <p class="eyebrow">${escapeHtml(summary.id)}</p>
+          <h2>${escapeHtml(summary.title)}</h2>
+        </div>
+        <p>${escapeHtml(sectionInterpretation(summary.id))}</p>
+      </div>
+      <div class="btc-dashboard-grid">
+        ${chartParts}
+      </div>
+    </section>
+  `;
+}
+
+function renderChartSections() {
+  const sections = (dashboard?.chart_layout?.sections || fallbackSections()).filter((s) => s.id !== "summary");
   const cards = dashboard?.chart_layout?.cards || {};
   const knownCharts = new Set(FALLBACK_CHART_IDS);
   return sections.map((section) => {
@@ -504,6 +517,11 @@ function renderChartSections() {
       if (key === "aggregate_oi_90d") return renderAggregateOiChart(dashboard);
       return "";
     }).join("");
+    const chartParts = (section.charts || [])
+      .filter((chartId) => knownCharts.has(chartId) && allCharts()[chartId])
+      .map((chartId) => chartCard(chartId, cards[chartId]))
+      .join("");
+    if (!auxParts && !chartParts) return "";
     return `
     <section class="btc-chart-section" data-chart-section="${escapeHtml(section.id)}">
       <div class="btc-section-heading">
@@ -515,10 +533,7 @@ function renderChartSections() {
       </div>
       ${auxParts}
       <div class="btc-dashboard-grid">
-        ${(section.charts || [])
-          .filter((chartId) => knownCharts.has(chartId) && allCharts()[chartId])
-          .map((chartId) => chartCard(chartId, cards[chartId]))
-          .join("")}
+        ${chartParts}
       </div>
     </section>
   `;
@@ -572,31 +587,13 @@ function renderOptionChain() {
   `;
 }
 
-function renderKeyLevelStrip() {
-  const cards = dashboard?.options?.key_level_cards || [];
-  return `
-    <section class="btc-level-strip">
-      ${cards.map((card) => {
-        const value = card.id === "constant_maturity"
-          ? escapeHtml(card.value || "—")
-          : money(card.value);
-        const relative = card.distance_pct === null || card.distance_pct === undefined
-          ? ""
-          : `${card.distance_pct >= 0 ? "高于" : "低于"}现价 ${percent(Math.abs(card.distance_pct))}`;
-        return `
-          <article class="btc-level-card">
-            <div class="btc-level-title">
-              <span>${escapeHtml(card.label)}</span>
-              ${knowledgeTooltip(card.knowledge_term, "tone-neutral", card.subtitle)}
-            </div>
-            <strong>${value}</strong>
-            <small>${escapeHtml([relative, card.movement].filter(Boolean).join(" · "))}</small>
-            <p>${escapeHtml(card.current_meaning)}</p>
-          </article>
-        `;
-      }).join("") || "<article class=\"btc-level-card\"><p>当前链数据不足</p></article>"}
-    </section>
-  `;
+function movementLabel(movement) {
+  return {
+    rising: "上移 ↑",
+    falling: "下移 ↓",
+    stable: "持平 →",
+    data_insufficient: "历史不足",
+  }[movement] || movement || "—";
 }
 
 function optionDirectionLabel(value) {
@@ -611,6 +608,42 @@ function optionDirectionLabel(value) {
 
 function maturityBandLabel(value) {
   return { near_term: "近月", medium_term: "中期", far_term: "远月" }[value] || "期限待确认";
+}
+
+function wallQualityLabel(value) {
+  return {
+    high: "高可信",
+    medium: "中等可信",
+    low: "低可信",
+    data_insufficient: "数据不足",
+  }[String(value || "").toLowerCase()] || "数据不足";
+}
+
+function renderMaturityWall(row, side) {
+  const prefix = side === "call" ? "call_wall" : "put_wall";
+  const rawPrefix = side === "call" ? "raw_call" : "raw_put";
+  const value = row[prefix];
+  const candidate = row[`${prefix}_candidate`];
+  const raw = row[`${rawPrefix}_max_oi_strike`];
+  const strength = row[`${prefix}_strength`];
+  const quality = wallQualityLabel(row[`${prefix}_quality`]);
+  const reason = row[`${prefix}_reason`] || "尚未形成可审计的有效墙结论。";
+  if (value !== null && value !== undefined) {
+    return `
+      <div class="btc-wall-cell is-effective" title="${escapeHtml(reason)}">
+        <b>${money(value)}</b>
+        <small>${escapeHtml(quality)} · 强度 ${number(strength, 0)}/100</small>
+        <small>单点 ${percent(row[`${prefix}_concentration`])} · 集群 ${percent(row[`${prefix}_cluster_concentration`])}</small>
+      </div>
+    `;
+  }
+  return `
+    <div class="btc-wall-cell is-insufficient" title="${escapeHtml(reason)}">
+      <b>未形成有效墙</b>
+      <small>${escapeHtml(quality)}${candidate !== null && candidate !== undefined ? ` · 候选 ${money(candidate)}` : ""}</small>
+      <small>原始最大 OI：${raw !== null && raw !== undefined ? money(raw) : "—"}</small>
+    </div>
+  `;
 }
 
 function renderMaturityLadder() {
@@ -635,7 +668,7 @@ function renderMaturityLadder() {
         <table class="btc-table btc-maturity-table">
           <thead><tr>
             <th>期限</th><th>到期日</th><th>DTE</th><th>方向需求</th>
-            <th>Put Wall</th><th>Max Pain</th><th>Call Wall</th>
+            <th>有效 Put Wall</th><th>Max Pain</th><th>有效 Call Wall</th>
             <th>25D RR</th><th>ATM IV</th><th>Put保护成本</th><th>数据</th>
           </tr></thead>
           <tbody>${rows.map((row) => {
@@ -653,82 +686,53 @@ function renderMaturityLadder() {
               <td>${escapeHtml(row.expiry)}</td>
               <td>${number(row.dte, 0)}</td>
               <td><span class="btc-term-state" data-state="${escapeHtml(directionState)}">${escapeHtml(optionDirectionLabel(directionState))}</span></td>
-              <td>${money(row.put_wall)}<small>${percent(row.put_wall_concentration)} 集中度</small></td>
+              <td>${renderMaturityWall(row, "put")}</td>
               <td>${money(row.max_pain)}</td>
-              <td>${money(row.call_wall)}<small>${percent(row.call_wall_concentration)} 集中度</small></td>
+              <td>${renderMaturityWall(row, "call")}</td>
               <td>${skew.status === "ok" ? percent(skew.put_call_skew) : "数据不足"}<small>${escapeHtml(skew.delta_source === "model_estimate" ? "模型Delta" : skew.delta_source === "provider" ? "交易所Delta" : "Delta缺失")}</small></td>
               <td>${percent(row.atm_iv)}</td>
               <td>${percent(cost.put_protection_cost_pct)}<small>${escapeHtml(cost.liquidity_status === "usable" ? "流动性可用" : "流动性降级")}</small></td>
-              <td>${escapeHtml(row.data_status === "ok" ? "可用" : "部分可用")}</td>
+              <td>${escapeHtml(row.data_status === "ok" ? "可用" : "部分可用")}<small>期限 OI ${percent(row.term_oi_share)}</small></td>
             </tr>`;
           }).join("")}</tbody>
         </table>
       </div>
-      <p class="btc-maturity-note">期权墙只表示各期限内部的持仓集中区；保护成本绝对变化只进入风险判断，不单独生成多空方向。</p>
     </section>
   `;
 }
 
-function renderOptionsWallSignal() {
-  const signal = dashboard?.options?.metrics?.options_wall_signal || {};
-  const levels = signal.levels || {};
-  const rows = [
-    ["call_wall", "Call Wall"],
-    ["put_wall", "Put Wall"],
-    ["max_pain", "Max Pain"],
-  ];
-  const confidence = confidenceLabel(signal.confidence || "low");
-  const status = signal.status_label || signal.summary || "关键价位样本不足";
-  const spotChange = signal.spot_change_pct === null || signal.spot_change_pct === undefined
-    ? "现价变化：历史不足"
-    : `现价变化：昨日 ${money(signal.previous_spot_price)} → 当前 ${money(signal.spot_price)}（${percent(signal.spot_change_pct)}）`;
-  const expiryContext = signal.expiry_context || {};
-  const expiryLabels = (expiryContext.labels || []).join(" · ");
-  const expiryLine = [
-    expiryContext.selected_expiry ? `到期日 ${expiryContext.selected_expiry}` : "",
-    expiryContext.source_dte === null || expiryContext.source_dte === undefined ? "" : `DTE ${expiryContext.source_dte}`,
-    expiryLabels,
-  ].filter(Boolean).join(" · ");
+function renderMaturityKeyLevelsSnapshot() {
+  // 期限结构快照：横轴=到期日，纵轴=价格
+  // 每个到期日标注 Call Wall / Put Wall / Max Pain 位置
+  // 数据来源：maturity_ladder（当前横截面，不依赖历史归档）
+  const rows = dashboard?.options?.maturity_ladder || [];
+  if (!rows.length) return "";
+  const spot = dashboard?.hedge_context?.spot_price;
+  const fmt = (v) => (v === null || v === undefined ? "—" : money(v));
+  const items = rows.map((row) => {
+    const label = `${row.maturity_band === "near_term" ? "近月" : row.maturity_band === "medium_term" ? "中期" : "远月"} · ${row.expiry}`;
+    return `
+      <li>
+        <span class="mkl-snapshot-label">${escapeHtml(label)}</span>
+        <span class="mkl-snapshot-row">
+          <m-wall>${fmt(row.put_wall)}</m-wall>
+          <m-strike>${fmt(row.max_pain)}</m-strike>
+          <m-wall>${fmt(row.call_wall)}</m-wall>
+        </span>
+      </li>
+    `;
+  }).join("");
   return `
-    <section class="card btc-wall-signal-card" data-tone="${escapeHtml(signal.bias || "neutral")}">
+    <article class="card btc-maturity-snapshot-card">
       <div class="btc-section-heading">
         <div>
-          <p class="eyebrow">期权结构</p>
-          <h2>期权关键价位结构</h2>
+          <p class="eyebrow">期限结构快照</p>
+          <h2>关键价位 · 各到期日</h2>
         </div>
-        <p>${escapeHtml(status)} · 置信度：${escapeHtml(confidence)}</p>
+        <p>现价 ${spot ? money(spot) : "—"} · 每个到期日的 Call Wall / Max Pain / Put Wall</p>
       </div>
-      <div class="btc-wall-signal-context">
-        <span>${escapeHtml(spotChange)}</span>
-        ${expiryLine ? `<span>${escapeHtml(expiryLine)}</span>` : ""}
-      </div>
-      <div class="btc-wall-signal-grid">
-        ${rows.map(([key, label]) => {
-          const item = levels[key] || {};
-          const value = item.value === null || item.value === undefined ? "—" : money(item.value);
-          const previous = item.previous_value === null || item.previous_value === undefined
-            ? "历史不足"
-            : `昨日 ${money(item.previous_value)} → 当前 ${value}`;
-          const distance = item.distance_pct === null || item.distance_pct === undefined
-            ? "距现价：—"
-            : `距现价：${percent(item.distance_pct)}`;
-          const shift = item.shift_pct === null || item.shift_pct === undefined
-            ? "迁移：历史不足"
-            : `迁移：${percent(item.shift_pct)}`;
-          return `
-            <article>
-              <span>${escapeHtml(label)}</span>
-              <strong>${value}</strong>
-              <small>${escapeHtml(previous)}</small>
-              <small>${escapeHtml(distance)} · ${escapeHtml(shift)}</small>
-              <p>${escapeHtml(item.explanation || "当前链数据不足，暂不形成方向判断。")}</p>
-            </article>
-          `;
-        }).join("")}
-      </div>
-      <p class="btc-wall-signal-summary">${escapeHtml(signal.summary || "等待 Call Wall、Put Wall 与 Max Pain 的有效迁移证据。")}</p>
-      ${signal.risk_note ? `<small class="btc-wall-signal-note">${escapeHtml(signal.risk_note)}</small>` : ""}
-    </section>
+      <ul class="mkl-snapshot-list">${items}</ul>
+    </article>
   `;
 }
 
@@ -759,17 +763,23 @@ function renderEvidenceLayer() {
   return `
     <section class="card btc-evidence-layer">
       <div class="btc-section-heading">
-        <div><p class="eyebrow">市场推定</p><h2>多空证据层</h2></div>
-        <p>综合结论置信度：${escapeHtml(confidenceLabel(analysis.confidence))}</p>
+        <div><p class="eyebrow">EVIDENCE & ROLES</p><h2>指标状态与多空证据</h2></div>
+        <div class="btc-section-meta">
+          ${confidenceChip(analysis.confidence)}
+          <p>综合结论置信度：拥挤度、波动和关键价位不直接解释为多空方向。</p>
+        </div>
       </div>
+      ${renderIndicatorJudgements()}
       <div class="btc-inference-grid">
         ${blocks.map((block) => `
           <article data-tone="${escapeHtml(block.tone || "neutral")}">
-            <span>${escapeHtml(block.title)}</span>
+            <header>
+              <span class="btc-tone-chip" data-tone="${escapeHtml(block.tone || "neutral")}">${escapeHtml(block.title || "证据")}</span>
+              ${confidenceChip(block.confidence)}
+            </header>
             <h3>${escapeHtml(block.conclusion || "当前数据不足以形成清晰判断")}</h3>
-            <p class="btc-inference-basis"><strong>依据：</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
-            <p><strong>影响：</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
-            <small>结论置信度：${escapeHtml(confidenceLabel(block.confidence))}</small>
+            <p class="btc-inference-basis"><strong>依据</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
+            <p><strong>影响</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
           </article>
         `).join("")}
       </div>
@@ -783,20 +793,35 @@ function renderHedgePlanner() {
   return `
     <section class="btc-bottom-group btc-protection-group">
       <div class="btc-section-heading">
-        <div><p class="eyebrow">有限风险保护</p><h2>网格与现货保护规划</h2></div>
+        <div><p class="eyebrow">LIMITED RISK PROTECTION</p><h2>网格与现货保护规划</h2></div>
         <p>根据当前 IV、关键价位与保护成本，比较有限风险保护和降低敞口。</p>
       </div>
       <div class="btc-bottom-group-body btc-hedge-layout">
-        <form class="card btc-hedge-grid" id="btc-hedge-form">
-          <label><span>组合类型</span><select name="portfolio_type"><option value="short_grid">空网格</option><option value="long_grid">多网格</option><option value="spot_only">现货</option><option value="neutral_grid">中性网格</option></select></label>
-          <label><span>现价</span><input name="spot_price" type="number" min="1" value="${escapeHtml(String(context.spot_price || 61200))}" required></label>
-          <label><span>网格下沿</span><input name="grid_lower" type="number" min="1" value="45000"></label>
-          <label><span>网格上沿</span><input name="grid_upper" type="number" min="1" value="62000"></label>
-          <label><span>净名义金额 USD</span><input name="net_notional_usd" type="number" min="0" value="5000"></label>
-          <label><span>保护预算 USD</span><input name="hedge_budget_usd" type="number" min="0" value="150"></label>
-          <label><span>到期期限</span><select name="preferred_expiry_bucket"><option>30D</option><option selected>60D</option><option>90D</option></select></label>
-          <label><span>有限风险价差</span><select name="allow_debit_spread"><option value="true">允许</option><option value="false">不使用</option></select></label>
-          <button class="button" type="submit">生成保护方案</button>
+        <form class="card btc-hedge-form" id="btc-hedge-form">
+          <fieldset class="btc-hedge-section">
+            <legend>标的</legend>
+            <label><span>组合类型</span><select name="portfolio_type"><option value="short_grid">空网格</option><option value="long_grid">多网格</option><option value="spot_only">现货</option><option value="neutral_grid">中性网格</option></select></label>
+            <label><span>现价 USD</span><input name="spot_price" type="number" min="1" value="${escapeHtml(String(context.spot_price || 61200))}" required></label>
+          </fieldset>
+          <fieldset class="btc-hedge-section">
+            <legend>网格区间</legend>
+            <label><span>网格下沿</span><input name="grid_lower" type="number" min="1" value="45000"></label>
+            <label><span>网格上沿</span><input name="grid_upper" type="number" min="1" value="62000"></label>
+          </fieldset>
+          <fieldset class="btc-hedge-section">
+            <legend>风控参数</legend>
+            <label><span>净名义金额 USD</span><input name="net_notional_usd" type="number" min="0" value="5000"></label>
+            <label><span>保护预算 USD</span><input name="hedge_budget_usd" type="number" min="0" value="150"></label>
+            <label><span>到期期限</span><select name="preferred_expiry_bucket"><option>30D</option><option selected>60D</option><option>90D</option></select></label>
+            <label><span>有限风险价差</span><select name="allow_debit_spread"><option value="true">允许</option><option value="false">不使用</option></select></label>
+          </fieldset>
+          <div class="btc-hedge-actions">
+            <button class="button" type="submit">
+              <span>生成保护方案</span>
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8 H12 M9 5 L12 8 L9 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            <p class="btc-hedge-hint">系统会比较买入保护、借记价差与降低网格敞口，只输出有限风险动作，不执行下单。</p>
+          </div>
         </form>
         ${renderHedgePlan()}
       </div>
@@ -821,17 +846,17 @@ function renderAuditGroup() {
 function renderHedgePlan() {
   if (!hedgePlan) {
     return `
-      <article class="card btc-hedge-result">
+      <article class="card btc-hedge-result btc-hedge-result--empty">
         <p class="eyebrow">方案</p>
-        <h2>填写现货或网格敞口</h2>
-        <p>系统会比较买入保护、借记价差与降低网格敞口，只输出有限风险动作，不执行下单。</p>
+        <h3>填写现货或网格敞口</h3>
+        <p>提交表单后系统会比较买入保护、借记价差与降低网格敞口，只输出有限风险动作，不执行下单。</p>
       </article>
     `;
   }
   return `
     <article class="card btc-hedge-result">
       <p class="eyebrow">方案</p>
-      <h2>${escapeHtml(hedgePlan.label)}</h2>
+      <h3>${escapeHtml(hedgePlan.label)}</h3>
       <p>${escapeHtml(hedgePlan.explanation)}</p>
       <div class="btc-plan-metrics">
         <span>建议动作 <b>${escapeHtml(hedgePlan.label)}</b></span>
@@ -916,7 +941,7 @@ function renderMethodNotes() {
       <summary>风险提示与方法边界</summary>
       <div>
         <p>最大痛点用于观察持仓分布迁移，不作为价格预测。</p>
-        <p>期权墙用于观察持仓集中与对冲敏感区，不作为确定支撑或阻力。</p>
+        <p>有效期权墙不是“最大 OI 执行价”的别名：Call 必须位于现价上方、Put 必须位于现价下方，并通过 8D–45D Delta、局部 OI 集群、期限 OI 占比和报价质量门禁。它仍只是潜在对冲敏感区，不作为确定支撑或阻力。</p>
         <p>页面不执行下单，不推荐裸卖期权，也不把比例价差描述为安全对冲。</p>
       </div>
     </details>
@@ -928,14 +953,20 @@ function renderPageShell(banner = "", freshness = "") {
     <div class="btc-derivatives-page">
       ${renderHero({ banner, freshness })}
       ${renderDecisionCards()}
-      ${renderIndicatorJudgements()}
       ${renderChartToolbar()}
+      <div class="btc-layout-row btc-layout-row--overview">
+        ${renderSummarySection()}
+      </div>
       ${renderMaturityLadder()}
-      ${renderKeyLevelStrip()}
-      ${renderOptionsWallSignal()}
-      ${renderChartSections()}
-      ${renderEvidenceLayer()}
-      ${renderHedgePlanner()}
+      <div class="btc-layout-row btc-layout-row--charts">
+        ${renderChartSections()}
+      </div>
+      <div class="btc-layout-row btc-layout-row--evidence">
+        <div class="btc-layout-main">${renderEvidenceLayer()}</div>
+      </div>
+      <div class="btc-layout-row btc-layout-row--protection">
+        <div class="btc-layout-main">${renderHedgePlanner()}</div>
+      </div>
       ${renderAuditGroup()}
       ${renderGovernanceGroup()}
     </div>
