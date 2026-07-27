@@ -2,6 +2,12 @@
 
 ## v1.8.1 (2026-07-27)
 
+### 保护规划表单现价输入 step='any'
+
+- **前端**：`app/static/pages/btc_derivatives.js` 在 `<input name="spot_price">` 上增加 `step="any"`。`hedge_context.spot_price` 是浮点数（如 65226.17），HTML5 `<input type="number">` 默认 step=1 会触发"请输入有效值。两个最接近的有效值分别为 N 和 M"原生校验提示，让用户误以为系统导入的现价是错误的。
+- **测试**：`tests/test_btc_hedge_form_input_step.py` 静态守卫：`name="spot_price"` 输入必须包含 `step="any"`。
+- **验证**：`tests/test_btc_derivatives_*` 29 passed。
+
 ### 期限矩阵 wall cell 视觉权重分层
 
 - **前端**：`app/static/styles.css` 新增 `.btc-wall-cell` 基础样式 + `.is-effective` / `.is-insufficient` 两个变体。有效墙（`$60,000` 等）字号 16px / ink 色 / 青绿 border-top / 单点·集群百分比用 accent 色；未形成有效墙字号 13px / muted 色 / dashed border / 整体 opacity 0.86，显著弱化。
