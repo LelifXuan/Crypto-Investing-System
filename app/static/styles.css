@@ -2236,20 +2236,27 @@ select {
 
 .realtime-card {
   padding: 18px 20px;
-  align-self: start;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.realtime-card .card-head-inline {
+  gap: 10px;
 }
 
 .realtime-card .mini-card {
-  padding: 12px 14px;
+  padding: 10px 14px;
 }
 
 .realtime-card .status-grid {
   gap: 10px;
+  margin-top: auto;
 }
 
 .live-price {
-  margin: 12px 0 16px;
-  font-size: clamp(36px, 2.6vw, 48px);
+  margin: 8px 0 12px;
+  font-size: clamp(34px, 2.45vw, 44px);
   font-weight: 700;
   letter-spacing: -0.05em;
 }
@@ -8142,6 +8149,17 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 16px;
 }
 
+.btc-layout-row {
+  display: grid;
+  gap: var(--content-gap);
+  margin-bottom: var(--content-gap);
+}
+
+.btc-layout-row--evidence {
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  align-items: start;
+}
+
 .btc-bottom-group {
   padding: 22px;
   border: 1px solid rgba(15, 118, 110, 0.08);
@@ -9579,56 +9597,132 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 8px;
 }
 
-/* Regime mode badge (V1.7.4) — technical indicator page */
+/* Regime mode badge (V1.7.4) — technical indicator page (V1.8.x redesign) */
 .status-mode-badge {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 18px;
-  margin: 12px 0;
-  background: rgba(255, 215, 130, 0.18);
-  border: 1px solid rgba(214, 138, 42, 0.35);
-  border-radius: 12px;
-  color: #5a4612;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  margin: 10px 0 14px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.06);
+  color: #1f3b3a;
   font-size: 14px;
-  font-weight: 500;
-}
-.status-mode-badge .status-main {
-  font-size: 15px;
-  font-weight: 600;
   line-height: 1.4;
 }
-.status-mode-badge .status-detail {
-  display: flex;
-  flex-wrap: wrap;
+
+.status-mode-badge .regime-icon {
+  display: inline-flex;
   align-items: center;
-  gap: 8px 16px;
-  font-size: 13px;
-  color: #6b5a3a;
-}
-.status-mode-badge .status-levels {
-  color: #8a7040;
-}
-.status-mode-badge .status-action {
-  font-weight: 500;
-}
-.status-mode-badge .status-mode-link {
-  margin-left: auto;
-  color: #8a4d10;
-  font-weight: 600;
-  text-decoration: underline;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.status-mode-badge .status-mode-link:hover {
-  color: #6b3a0d;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
+  background: rgba(15, 118, 110, 0.10);
+  color: #0f6f64;
 }
 
-/* Transition mode badge (V1.7.5) — volatility squeeze */
+.status-mode-badge .regime-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.status-mode-badge .regime-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.status-mode-badge .regime-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5b7a78;
+  font-weight: 600;
+}
+
+.status-mode-badge .regime-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f3a37;
+  letter-spacing: -0.01em;
+}
+
+.status-mode-badge .regime-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  background: rgba(255, 255, 255, 0.6);
+  color: #0f6f64;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.status-mode-badge .regime-action:hover {
+  background: rgba(15, 118, 110, 0.10);
+  border-color: rgba(15, 118, 110, 0.45);
+  color: #0a4f48;
+}
+
+.status-mode-badge .regime-action:hover svg {
+  transform: translateX(2px);
+}
+
+.status-mode-badge .regime-action svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease;
+}
+
+/* Transition mode (V1.7.5) — keeps the same skeleton, only a few accents shift. */
 .status-mode-badge.transition-mode {
-  background: rgba(255, 235, 130, 0.22);
-  border-color: rgba(214, 165, 42, 0.40);
-  color: #6b4f12;
+  background: rgba(238, 244, 248, 0.85);
+  border-color: rgba(48, 84, 130, 0.20);
+  color: #1c2c3a;
+}
+
+.status-mode-badge.transition-mode .regime-icon {
+  background: rgba(48, 84, 130, 0.12);
+  color: #2f5a86;
+}
+
+.status-mode-badge.transition-mode .regime-eyebrow {
+  color: #4a6781;
+}
+
+.status-mode-badge.transition-mode .regime-title {
+  color: #1c2c3a;
+}
+
+.status-mode-badge.transition-mode .regime-action {
+  border-color: rgba(48, 84, 130, 0.32);
+  color: #2f5a86;
+}
+
+.status-mode-badge.transition-mode .regime-action:hover {
+  background: rgba(48, 84, 130, 0.10);
+  border-color: rgba(48, 84, 130, 0.55);
+  color: #1f3f5e;
+}
+
+@media (max-width: 720px) {
+  .status-mode-badge {
+    flex-wrap: wrap;
+  }
+  .status-mode-badge .regime-action {
+    margin-left: auto;
+  }
 }
 
 /* Focus banner (V1.7.5 fix) — rendered when ?focus=breakout is set and the
