@@ -57,8 +57,7 @@ def test_range_mode_badge_visible(base_url):
 
 
 def test_transition_mode_badge_visible(base_url):
-    """When mode='transition', the status-bar shows the transition badge with
-    vol_compression info."""
+    """Transition badge gives a user-facing direction and execution plan."""
     if not _backend_up():
         pytest.skip("backend not running on :8002")
     from playwright.sync_api import sync_playwright
@@ -74,7 +73,9 @@ def test_transition_mode_badge_visible(base_url):
         if badge.count() > 0:
             assert badge.first.is_visible()
             text = badge.first.inner_text()
-            assert "波动率压缩" in text or "vol_compression" in text
+            assert any(label in text for label in ("偏多", "偏空", "多空接近平衡"))
+            assert "vol_compression" not in text
+            assert "mt_compression" not in text
 
             # Regression guard: the link target must be /indicators-page
             # (the technical indicator page), NOT /market-analysis which
@@ -95,7 +96,7 @@ def test_transition_mode_badge_visible(base_url):
 
 def test_focus_breakout_banner_visible(base_url):
     """When ?focus=breakout is in the URL AND mode='transition', a focus
-    banner appears explaining the vol_compression context."""
+    banner appears with a user-facing direction and action."""
     if not _backend_up():
         pytest.skip("backend not running on :8002")
     from playwright.sync_api import sync_playwright
@@ -110,9 +111,7 @@ def test_focus_breakout_banner_visible(base_url):
         )
         page.wait_for_timeout(2000)
 
-        # Without the transition badge we cannot compute vol_compression, so
-        # the banner is intentionally absent. This matches the spec ("only if
-        # focus=breakout and we're in transition mode").
+        # The focus banner only applies to transition mode.
         badge = page.locator(".status-mode-badge.transition-mode")
         if badge.count() == 0:
             ctx.close()
@@ -123,8 +122,10 @@ def test_focus_breakout_banner_visible(base_url):
         assert banner.count() == 1
         assert banner.first.is_visible()
         text = banner.first.inner_text()
-        assert "突破信号关注模式" in text
-        assert "vol_compression" in text
+        assert "交易判断" in text
+        assert "操作建议" in text
+        assert "vol_compression" not in text
+        assert "mt_compression" not in text
 
         # The URL must keep focus=breakout so the user can refresh and still
         # see the banner.
@@ -155,10 +156,28 @@ def test_focus_breakout_banner_absent_without_param(base_url):
         browser.close()
 
 
+def test_mode_badge_markup_has_no_emoji_or_text_arrow():
+    """Static guard: the redesigned regime badge must rely on inline SVG and
+    three-zone DOM (`regime-icon` / `regime-info` / `regime-action`) instead
+    of platform-dependent emoji and textual arrows."""
+    source = (ROOT / "app" / "static" / "pages" / "analysis.js").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("function renderModeBadge")
+    end = source.index("function setRefreshBusy", start)
+    badge_block = source[start:end]
+    assert "📊" not in badge_block, "Range badge must not use emoji"
+    assert "⚡" not in badge_block, "Transition badge must not use emoji"
+    assert "→" not in badge_block, "Status badge must not use textual arrow"
+    assert "regime-icon" in badge_block, "Status badge must use regime-icon block"
+    assert "regime-info" in badge_block, "Status badge must use regime-info block"
+    assert "regime-action" in badge_block, "Status badge must use regime-action block"
+    assert "<svg" in badge_block, "Status badge must include inline SVG"
+
+
 def test_focus_breakout_banner_shows_with_loading_state_when_data_empty(base_url):
     """When focus=breakout is set and the analysis bundle has not yet
-    populated secondary_indicator_series (so computeVolCompressionScore
-    would return null), the banner must STILL appear with the loading state
+    populated secondary_indicator_series, the banner must STILL appear with the loading state
     instead of rendering nothing.
 
     Regression guard for the "怎么有的点进去还是空白" (some clicks go to blank)
@@ -179,7 +198,7 @@ def test_focus_breakout_banner_shows_with_loading_state_when_data_empty(base_url
 
         # Intercept the analysis bundle response and short-circuit
         # secondary_indicator_series to an empty object so the frontend
-        # computeVolCompressionScore returns null. We KEEP the mode field
+        # phase classification returns null. We KEEP the mode field
         # at "transition" so the banner branch is still entered.
         def _short_circuit_bundle(route, request):
             body = (
@@ -211,10 +230,10 @@ def test_focus_breakout_banner_shows_with_loading_state_when_data_empty(base_url
         )
         assert banner.first.is_visible()
         text = banner.first.inner_text()
-        assert "突破信号关注模式" in text
-        # The loading-state banner should NOT show a numeric score; it should
-        # mention loading / computing instead.
-        assert "正在计算" in text or "加载" in text
+        assert "正在更新交易判断" in text
+        assert "不建议据此开仓" in text
+        assert "vol_compression" not in text
+        assert "mt_compression" not in text
 
         # data-state="loading" should be set so the spinner styling applies.
         state_attr = banner.first.get_attribute("data-state")
