@@ -7865,6 +7865,17 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-variant-numeric: tabular-nums;
 }
 
+/* 2026-07-27: give the Max Pain column one notch larger font than the
+ * rest of the maturity-ladder table so users can scan the column at
+ * a glance — Max Pain is the only single-number cell in the row, and
+ * the eye lands on it most naturally. */
+.btc-maturity-table td.btc-max-pain {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f3b3a;
+  letter-spacing: -0.01em;
+}
+
 .btc-maturity-table td small {
   display: block;
   margin-top: 4px;

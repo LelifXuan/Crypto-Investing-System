@@ -748,7 +748,7 @@ function renderMaturityLadder() {
               <td>${number(row.dte, 0)}</td>
               <td><span class="btc-term-state" data-state="${escapeHtml(directionState)}">${escapeHtml(optionDirectionLabel(directionState))}</span></td>
               <td>${renderMaturityWall(row, "put")}</td>
-              <td>${money(row.max_pain)}</td>
+              <td class="btc-max-pain">${money(row.max_pain)}</td>
               <td>${renderMaturityWall(row, "call")}</td>
               <td>${skew.status === "ok" ? percent(skew.put_call_skew) : "数据不足"}<small>${escapeHtml(skew.delta_source === "model_estimate" ? "模型Delta" : skew.delta_source === "provider" ? "交易所Delta" : "Delta缺失")}</small></td>
               <td>${percent(row.atm_iv)}</td>
