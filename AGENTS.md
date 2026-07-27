@@ -225,6 +225,7 @@ with sync_playwright() as p:
 | BTC 衍生品页并排小字溢出 | 右侧 `btc-hedge-result` 容器在无数据时输出竖排小字,游离在表单外 | 容器 `min-height: 220px` + flex-end 对齐,而内容短,形成竖排溢出 | 证据与保护规划改为上下两层;空态用虚线 dashed 卡片上下排版;证据子卡 `grid-auto-rows: 1fr` 等高 |
 | 结构图右侧形态矩形不延伸 | BTC 1h 截图里棕色"震荡区间"矩形右边停在 07-26,左侧最新 K 线在 07-27,中间留出空隙 | `shouldExtendToLatest` 不含 `pattern_region` 角色,polygon 右角未被 `extendOverlayToLatestCandle` 拉至 latestX | `shouldExtendToLatest` 加入 `pattern_region` / `region` 角色;`extendOverlayToLatestCandle` 新增 polygon 右角延伸分支;`tests/test_structure_overlay_extension.py` 静态守卫 |
 | 摆动骨架末端点滞后 | 蓝虚线最后 dot 在 07-26 22:00,新 K 线 07-27 08:00 之后没有 dot,trendline 外推只补一个空白点 | 之前只补 1 个外推点,缺少 live swing dot | `extendOverlayToLatestCandle` 在 swing 角色下额外 append 一锚定到最新 K 线 high/low 的 dot,选与上一个 dot 距离更近的一边 |
+| 系统 chip 单一灰色 | 右侧 3 张系统卡"已确认"chip 全部灰色,看不出"已确认的方向" | 状态 chip 默认 `chip-neutral`,未读 system.direction | 派生 `chipToneForDirection()` 把方向映射为 bull/bear/neutral;只动 system 卡片分支,避免影响 alerts / swing dot 内部 tooltip 里的"已确认"文本 |
 | **架构重组后 6 页报错未发现** | 用户报告 market-events、ashare-etf 等页面报错,但之前声称"全部正常" | **1)** 只用 curl 检查 HTTP 200,未用 Playwright 渲染; **2)** 用户报告 A 页只修 A 页,不检查 B/C/D 页; **3)** 修复后不跑全量 verify_pages | **绝对禁止 curl-only 验证。架构/路由改动后必须 `verify_pages.py` 全量(冷启动+SPA)。修复任何一页后必须重跑全量。** |
 
 ### 六.4 修复后验证规则（强制）

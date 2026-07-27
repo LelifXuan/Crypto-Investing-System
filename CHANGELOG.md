@@ -2,6 +2,12 @@
 
 ## v1.8.1 (2026-07-27)
 
+### 结构图"已确认"chip 方向色
+
+- **前端**：`app/static/pages/structure.js` 新增 `chipToneForDirection()` 工具函数，把系统方向（`bullish` / `weak_bullish` / `bearish` / `weak_bearish` / 其它）映射到现有 `.chip-bullish` / `.chip-bearish` / `.chip-neutral` CSS class。右侧 system 卡片（摆动结构 / 经典图形 / 成交量·市场轮廓）标题区"已确认"chip 改为随方向着色。
+- **测试**：`tests/test_structure_status_chip_tone.py` 静态守卫 3 个：函数存在、映射规则正确、system 卡片调用点使用派生 class。
+- **验证**：`tests/test_structure*.py` 全量 40 passed。
+
 ### 形态结构图表延伸到最新 K 线
 
 - **前端**：`app/static/pages/structure.js` 的 `shouldExtendToLatest` 新增 `pattern_region` 与 `region` 角色；`extendOverlayToLatestCandle` 新增 polygon 右角延伸分支，把经典形态矩形 / 通道 / 三角形 / 楔形的多边形右边缘从形态确认时刻拉到最新 K 线 X。
