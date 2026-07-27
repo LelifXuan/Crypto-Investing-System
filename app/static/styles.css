@@ -2195,6 +2195,7 @@ select {
 
 .analysis-hero-grid {
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
+  align-items: start;
 }
 
 .analysis-hero-card {
@@ -2234,15 +2235,23 @@ select {
 }
 
 .realtime-card {
-  padding: 22px 24px;
+  padding: 18px 20px;
   align-self: start;
 }
 
+.realtime-card .mini-card {
+  padding: 12px 14px;
+}
+
+.realtime-card .status-grid {
+  gap: 10px;
+}
+
 .live-price {
-  margin: 24px 0 28px;
-  font-size: clamp(42px, 3vw, 56px);
+  margin: 12px 0 16px;
+  font-size: clamp(36px, 2.6vw, 48px);
   font-weight: 700;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.05em;
 }
 
 .status-grid,
@@ -3801,6 +3810,21 @@ a.status-chip:focus-visible {
 .structure-axis-label {
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+/* 2026-07-25: guide / profile labels at the right edge of the chart
+   often stack on top of one another when price levels are close
+   (e.g. 经典图形上破 at 64,024 + POC at 63,882 → only ~140 dollars
+   apart in plot coords). Without a background, the SVG <text>
+   visually merges with the price line / grid lines / other labels.
+   Add a cream halo via paint-order: stroke fill so the labels
+   read clearly against the chart background. */
+.structure-guide-label,
+.structure-profile-label {
+  paint-order: stroke fill;
+  stroke: #fff8ed;
+  stroke-width: 4;
+  stroke-linejoin: round;
 }
 
 .structure-score-grid {
@@ -9558,27 +9582,43 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 /* Regime mode badge (V1.7.4) — technical indicator page */
 .status-mode-badge {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
   margin: 12px 0;
   background: rgba(255, 215, 130, 0.18);
   border: 1px solid rgba(214, 138, 42, 0.35);
-  border-radius: 8px;
+  border-radius: 12px;
   color: #5a4612;
   font-size: 14px;
   font-weight: 500;
 }
-.status-mode-badge.range-mode::before {
-  content: "📊";
-  font-size: 18px;
-  margin-right: 4px;
+.status-mode-badge .status-main {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.status-mode-badge .status-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 13px;
+  color: #6b5a3a;
+}
+.status-mode-badge .status-levels {
+  color: #8a7040;
+}
+.status-mode-badge .status-action {
+  font-weight: 500;
 }
 .status-mode-badge .status-mode-link {
   margin-left: auto;
   color: #8a4d10;
   font-weight: 600;
   text-decoration: underline;
+  font-size: 13px;
+  white-space: nowrap;
 }
 .status-mode-badge .status-mode-link:hover {
   color: #6b3a0d;
@@ -9586,28 +9626,9 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 /* Transition mode badge (V1.7.5) — volatility squeeze */
 .status-mode-badge.transition-mode {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  margin: 12px 0;
   background: rgba(255, 235, 130, 0.22);
-  border: 1px solid rgba(214, 165, 42, 0.40);
-  border-radius: 8px;
+  border-color: rgba(214, 165, 42, 0.40);
   color: #6b4f12;
-  font-size: 14px;
-  font-weight: 500;
-}
-.status-mode-badge.transition-mode::before {
-  content: "⚡";
-  font-size: 18px;
-  margin-right: 4px;
-}
-.status-mode-badge.transition-mode .status-mode-link {
-  margin-left: auto;
-  color: #8a4d10;
-  font-weight: 600;
-  text-decoration: underline;
 }
 
 /* Focus banner (V1.7.5 fix) — rendered when ?focus=breakout is set and the

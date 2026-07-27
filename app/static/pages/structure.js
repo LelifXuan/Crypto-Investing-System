@@ -377,7 +377,6 @@ function shouldExtendToLatest(item, role) {
 function extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGuide) {
   // overlay extension to latest visible candle
   if (!mapped.length || !candles.length) return mapped;
-  if (!shouldExtendToLatest(item, role)) return mapped;
   // V1.7.x: once the classic pattern is broken (上破 / 下破 / 失效),
   // stop extending the boundary lines past the break point. The shape
   // is meant to describe the structure that *was*, not project where it
@@ -389,6 +388,26 @@ function extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGu
   const breakX = terminalState && Number.isInteger(breakIndex)
     ? scale.xForIndex(breakIndex)
     : null;
+  if (breakX !== null && mapped.some((point) => point.x > breakX)) {
+    const clipped = [];
+    for (const point of mapped) {
+      if (point.x <= breakX) {
+        clipped.push(point);
+        continue;
+      }
+      const previous = clipped[clipped.length - 1];
+      if (previous && point.x > previous.x) {
+        const ratio = (breakX - previous.x) / (point.x - previous.x);
+        clipped.push({
+          x: breakX,
+          y: previous.y + (point.y - previous.y) * ratio,
+        });
+      }
+      break;
+    }
+    if (clipped.length >= 2) return clipped;
+  }
+  if (!shouldExtendToLatest(item, role)) return mapped;
   const latestX = scale.xForIndex(candles.length - 1);
   const extendableRoles = new Set([
     "support",
@@ -404,12 +423,6 @@ function extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGu
   ]);
   if (extendableRoles.has(role)) {
     const last = mapped[mapped.length - 1];
-    if (breakX !== null && last.x >= breakX) {
-      // Trim trailing points past the break point.
-      const trimmed = mapped.filter((point) => point.x <= breakX);
-      if (trimmed.length) return trimmed;
-      return mapped;
-    }
     if (last.x < latestX) return [...mapped, { x: latestX, y: last.y }];
   }
   if (mapped.length >= 2) {
@@ -609,6 +622,38 @@ function latestClose(candles) {
   return Number.isFinite(value) ? value : null;
 }
 
+function finiteLevel(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function patternSearchStartIndex(primary, candles) {
+  const startTime = primary?.display_range?.start_time
+    ?? primary?.region?.polygon_points?.[0]?.time;
+  if (startTime !== null && startTime !== undefined && startTime !== "") {
+    return nearestCandleIndex(candles, startTime, 0);
+  }
+  const startIndex = Number(primary?.display_range?.start_index);
+  return Number.isInteger(startIndex)
+    ? Math.max(0, Math.min(candles.length - 1, startIndex))
+    : 0;
+}
+
+function patternConfirmationIndex(primary, candles) {
+  const status = String(primary?.status || "");
+  if (!["breakout_confirmed", "breakdown_confirmed"].includes(status)) return null;
+  const regionPoints = primary?.region?.polygon_points;
+  if (!Array.isArray(regionPoints) || !regionPoints.length) return null;
+  const confirmationTimes = regionPoints
+    .map((point) => point?.time ?? point?.ts)
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .sort((left, right) => (normalizeTs(left) ?? 0) - (normalizeTs(right) ?? 0));
+  return confirmationTimes.length
+    ? nearestCandleIndex(candles, confirmationTimes[confirmationTimes.length - 1], 0)
+    : null;
+}
+
 function currentPriceGuide(snapshot, candles) {
   const close = latestClose(candles);
   const primary = snapshot?.classic_patterns?.primary;
@@ -624,12 +669,14 @@ function currentPriceGuide(snapshot, candles) {
     };
   }
 
-  const breakout = Number(levels.breakout_confirm);
-  const breakdown = Number(levels.breakdown_confirm);
-  const invalidation = Number(levels.invalidation);
-  const upper = Number(levels.resistance_line ?? levels.resistance ?? levels.upper_boundary ?? levels.breakout_confirm);
-  const lower = Number(levels.support_line ?? levels.support ?? levels.lower_boundary ?? levels.breakdown_confirm);
+  const breakout = finiteLevel(levels.breakout_confirm);
+  const breakdown = finiteLevel(levels.breakdown_confirm);
+  const invalidation = finiteLevel(levels.invalidation);
+  const upper = finiteLevel(levels.resistance_line ?? levels.resistance ?? levels.upper_boundary ?? levels.breakout_confirm);
+  const lower = finiteLevel(levels.support_line ?? levels.support ?? levels.lower_boundary ?? levels.breakdown_confirm);
   const direction = primary.direction_bias || "neutral";
+  const patternStartIndex = patternSearchStartIndex(primary, candles);
+  const confirmedBreakIndex = patternConfirmationIndex(primary, candles);
 
   if (Number.isFinite(invalidation) && ((direction === "bullish" && close < invalidation) || (direction === "bearish" && close > invalidation))) {
     return {
@@ -637,7 +684,7 @@ function currentPriceGuide(snapshot, candles) {
       label: "经典图形失效",
       close,
       level: invalidation,
-      break_index: firstCrossIndex(candles, invalidation, direction === "bullish" ? "below" : "above"),
+      break_index: firstCrossIndex(candles, invalidation, direction === "bullish" ? "below" : "above", patternStartIndex),
       message: "最新收盘价已经触发经典图形失效位，旧形态不再作为入场依据；综合结论仍会参考摆动结构与市场轮廓。",
     };
   }
@@ -647,7 +694,7 @@ function currentPriceGuide(snapshot, candles) {
       label: "经典图形上破",
       close,
       level: breakout,
-      break_index: firstCrossIndex(candles, breakout, "above"),
+      break_index: confirmedBreakIndex ?? firstCrossIndex(candles, breakout, "above", patternStartIndex),
       message: "最新收盘价站上经典图形突破确认位，后续重点观察回踩是否守住突破位；这不等同于综合系统已经转强。",
     };
   }
@@ -657,7 +704,7 @@ function currentPriceGuide(snapshot, candles) {
       label: "经典图形下破",
       close,
       level: breakdown,
-      break_index: firstCrossIndex(candles, breakdown, "below"),
+      break_index: confirmedBreakIndex ?? firstCrossIndex(candles, breakdown, "below", patternStartIndex),
       message: "最新收盘价跌破经典图形下沿确认位，旧区间支撑已被破坏。系统已结合综合结构方向给出具体执行权限判断。",
     };
   }
@@ -669,16 +716,16 @@ function currentPriceGuide(snapshot, candles) {
 
 /**
  * Find the most recent candle index where the close first crossed the given
- * boundary level in the specified direction ("above" or "below"). Walks
- * candles from oldest to newest so the returned index is the *first*
- * crossing (the break point), not the most recent re-touch. Returns the
- * last candle index if no clean crossing is detected (price stayed
- * above / below the level for the entire window).
+ * boundary level in the specified direction ("above" or "below"). The
+ * search starts when the detected pattern becomes active, so an unrelated
+ * crossing earlier in the 220-bar viewport cannot prevent the overlay from
+ * being clipped at the real pattern break.
  */
-function firstCrossIndex(candles, level, direction) {
+function firstCrossIndex(candles, level, direction, startIndex = 0) {
   if (!Array.isArray(candles) || !Number.isFinite(level)) return null;
   let prev = null;
-  for (let i = 0; i < candles.length; i += 1) {
+  const start = Math.max(0, Math.min(candles.length - 1, Number(startIndex) || 0));
+  for (let i = start; i < candles.length; i += 1) {
     const value = Number(candles[i]?.close);
     if (!Number.isFinite(value)) continue;
     if (prev === null) {
@@ -735,16 +782,28 @@ function buildGuideMarkerMarkup(guide, scale) {
   const color = guide.state === "breakout" ? "#0f8f7d" : "#c66622";
   return `
     <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${color}" stroke-width="2" stroke-dasharray="7 5" opacity="0.82"></line>
-    <text class="structure-svg-axis structure-guide-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 8).toFixed(2)}" text-anchor="end">${escapeHtml(guide.label || "关键位")}</text>
+    <text class="structure-svg-axis structure-guide-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 14).toFixed(2)}" text-anchor="end">${escapeHtml(guide.label || "关键位")}</text>
   `;
 }
 
 function combinedBiasLabel(overallBias, guide) {
-  const base = labelFor(BIAS_LABELS, overallBias);
-  if (guide?.state === "breakdown") return `${base} · 图形下破`;
-  if (guide?.state === "breakout") return `${base} · 图形上破`;
-  if (guide?.state === "invalidated") return `${base} · 图形失效`;
-  return base;
+  return labelFor(BIAS_LABELS, overallBias);
+}
+
+function patternStateLabel(primary, guide) {
+  const patternLabels = {
+    falling_wedge: "下降楔形",
+    rising_wedge: "上升楔形",
+    double_bottom: "双底",
+    double_top: "双顶",
+    rectangle: "矩形",
+    channel: "通道",
+  };
+  const pattern = patternLabels[primary?.pattern_type] || "经典图形";
+  if (guide?.state === "breakdown") return `${pattern}下破`;
+  if (guide?.state === "breakout") return `${pattern}上破`;
+  if (guide?.state === "invalidated") return `${pattern}失效`;
+  return "";
 }
 
 function classicPatternsToGeometry(classicPatterns) {
@@ -964,7 +1023,7 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
     .join("");
 }
 
-function buildMarketProfileMarkup(geometry, scale) {
+function buildMarketProfileMarkup(geometry, scale, priceGuide) {
   const profile = geometry.filter((item) => item.system === "profile");
   const levels = [];
   profile.forEach((item) => {
@@ -975,6 +1034,11 @@ function buildMarketProfileMarkup(geometry, scale) {
   });
   const uniqueLevels = [...new Map(levels.map((item) => [`${item.label}:${item.price}`, item])).values()].slice(0, 8);
   if (!uniqueLevels.length) return "";
+  // 2026-07-25: when a profile label (POC / VAH / VAL) would render
+  // within 18px of the guide label (经典图形上破 / 下破 / 失效), flip
+  // the profile label below the line. Without this offset the two
+  // labels stack on top of one another and become unreadable.
+  const guideY = Number.isFinite(priceGuide?.level) ? scale.yForPrice(priceGuide.level) : null;
   return uniqueLevels
     .map((item) => {
       const y = scale.yForPrice(item.price);
@@ -987,9 +1051,14 @@ function buildMarketProfileMarkup(geometry, scale) {
             ? "POC"
             : "Profile";
       const opacity = label === "POC" ? 0.85 : 0.5;
+      // Label position: default above the line. If a guide label is
+      // nearby (within ~18px), push this label below the line so the
+      // two don't visually merge.
+      const labelAbove = guideY === null || Math.abs(y - guideY) > 18;
+      const labelY = labelAbove ? (y - 6) : (y + 14);
       return `
         <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${CHART_SERIES.profile.color}" stroke-width="${label === "POC" ? 2.4 : 1.6}" stroke-dasharray="8 7" opacity="${opacity}"></line>
-	        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${(y - 6).toFixed(2)}" text-anchor="end">${escapeHtml(label)} ${escapeHtml(formatAxisPrice(item.price))}</text>
+		        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="end">${escapeHtml(label)} ${escapeHtml(formatAxisPrice(item.price))}</text>
       `;
     })
     .join("");
@@ -1020,8 +1089,9 @@ function renderChart(snapshot, candles) {
   const viewport = calculateViewport(candles, geometry, backendViewport);
   const visibleCandles = viewport.candles.length ? viewport.candles : candles;
   const priceGuide = currentPriceGuide(snapshot, visibleCandles);
+  const patternState = patternStateLabel(snapshot?.classic_patterns?.primary, priceGuide);
   chartBias.innerHTML = `<span class="impact-chip impact-${biasTone(snapshot.overall?.overall_bias)}">${escapeHtml(
-    combinedBiasLabel(snapshot.overall?.overall_bias, priceGuide),
+    [`${appState.selectedTimeframe}局部${combinedBiasLabel(snapshot.overall?.overall_bias, priceGuide)}`, patternState].filter(Boolean).join(" · "),
   )}</span>`;
   const rawVisibleGeometry = visibleGeometryForViewport(geometry, visibleCandles, viewport.offset);
   const visibleGeometry = rawVisibleGeometry.filter((item) => {
@@ -1055,7 +1125,7 @@ function renderChart(snapshot, candles) {
   const scale = buildChartScale(visibleCandles, width, height, minPrice, maxPrice);
   const pricePath = buildLinePath(visibleCandles, scale);
   const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale, priceGuide);
-  const profileMarkup = buildMarketProfileMarkup(visibleGeometry, scale);
+  const profileMarkup = buildMarketProfileMarkup(visibleGeometry, scale, priceGuide);
   const guideMarkerMarkup = buildGuideMarkerMarkup(priceGuide, scale);
   const overlayCount = visibleGeometry.filter((item) => item.system !== "profile").length;
   const profileCount = visibleGeometry.filter((item) => item.system === "profile").length;
