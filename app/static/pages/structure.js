@@ -387,6 +387,13 @@ function shouldExtendToLatest(item, role) {
     || item.kind === "swing_backbone"
     || item.kind === "swing_live_leg"
   ) return true;
+  // 2026-07-27: classic pattern region polygons (震荡区间 / 通道 /
+  // 矩形 / 三角形 fill) must also extend to the latest candle. The
+  // original polygon right edge is anchored to the pattern's
+  // confirmation candle, so without this the colored box visibly
+  // stops mid-chart and the user reads it as 'pattern detector
+  // broken' on a still-active range.
+  if (role === "pattern_region" || item.kind === "region") return true;
   return levelRoles.has(role) || levelRoles.has(item.kind);
 }
 
@@ -425,6 +432,22 @@ function extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGu
   }
   if (!shouldExtendToLatest(item, role)) return mapped;
   const latestX = scale.xForIndex(candles.length - 1);
+  // 2026-07-27: classic pattern region polygons (the colored 震荡区间
+  // / 通道 / 矩形 / 三角形 fill) are anchored to the pattern's
+  // confirmation candle. Move the two right-side corners forward to
+  // the latest X so the box visually fills the right side of the
+  // chart up to live price action. We keep the polygon's left side
+  // untouched (the pattern's left boundary is what defines the
+  // pattern) and only slide the right edge.
+  if (role === "pattern_region" || item.kind === "region") {
+    const rightEdgeXs = Math.max(...mapped.map((point) => point.x));
+    if (rightEdgeXs < latestX) {
+      return mapped.map((point) =>
+        point.x >= rightEdgeXs - 0.01 ? { ...point, x: latestX } : point
+      );
+    }
+    return mapped;
+  }
   const extendableRoles = new Set([
     "support",
     "resistance",
@@ -440,6 +463,46 @@ function extendOverlayToLatestCandle(mapped, role, candles, scale, item, priceGu
   if (extendableRoles.has(role)) {
     const last = mapped[mapped.length - 1];
     if (last.x < latestX) return [...mapped, { x: latestX, y: last.y }];
+  }
+  // 2026-07-27: swing skeleton lines (zigzag / backbone / live leg) are
+  // a sequence of confirmed swing highs and lows. The previous
+  // trendline-slope extrapolation only adds ONE more point, so the
+  // visual line still ends several candles before the right edge of
+  // the chart. Anchor the last segment to the latest candle's high or
+  // low so the user sees a live swing dot at the right edge of the
+  // chart (matching the dashed line endpoint).
+  if (
+    role === "swing_zigzag"
+    || role === "swing_backbone"
+    || role === "swing_live_leg"
+    || item.kind === "swing_zigzag"
+    || item.kind === "swing_backbone"
+    || item.kind === "swing_live_leg"
+  ) {
+    const last = mapped[mapped.length - 1];
+    if (last.x < latestX) {
+      const latestIdx = candles.length - 1;
+      const liveCandle = candles[latestIdx] || {};
+      const lastY = last.y;
+      // Pick whichever extreme of the live candle is closer to the
+      // previous swing dot: the swing line is supposed to alternate
+      // high-low-high-low, and the live dot should keep that pattern.
+      const highY = Number.isFinite(scale.yForPrice(liveCandle.high))
+        ? scale.yForPrice(liveCandle.high)
+        : null;
+      const lowY = Number.isFinite(scale.yForPrice(liveCandle.low))
+        ? scale.yForPrice(liveCandle.low)
+        : null;
+      let liveY = lastY;
+      if (highY !== null && lowY !== null) {
+        liveY = Math.abs(highY - lastY) < Math.abs(lowY - lastY) ? highY : lowY;
+      } else if (highY !== null) {
+        liveY = highY;
+      } else if (lowY !== null) {
+        liveY = lowY;
+      }
+      return [...mapped, { x: latestX, y: liveY }];
+    }
   }
   if (mapped.length >= 2) {
     const prev = mapped[mapped.length - 2];
