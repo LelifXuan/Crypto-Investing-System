@@ -24,6 +24,7 @@ let sanitizeChartSeries;
 let scheduleIdlePrecompute;
 let rangeStateLabel;
 let activeRangeClassification = null;
+let activeDirectionalBias = null;
 
 async function ensureDeps() {
   if (api && appState && renderChart) {
@@ -804,7 +805,7 @@ function heroTemplate() {
       </article>
     </section>
     <section id="analysis-statusbar"></section>
-    <section class="grid cols-4" id="analysis-signal-cards"></section>
+    <section class="grid cols-3" id="analysis-signal-cards"></section>
     <section class="analysis-chart-grid">
       <article class="card">
         <div class="section-head">
@@ -903,35 +904,179 @@ function getFocusMode() {
   }
 }
 
-function computeVolCompressionScore(secondarySeries) {
-  // Mirror the V1.7.5 backend mapping (`_compute_vol_compression`) using the
-  // BB-width series the analysis bundle already exposes, so we can render a
-  // meaningful focus banner on the client without a backend change.
+export function classifyVolatilityPhase(secondarySeries) {
+  // Low width identifies compression; the recent slope determines whether
+  // compression is still deepening or has started to release.
   const series = secondarySeries?.bbands_width;
   if (!Array.isArray(series) || series.length < 5) return null;
   const numeric = series.map((value) => Number(value)).filter((value) => Number.isFinite(value));
-  if (numeric.length < 5) return null;
+  if (numeric.length < 7) return null;
   const window = Math.min(90, numeric.length - 1);
-  const tail = numeric.slice(-1 - window);
-  const baselineWindow = tail.slice(0, Math.max(1, tail.length - 1));
+  const baselineWindow = numeric.slice(-1 - window, -1);
   if (baselineWindow.length === 0) return null;
   const baseline = baselineWindow.reduce((sum, value) => sum + value, 0) / baselineWindow.length;
   const latest = numeric[numeric.length - 1];
   if (!baseline || baseline <= 0) return null;
   const ratio = latest / baseline;
-  if (ratio < 0.5) return 90;
-  if (ratio < 0.7) return 75;
-  if (ratio < 0.85) return 60;
-  if (ratio < 1.15) return 50;
-  if (ratio < 1.4) return 40;
-  return 25;
+  const recentAverage = numeric.slice(-3).reduce((sum, value) => sum + value, 0) / 3;
+  const previousAverage = numeric.slice(-6, -3).reduce((sum, value) => sum + value, 0) / 3;
+  const recentChange = previousAverage > 0 ? recentAverage / previousAverage - 1 : 0;
+  const recentTrough = Math.min(...numeric.slice(-20));
+  const reboundFromTrough = recentTrough > 0 ? latest / recentTrough - 1 : 0;
+  const score = ratio < 0.5 ? 90 : ratio < 0.7 ? 75 : ratio < 0.85 ? 60
+    : ratio < 1.15 ? 50 : ratio < 1.4 ? 40 : 25;
+
+  let key = "normal";
+  let label = "";
+  if (ratio < 0.85 && recentChange < 0.08) {
+    key = "compression";
+    label = ratio < 0.5 ? "极端压缩" : "波动压缩";
+  } else if (
+    recentChange >= 0.08
+    && reboundFromTrough >= 0.12
+    && ratio < 1.15
+  ) {
+    key = "expansion_early";
+    label = "波动初升";
+  } else if (ratio >= 1.15 && recentChange >= 0.05) {
+    key = "expansion_confirmed";
+    label = "波动扩张";
+  } else if (ratio >= 1.15 && recentChange <= -0.05) {
+    key = "cooling";
+    label = "波动回落";
+  }
+  return {
+    key,
+    label,
+    score,
+    ratio,
+    recentChange,
+    reboundFromTrough,
+  };
 }
 
-function renderFocusBanner(mode, secondarySeries) {
+export function classifyDirectionalBias(input = {}) {
+  const {
+    close,
+    ema30,
+    ema60,
+    ema120,
+    rsi,
+    macdHist,
+    macdLine,
+    adx,
+    plusDi,
+    minusDi,
+    vwap50,
+    vwap100,
+    obvLatest,
+    obvBaseline,
+  } = input;
+  const evidence = [];
+  let score = 0;
+
+  if (ema30 > ema60 && ema60 > ema120) {
+    score += 2;
+    evidence.push({ side: "long", weight: 2, text: "均线结构向上" });
+  } else if (ema30 < ema60 && ema60 < ema120) {
+    score -= 2;
+    evidence.push({ side: "short", weight: 2, text: "均线结构向下" });
+  }
+  if (Number.isFinite(vwap50) && Number.isFinite(vwap100)) {
+    if (close > vwap50 && close > vwap100) {
+      score += 1.5;
+      evidence.push({ side: "long", weight: 1.5, text: "价格站上主要成交成本" });
+    } else if (close < vwap50 && close < vwap100) {
+      score -= 1.5;
+      evidence.push({ side: "short", weight: 1.5, text: "价格受主要成交成本压制" });
+    }
+  }
+  if (adx >= 22 && plusDi > minusDi + 3) {
+    score += 1.5;
+    evidence.push({ side: "long", weight: 1.5, text: "买方趋势强度占优" });
+  } else if (adx >= 22 && minusDi > plusDi + 3) {
+    score -= 1.5;
+    evidence.push({ side: "short", weight: 1.5, text: "卖方趋势强度占优" });
+  }
+  if (macdHist > 0 && macdLine > 0) {
+    score += 1;
+    evidence.push({ side: "long", weight: 1, text: "中期动量偏多" });
+  } else if (macdHist < 0 && macdLine < 0) {
+    score -= 1;
+    evidence.push({ side: "short", weight: 1, text: "中期动量偏空" });
+  }
+  if (rsi >= 55) {
+    score += 0.5;
+    evidence.push({ side: "long", weight: 0.5, text: "短线动量偏强" });
+  } else if (rsi <= 45) {
+    score -= 0.5;
+    evidence.push({ side: "short", weight: 0.5, text: "短线动量偏弱" });
+  }
+  if (Number.isFinite(obvLatest) && Number.isFinite(obvBaseline)) {
+    if (obvLatest > obvBaseline) {
+      score += 0.5;
+      evidence.push({ side: "long", weight: 0.5, text: "量能偏向流入" });
+    } else if (obvLatest < obvBaseline) {
+      score -= 0.5;
+      evidence.push({ side: "short", weight: 0.5, text: "量能偏向流出" });
+    }
+  }
+
+  const key = score >= 2 ? "bullish" : score <= -2 ? "bearish" : "neutral";
+  const label = key === "bullish" ? "偏多" : key === "bearish" ? "偏空" : "多空接近平衡";
+  const side = key === "bullish" ? "long" : key === "bearish" ? "short" : null;
+  const reasons = evidence
+    .filter((item) => side === null || item.side === side)
+    .sort((left, right) => right.weight - left.weight)
+    .slice(0, 2)
+    .map((item) => item.text);
+  const summary = reasons.length > 0
+    ? `${label}：${reasons.join("、")}。`
+    : `${label}：趋势、动量与价格位置尚未形成一致方向。`;
+  return { key, label, score, summary, reasons };
+}
+
+export function buildUserTradeGuidance(phase, direction, mode = null) {
+  if (!phase || !direction) return "数据更新中，暂不依据本模块开仓。";
+  if (mode === "range" && phase.key === "expansion_confirmed") {
+    if (direction.key === "bullish") {
+      return "方向偏多，但价格仍在区间内；等待收盘突破区间上沿后右侧做多，未突破前不在中部追涨。";
+    }
+    if (direction.key === "bearish") {
+      return "方向偏空，但价格仍在区间内；等待收盘跌破区间下沿后右侧做空，未跌破前不在中部追空。";
+    }
+    return "波动已经放大但价格仍在区间内，等待收盘离开区间后再跟随对应方向。";
+  }
+  if (phase.key === "compression") {
+    if (direction.key === "bullish") {
+      return "优先等待回踩支撑企稳后试多；收盘向上突破并放量后，可转为右侧跟随。做空只在支撑失守后考虑。";
+    }
+    if (direction.key === "bearish") {
+      return "优先等待反弹受阻后试空；收盘向下跌破并放量后，可转为右侧跟随。做多只在压力位被有效收复后考虑。";
+    }
+    return "仅在区间上下边界考虑左侧交易，区间中部不追单；等待收盘突破后再跟随对应方向。";
+  }
+  if (phase.key === "expansion_early") {
+    if (direction.key === "bullish") return "停止逆势摸顶，等待向上突破获得收盘与量能确认后右侧做多。";
+    if (direction.key === "bearish") return "停止逆势抄底，等待向下跌破获得收盘与量能确认后右侧做空。";
+    return "波动开始释放但方向未统一，暂缓开仓，等待价格与量能给出同向确认。";
+  }
+  if (phase.key === "expansion_confirmed") {
+    if (direction.key === "bullish") return "采用右侧思路顺势做多，以突破位置失守作为退出条件。";
+    if (direction.key === "bearish") return "采用右侧思路顺势做空，以跌破位置被收复作为退出条件。";
+    return "波动已经扩张但多空证据冲突，避免追单，等待回踩确认。";
+  }
+  if (phase.key === "cooling") return "上一段扩张正在降温，不追涨杀跌，等待新的支撑或压力结构形成。";
+  if (direction.key === "bullish") return "方向偏多，优先考虑回踩做多；未突破前控制追高风险。";
+  if (direction.key === "bearish") return "方向偏空，优先考虑反弹做空；未跌破前控制追空风险。";
+  return "多空没有明显优势，等待价格离开当前整理区后再选择方向。";
+}
+
+function renderFocusBanner(mode, secondarySeries, directionalBias = activeDirectionalBias) {
   if (mode !== "transition") return "";
   if (getFocusMode() !== "breakout") return "";
-  const score = computeVolCompressionScore(secondarySeries);
-  if (score === null) {
+  const phase = classifyVolatilityPhase(secondarySeries);
+  if (phase === null || directionalBias === null) {
     // Show banner with loading state — never return empty here. The page may
     // load before the analysis bundle is populated, so secondary_indicator_series
     // is empty and the score cannot be computed yet. The user clicked
@@ -939,22 +1084,17 @@ function renderFocusBanner(mode, secondarySeries) {
     // loading-state banner instead of rendering nothing.
     return `
       <div class="status-focus-banner" data-focus-banner="breakout" data-state="loading">
-        <h3>⚡ 突破信号关注模式</h3>
-        <p>正在计算 vol_compression…<br>
-        突破信号触发器关注 mt_compression × trend 共同确认。</p>
+        <h3>⚡ 正在更新交易判断</h3>
+        <p>正在汇总趋势、动量、量能与价格位置，完成前不建议据此开仓。</p>
       </div>
     `;
   }
-  let interpretation = "中性区间";
-  if (score >= 75) interpretation = "极端压缩 — 扩张预期强";
-  else if (score >= 60) interpretation = "压缩明显 — 关注突破";
-  else if (score >= 40) interpretation = "常态波动";
-  else interpretation = "扩张中 — 突破已发生";
+  const guidance = buildUserTradeGuidance(phase, directionalBias, mode);
   return `
     <div class="status-focus-banner" data-focus-banner="breakout">
-      <h3>⚡ 突破信号关注模式</h3>
-      <p>当前 vol_compression = <strong>${score}</strong>（${interpretation}）。
-      压缩 → 扩张预期：触发器关注 mt_compression × trend 共同确认。</p>
+      <h3>⚡ 交易判断：${escapeHtml(directionalBias.label)} · ${escapeHtml(phase.label)}</h3>
+      <p>${escapeHtml(directionalBias.summary)}</p>
+      <p><strong>操作建议：</strong>${escapeHtml(guidance)}</p>
     </div>
   `;
 }
@@ -968,35 +1108,101 @@ function scrollTransitionBadgeIntoView() {
   });
 }
 
-function renderAnalysisStatus(message, tone = "neutral", mode = null, secondarySeries = null) {
+function renderAnalysisStatus(message, tone = "neutral", mode = null, secondarySeries = null, directionalBias = activeDirectionalBias) {
   const el = document.getElementById("analysis-statusbar");
   if (!el) return;
-  const badge = renderModeBadge(mode);
+  const badge = renderModeBadge(mode, secondarySeries, directionalBias);
   if (!badge) {
     el.innerHTML = statusBanner(message, tone);
     return;
   }
-  el.innerHTML = `${statusBanner(message, tone)}${badge}${renderFocusBanner(mode, secondarySeries)}`;
+  el.innerHTML = `${statusBanner(message, tone)}${badge}${renderFocusBanner(mode, secondarySeries, directionalBias)}`;
   scrollTransitionBadgeIntoView();
 }
 
-function renderModeBadge(mode) {
+function renderModeBadge(mode, secondarySeries = null, directionalBias = activeDirectionalBias) {
+  const phase = classifyVolatilityPhase(secondarySeries);
+  if (!phase || !directionalBias) {
+    return `<div class="status-mode-badge"><span>交易判断更新中</span></div>`;
+  }
+
+  const rc = activeRangeClassification || {};
+  const proximity = rc.boundary_proximity || "";
+
+  // --- Status line ---
+  let statusLine;
+  if (proximity === "near_low" && directionalBias.key === "bullish") {
+    statusLine = "区间下沿 · 偏多";
+  } else if (proximity === "near_low" && directionalBias.key === "bearish") {
+    statusLine = "区间下沿 · 偏空";
+  } else if (proximity === "near_high" && directionalBias.key === "bearish") {
+    statusLine = "区间上沿 · 偏空";
+  } else if (proximity === "near_high" && directionalBias.key === "bullish") {
+    statusLine = "区间上沿 · 偏多";
+  } else if (directionalBias.key === "bullish") {
+    statusLine = "区间偏多";
+  } else if (directionalBias.key === "bearish") {
+    statusLine = "区间偏空";
+  } else {
+    statusLine = "区间震荡";
+  }
+  if (phase.key === "compression") {
+    statusLine += " · 波动压缩";
+  } else if (phase.key === "expansion_confirmed") {
+    statusLine += " · 波动扩张";
+  } else if (phase.key === "cooling") {
+    statusLine += " · 波动回落";
+  }
+
+  // --- Inline SVG icons (avoid platform-dependent emoji / textual arrows) ---
+  const rangeIcon = `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="4" y="11" width="4" height="2" rx="1" fill="currentColor" />
+      <rect x="10" y="8" width="4" height="8" rx="1" fill="currentColor" opacity="0.7" />
+      <rect x="16" y="6" width="4" height="12" rx="1" fill="currentColor" opacity="0.45" />
+    </svg>
+  `;
+  const transitionIcon = `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 14 L9 14 L12 8 L15 18 L21 12" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  `;
+  const arrowIcon = `
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M3 8 H12 M9 5 L12 8 L9 11" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  `;
+
+  // --- Build three-zone output ---
   if (mode === "range") {
-    const label = rangeStateLabel?.(activeRangeClassification, "中性震荡") || "中性震荡";
-    const basis = activeRangeClassification?.range_basis?.[0] || "区间结构内部方向仍需确认";
     return `
-      <div class="status-mode-badge range-mode">
-        <span>📊 ${escapeHtml(label)}</span>
-        <small>${escapeHtml(basis)}</small>
-        <a class="status-mode-link" href="/structure-page">查看形态结构页 →</a>
+      <div class="status-mode-badge range-mode" data-mode="range">
+        <span class="regime-icon" aria-hidden="true">${rangeIcon}</span>
+        <div class="regime-info">
+          <span class="regime-eyebrow">市场状态 · RANGE</span>
+          <span class="regime-title">${escapeHtml(statusLine)}</span>
+        </div>
+        <a class="regime-action" href="/structure-page">
+          <span>查看形态结构页</span>
+          ${arrowIcon}
+        </a>
       </div>
     `;
   }
   if (mode === "transition") {
     return `
-      <div class="status-mode-badge transition-mode">
-        <span>⚡ 波动率压缩 → 扩张预警</span>
-        <a class="status-mode-link" href="/indicators-page?focus=breakout">关注突破信号 →</a>
+      <div class="status-mode-badge transition-mode" data-mode="transition">
+        <span class="regime-icon" aria-hidden="true">${transitionIcon}</span>
+        <div class="regime-info">
+          <span class="regime-eyebrow">市场状态 · TRANSITION</span>
+          <span class="regime-title">${escapeHtml(statusLine)}</span>
+        </div>
+        <a class="regime-action" href="/indicators-page?focus=breakout">
+          <span>关注突破信号</span>
+          ${arrowIcon}
+        </a>
       </div>
     `;
   }
@@ -1038,6 +1244,7 @@ async function loadAll(force = false, token = activeRenderToken) {
   let bundleMode = null;
   let bundleSecondary = null;
   activeRangeClassification = null;
+  activeDirectionalBias = null;
   renderAnalysisStatus("正在读取缓存", "loading", bundleMode, bundleSecondary);
   setRefreshBusy(true, force ? "计算中" : "读取中");
   if (force) {
@@ -1069,11 +1276,15 @@ async function loadAll(force = false, token = activeRenderToken) {
     }
     let candlesPayload = { candles: bundle.candles || [] };
     let markPayload = bundle.mark || null;
-    // The analysis bundle may be cached, but the headline mark must refresh on entry.
-    // Run this independently so a cold load does not wait for the five-minute timer.
-    void enhanceLatestMark(token, { preferLive: true });
     let allCandles = normalizeOhlcCandles(candlesPayload.candles || []);
     const shouldAutoFetch = allCandles.length < minCandles && !autoFetchKeys.has(fetchKey);
+    // Do not compete with a forced/live candle request for the same provider
+    // and database connection. That path already updates the headline from
+    // the newest candle; only enhance the mark when the cached bundle is
+    // otherwise sufficient.
+    if (!force && !shouldAutoFetch) {
+      void enhanceLatestMark(token, { preferLive: true });
+    }
     if (force || shouldAutoFetch) {
       autoFetchKeys.add(fetchKey);
       liveFetched = true;
@@ -1196,6 +1407,22 @@ async function loadAll(force = false, token = activeRenderToken) {
     const cciValue = analysis.cciValues.at(-1) || 0;
     const cciText = cciInterpretation(cciValue);
     const latestCandle = candles.at(-1);
+    activeDirectionalBias = classifyDirectionalBias({
+      close,
+      ema30: analysis.ema30.at(-1) || 0,
+      ema60: analysis.ema60.at(-1) || 0,
+      ema120: analysis.ema120.at(-1) || 0,
+      rsi: analysis.rsiValues.at(-1) || 0,
+      macdHist: analysis.macdValues.hist.at(-1) || 0,
+      macdLine: analysis.macdValues.line.at(-1) || 0,
+      adx: adxValue,
+      plusDi: plusDiValue,
+      minusDi: minusDiValue,
+      vwap50: Number(vwap50),
+      vwap100: Number(vwap100),
+      obvLatest: analysis.obvValues.at(-1),
+      obvBaseline: sma(analysis.obvValues, 20).at(-1),
+    });
 
     document.getElementById("analysis-summary").textContent = `${trendText.replace("。", "")} ${rsiText}`;
     document.getElementById("analysis-window-copy").textContent = emaRegime.summary;
@@ -1485,6 +1712,8 @@ export async function renderAnalysis() {
       clearBundleRetry();
       destroyChartsForPage?.("analysis-");
       document.removeEventListener("visibilitychange", refreshMarkOnly);
+      activeRangeClassification = null;
+      activeDirectionalBias = null;
       isMounted = false;
     },
     async pause() {},
