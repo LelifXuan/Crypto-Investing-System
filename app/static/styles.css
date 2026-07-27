@@ -7881,7 +7881,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-maturity-table td {
-  vertical-align: top;
+  vertical-align: middle;
   font-variant-numeric: tabular-nums;
 }
 
