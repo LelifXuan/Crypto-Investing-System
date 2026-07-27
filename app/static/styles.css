@@ -8464,6 +8464,69 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 16px;
 }
 
+/* 2026-07-27: unify "衍生品状态" and "推理" sub-cards into a single
+ * 4-col × 2-row grid so all 8 tiles are equal height and the gap
+ * between the two sections disappears. The grid is intentionally
+ * fixed 4-col (not auto-fit) so the first row always lines up with
+ * the second row visually. */
+.btc-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  grid-auto-rows: 1fr;
+}
+
+/* Shared tile style for all 8 evidence sub-cards. Both row 1
+ * (衍生品状态) and row 2 (推理) use this so the visual rhythm
+ * matches. */
+.btc-evidence-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.52);
+  min-height: 0;
+}
+
+.btc-evidence-tile header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btc-evidence-tile h3 {
+  margin: 4px 0 6px;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.btc-evidence-tile p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.btc-evidence-tile p strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btc-evidence-tile .btc-evidence-basis {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
 .btc-inference-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -8883,6 +8946,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   .btc-option-charts,
   .btc-evidence-columns,
   .btc-evidence-explanations,
+  .btc-evidence-grid,
   .btc-inference-grid,
   .btc-wall-signal-grid,
   .btc-wall-signal-context,

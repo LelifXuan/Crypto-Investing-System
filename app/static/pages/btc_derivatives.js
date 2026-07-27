@@ -347,21 +347,29 @@ function renderDecisionCards() {
 function renderIndicatorJudgements() {
   const items = dashboard?.indicator_judgements || [];
   if (!items.length) return "";
-  return `
-    <div class="btc-decision-grid">
-      ${items.map((item) => {
-        const meta = judgementMeta(item);
-        return `
-          <article class="btc-decision-card">
-            <span>${escapeHtml(meta.axisLabel)}</span>
-            <strong>${escapeHtml(meta.stateLabel)}</strong>
-            <p>${escapeHtml(item.reason || "等待指标更新。")}</p>
-            <small>${escapeHtml(`${meta.effectLabel} · ${meta.dataLabel}`)}</small>
-          </article>
-        `;
-      }).join("")}
-    </div>
-  `;
+  return items.map((item) => {
+    const meta = judgementMeta(item);
+    return `
+      <article class="btc-evidence-tile" data-tone="${escapeHtml(judgementTone(item, meta))}">
+        <header>
+          <span class="btc-tone-chip" data-tone="${escapeHtml(judgementTone(item, meta))}">${escapeHtml(meta.axisLabel)}</span>
+          <span class="btc-confidence-chip" data-tone="${escapeHtml(judgementTone(item, meta))}">${escapeHtml(meta.stateLabel)}</span>
+        </header>
+        <h3>${escapeHtml(item.reason || "等待指标更新。")}</h3>
+        <p class="btc-evidence-basis"><strong>影响</strong>${escapeHtml(`${meta.effectLabel} · ${meta.dataLabel}`)}</p>
+      </article>
+    `;
+  }).join("");
+}
+
+function judgementTone(item, meta) {
+  const dataStatus = item?.data_status;
+  if (dataStatus && dataStatus !== "ready") return "neutral";
+  const state = String(meta?.stateLabel || "");
+  if (state.includes("看多") || state.includes("强多") || state.includes("上行") || state.includes("偏多")) return "bullish";
+  if (state.includes("看空") || state.includes("强空") || state.includes("下行") || state.includes("偏空")) return "bearish";
+  if (state.includes("中性") || state.includes("待确认") || state.includes("稳定") || state.includes("不足") || state.includes("分歧")) return "neutral";
+  return "neutral";
 }
 
 function inferenceBlock(id) {
@@ -760,6 +768,18 @@ function renderDetailsDrawer() {
 function renderEvidenceLayer() {
   const analysis = dashboard?.joint_analysis || {};
   const blocks = analysis.inference_blocks || [];
+  const indicatorTiles = renderIndicatorJudgements();
+  const inferenceTiles = blocks.map((block) => `
+    <article class="btc-evidence-tile" data-tone="${escapeHtml(block.tone || "neutral")}">
+      <header>
+        <span class="btc-tone-chip" data-tone="${escapeHtml(block.tone || "neutral")}">${escapeHtml(block.title || "证据")}</span>
+        ${confidenceChip(block.confidence)}
+      </header>
+      <h3>${escapeHtml(block.conclusion || "当前数据不足以形成清晰判断")}</h3>
+      <p class="btc-evidence-basis"><strong>依据</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
+      <p><strong>影响</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
+    </article>
+  `).join("");
   return `
     <section class="card btc-evidence-layer">
       <div class="btc-section-heading">
@@ -769,19 +789,8 @@ function renderEvidenceLayer() {
           <p>综合结论置信度：拥挤度、波动和关键价位不直接解释为多空方向。</p>
         </div>
       </div>
-      ${renderIndicatorJudgements()}
-      <div class="btc-inference-grid">
-        ${blocks.map((block) => `
-          <article data-tone="${escapeHtml(block.tone || "neutral")}">
-            <header>
-              <span class="btc-tone-chip" data-tone="${escapeHtml(block.tone || "neutral")}">${escapeHtml(block.title || "证据")}</span>
-              ${confidenceChip(block.confidence)}
-            </header>
-            <h3>${escapeHtml(block.conclusion || "当前数据不足以形成清晰判断")}</h3>
-            <p class="btc-inference-basis"><strong>依据</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
-            <p><strong>影响</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
-          </article>
-        `).join("")}
+      <div class="btc-evidence-grid">
+        ${indicatorTiles}${inferenceTiles}
       </div>
       ${(analysis.conflicts || []).map((item) => `<p class="btc-warning">${escapeHtml(item)}</p>`).join("")}
     </section>
