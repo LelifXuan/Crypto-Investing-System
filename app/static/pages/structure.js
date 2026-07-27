@@ -1334,7 +1334,7 @@ function renderSummary(snapshot) {
                   <p class="eyebrow">${escapeHtml(labelFor(SYSTEM_LABELS, system.system))}</p>
                   <strong class="structure-system-title">${escapeHtml(labelFor(BIAS_LABELS, system.direction || system.bias))}</strong>
                 </div>
-                ${statusChip(labelFor(STATUS_LABELS, system.status || "confirmed"))}
+                ${statusChip(labelFor(STATUS_LABELS, system.status || "confirmed"), chipToneForDirection(system.direction || system.bias))}
               </div>
               <div class="structure-inline-metrics">
                 <span>有效分 ${escapeHtml(formatNumber(system.effective_score ?? system.score ?? 0, 2))}</span>
