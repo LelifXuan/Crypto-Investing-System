@@ -1,6 +1,12 @@
 # CHANGELOG
 
-## v1.8.1 (2026-07-27)
+## v1.8.1 (2026-07-28)
+
+### 通道多边形左边缘扩展到历史 pivot
+
+- **后端**：`app/services/structure/classic.py` 的 `detect_channels` 改为贪心扩展历史 pivot 窗口：在已有 4 个最新 pivot 的拟合基础上，向左逐一加入更老的 pivot 并重做线性回归，只要上下边界的 mean error 都仍在 `tol * 2.0` 之内就保留。`left_idx = min(hs[0].index, ls[0].index)` 现在反映真实通道起点，而不是固定截断到第 4 根 pivot。
+- **测试**：`tests/test_classic_pattern_detection.py::test_channel_polygon_left_edge_includes_older_pivots_in_tolerance` 用 10 根 pivot 的水平通道验证 `region.points[0].index ≤ 12`，而旧逻辑会落在 56 附近。
+- **验证**：`tests/test_classic_pattern_detection.py` 9 passed、`tests/test_structure*.py` 27 passed。
 
 ### 保护规划表单现价输入 step='any'
 
