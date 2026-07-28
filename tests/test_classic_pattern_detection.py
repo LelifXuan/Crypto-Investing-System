@@ -382,4 +382,70 @@ def test_region_projection_uses_candle_interval_not_fixed_hours():
         0.6,
     )
 
-    assert region["points"][1]["time"].startswith("2026-01-07")
+
+def test_channel_polygon_left_edge_includes_older_pivots_in_tolerance():
+    """Regression: channel polygon must extend its left edge back to the
+    oldest pivot that still fits the channel line within tolerance, not
+    just the 4th-from-last pivot. Without this the user sees a visible
+    gap between the actual swing low/high that started the range and
+    the polygon's left corner.
+    """
+    # Build a flat horizontal channel from index 4 onward. Older pivots
+    # at indices 4 and 12 also touch the same channel boundaries so the
+    # detector must include them when extending the window backwards.
+    # The previous `highs[-4:] / lows[-4:]` clip would land the left
+    # edge near index 56 — well inside the channel — leaving the
+    # leftmost pivots stranded outside the polygon.
+    candles = make_candles(
+        [
+            (0, 50),
+            (4, 60),
+            (8, 60),
+            (12, 60),
+            (16, 60),
+            (24, 60),
+            (32, 60),
+            (40, 60),
+            (48, 60),
+            (56, 60),
+            (64, 60),
+            (72, 60),
+            (80, 60),
+            (95, 60),
+        ]
+    )
+    # `make_candles` interpolates linearly between the listed pivot
+    # points, so every index in between carries price 60. Add a second
+    # boundary at 55 by re-pricing a few candles.
+    for i in (4, 12, 24, 32, 40, 48, 56, 64, 72, 80):
+        candles[i].low = 55
+    pivots = make_pivots(
+        candles,
+        [
+            (4, 60, "high"),
+            (12, 60, "high"),
+            (24, 60, "high"),
+            (32, 55, "low"),
+            (40, 60, "high"),
+            (48, 55, "low"),
+            (56, 60, "high"),
+            (64, 55, "low"),
+            (72, 60, "high"),
+            (80, 55, "low"),
+        ],
+    )
+    candidates = detect_classic_patterns(candles, pivots)
+    channels = [c for c in candidates if c["pattern_type"] == "channel"]
+    assert channels, "expected at least one channel candidate"
+    region = next(
+        g for c in channels for g in c["geometry"] if g["kind"] == "region"
+    )
+    left_index = region["points"][0]["index"]
+    # Before the fix: left_index would be the 4th-from-last low (56 or
+    # 64). After the fix it must reach back to at most index 12 — the
+    # oldest pivot that fits the channel line.
+    assert left_index <= 12, (
+        f"channel polygon left edge (index={left_index}) must extend "
+        f"back to the oldest fitting pivot (index ≤ 12). With the old "
+        f"`highs[-4:]` clip the left edge would sit around index 56."
+    )

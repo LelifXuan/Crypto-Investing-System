@@ -749,10 +749,47 @@ def detect_channels(candles: list, highs: list[Pivot], lows: list[Pivot]) -> lis
     if len(highs) < 4 or len(lows) < 4:
         return results
 
-    hs = highs[-4:]
-    ls = lows[-4:]
-    upper_slope, upper_intercept, upper_err = linear_fit(hs)
-    lower_slope, lower_intercept, lower_err = linear_fit(ls)
+    # 2026-07-28: walk the pivot window backwards from the most-recent
+    # pivots, accumulating older pivots that still fit the channel
+    # line within tolerance. The previous implementation always used
+    # `highs[-4:] / lows[-4:]`, which clipped the polygon's left edge
+    # to the 4th-from-last pivot — leaving a visible gap between the
+    # actual swing low/high that started the range and the polygon's
+    # left corner. We extend the window greedily as long as both the
+    # upper/lower linear fits stay below `tol * 2.0` mean error and
+    # the channel width stays above 0.8% of the average price.
+    initial_hs = highs[-4:]
+    initial_ls = lows[-4:]
+    upper_slope, upper_intercept, upper_err = linear_fit(initial_hs)
+    lower_slope, lower_intercept, lower_err = linear_fit(initial_ls)
+    tol = _adaptive_tolerance(candles)
+    max_err_threshold = tol * 2.0
+
+    hs = list(initial_hs)
+    ls = list(initial_ls)
+    # Greedy expansion: for each older high/low pair (one at a time,
+    # in reverse chronological order), prepend them and re-fit. If
+    # the regression error stays below threshold, keep the expansion.
+    older_highs = list(reversed(highs[:-4]))
+    older_lows = list(reversed(lows[:-4]))
+    while older_highs or older_lows:
+        candidate_hs = ([older_highs[0]] if older_highs else []) + hs
+        candidate_ls = ([older_lows[0]] if older_lows else []) + ls
+        u_slope, u_int, u_err = linear_fit(candidate_hs)
+        l_slope, l_int, l_err = linear_fit(candidate_ls)
+        if max(u_err, l_err) <= max_err_threshold:
+            hs = candidate_hs
+            ls = candidate_ls
+            upper_slope, upper_intercept = u_slope, u_int
+            lower_slope, lower_intercept = l_slope, l_int
+            upper_err, lower_err = u_err, l_err
+            if older_highs:
+                older_highs = older_highs[1:]
+            if older_lows:
+                older_lows = older_lows[1:]
+            continue
+        # adding the older pivot breaks the fit — stop expansion.
+        break
     tol = _adaptive_tolerance(candles)
     max_err = max(upper_err, lower_err)
     if max_err > tol * 2.0:
