@@ -263,8 +263,19 @@ function mountDropdown(root, options) {
       clearTimeout(typeAheadTimer);
       typeAheadTimer = setTimeout(() => { typeAheadBuffer = ""; }, 600);
       const items = Array.from(popover.querySelectorAll(".dropdown-item:not([disabled])"));
-      const matchIdx = items.findIndex((el) =>
-        el.textContent.trim().toLowerCase().startsWith(typeAheadBuffer));
+      // Match strategy: prefer prefix; fall back to substring match so
+      // mixed-language labels like "短期 30D" / "中期 90D" can be matched
+      // by their embedded number when the buffer is short (<=2 chars).
+      const matchIdx = (() => {
+        const prefixIdx = items.findIndex((el) =>
+          el.textContent.trim().toLowerCase().startsWith(typeAheadBuffer));
+        if (prefixIdx >= 0) return prefixIdx;
+        if (typeAheadBuffer.length <= 2) {
+          return items.findIndex((el) =>
+            el.textContent.trim().toLowerCase().includes(typeAheadBuffer));
+        }
+        return -1;
+      })();
       if (matchIdx >= 0) moveActive(matchIdx);
     }
   }
