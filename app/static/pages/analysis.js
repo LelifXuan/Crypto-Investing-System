@@ -23,6 +23,7 @@ let renderChart;
 let sanitizeChartSeries;
 let scheduleIdlePrecompute;
 let rangeStateLabel;
+let mountDropdown;
 let activeRangeClassification = null;
 let activeDirectionalBias = null;
 
@@ -31,13 +32,14 @@ async function ensureDeps() {
     return;
   }
   const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
-  const [apiModule, stateModule, domModule, chartModule, precomputeModule, rangeModule] = await Promise.all([
+  const [apiModule, stateModule, domModule, chartModule, precomputeModule, rangeModule, dropdownModule] = await Promise.all([
     import(`../core/api.js${assetVersion}`),
     import(`../core/state.js${assetVersion}`),
     import(`../core/dom.js${assetVersion}`),
     import(`../ui/charts.js${assetVersion}`),
     import(`../core/precompute.js${assetVersion}`),
     import(`../core/rangeState.js${assetVersion}`),
+    import(`../ui/dropdown.js${assetVersion}`),
   ]);
   ({ api, invalidateCache } = apiModule);
   ({ appState, getWindowProfile, persistState } = stateModule);
@@ -65,6 +67,7 @@ async function ensureDeps() {
   } = chartModule);
   ({ scheduleIdlePrecompute } = precomputeModule);
   ({ rangeStateLabel } = rangeModule);
+  ({ mountDropdown } = dropdownModule);
 }
 
 const MIN_ANALYSIS_CANDLES = {
@@ -761,14 +764,34 @@ function heroTemplate() {
             <p class="section-summary" id="analysis-summary"></p>
           </div>
           <div class="toolbar compact-toolbar">
-            <select id="analysis-timeframe">
-              ${["1h", "4h", "1d", "1w", "1M"].map((item) => `<option value="${item}" ${item === appState.selectedTimeframe ? "selected" : ""}>${item}</option>`).join("")}
-            </select>
-            <select id="analysis-window">
-              <option value="short" ${appState.selectedViewWindow === "short" ? "selected" : ""}>短窗</option>
-              <option value="default" ${appState.selectedViewWindow === "default" ? "selected" : ""}>默认</option>
-              <option value="long" ${appState.selectedViewWindow === "long" ? "selected" : ""}>长窗</option>
-            </select>
+            <button class="dropdown"
+                    data-dropdown-id="analysis-timeframe"
+                    data-dropdown-size="compact"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${appState.selectedTimeframe || ""}</span>
+              <span class="dropdown-arrow" aria-hidden="true">
+                <svg viewBox="0 0 10 10" width="11" height="11">
+                  <path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
+            <button class="dropdown"
+                    data-dropdown-id="analysis-window"
+                    data-dropdown-size="compact"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${{short:"短窗",default:"默认",long:"长窗"}[appState.selectedViewWindow] || ""}</span>
+              <span class="dropdown-arrow" aria-hidden="true">
+                <svg viewBox="0 0 10 10" width="11" height="11">
+                  <path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
             <button id="analysis-refresh">刷新分析</button>
           </div>
         </div>
@@ -858,8 +881,8 @@ let markTimer = null;
 let bundleRetryTimer = null;
 let bundleRetryCount = 0;
 let abortController = null;
-let timeframeSelectEl = null;
-let windowSelectEl = null;
+let timeframeDropdown = null;
+let windowDropdown = null;
 let activeRenderToken = 0;
 
 const analysisCache = new Map();
@@ -930,17 +953,17 @@ export function classifyVolatilityPhase(secondarySeries) {
   let label = "";
   if (ratio < 0.85 && recentChange < 0.08) {
     key = "compression";
-    label = ratio < 0.5 ? "极端压缩" : "波动压缩";
+    label = ratio < 0.5 ? "极端压缩（尚未扩张）" : "波动压缩（尚未扩张）";
   } else if (
     recentChange >= 0.08
     && reboundFromTrough >= 0.12
     && ratio < 1.15
   ) {
     key = "expansion_early";
-    label = "波动初升";
+    label = "压缩后初步扩张（尚未确认）";
   } else if (ratio >= 1.15 && recentChange >= 0.05) {
     key = "expansion_confirmed";
-    label = "波动扩张";
+    label = "波动扩张已确认";
   } else if (ratio >= 1.15 && recentChange <= -0.05) {
     key = "cooling";
     label = "波动回落";
@@ -1640,8 +1663,8 @@ async function refreshMarkOnly() {
 }
 
 function syncToolbarState() {
-  if (timeframeSelectEl) timeframeSelectEl.value = appState.selectedTimeframe;
-  if (windowSelectEl) windowSelectEl.value = appState.selectedViewWindow;
+  if (timeframeDropdown) timeframeDropdown.setValue(appState.selectedTimeframe);
+  if (windowDropdown) windowDropdown.setValue(appState.selectedViewWindow);
   document.querySelectorAll(".instrument-pill").forEach(pill => {
     pill.classList.toggle("is-active", pill.dataset.instrumentId === appState.selectedInstrumentId);
   });
@@ -1657,17 +1680,36 @@ function bindEventHandlers() {
     });
   });
 
-  timeframeSelectEl.addEventListener("change", async (event) => {
-    appState.selectedTimeframe = event.target.value;
-    persistState();
-    await loadAll();
-  });
-
-  windowSelectEl.addEventListener("change", async (event) => {
-    appState.selectedViewWindow = event.target.value;
-    persistState();
-    await loadAll();
-  });
+  const timeframeRoot = rootEl.querySelector('.dropdown[data-dropdown-id="analysis-timeframe"]');
+  if (timeframeRoot) {
+    timeframeDropdown = mountDropdown(timeframeRoot, {
+      items: ["1h", "4h", "1d", "1w", "1M"].map((t) => ({ value: t, label: t })),
+      value: appState.selectedTimeframe,
+      placeholder: "选择周期",
+      onChange: async (v) => {
+        appState.selectedTimeframe = v;
+        persistState();
+        await loadAll();
+      },
+    });
+  }
+  const windowRoot = rootEl.querySelector('.dropdown[data-dropdown-id="analysis-window"]');
+  if (windowRoot) {
+    windowDropdown = mountDropdown(windowRoot, {
+      items: [
+        { value: "short", label: "短窗" },
+        { value: "default", label: "默认" },
+        { value: "long", label: "长窗" },
+      ],
+      value: appState.selectedViewWindow,
+      placeholder: "选择窗口",
+      onChange: async (v) => {
+        appState.selectedViewWindow = v;
+        persistState();
+        await loadAll();
+      },
+    });
+  }
 
   document.getElementById("analysis-refresh").addEventListener("click", async () => {
     setRefreshBusy(true, "刷新中");
@@ -1686,8 +1728,6 @@ export async function renderAnalysis() {
 
   if (!isMounted) {
     setRoot(heroTemplate());
-    timeframeSelectEl = document.getElementById("analysis-timeframe");
-    windowSelectEl = document.getElementById("analysis-window");
     bindEventHandlers();
     markTimer = window.setInterval(refreshMarkOnly, 300000);
     document.addEventListener("visibilitychange", refreshMarkOnly);
