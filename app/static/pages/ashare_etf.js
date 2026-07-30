@@ -1,5 +1,6 @@
 import { api } from "../core/api.js";
 import { escapeHtml, formatDateTime, formatNumber, setRoot, statusBanner } from "../core/dom.js";
+import { mountDropdown } from "../ui/dropdown.js";
 
 const STORAGE_KEY = "ashare.etf.dca.rebalance.v1";
 
@@ -185,10 +186,16 @@ function renderOverview() {
       <div class="etf-control-strip">
         <label>
           <span>执行模式</span>
-          <select id="etf-mode">
-            <option value="monthly_dca" ${state.mode === "monthly_dca" ? "selected" : ""}>月度定投</option>
-            <option value="quarterly_rebalance" ${state.mode === "quarterly_rebalance" ? "selected" : ""}>季度再平衡</option>
-          </select>
+          <button class="dropdown"
+                  data-dropdown-id="etf-mode"
+                  data-dropdown-size="compact"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false">
+            <span class="dropdown-icon" data-slot="icon" hidden></span>
+            <span class="dropdown-label">${escapeHtml(modeLabel())}</span>
+            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
         </label>
         <label>
           <span>可投现金</span>
@@ -385,7 +392,7 @@ function renderWorkbench() {
 
 function captureFocusedField() {
   const active = document.activeElement;
-  if (!(active instanceof HTMLInputElement || active instanceof HTMLSelectElement)) return null;
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLButtonElement)) return null;
   if (active.id === "etf-cash" || active.id === "etf-mode") {
     return { id: active.id, start: active.selectionStart, end: active.selectionEnd };
   }
@@ -404,7 +411,7 @@ function restoreFocusedField(snapshot) {
     ? `#${snapshot.id}`
     : `[data-symbol="${CSS.escape(snapshot.symbol)}"][data-field="${CSS.escape(snapshot.field)}"]`;
   const next = document.querySelector(selector);
-  if (!(next instanceof HTMLInputElement || next instanceof HTMLSelectElement)) return;
+  if (!(next instanceof HTMLInputElement || next instanceof HTMLButtonElement)) return;
   next.focus({ preventScroll: true });
   try {
     if (snapshot.start != null && snapshot.end != null) next.setSelectionRange(snapshot.start, snapshot.end);
@@ -424,7 +431,7 @@ function renderAll(statusHtml = "") {
 }
 
 function updateStateFromInput(target) {
-  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return false;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLButtonElement)) return false;
   if (target.id === "etf-mode") {
     state.mode = target.value === "quarterly_rebalance" ? "quarterly_rebalance" : "monthly_dca";
     return true;
@@ -445,9 +452,21 @@ function updateStateFromInput(target) {
 
 function bindControls() {
   document.getElementById("etf-refresh-button")?.addEventListener("click", () => void loadQuotes({ force: true }));
-  document.getElementById("etf-mode")?.addEventListener("change", (event) => {
-    if (updateStateFromInput(event.target)) handleStateChange();
-  });
+  const modeRoot = document.querySelector('.dropdown[data-dropdown-id="etf-mode"]');
+  if (modeRoot) {
+    mountDropdown(modeRoot, {
+      items: [
+        { value: "monthly_dca", label: "月度定投" },
+        { value: "quarterly_rebalance", label: "季度再平衡" },
+      ],
+      value: state.mode,
+      placeholder: "选择模式",
+      onChange: (v) => {
+        state.mode = v === "quarterly_rebalance" ? "quarterly_rebalance" : "monthly_dca";
+        handleStateChange();
+      },
+    });
+  }
   document.getElementById("etf-cash")?.addEventListener("input", (event) => {
     if (updateStateFromInput(event.target)) handleStateChange();
   });
