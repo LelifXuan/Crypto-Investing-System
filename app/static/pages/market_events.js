@@ -1,9 +1,20 @@
 import { api, invalidateCache } from "../core/api.js";
 import { appState, persistState } from "../core/state.js";
 import { escapeHtml, formatDateOnly, metricCard, setRoot, statusBanner } from "../core/dom.js";
+import { mountDropdown } from "../ui/dropdown.js";
 
 let autoSyncedEvents = false;
 let translationPollTimer = null;
+
+const SUPPLY_FILTER_LABELS = {
+  all: "全部供给节点",
+  scheduled_unlock: "计划解锁",
+  committed_claim: "承诺领取",
+  actual_claim: "实际领取",
+  unstaking_maturity: "解质押到期",
+  sellable_or_exchange_inflow: "可售 / 流入",
+  restaked_or_absorbed: "重新质押 / 已吸收",
+};
 
 export function decodePossiblyBrokenText(value) {
   if (typeof value !== "string" || !value) return value;
@@ -117,6 +128,75 @@ function renderEventFeed(items) {
   `;
 }
 
+function supplyNodeLabel(value) {
+  const labels = {
+    scheduled_unlock: "计划解锁",
+    committed_claim: "承诺领取",
+    actual_claim: "实际领取",
+    unstaking_started: "发起解质押",
+    unstaking_maturity: "解质押到期",
+    sellable_or_exchange_inflow: "可售 / 交易所流入",
+    restaked_or_absorbed: "重新质押 / 已吸收",
+  };
+  return labels[value] || value;
+}
+
+function renderSupplyCalendar(items, filter = "all") {
+  const visible = filter === "all"
+    ? items
+    : items.filter((item) => item.node_type === filter);
+  const cards = visible.length
+    ? visible.map((item) => `
+      <article class="supply-calendar-node" data-node-type="${escapeHtml(item.node_type)}">
+        <span class="supply-node-dot is-${escapeHtml(item.node_type)}"></span>
+        <div>
+          <small>${escapeHtml(formatDateOnly(item.event_at))} · ${escapeHtml(item.asset || "-")}</small>
+          <strong>${escapeHtml(supplyNodeLabel(item.node_type))}</strong>
+          <p>${escapeHtml(item.instrument_id || "-")} · snapshot ${escapeHtml(item.snapshot_id || "-")}</p>
+        </div>
+      </article>
+    `).join("")
+    : '<div class="compact-empty">当前筛选范围内没有未来供给事件。</div>';
+  return `
+    <article class="card supply-calendar-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">UPCOMING EVENT CALENDAR</p>
+          <h2>未来事件日历</h2>
+        </div>
+        <button class="dropdown"
+                data-dropdown-id="supply-calendar-filter"
+                data-dropdown-size="compact"
+                type="button"
+                aria-label="供给事件类型"
+                aria-haspopup="listbox"
+                aria-expanded="false">
+          <span class="dropdown-icon" data-slot="icon" hidden></span>
+          <span class="dropdown-label">${escapeHtml(SUPPLY_FILTER_LABELS[filter] || SUPPLY_FILTER_LABELS.all)}</span>
+          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+      </div>
+      <div class="supply-calendar-list">${cards}</div>
+    </article>
+  `;
+}
+
+function bindSupplyCalendarFilter(root, items) {
+  const filterRoot = root.querySelector('.dropdown[data-dropdown-id="supply-calendar-filter"]');
+  if (filterRoot) {
+    mountDropdown(filterRoot, {
+      items: Object.entries(SUPPLY_FILTER_LABELS).map(([value, label]) => ({ value, label })),
+      value: filterRoot.dataset.currentFilter || "all",
+      placeholder: "选择事件类型",
+      onChange: (v) => {
+        filterRoot.dataset.currentFilter = v;
+        root.innerHTML = renderSupplyCalendar(items, v);
+        bindSupplyCalendarFilter(root, items);
+      },
+    });
+  }
+}
+
 function stopTranslationPolling() {
   if (translationPollTimer) {
     window.clearInterval(translationPollTimer);
@@ -141,6 +221,7 @@ export async function renderMarketEvents() {
       </div>
     </section>
     <section class="grid cols-4 events-metrics-grid" id="events-metrics"></section>
+    <section id="events-supply-calendar"></section>
     <section class="events-feed-shell" id="events-feed"></section>
   `);
 
@@ -151,7 +232,10 @@ export async function renderMarketEvents() {
 
   async function load(force = false) {
     if (force) invalidateCache("/marketevents");
-    const response = await api.getMarketEvents(50, appState.translateEvents);
+    const [response, calendarResponse] = await Promise.all([
+      api.getMarketEvents(50, appState.translateEvents),
+      api.getSupplyEventCalendar().catch(() => ({ items: [] })),
+    ]);
     let items = response.items || response || [];
     if (false && !items.length && !force && !autoSyncedEvents) {
       autoSyncedEvents = true;
@@ -178,6 +262,10 @@ export async function renderMarketEvents() {
       metricCard("交易所 / 平台", groups.exchange.length, "平台与制度事件"),
     ].join("");
     document.getElementById("events-feed").innerHTML = renderEventFeed(orderedItems);
+    const calendarItems = calendarResponse?.items || [];
+    const calendarRoot = document.getElementById("events-supply-calendar");
+    calendarRoot.innerHTML = renderSupplyCalendar(calendarItems);
+    bindSupplyCalendarFilter(calendarRoot, calendarItems);
     return orderedItems;
   }
 
