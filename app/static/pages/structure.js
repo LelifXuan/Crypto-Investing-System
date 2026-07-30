@@ -10,6 +10,7 @@ import {
 import { api, invalidateCache } from "../core/api.js";
 import { appState, getInstrumentMeta, persistState } from "../core/state.js";
 import { rangeStateLabel } from "../core/rangeState.js";
+import { mountDropdown } from "../ui/dropdown.js";
 
 const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
 const SYSTEMS = [
@@ -146,48 +147,68 @@ function renderShell() {
         <div class="toolbar-grid">
           <label class="field">
             <span>交易品种</span>
-            <select id="structure-instrument">
-              ${appState.instruments
-                .map(
-                  (item) =>
-                    `<option value="${item.id}" ${item.id === appState.selectedInstrumentId ? "selected" : ""}>${item.code} · ${item.name}</option>`,
-                )
-                .join("")}
-            </select>
+            <button class="dropdown"
+                    data-dropdown-id="structure-instrument"
+                    data-dropdown-size="default"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${(() => { const m = appState.instruments.find(i => i.id === appState.selectedInstrumentId); return m ? `${m.code} · ${m.name}` : ""; })()}</span>
+              <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
           </label>
           <label class="field">
             <span>周期</span>
-            <select id="structure-timeframe">
-              ${TIMEFRAMES.map(
-                (item) => `<option value="${item}" ${item === appState.selectedTimeframe ? "selected" : ""}>${item}</option>`,
-              ).join("")}
-            </select>
+            <button class="dropdown"
+                    data-dropdown-id="structure-timeframe"
+                    data-dropdown-size="default"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${appState.selectedTimeframe || ""}</span>
+              <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
           </label>
           <label class="field">
             <span>系统 ${knowledgeTooltip("Structure System Filter", "tone-neutral")}</span>
-            <select id="structure-system">
-              ${SYSTEMS.map(
-                (item) => `<option value="${item.key}" ${item.key === state.selectedSystem ? "selected" : ""}>${item.label}</option>`,
-              ).join("")}
-            </select>
+            <button class="dropdown"
+                    data-dropdown-id="structure-system"
+                    data-dropdown-size="default"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${(SYSTEMS.find(s => s.key === state.selectedSystem) || {}).label || ""}</span>
+              <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
           </label>
           <label class="field">
             <span>最低置信度 ${knowledgeTooltip("Minimum Confidence Filter", "tone-neutral")}</span>
-            <select id="structure-confidence">
-              ${[0, 0.3, 0.5, 0.7]
-                .map((item) => `<option value="${item}" ${item === state.minConfidence ? "selected" : ""}>${item.toFixed(2)}+</option>`)
-                .join("")}
-            </select>
+            <button class="dropdown"
+                    data-dropdown-id="structure-confidence"
+                    data-dropdown-size="default"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${Number(state.minConfidence || 0).toFixed(2)}+</span>
+              <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
           </label>
           <label class="field">
             <span>视图模式 ${knowledgeTooltip("Overlay View", "tone-neutral")}</span>
-            <select id="structure-viewmode">
-              <option value="focus" ${state.viewMode === "focus" ? "selected" : ""}>聚焦形态</option>
-              <option value="swing" ${state.viewMode === "swing" ? "selected" : ""}>摆动结构</option>
-              <option value="classic" ${state.viewMode === "classic" ? "selected" : ""}>经典图形</option>
-              <option value="context" ${state.viewMode === "context" ? "selected" : ""}>结构背景</option>
-              <option value="snapshot" ${state.viewMode === "snapshot" ? "selected" : ""}>完整快照</option>
-            </select>
+            <button class="dropdown"
+                    data-dropdown-id="structure-viewmode"
+                    data-dropdown-size="default"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${VIEWPORT_LABELS[state.viewMode] || VIEWPORT_LABELS.focus}</span>
+              <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
           </label>
           <div class="field action">
             <button id="structure-refresh" class="primary-button">手动刷新快照</button>
@@ -1447,33 +1468,69 @@ function attachEvents(loadData) {
     handlers.push(() => node.removeEventListener(eventName, handler));
   };
 
-  listen("#structure-instrument", "change", async (event) => {
-    appState.selectedInstrumentId = event.target.value;
-    persistState();
-    await loadData();
-  });
-
-  listen("#structure-timeframe", "change", async (event) => {
-    appState.selectedTimeframe = event.target.value;
-    persistState();
-    await loadData();
-  });
-
-  listen("#structure-system", "change", async (event) => {
-    state.selectedSystem = event.target.value;
-    renderFromBundle(state.bundle);
-  });
-
-  listen("#structure-confidence", "change", async (event) => {
-    state.minConfidence = Number(event.target.value || 0);
-    renderFromBundle(state.bundle);
-  });
-
-  listen("#structure-viewmode", "change", async (event) => {
-    state.viewMode = VIEWPORT_LABELS[event.target.value] ? event.target.value : "focus";
-    localStorage.setItem("structureViewportMode", state.viewMode);
-    renderFromBundle(state.bundle);
-  });
+  const instrumentRoot = document.querySelector('.dropdown[data-dropdown-id="structure-instrument"]');
+  if (instrumentRoot) {
+    mountDropdown(instrumentRoot, {
+      items: appState.instruments.map((i) => ({ value: i.id, label: `${i.code} · ${i.name}` })),
+      value: appState.selectedInstrumentId,
+      placeholder: "选择品种",
+      onChange: async (v) => {
+        appState.selectedInstrumentId = v;
+        persistState();
+        await loadData();
+      },
+    });
+  }
+  const timeframeRoot = document.querySelector('.dropdown[data-dropdown-id="structure-timeframe"]');
+  if (timeframeRoot) {
+    mountDropdown(timeframeRoot, {
+      items: TIMEFRAMES.map((t) => ({ value: t, label: t })),
+      value: appState.selectedTimeframe,
+      placeholder: "选择周期",
+      onChange: async (v) => {
+        appState.selectedTimeframe = v;
+        persistState();
+        await loadData();
+      },
+    });
+  }
+  const systemRoot = document.querySelector('.dropdown[data-dropdown-id="structure-system"]');
+  if (systemRoot) {
+    mountDropdown(systemRoot, {
+      items: SYSTEMS.map((s) => ({ value: s.key, label: s.label })),
+      value: state.selectedSystem,
+      placeholder: "选择系统",
+      onChange: (v) => {
+        state.selectedSystem = v;
+        renderFromBundle(state.bundle);
+      },
+    });
+  }
+  const confidenceRoot = document.querySelector('.dropdown[data-dropdown-id="structure-confidence"]');
+  if (confidenceRoot) {
+    mountDropdown(confidenceRoot, {
+      items: [0, 0.3, 0.5, 0.7].map((c) => ({ value: String(c), label: c.toFixed(2) + "+" })),
+      value: String(state.minConfidence),
+      placeholder: "选择置信度",
+      onChange: (v) => {
+        state.minConfidence = Number(v || 0);
+        renderFromBundle(state.bundle);
+      },
+    });
+  }
+  const viewmodeRoot = document.querySelector('.dropdown[data-dropdown-id="structure-viewmode"]');
+  if (viewmodeRoot) {
+    mountDropdown(viewmodeRoot, {
+      items: Object.entries(VIEWPORT_LABELS).map(([k, l]) => ({ value: k, label: l })),
+      value: state.viewMode,
+      placeholder: "选择视图",
+      onChange: (v) => {
+        state.viewMode = VIEWPORT_LABELS[v] ? v : "focus";
+        localStorage.setItem("structureViewportMode", state.viewMode);
+        renderFromBundle(state.bundle);
+      },
+    });
+  }
 
   listen("#structure-refresh", "click", async () => {
     const button = document.getElementById("structure-refresh");
