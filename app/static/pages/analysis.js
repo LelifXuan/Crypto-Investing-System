@@ -1680,7 +1680,7 @@ function bindEventHandlers() {
     });
   });
 
-  const timeframeRoot = rootEl.querySelector('.dropdown[data-dropdown-id="analysis-timeframe"]');
+  const timeframeRoot = document.querySelector('.dropdown[data-dropdown-id="analysis-timeframe"]');
   if (timeframeRoot) {
     timeframeDropdown = mountDropdown(timeframeRoot, {
       items: ["1h", "4h", "1d", "1w", "1M"].map((t) => ({ value: t, label: t })),
@@ -1693,7 +1693,7 @@ function bindEventHandlers() {
       },
     });
   }
-  const windowRoot = rootEl.querySelector('.dropdown[data-dropdown-id="analysis-window"]');
+  const windowRoot = document.querySelector('.dropdown[data-dropdown-id="analysis-window"]');
   if (windowRoot) {
     windowDropdown = mountDropdown(windowRoot, {
       items: [
