@@ -2635,9 +2635,18 @@ a.status-chip:focus-visible {
   background: rgba(15, 118, 110, 0.28);
 }
 
+.calendar-dot.is-supply {
+  background: rgba(217, 119, 6, 0.42);
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.18);
+}
+
 .calendar-more {
   font-size: 12px;
   color: var(--muted);
+}
+
+tr.is-supply-event td {
+  background: rgba(217, 119, 6, 0.05);
 }
 
 .macro-diff {
@@ -6776,6 +6785,39 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   line-height: 1.55;
 }
 
+/* V1.9: actionable watch-point list rendered as a <ul> directly */
+ul.terminal-summary-watch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 18px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+ul.terminal-summary-watch li {
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.terminal-watch-marker {
+  color: var(--accent, #4a9);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.terminal-summary-context {
+  margin: 6px 0 0;
+  padding: 8px 14px;
+  border-left: 3px solid rgba(219, 209, 194, 0.72);
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  max-width: 1040px;
+}
+
 .terminal-summary-brief {
   display: grid;
   gap: 14px;
@@ -10704,3 +10746,324 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   padding-left: 18px;
 }
 
+.strategy-build-progress progress {
+  width: 100%;
+  height: 10px;
+  margin: 18px 0;
+  accent-color: var(--accent);
+}
+
+.strategy-index-warming {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  color: var(--ink-muted);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.strategy-supply-risk {
+  display: grid;
+  gap: 16px;
+}
+
+.strategy-supply-risk[data-state="unavailable"] {
+  border-style: dashed;
+}
+
+.strategy-supply-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.strategy-supply-grid > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-glass);
+}
+
+.strategy-supply-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.strategy-supply-grid strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.strategy-supply-conditions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.strategy-supply-conditions p {
+  margin: 0;
+  padding: 12px;
+  border-left: 3px solid var(--accent-soft);
+  background: var(--surface-glass);
+}
+
+@media (max-width: 1100px) {
+  .strategy-supply-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .strategy-supply-grid,
+  .strategy-supply-conditions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.supply-calendar-card {
+  margin: 18px 0;
+}
+
+.supply-calendar-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.supply-calendar-node {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-glass);
+}
+
+.supply-calendar-node strong,
+.supply-calendar-node small {
+  display: block;
+}
+
+.supply-calendar-node p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.supply-node-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  border: 2px solid #7c6bb1;
+}
+
+.supply-node-dot.is-committed_claim { background: #c9a64b; border-color: #c9a64b; }
+.supply-node-dot.is-actual_claim,
+.supply-node-dot.is-unstaking_started { background: #cb7a45; border-color: #cb7a45; }
+.supply-node-dot.is-unstaking_maturity,
+.supply-node-dot.is-sellable_or_exchange_inflow { background: #b85d55; border-color: #b85d55; }
+.supply-node-dot.is-restaked_or_absorbed { background: #5b8a83; border-color: #5b8a83; }
+
+@media (max-width: 900px) {
+  .supply-calendar-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* === Custom Dropdown (vNext UI) — 2026-07-30 === */
+/* Replaces all native <select>. Token-only; no new colors. */
+
+.dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 120px;
+  padding: 0 14px;
+  height: 40px;
+  border: 1px solid rgba(31, 42, 58, 0.16);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.dropdown[data-dropdown-size="compact"] {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 18px;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.dropdown[data-dropdown-size="default"] {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.dropdown:hover:not([disabled]):not(.is-open) {
+  border-color: rgba(31, 42, 58, 0.28);
+}
+
+.dropdown:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ghost);
+}
+
+.dropdown.is-open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ghost);
+}
+
+.dropdown[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown.is-loading,
+.dropdown.is-error {
+  border-color: rgba(31, 42, 58, 0.16);
+}
+
+.dropdown-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-strong);
+  flex: 0 0 auto;
+}
+
+.dropdown-icon[hidden] { display: none; }
+
+.dropdown.is-error .dropdown-icon { color: var(--accent-strong); }
+
+.dropdown-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-label.is-placeholder {
+  color: var(--muted);
+}
+
+.dropdown-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+  flex: 0 0 auto;
+}
+
+.dropdown.is-open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.dropdown.is-loading::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid rgba(31, 42, 58, 0.18);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  margin-left: 6px;
+  animation: dropdown-spin 800ms linear infinite;
+}
+
+@keyframes dropdown-spin {
+  to { transform: rotate(360deg); }
+}
+
+.dropdown-popover {
+  position: fixed;
+  z-index: 1000;
+  background: var(--panel-strong);
+  border: 1px solid rgba(31, 42, 58, 0.10);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(31, 42, 58, 0.10);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-popover[hidden] { display: none; }
+
+.dropdown-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background: rgba(91, 138, 131, 0.06);
+}
+
+.dropdown-item.is-active {
+  background: rgba(91, 138, 131, 0.12);
+  outline: none;
+}
+
+.dropdown-item[aria-selected="true"] {
+  background: rgba(91, 138, 131, 0.10);
+  border-left-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 500;
+}
+
+.dropdown-item[aria-selected="true"].is-active {
+  background: rgba(91, 138, 131, 0.16);
+}
+
+.dropdown-item[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dropdown-fadeout {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--panel-strong));
+  pointer-events: none;
+}
+
+.dropdown-fadeout[hidden] { display: none; }
+
+.toolbar-grid .field .dropdown { width: 100%; }
