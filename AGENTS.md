@@ -231,6 +231,7 @@ with sync_playwright() as p:
 | 期限矩阵 wall cell 视觉权重平等 | `$60,000` 与 `未形成有效墙` 两类信息块占据一样字号 / 颜色,用户扫不到主结论 | 容器只有 `is-effective` / `is-insufficient` class,没有 CSS 区分 | 新增 `.btc-wall-cell` 基础 + `.is-effective`（16px / ink / 青绿 border-top） / `.is-insufficient`（13px / muted / dashed border / opacity 0.86）两个变体;`<b>` 字号差 ≥ 2px,静态守卫 |
 | 现价表单 HTML5 校验误报 | 系统自动导入的 `65226.17` 触发"请输入有效值。两个最接近的有效值分别为 65226 和 65227"原生警告 | `<input type="number">` 默认 `step=1`,但 spot_price 是浮点,浏览器把任何小数都视为"非整数步" | 在 spot_price 输入加 `step="any"`;`tests/test_btc_hedge_form_input_step.py` 静态守卫 |
 | **架构重组后 6 页报错未发现** | 用户报告 market-events、ashare-etf 等页面报错,但之前声称"全部正常" | **1)** 只用 curl 检查 HTTP 200,未用 Playwright 渲染; **2)** 用户报告 A 页只修 A 页,不检查 B/C/D 页; **3)** 修复后不跑全量 verify_pages | **绝对禁止 curl-only 验证。架构/路由改动后必须 `verify_pages.py` 全量(冷启动+SPA)。修复任何一页后必须重跑全量。** |
+| 全站原生 `<select>` 视觉割裂 | 浏览器 Chrome 下拉出现 90 年代白底蓝条选中态,与"冷白半透明 + 青绿"系统语言不一致 | `<select>` 弹层由浏览器渲染,CSS 无法控制;过去只关心控件本身,忽略弹层 | 全站统一使用 `app/static/ui/dropdown.js` 的 `mountDropdown` 组件;`tests/test_no_native_select_remaining.py` 静态守卫禁止任何 `<select` 字面量回归;Playwright 烟雾测试确认弹层渲染 |
 
 ### 六.4 修复后验证规则（强制）
 
@@ -287,3 +288,56 @@ python tests/verify_pages.py
 2. 说明为什么这样设计
 3. 说明已知风险和下一步建议
 4. 不要一次性重构全项目，保持变更小而清晰
+
+## 九、Workbench 与不可变快照约束
+
+### 1. 冷缓存不是市场结论
+
+- 冷缓存、任务失败和依赖缺失属于 `system_availability`，不得渲染为高市场风险、仅观察方向或价格 `0.00`。
+- 构建中允许 `decision`、`market_risk`、`snapshot_id` 为空；前端只显示任务阶段与进度。
+- 过期缓存优先保留完整 last-known-good，同时标记 `stale_revalidating` 并收紧新增仓位权限。
+- 禁止用空 `DATA_BLOCKED` payload 覆盖仍可展示的旧分析。
+
+### 2. 冷读必须可跟踪
+
+- Workbench 缓存缺失时必须创建 targeted refresh job，返回 job ID、phase、progress 和 error code；只写 precompute hint 不算完成。
+- 同一 instrument 的活动任务必须使用稳定 dedupe key，重复请求只能返回同一任务。
+- 浏览器拿到 queued/running 回执后必须自动轮询；成功后 bypass 客户端缓存重读，并确认 snapshot ID 已变化且不是 `missing:*`。
+- 页面或详情面板关闭时必须 AbortController 中断轮询，禁止遗留后台 timer。
+
+### 3. 请求路径只读已发布快照
+
+- Unified/Workbench 请求合成阶段禁止同步调用多周期 `build_bundle_uncached()` 修复依赖。
+- 六周期读取使用独立 session，并发上限默认 3；读与纯计算允许并发，写入统一进入 writer queue。
+- 扫描接口只读取 compact index，不得因单个 scan 请求重建完整策略。
+- 旧兼容接口只能从 canonical Workbench 派生，不得重新计算方向、仓位或执行金额。
+
+### 4. SQLite 单写边界
+
+- writer lock 必须覆盖“写入 + flush + commit/rollback”的完整事务边界。只锁 repository method、随后在锁外 commit 会继续产生 `database is locked`。
+- `OperationalError` 后必须立即 rollback 并关闭当前 session；不得继续使用 poisoned session。
+- 主快照发布、策略审计和 shadow validation 使用独立 session。
+- 当前单进程 SQLite 可以使用进程内 writer queue；多进程部署前必须迁移 PostgreSQL，不能假设进程内锁跨进程有效。
+
+## 十、供给事件领域规则
+
+- 计划解锁、承诺领取、实际领取、解质押中、可售和已吸收必须分开存储，禁止用一个 `unlock_amount` 覆盖所有阶段。
+- exchange deposit 是可售量的一种去向，计算 sellable quantity 时不得重复相加。
+- 地址注册表必须包含来源、置信度、有效期和最后核验时间；只有 `verified` 地址可影响 CLAIMED/SELLABLE 门禁。
+- 缺少 Tokenomist/Nansen Key 或 verified 地址时返回明确 `source_unavailable`；禁止猜测地址、伪造事实或静默返回空成功。
+- 计划、承诺或单纯领取保持 `NEUTRAL`。只有实际可售、交易所/做市商流入、主动卖压、衍生品多头拥挤和结构破位同时成立，供给 family 才允许贡献 `BEARISH`。
+- 供给风险只能收紧 canonical decision 的仓位、杠杆和 permission，不能放宽决策，也不能单独生成做空方向。
+- 历史样本不足时只输出描述性统计和 `insufficient_sample`，不得输出概率、“解锁必跌”或自动晋级阈值。
+
+## 十一、本轮复盘新增门禁
+
+1. 运行依赖浏览器的 pytest 前，先确认 `127.0.0.1:8002` 后端已启动；否则连接拒绝不是功能回归，但整轮测试仍会失败。
+2. 架构或工作流修改后，最终一次全量 pytest 与最终一次 `verify_pages.py` 都必须基于同一版代码；中途修复后要重跑受影响门禁。
+3. warming shell 应立即渲染为稳定页面结构，不要复用会被实例检查判定为“仍在 loading”的通用 loading class。
+4. 页面截图不能只看首屏 shell。新增卡片或跨页数据时，必须等待 API settle 后检查目标 selector，并保存能看到目标区域的截图。
+5. 最新日志门禁只检查本轮新进程生成的日志；旧验证日志应归档，不得把历史锁错误误判为当前结果，也不得通过删除日志掩盖新错误。
+6. 外部 API 必须分别验证 direct 与 proxy；付费 API 无 Key 时还要验证错误码和 LKG/明确降级路径。
+7. 全量 Ruff 与改动范围 Ruff 要分开报告；全量遗留问题不得冒充本次回归，本次改动范围必须为 0。
+8. SQLite writer gate 必须覆盖冷启动可达的全部写路径。只保护 candle/cache，而遗漏事件、指标或幂等记录写入，仍会在真实预热中产生锁竞争。
+9. `stale_revalidating` 且存在 last-known-good 时必须先渲染旧快照，再后台跟踪刷新；不得把 stale 当作纯冷启动壳同步等待任务完成。
+10. precompute 对外请求优先级固定为 1–9，不能把 writer 内部优先级（如 20/40/80）直接传给 API；前端调用必须由静态测试钉住范围。
