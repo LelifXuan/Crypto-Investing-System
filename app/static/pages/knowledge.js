@@ -6,6 +6,7 @@ import {
   knowledgeSections,
 } from "../core/knowledge.js";
 import { escapeHtml, knowledgeTooltip, metricCard, setRoot } from "../core/dom.js";
+import { mountDropdown } from "../ui/dropdown.js";
 
 const HIDDEN_KNOWLEDGE_TAGS = new Set([
   "technical",
@@ -415,29 +416,55 @@ function renderKnowledgeLayout() {
         </label>
         <label class="field">
           <span>页面</span>
-          <select id="knowledge-page-filter">
-            <option value="all">全部页面</option>
-            ${knowledgePageFilters.map((item) => `<option value="${item.key}" ${state.page === item.key ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
-          </select>
+          <button class="dropdown"
+                  data-dropdown-id="knowledge-page-filter"
+                  data-dropdown-size="default"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false">
+            <span class="dropdown-icon" data-slot="icon" hidden></span>
+            <span class="dropdown-label">${escapeHtml(((knowledgePageFilters.find(i => i.key === state.page)) || {}).label || "全部页面")}</span>
+            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
         </label>
         <label class="field">
           <span>分区</span>
-          <select id="knowledge-section-filter">
-            <option value="all">全部分区</option>
-            ${knowledgeSections.map((item) => `<option value="${item.id}" ${state.section === item.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
-          </select>
+          <button class="dropdown"
+                  data-dropdown-id="knowledge-section-filter"
+                  data-dropdown-size="default"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false">
+            <span class="dropdown-icon" data-slot="icon" hidden></span>
+            <span class="dropdown-label">${escapeHtml(((knowledgeSections.find(i => i.id === state.section)) || {}).title || "全部分区")}</span>
+            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
         </label>
         <label class="field">
           <span>家族</span>
-          <select id="knowledge-family-filter">
-            ${familyFilterOptions.map((item) => `<option value="${item.key}" ${state.family === item.key ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
-          </select>
+          <button class="dropdown"
+                  data-dropdown-id="knowledge-family-filter"
+                  data-dropdown-size="default"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false">
+            <span class="dropdown-icon" data-slot="icon" hidden></span>
+            <span class="dropdown-label">${escapeHtml(((familyFilterOptions.find(i => i.key === state.family)) || {}).label || "")}</span>
+            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
         </label>
         <label class="field">
           <span>等级</span>
-          <select id="knowledge-level-filter">
-            ${knowledgeLevelFilters.map((item) => `<option value="${item.key}" ${state.level === item.key ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
-          </select>
+          <button class="dropdown"
+                  data-dropdown-id="knowledge-level-filter"
+                  data-dropdown-size="default"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false">
+            <span class="dropdown-icon" data-slot="icon" hidden></span>
+            <span class="dropdown-label">${escapeHtml(((knowledgeLevelFilters.find(i => i.key === state.level)) || {}).label || "")}</span>
+            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
         </label>
       </div>
       <div class="knowledge-section-chips">
@@ -469,22 +496,54 @@ function renderKnowledgeLayout() {
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => renderKnowledge(), 300);
   });
-  document.getElementById("knowledge-page-filter")?.addEventListener("change", (event) => {
-    state.page = event.target.value || "all";
-    renderKnowledge();
-  });
-  document.getElementById("knowledge-section-filter")?.addEventListener("change", (event) => {
-    state.section = event.target.value || "all";
-    renderKnowledge();
-  });
-  document.getElementById("knowledge-family-filter")?.addEventListener("change", (event) => {
-    state.family = event.target.value || "all";
-    renderKnowledge();
-  });
-  document.getElementById("knowledge-level-filter")?.addEventListener("change", (event) => {
-    state.level = event.target.value || "all";
-    renderKnowledge();
-  });
+  const pageRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-page-filter"]');
+  if (pageRoot) {
+    mountDropdown(pageRoot, {
+      items: [{ value: "all", label: "全部页面" }, ...knowledgePageFilters.map((i) => ({ value: i.key, label: i.label }))],
+      value: state.page,
+      placeholder: "选择页面",
+      onChange: (v) => {
+        state.page = v || "all";
+        renderKnowledge();
+      },
+    });
+  }
+  const sectionRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-section-filter"]');
+  if (sectionRoot) {
+    mountDropdown(sectionRoot, {
+      items: [{ value: "all", label: "全部分区" }, ...knowledgeSections.map((i) => ({ value: i.id, label: i.title }))],
+      value: state.section,
+      placeholder: "选择分区",
+      onChange: (v) => {
+        state.section = v || "all";
+        renderKnowledge();
+      },
+    });
+  }
+  const familyRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-family-filter"]');
+  if (familyRoot) {
+    mountDropdown(familyRoot, {
+      items: familyFilterOptions.map((i) => ({ value: i.key, label: i.label })),
+      value: state.family,
+      placeholder: "选择家族",
+      onChange: (v) => {
+        state.family = v || "all";
+        renderKnowledge();
+      },
+    });
+  }
+  const levelRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-level-filter"]');
+  if (levelRoot) {
+    mountDropdown(levelRoot, {
+      items: knowledgeLevelFilters.map((i) => ({ value: i.key, label: i.label })),
+      value: state.level,
+      placeholder: "选择等级",
+      onChange: (v) => {
+        state.level = v || "all";
+        renderKnowledge();
+      },
+    });
+  }
 
   bindToggleButtons();
   document.querySelector(".knowledge-back-top")?.addEventListener("click", () => {
