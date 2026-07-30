@@ -17,6 +17,7 @@ import {
 import { judgementMeta } from "../core/judgement.js?v=semantic-v3";
 import { rangeStateLabel } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
+import { mountDropdown } from "../ui/dropdown.js";
 
 // Semantic color lock — same series always wears the same color regardless
 // of which chart it appears in. Canonical palette shared with analysis.js + structure.js.
@@ -111,6 +112,14 @@ let filters = {
   maturityBucket: "60D",
   selectedExpiry: "",
   strikeRangePct: "30",
+};
+
+const WINDOW_LABELS = {
+  "": "各图默认窗口",
+  "30D": "短期 30D",
+  "90D": "中期 90D",
+  "180D": "长期 180D",
+  "365D": "全年 365D",
 };
 
 function number(value, digits = 2) {
@@ -242,49 +251,183 @@ function renderChartToolbar() {
   const maturity = dashboard?.maturity_selection || {};
   const sourceText = (maturity.interpolation_sources || [])
     .map((item) => `${item.expiry}（DTE ${item.dte}）`).join(" / ");
-  return `
+return `
     <form class="card btc-chart-toolbar" id="btc-chart-controls">
       <label>
         <span>时间窗口</span>
-        <select name="window">
-          ${selectOptions(["", "30D", "90D", "180D", "365D"], filters.window, (value) => ({
-            "": "各图默认窗口",
-            "30D": "短期 30D",
-            "90D": "中期 90D",
-            "180D": "长期 180D",
-            "365D": "全年 365D",
-          })[value])}
-        </select>
+        <button class="dropdown"
+                data-dropdown-id="btc-window"
+                data-dropdown-size="compact"
+                data-btc-field="window"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false">
+          <span class="dropdown-icon" data-slot="icon" hidden></span>
+          <span class="dropdown-label">${escapeHtml(WINDOW_LABELS[filters.window] || "各图默认窗口")}</span>
+          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <input type="hidden" name="window" value="${escapeHtml(filters.window)}" data-btc-hidden="window" />
       </label>
       <label>
         <span>到期模式</span>
-        <select name="expiry_mode">
-          ${selectOptions(["fixed"], filters.expiryMode, () => "固定到期日")}
-        </select>
+        <button class="dropdown"
+                data-dropdown-id="btc-expiry-mode"
+                data-dropdown-size="compact"
+                data-btc-field="expiry_mode"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false">
+          <span class="dropdown-icon" data-slot="icon" hidden></span>
+          <span class="dropdown-label">${escapeHtml(filters.expiryMode === "fixed" ? "固定到期日" : "恒定期限")}</span>
+          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <input type="hidden" name="expiry_mode" value="${escapeHtml(filters.expiryMode)}" data-btc-hidden="expiry_mode" />
       </label>
       <label>
         <span>期限桶</span>
-        <select name="maturity_bucket">
-          ${selectOptions(["30D", "60D", "90D"], filters.maturityBucket)}
-        </select>
+        <button class="dropdown"
+                data-dropdown-id="btc-maturity-bucket"
+                data-dropdown-size="compact"
+                data-btc-field="maturity_bucket"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false">
+          <span class="dropdown-icon" data-slot="icon" hidden></span>
+          <span class="dropdown-label">${escapeHtml(filters.maturityBucket)}</span>
+          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <input type="hidden" name="maturity_bucket" value="${escapeHtml(filters.maturityBucket)}" data-btc-hidden="maturity_bucket" />
       </label>
       <label>
         <span>${filters.expiryMode === "fixed" ? "标准到期日" : "恒定期限来源"}</span>
-        <select name="selected_expiry" ${filters.expiryMode === "fixed" ? "" : "disabled"}>
-          ${selectOptions(expiries, filters.selectedExpiry)}
-        </select>
+        <button class="dropdown"
+                data-dropdown-id="btc-selected-expiry"
+                data-dropdown-size="compact"
+                data-btc-field="selected_expiry"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                ${filters.expiryMode === "fixed" ? "" : "disabled"}>
+          <span class="dropdown-icon" data-slot="icon" hidden></span>
+          <span class="dropdown-label">${escapeHtml(filters.selectedExpiry || "未选")}</span>
+          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <input type="hidden" name="selected_expiry" value="${escapeHtml(filters.selectedExpiry)}" data-btc-hidden="selected_expiry" />
         ${filters.expiryMode === "constant_maturity"
           ? `<small class="btc-expiry-source">${escapeHtml(sourceText || "等待标准到期日数据")}</small>`
           : ""}
       </label>
       <label>
         <span>行权价范围</span>
-        <select name="strike_range_pct">
-          ${selectOptions(["10", "20", "30", "50", "all"], filters.strikeRangePct, (value) => value === "all" ? "全部" : `±${value}%`)}
-        </select>
+        <button class="dropdown"
+                data-dropdown-id="btc-strike-range"
+                data-dropdown-size="compact"
+                data-btc-field="strike_range_pct"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false">
+          <span class="dropdown-icon" data-slot="icon" hidden></span>
+          <span class="dropdown-label">${escapeHtml(filters.strikeRangePct === "all" ? "全部" : "±" + filters.strikeRangePct + "%")}</span>
+          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <input type="hidden" name="strike_range_pct" value="${escapeHtml(filters.strikeRangePct)}" data-btc-hidden="strike_range_pct" />
       </label>
     </form>
   `;
+}
+
+function mountBtcChartDropdowns() {
+  const fieldConfigs = [
+    {
+      id: "btc-window",
+      field: "window",
+      values: ["", "30D", "90D", "180D", "365D"],
+      label: (v) => WINDOW_LABELS[v] || "各图默认窗口",
+    },
+    {
+      id: "btc-expiry-mode",
+      field: "expiry_mode",
+      values: ["fixed"],
+      label: () => "固定到期日",
+    },
+    {
+      id: "btc-maturity-bucket",
+      field: "maturity_bucket",
+      values: ["30D", "60D", "90D"],
+      label: (v) => v,
+    },
+    {
+      id: "btc-selected-expiry",
+      field: "selected_expiry",
+      values: (dashboard?.options?.standard_expiries || dashboard?.options?.expiries || []).slice(),
+      label: (v) => v,
+    },
+    {
+      id: "btc-strike-range",
+      field: "strike_range_pct",
+      values: ["10", "20", "30", "50", "all"],
+      label: (v) => (v === "all" ? "全部" : `±${v}%`),
+    },
+  ];
+  fieldConfigs.forEach((cfg) => {
+    const root = document.querySelector(`.dropdown[data-dropdown-id="${cfg.id}"]`);
+    if (!root) return;
+    mountDropdown(root, {
+      items: cfg.values.map((v) => ({ value: String(v), label: cfg.label(v) })),
+      value: String(filters[cfg.field] ?? ""),
+      placeholder: "请选择",
+      onChange: (v) => {
+        const hidden = document.querySelector(`input[data-btc-hidden="${cfg.field}"]`);
+        if (hidden) hidden.value = v;
+        // re-use existing form-change handler
+        const form = document.getElementById("btc-chart-controls");
+        if (form) updateFiltersFromControls(form);
+        loadDashboard().catch(handleLoadError);
+      },
+    });
+  });
+}
+
+function mountBtcHedgeDropdowns() {
+  const hedgeConfigs = [
+    {
+      id: "btc-hedge-portfolio-type",
+      field: "portfolio_type",
+      values: ["short_grid", "long_grid", "spot_only", "neutral_grid"],
+      labels: { short_grid: "空网格", long_grid: "多网格", spot_only: "现货", neutral_grid: "中性网格" },
+      default: "short_grid",
+    },
+    {
+      id: "btc-hedge-preferred-expiry",
+      field: "preferred_expiry_bucket",
+      values: ["30D", "60D", "90D"],
+      labels: { "30D": "30D", "60D": "60D", "90D": "90D" },
+      default: "60D",
+    },
+    {
+      id: "btc-hedge-allow-debit-spread",
+      field: "allow_debit_spread",
+      values: ["true", "false"],
+      labels: { "true": "允许", "false": "不使用" },
+      default: "true",
+    },
+  ];
+  hedgeConfigs.forEach((cfg) => {
+    const root = document.querySelector(`.dropdown[data-dropdown-id="${cfg.id}"]`);
+    if (!root) return;
+    mountDropdown(root, {
+      items: cfg.values.map((v) => ({ value: v, label: cfg.labels[v] })),
+      value: cfg.default,
+      placeholder: "请选择",
+      onChange: (v) => {
+        const hidden = document.querySelector(`input[data-btc-hedge-hidden="${cfg.field}"]`);
+        if (hidden) hidden.value = v;
+        if (cfg.field === "portfolio_type") {
+          updateHedgeFormForPortfolioType(v);
+        }
+      },
+    });
+  });
 }
 
 function renderDecisionCards() {
@@ -862,10 +1005,23 @@ function renderHedgePlanner() {
         <form class="card btc-hedge-form" id="btc-hedge-form">
           <fieldset class="btc-hedge-section">
             <legend>标的</legend>
-            <label><span>组合类型</span><select name="portfolio_type"><option value="short_grid">空网格</option><option value="long_grid">多网格</option><option value="spot_only">现货</option><option value="neutral_grid">中性网格</option></select></label>
+            <label><span>组合类型</span>
+              <button class="dropdown"
+                      data-dropdown-id="btc-hedge-portfolio-type"
+                      data-dropdown-size="default"
+                      data-btc-hedge-field="portfolio_type"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded="false">
+                <span class="dropdown-icon" data-slot="icon" hidden></span>
+                <span class="dropdown-label">空网格</span>
+                <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              </button>
+              <input type="hidden" name="portfolio_type" value="short_grid" data-btc-hedge-hidden="portfolio_type" />
+            </label>
             <label><span>现价 USD</span><input name="spot_price" type="number" min="1" step="any" value="${escapeHtml(String(context.spot_price || 61200))}" required></label>
           </fieldset>
-          <fieldset class="btc-hedge-section">
+          <fieldset class="btc-hedge-section" data-hedge-grid-fieldset>
             <legend>网格区间</legend>
             <label><span>网格下沿</span><input name="grid_lower" type="number" min="1" value="45000"></label>
             <label><span>网格上沿</span><input name="grid_upper" type="number" min="1" value="62000"></label>
@@ -874,15 +1030,41 @@ function renderHedgePlanner() {
             <legend>风控参数</legend>
             <label><span>净名义金额 USD</span><input name="net_notional_usd" type="number" min="0" value="5000"></label>
             <label><span>保护预算 USD</span><input name="hedge_budget_usd" type="number" min="0" value="150"></label>
-            <label><span>到期期限</span><select name="preferred_expiry_bucket"><option>30D</option><option selected>60D</option><option>90D</option></select></label>
-            <label><span>有限风险价差</span><select name="allow_debit_spread"><option value="true">允许</option><option value="false">不使用</option></select></label>
+            <label><span>到期期限</span>
+              <button class="dropdown"
+                      data-dropdown-id="btc-hedge-preferred-expiry"
+                      data-dropdown-size="default"
+                      data-btc-hedge-field="preferred_expiry_bucket"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded="false">
+                <span class="dropdown-icon" data-slot="icon" hidden></span>
+                <span class="dropdown-label">60D</span>
+                <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              </button>
+              <input type="hidden" name="preferred_expiry_bucket" value="60D" data-btc-hedge-hidden="preferred_expiry_bucket" />
+            </label>
+            <label><span>有限风险价差</span>
+              <button class="dropdown"
+                      data-dropdown-id="btc-hedge-allow-debit-spread"
+                      data-dropdown-size="default"
+                      data-btc-hedge-field="allow_debit_spread"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded="false">
+                <span class="dropdown-icon" data-slot="icon" hidden></span>
+                <span class="dropdown-label">允许</span>
+                <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              </button>
+              <input type="hidden" name="allow_debit_spread" value="true" data-btc-hedge-hidden="allow_debit_spread" />
+            </label>
           </fieldset>
           <div class="btc-hedge-actions">
             <button class="button" type="submit">
               <span>生成保护方案</span>
               <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8 H12 M9 5 L12 8 L9 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>
-            <p class="btc-hedge-hint">系统会比较买入保护、借记价差与降低网格敞口，只输出有限风险动作，不执行下单。</p>
+            <p class="btc-hedge-hint" data-hedge-hint>系统会比较买入保护、借记价差与降低敞口，只输出有限风险动作，不执行下单。</p>
           </div>
         </form>
         ${renderHedgePlan()}
@@ -1342,6 +1524,26 @@ function updateFiltersFromControls(form) {
   };
 }
 
+function updateHedgeFormForPortfolioType(portfolioType) {
+  const gridFieldset = document.querySelector("[data-hedge-grid-fieldset]");
+  const hintEl = document.querySelector("[data-hedge-hint]");
+  const isSpot = portfolioType === "spot_only";
+  const isNeutral = portfolioType === "neutral_grid";
+  const hideGrid = isSpot || isNeutral;
+  if (gridFieldset) {
+    gridFieldset.style.display = hideGrid ? "none" : "";
+  }
+  if (hintEl) {
+    if (isSpot) {
+      hintEl.textContent = "系统会比较买入 Put 保护与降低现货敞口，只输出有限风险动作，不执行下单。";
+    } else if (isNeutral) {
+      hintEl.textContent = "中性网格暂不增加方向保护，继续监控衍生品证据与网格距离。";
+    } else {
+      hintEl.textContent = "系统会比较买入保护、借记价差与降低网格敞口，只输出有限风险动作，不执行下单。";
+    }
+  }
+}
+
 function bindEvents() {
   document.getElementById("btc-refresh")?.addEventListener("click", () => {
     loadDashboard({ refresh: true }).catch(handleLoadError);
@@ -1364,6 +1566,7 @@ function bindEvents() {
     updateFiltersFromControls(event.currentTarget);
     loadDashboard().catch(handleLoadError);
   });
+  mountBtcChartDropdowns();
   document.querySelectorAll("[data-risk-chart-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       riskChartMode = button.dataset.riskChartMode || "sentiment";
@@ -1402,6 +1605,12 @@ function bindEvents() {
       setRoot(renderPageShell(statusBanner("有限风险保护方案已更新", "neutral")));
       bindEvents();
       renderCharts();
+      // Re-initialize hedge form visibility
+      const hf = document.getElementById("btc-hedge-form");
+      if (hf) {
+        const pts = hf.querySelector("input[name=\"portfolio_type\"]");
+        if (pts) updateHedgeFormForPortfolioType(pts.value);
+      }
     } catch (error) {
       showError(error);
     }
@@ -1493,6 +1702,13 @@ async function loadDashboard({ refresh = false } = {}) {
   await hydrateKnowledgeTooltips(document.getElementById("page-root"));
   bindEvents();
   renderCharts();
+  // Initialize hedge form visibility based on current portfolio_type
+  const hedgeForm = document.getElementById("btc-hedge-form");
+  if (hedgeForm) {
+    const ptHidden = hedgeForm.querySelector("input[name=\"portfolio_type\"]");
+    if (ptHidden) updateHedgeFormForPortfolioType(ptHidden.value);
+  }
+  mountBtcHedgeDropdowns();
 }
 
 export async function renderBtcDerivatives() {
