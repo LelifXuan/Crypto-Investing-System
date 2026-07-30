@@ -17,9 +17,12 @@ def test_structure_page_uses_bundle_as_primary_data_source() -> None:
 
 def test_structure_page_local_filters_only_rerender() -> None:
     source = STRUCTURE_PAGE.read_text(encoding="utf-8", errors="ignore")
-    assert 'listen("#structure-system", "change"' in source
-    assert 'listen("#structure-confidence", "change"' in source
-    assert 'listen("#structure-viewmode", "change"' in source
+    # 2026-07-30: native <select> was replaced with mountDropdown; local filter
+    # onChange handlers now call renderFromBundle(state.bundle) instead of
+    # listening to "change" events.
+    assert 'data-dropdown-id="structure-system"' in source
+    assert 'data-dropdown-id="structure-confidence"' in source
+    assert 'data-dropdown-id="structure-viewmode"' in source
     assert source.count("renderFromBundle(state.bundle);") >= 3
 
 

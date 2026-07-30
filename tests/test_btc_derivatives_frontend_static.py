@@ -284,15 +284,15 @@ def test_hero_uses_market_verdict_not_generic_page_description() -> None:
 def test_page_renders_options_wall_signal_card_from_dashboard_metrics() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
-    assert "function renderOptionsWallSignal" in source
-    assert "options_wall_signal" in source
+    assert "function renderWallInterpretation" in source
+    assert "wall_matrix" in source
     assert "call_wall" in source
     assert "put_wall" in source
     assert "max_pain" in source
-    assert "btc-wall-signal-card" in source
-    assert "现价变化" in source
-    assert "signal.spot_change_pct" in source
-    assert "expiry_context" in source
+    assert "btc-interp-card" in source
+    assert "trade_meaning" in source
+    assert "trading_instruction" in source
+    assert "synthesis" in source
 
 
 def test_bottom_sections_are_grouped_into_parent_containers() -> None:
@@ -429,13 +429,19 @@ def test_btc_derivatives_expiry_mode_dropdown_only_shows_fixed_expiry() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
     select_block_start = source.index('name="expiry_mode"')
-    select_block_end = source.index("</select>", select_block_start)
-    select_block = source[select_block_start:select_block_end]
-    assert "恒定期限" not in select_block, (
+    # 2026-07-30: dropdown migration replaced <select> with <button class="dropdown">;
+    # the data dropdown config is now in mountBtcChartDropdowns() and includes
+    # the visible labels for expiry_mode items. Locate the expiry_mode config block.
+    items_block_start = source.index('field: "expiry_mode"', select_block_start)
+    # Scan until next config entry to capture the label lambda too.
+    next_id = source.find("\n    {", items_block_start + 1)
+    items_block_end = next_id if next_id > 0 else len(source)
+    items_block = source[items_block_start:items_block_end]
+    assert "恒定期限" not in items_block, (
         "到期模式 dropdown must not surface the 恒定期限 entry "
         "(users only pick a fixed expiry date now)"
     )
-    assert "固定到期日" in select_block, (
+    assert "固定到期日" in items_block, (
         "到期模式 dropdown must keep the 固定到期日 entry"
     )
     import re
