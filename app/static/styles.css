@@ -11237,76 +11237,223 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   to { transform: rotate(360deg); }
 }
 
+/* ============================================================
+ * §16/§17 Dropdown revision — visual rules
+ * Audit: docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
+ *
+ * Notes:
+ *  - All rules below are *replacing* the previous set; no inline
+ *    `border-left-color: var(--accent)` on selected items — that
+ *    combination produces the visible "moon/arc" shape the audit
+ *    flagged.
+ *  - Popover carries the main glass background and 16px radius;
+ *    options are 10px radius (Popover > Option, never equal).
+ *  - Three states are visually distinct: hover (ghost), keyboard
+ *    highlight (border), selected (gradient + bold).
+ * ============================================================ */
+
 .dropdown-popover {
   position: fixed;
   z-index: 1000;
-  background: var(--panel-strong);
-  border: 1px solid rgba(31, 42, 58, 0.10);
-  border-radius: 12px;
-  box-shadow: 0 12px 28px rgba(31, 42, 58, 0.10);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(252, 249, 243, 0.97),
+      rgba(246, 241, 232, 0.95)
+    );
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--blur-soft);
+  -webkit-backdrop-filter: var(--blur-soft);
+  overflow: hidden;
 }
 
 .dropdown-popover[hidden] { display: none; }
 
+/* Listbox — single source of truth for vertical scroll. */
 .dropdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;                    /* combined with option padding gives 6px rhythm */
+  padding: 6px;
+  margin: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 2px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(93, 101, 108, 0.34) transparent;
+  padding-right: 8px;           /* keep text clear of scrollbar */
+  /* Firefox */
+  scrollbar-width: thin;
+}
+.dropdown-list::-webkit-scrollbar { width: 7px; }
+.dropdown-list::-webkit-scrollbar-track { background: transparent; }
+.dropdown-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(93, 101, 108, 0.34);
+}
+.dropdown-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(93, 101, 108, 0.55);
 }
 
+/* Option — fully transparent by default, no shadow, no border-left. */
 .dropdown-item {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 44px;
-  padding: 0 16px;
+  min-height: 40px;
+  padding: 9px 12px;
+  margin: 0;
   background: transparent;
-  border: none;
-  border-left: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  box-shadow: none;
   color: var(--ink);
   font: inherit;
   font-size: 14px;
+  line-height: 1.45;
   text-align: left;
   cursor: pointer;
+  transition:
+    background var(--motion-fast, 120ms ease),
+    border-color var(--motion-fast, 120ms ease),
+    color var(--motion-fast, 120ms ease);
 }
 
-.dropdown-item:hover {
+.dropdown-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+/* Hover — neutral ghost on the un-selected option only. */
+.dropdown-item:not([disabled]):not([aria-selected="true"]):hover {
   background: rgba(91, 138, 131, 0.06);
+  border-color: transparent;
 }
 
+/* Keyboard highlight — 1px border + 0.10 accent-soft background. */
 .dropdown-item.is-active {
-  background: rgba(91, 138, 131, 0.12);
+  background: rgba(91, 138, 131, 0.10);
+  border-color: rgba(91, 138, 131, 0.55);
   outline: none;
 }
 
+/* Selected — full-width low-saturation gradient + 1px accent border, no extra
+ * left bar, no inset shadow. font-weight 600 to differentiate from hover. */
 .dropdown-item[aria-selected="true"] {
-  background: rgba(91, 138, 131, 0.10);
-  border-left-color: var(--accent);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(91, 138, 131, 0.16),
+      rgba(91, 138, 131, 0.10)
+    );
+  border-color: rgba(91, 138, 131, 0.22);
   color: var(--accent-strong);
-  font-weight: 500;
+  font-weight: 600;
 }
 
+/* Selected AND keyboard-highlighted: stronger, with a 1px inset ring.
+ * The ring is via box-shadow inset (no pseudo-element) so the option stays
+ * rect-shaped and never gets clipped by radius. */
 .dropdown-item[aria-selected="true"].is-active {
-  background: rgba(91, 138, 131, 0.16);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(91, 138, 131, 0.22),
+      rgba(91, 138, 131, 0.14)
+    );
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
+/* Disabled — independent of selected/hover; never receives a background. */
 .dropdown-item[disabled] {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--muted);
 }
 
+/* Legacy fadeout fade gradient — kept for backwards compatibility with
+ * pages that already call `showFadeout()` from the (in-flight) JS layer.
+ * Hidden by default and locked at popover-bottom now via JS-anchor. */
 .dropdown-fadeout {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 8px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--panel-strong));
+  left: 8px;
+  right: 8px;
+  height: 12px;
+  background: linear-gradient(to bottom, rgba(252, 249, 243, 0), rgba(246, 241, 232, 0.95));
   pointer-events: none;
+  border-radius: 0 0 14px 14px;
 }
 
 .dropdown-fadeout[hidden] { display: none; }
 
+/* Caller-side width / grid §4.4 */
+.dropdown[data-size-mode="content"],
+.dropdown[data-size-mode="trigger"],
+.dropdown[data-size-mode="fixed"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  min-width: var(--dropdown-min-width, 112px);
+  max-width: var(--dropdown-max-width, 280px);
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.dropdown[data-size-mode="fixed"] { width: 100%; }
+
+.dropdown-label,
+.dropdown-trigger-label {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.45;
+}
+.dropdown-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown[data-allow-trigger-wrap="true"] .dropdown-trigger-label {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Trigger size-mode preset (kept compatible with existing data-dropdown-size) */
+.dropdown[data-dropdown-size="compact"] {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  gap: 8px;
+}
+.dropdown[data-dropdown-size="default"] {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+/* Backwards-compat: do NOT redeclare .dropdown here. The base .dropdown
+ * rule at styles.css:11125 governs layout/colors; this block only
+ * augments via :where() to inherit visual sugar without selector
+ * duplication. */
+:where(.dropdown) {
+  /* Reserved for future small augmentations; intentionally empty. */
+}
+
 .toolbar-grid .field .dropdown { width: 100%; }
+
+
