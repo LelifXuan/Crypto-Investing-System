@@ -4,6 +4,72 @@ let adaptiveAxisPluginRegistered = false;
 let referenceLinePluginRegistered = false;
 let expiryAnchorsPluginRegistered = false;
 
+/* === §16.C — Token-driven chart theme ============================
+   Read once from `:root` via getComputedStyle. If the document isn't
+   ready (e.g. SSR / unit test bootstrap), fall back to the existing
+   hardcoded values. Auditors: see docs/UI_UX_AUDIT_2026-07-31.md §16.C
+   for the audit trail and the original line-by-line palette review. */
+const CHART_THEME_FALLBACK = Object.freeze({
+  legend: "#4b5961",
+  tooltipBg: "rgba(21, 35, 42, 0.92)",
+  tooltipBorder: "rgba(255, 255, 255, 0.06)",
+  tooltipFg1: "#f8fafc",
+  tooltipFg2: "#e2e8f0",
+  axis: "#627078",
+  gridX: "rgba(23, 34, 39, 0.042)",
+  gridY: "rgba(23, 34, 39, 0.05)",
+  referenceLine: "rgba(83, 99, 108, 0.72)",
+  referenceLabel: "#53636c",
+  expiryLine: "rgba(83, 99, 108, 0.45)",
+  expiryLabel: "rgba(48, 84, 130, 0.85)",
+  dotPutWall: "#c2725a",
+  dotMaxPain: "#5a6a7c",
+  dotCallWall: "#8eb098",
+  dotStroke: "#ffffff",
+  upStroke: "#16a34a",
+  downStroke: "#dc2626",
+  upFill: "rgba(124, 155, 138, 0.32)",
+  downFill: "rgba(194, 114, 90, 0.30)",
+});
+
+function _readCssVar(name, fallback) {
+  try {
+    if (typeof document === "undefined") return fallback;
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+const CHART_THEME = Object.freeze({
+  legend:         _readCssVar("--chart-legend",         CHART_THEME_FALLBACK.legend),
+  tooltipBg:      _readCssVar("--chart-tooltip-bg",     CHART_THEME_FALLBACK.tooltipBg),
+  tooltipBorder:  _readCssVar("--chart-tooltip-border", CHART_THEME_FALLBACK.tooltipBorder),
+  tooltipFg1:     _readCssVar("--chart-tooltip-fg-1",   CHART_THEME_FALLBACK.tooltipFg1),
+  tooltipFg2:     _readCssVar("--chart-tooltip-fg-2",   CHART_THEME_FALLBACK.tooltipFg2),
+  axis:           _readCssVar("--chart-axis",           CHART_THEME_FALLBACK.axis),
+  gridX:          _readCssVar("--chart-grid-x",         CHART_THEME_FALLBACK.gridX),
+  gridY:          _readCssVar("--chart-grid-y",         CHART_THEME_FALLBACK.gridY),
+  referenceLine:  _readCssVar("--chart-reference-line", CHART_THEME_FALLBACK.referenceLine),
+  referenceLabel: _readCssVar("--chart-reference-label", CHART_THEME_FALLBACK.referenceLabel),
+  expiryLine:     _readCssVar("--chart-expiry-line",    CHART_THEME_FALLBACK.expiryLine),
+  expiryLabel:    _readCssVar("--chart-expiry-label",   CHART_THEME_FALLBACK.expiryLabel),
+  dotPutWall:     _readCssVar("--chart-dot-put-wall",   CHART_THEME_FALLBACK.dotPutWall),
+  dotMaxPain:     _readCssVar("--chart-dot-max-pain",   CHART_THEME_FALLBACK.dotMaxPain),
+  dotCallWall:    _readCssVar("--chart-dot-call-wall",  CHART_THEME_FALLBACK.dotCallWall),
+  dotStroke:      _readCssVar("--chart-dot-stroke",     CHART_THEME_FALLBACK.dotStroke),
+  upStroke:       _readCssVar("--chart-up-stroke",      CHART_THEME_FALLBACK.upStroke),
+  downStroke:     _readCssVar("--chart-down-stroke",    CHART_THEME_FALLBACK.downStroke),
+  upFill:         _readCssVar("--chart-up-fill",        CHART_THEME_FALLBACK.upFill),
+  downFill:       _readCssVar("--chart-down-fill",      CHART_THEME_FALLBACK.downFill),
+});
+
+// expose for test runs (readback probe in tests/_visual_c_chart_theme_readback.py)
+if (typeof globalThis !== "undefined") {
+  globalThis.__CHART_THEME__ = CHART_THEME;
+}
+
 function finiteChartNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
@@ -184,12 +250,12 @@ export function buildAdaptiveScaleOptionsForAxes(
           max: domain.max,
           ticks: {
             display: spec.display_ticks !== false,
-            color: "#627078",
+            color: CHART_THEME.axis,
             font: { size: 11, weight: "500" },
             callback: (value) => formatChartValue(value, spec.value_format || spec.unit),
           },
           grid: {
-            color: "rgba(23, 34, 39, 0.05)",
+            color: CHART_THEME.gridY,
             drawOnChartArea: spec.grid !== false,
           },
         },
@@ -325,7 +391,7 @@ const referenceLines = {
         return;
       }
       ctx.save();
-      ctx.strokeStyle = annotation.color || "rgba(83, 99, 108, 0.72)";
+      ctx.strokeStyle = annotation.color || CHART_THEME.referenceLine;
       ctx.lineWidth = 1.2;
       ctx.setLineDash(annotation.dash || [5, 5]);
       ctx.beginPath();
@@ -334,7 +400,7 @@ const referenceLines = {
       ctx.stroke();
       if (annotation.label) {
         ctx.setLineDash([]);
-        ctx.fillStyle = annotation.color || "#53636c";
+        ctx.fillStyle = annotation.color || CHART_THEME.referenceLabel;
         ctx.font = "600 10px IBM Plex Sans, Noto Sans SC, sans-serif";
         ctx.fillText(
           annotation.label,
@@ -375,7 +441,7 @@ const expiryAnchors = {
       if (!Number.isFinite(x)) return;
       // Vertical dashed line.
       ctx.save();
-      ctx.strokeStyle = "rgba(83, 99, 108, 0.45)";
+      ctx.strokeStyle = CHART_THEME.expiryLine;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 5]);
       ctx.beginPath();
@@ -385,15 +451,15 @@ const expiryAnchors = {
       ctx.setLineDash([]);
       // Top-of-chart label, e.g. "60D".
       if (anchor.label) {
-        ctx.fillStyle = "rgba(48, 84, 130, 0.85)";
+        ctx.fillStyle = CHART_THEME.expiryLabel;
         ctx.font = "600 10px IBM Plex Sans, Noto Sans SC, sans-serif";
         ctx.fillText(String(anchor.label), x + 4, chartArea.top + 12);
       }
       // Three dots: put_wall / max_pain / call_wall.
       const dotSpec = [
-        { key: "put_wall", color: "#c2725a" },
-        { key: "max_pain", color: "#5a6a7c" },
-        { key: "call_wall", color: "#8eb098" },
+        { key: "put_wall",  color: CHART_THEME.dotPutWall },
+        { key: "max_pain",  color: CHART_THEME.dotMaxPain },
+        { key: "call_wall", color: CHART_THEME.dotCallWall },
       ];
       dotSpec.forEach(({ key, color }) => {
         const v = Number(anchor[key]);
@@ -401,7 +467,7 @@ const expiryAnchors = {
         const y = yScale.getPixelForValue(v);
         if (!Number.isFinite(y)) return;
         ctx.fillStyle = color;
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = CHART_THEME.dotStroke;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(x, y, 4.2, 0, Math.PI * 2);
@@ -447,8 +513,8 @@ const candlestickOverlayPlugin = {
         const yClose = yScale.getPixelForValue(close);
         if (![yOpen, yHigh, yLow, yClose].every(Number.isFinite)) return;
         const bullish = close >= open;
-        const stroke = bullish ? (dataset.upStrokeColor || "#16a34a") : (dataset.downStrokeColor || "#dc2626");
-        const fill = bullish ? (dataset.upColor || "rgba(124,155,138,0.32)") : (dataset.downColor || "rgba(194,114,90,0.30)");
+        const stroke = bullish ? (dataset.upStrokeColor || CHART_THEME.upStroke) : (dataset.downStrokeColor || CHART_THEME.downStroke);
+        const fill = bullish ? (dataset.upColor || CHART_THEME.upFill) : (dataset.downColor || CHART_THEME.downFill);
         const bodyTop = Math.min(yOpen, yClose);
         const bodyHeight = Math.max(Math.abs(yClose - yOpen), 1.5);
 
@@ -479,7 +545,7 @@ function baseOptions() {
     plugins: {
       legend: {
         labels: {
-          color: "#4b5961",
+          color: CHART_THEME.legend,
           boxWidth: 22,
           boxHeight: 8,
           padding: 16,
@@ -489,13 +555,13 @@ function baseOptions() {
       // User-facing timestamps on this app are Beijing time without suffix.
       // See the policy comment in app/static/core/dom.js#formatDateTime.
       tooltip: {
-        backgroundColor: "rgba(21, 35, 42, 0.92)",
-        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: CHART_THEME.tooltipBg,
+        borderColor: CHART_THEME.tooltipBorder,
         borderWidth: 1,
         cornerRadius: 14,
         padding: 12,
-        titleColor: "#f8fafc",
-        bodyColor: "#e2e8f0",
+        titleColor: CHART_THEME.tooltipFg1,
+        bodyColor: CHART_THEME.tooltipFg2,
         displayColors: true,
         callbacks: {
           title(items) {
@@ -520,7 +586,7 @@ function baseOptions() {
     scales: {
       x: {
         ticks: {
-          color: "#627078",
+          color: CHART_THEME.axis,
           maxRotation: 0,
           autoSkip: true,
           autoSkipPadding: 18,
@@ -529,11 +595,11 @@ function baseOptions() {
             return formatXAxisTick(value, this.chart?.data?.labels || []);
           },
         },
-        grid: { color: "rgba(23, 34, 39, 0.042)" },
+        grid: { color: CHART_THEME.gridX },
       },
       y: {
-        ticks: { color: "#627078", font: { size: 11, weight: "500" } },
-        grid: { color: "rgba(23, 34, 39, 0.05)" },
+        ticks: { color: CHART_THEME.axis, font: { size: 11, weight: "500" } },
+        grid: { color: CHART_THEME.gridY },
       },
     },
   };
@@ -711,10 +777,10 @@ export function candleDataset(label, candles, extra = {}) {
     fill: false,
     renderAsCandles: true,
     candles: sanitizedCandles,
-    upStrokeColor: "#16a34a",
-    upColor: "rgba(124, 155, 138, 0.32)",
-    downStrokeColor: "#dc2626",
-    downColor: "rgba(194, 114, 90, 0.30)",
+    // upStrokeColor / upColor / downStrokeColor / downColor intentionally
+    // omitted; the candlestick plugin falls back to CHART_THEME.{upStroke,
+    // upFill, downStroke, downFill} when these are undefined. Callers that
+    // need a divergent palette may still override via `extra`.
     ...extra,
   };
 }

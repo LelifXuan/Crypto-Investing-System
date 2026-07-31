@@ -88,6 +88,35 @@
   --line-soft: rgba(160, 140, 108, 0.10);
   --card-bg: var(--surface-elevated);
   --ink-muted: #5e6a78;
+
+  /* === §16.C — Chart-only tokens ===========================
+     Read by app/static/ui/charts.js via `getComputedStyle(:root)`.
+     Each token below maps to the previous hardcoded fallback
+     (`ui/charts.js:482-540`) so charts render identically even
+     if `getComputedStyle` fails (e.g. SSR / tests). The fallback
+     constants live alongside their consumer sites so a future
+     refactor can move the truth into one place.
+     Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.C */
+  --chart-legend: #4b5961;
+  --chart-tooltip-bg: rgba(21, 35, 42, 0.92);
+  --chart-tooltip-border: rgba(255, 255, 255, 0.06);
+  --chart-tooltip-fg-1: #f8fafc;
+  --chart-tooltip-fg-2: #e2e8f0;
+  --chart-axis: #627078;
+  --chart-grid-x: rgba(23, 34, 39, 0.042);
+  --chart-grid-y: rgba(23, 34, 39, 0.05);
+  --chart-reference-line: rgba(83, 99, 108, 0.72);
+  --chart-reference-label: #53636c;
+  --chart-expiry-line: rgba(83, 99, 108, 0.45);
+  --chart-expiry-label: rgba(48, 84, 130, 0.85);
+  --chart-dot-put-wall: #c2725a;
+  --chart-dot-max-pain: #5a6a7c;
+  --chart-dot-call-wall: #8eb098;
+  --chart-dot-stroke: #ffffff;
+  --chart-up-stroke: #16a34a;
+  --chart-down-stroke: #dc2626;
+  --chart-up-fill: rgba(124, 155, 138, 0.32);
+  --chart-down-fill: rgba(194, 114, 90, 0.30);
 }
 
 * {
