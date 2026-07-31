@@ -2264,7 +2264,7 @@ select {
 
 .analysis-hero-grid {
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
-  align-items: start;
+  align-items: stretch;
 }
 
 .analysis-hero-card {
@@ -2318,8 +2318,15 @@ select {
   padding: 9px 12px;
 }
 
+.realtime-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .realtime-card .status-grid {
   gap: 8px;
+  margin-top: auto;
 }
 
 .live-price {
@@ -3803,7 +3810,7 @@ tr.is-supply-event td {
   width: 100%;
   height: clamp(320px, 42vh, 460px);
   min-height: 320px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .structure-chart-meta {
@@ -7479,6 +7486,24 @@ ul.terminal-summary-watch li {
   font-variant-numeric: tabular-nums;
 }
 
+.strategy-v2-metric-stale {
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.strategy-v2-metric-stale strong {
+  white-space: nowrap;
+}
+
+.strategy-v2-metric-stale small {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
 /* V1.7.x: stale-plan awareness tile. Replaces the "建议杠杆" slot
    when a CONDITIONAL_LIMIT plan has drifted more than 1.5% from the
    live price. The tile uses the same metric chrome but adds a tone-
@@ -7492,8 +7517,10 @@ ul.terminal-summary-watch li {
 }
 .strategy-v2-metric-stale[data-tone="warning"] strong {
   color: var(--warning, #6b4a1d);
-  font-size: 0.94rem;
-  line-height: 1.28;
+  font-size: 1.05rem;
+}
+.strategy-v2-metric-stale[data-tone="warning"] small {
+  color: var(--warning, #8a6329);
 }
 .strategy-v2-metric-stale[data-tone="stale"] {
   background: rgba(196, 102, 102, 0.16);
@@ -7504,8 +7531,10 @@ ul.terminal-summary-watch li {
 }
 .strategy-v2-metric-stale[data-tone="stale"] strong {
   color: var(--danger, #5a2424);
-  font-size: 0.94rem;
-  line-height: 1.28;
+  font-size: 1.05rem;
+}
+.strategy-v2-metric-stale[data-tone="stale"] small {
+  color: var(--danger, #704040);
 }
 .strategy-compact-heading { margin-bottom: 0; }
 .strategy-compact-heading h2 {
@@ -8792,74 +8821,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.btc-evidence-layer {
-  display: grid;
-  gap: 16px;
-}
-
-/* 2026-07-27: unify "衍生品状态" and "推理" sub-cards into a single
- * 4-col × 2-row grid so all 8 tiles are equal height and the gap
- * between the two sections disappears. The grid is intentionally
- * fixed 4-col (not auto-fit) so the first row always lines up with
- * the second row visually. */
-.btc-evidence-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  grid-auto-rows: 1fr;
-}
-
-/* Shared tile style for all 8 evidence sub-cards. Both row 1
- * (衍生品状态) and row 2 (推理) use this so the visual rhythm
- * matches. */
-.btc-evidence-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid rgba(15, 118, 110, 0.14);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.52);
-  min-height: 0;
-}
-
-.btc-evidence-tile header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.btc-evidence-tile h3 {
-  margin: 4px 0 6px;
-  font-size: 16px;
-  line-height: 1.45;
-  color: var(--ink);
-}
-
-.btc-evidence-tile p {
-  margin: 0;
-  color: var(--muted-strong);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.btc-evidence-tile p strong {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--accent-strong);
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.btc-evidence-tile .btc-evidence-basis {
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-
 .btc-inference-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -9279,7 +9240,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   .btc-option-charts,
   .btc-evidence-columns,
   .btc-evidence-explanations,
-  .btc-evidence-grid,
   .btc-inference-grid,
   .btc-wall-signal-grid,
   .btc-wall-signal-context,
@@ -9363,7 +9323,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .strategy-unified-overview {
   display: grid;
-  grid-template-columns: minmax(420px, 0.9fr) minmax(720px, 1.35fr);
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.35fr);
   gap: 24px;
   align-items: stretch;
 }
@@ -10709,19 +10669,15 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   position: fixed;
   top: 0;
   right: 0;
-  /* 2026-07-25: widen the slide-in detail panel so the multi-horizon
-     reasoning chain (Overview / ExecutionPlan / DecisionAudit / EvidenceStack
-     / MarketOperation / RiskPanel / EventWatch / DataAccess) gets enough
-     horizontal space to render the cross-module tables without truncation.
-     The previous 66% / 960px cap held the panel at ~50% on common 1280px
-     viewports. min(72%, 1280px) lands in the 67-72% band the user wants,
-     and falls back to 100% only on phones. */
-  width: min(72%, 1280px);
+  width: 75vw;
+  max-width: 75vw;
   height: 100vh;
+  box-sizing: border-box;
   background: var(--bg);
   border-left: 1px solid var(--border);
   z-index: 101;
   overflow-y: auto;
+  overflow-x: hidden;
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
@@ -10845,15 +10801,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .strategy-degraded-banner button[data-strategy-rebuild]:disabled {
   opacity: 0.6;
   cursor: progress;
-}
-
-@media (max-width: 1100px) {
-  .strategy-detail-panel {
-    /* Mid-screen: keep ~75% width on common laptop heights so the
-       multi-horizon chain still reads, while the 1280px cap clamps on
-       taller desktop viewports. */
-    width: 75%;
-  }
 }
 
 @media (max-width: 900px) {
@@ -11266,8 +11213,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border: 1px solid var(--border-glass);
   border-radius: 16px;
   box-shadow: var(--shadow-card);
-  backdrop-filter: var(--blur-soft);
-  -webkit-backdrop-filter: var(--blur-soft);
   overflow: hidden;
 }
 
@@ -11455,5 +11400,3 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .toolbar-grid .field .dropdown { width: 100%; }
-
-
