@@ -78,22 +78,7 @@ function chipForStatus(code, tooltip = "") {
   return impactChip(toneForStatus(code), tooltip, labelForStatus(code));
 }
 
-// ----- Governance tone mapping (source_manifest freshness_state → tone).
-function toneForFreshness(state) {
-  switch (state) {
-    case "fresh":
-      return "bullish-soft";
-    case "stale":
-      return "warning";
-    case "degraded":
-      return "warning";
-    case "missing":
-      return "bearish-soft";
-    default:
-      return "neutral";
-  }
-}
-
+// ----- Governance freshness mapping (source_manifest freshness_state → label/text).
 function labelForFreshness(state) {
   switch (state) {
     case "fresh":
