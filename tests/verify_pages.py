@@ -94,7 +94,9 @@ REAL_CONTENT_SELECTORS = {
         ".strategy-v2-toolbar",
         "#strategy-scan-matrix",
     ],
-    "gold-allocation": [".hero-card", ".gold-signal-card", ".gold-workbench"],
+    # The template provides a stable first-paint shell while the page module
+    # loads. Only the workbench selector proves that the JS page has mounted.
+    "gold-allocation": [".gold-workbench-grid", ".gold-chart-grid", ".gold-governance-grid"],
 }
 ERROR_SELECTOR = ".error-state, .render-fatal, [data-render-fatal]"
 
@@ -110,6 +112,21 @@ def make_error_collectors() -> dict:
 
 
 def attach_collectors(page: Page, collectors: dict) -> None:
+    page.add_init_script(
+        """
+        window.__verifyLongTasks = [];
+        if (typeof PerformanceObserver !== "undefined") {
+          try {
+            new PerformanceObserver((list) => {
+              for (const entry of list.getEntries()) {
+                window.__verifyLongTasks.push(entry.duration);
+              }
+            }).observe({ type: "longtask", buffered: true });
+          } catch (_) {}
+        }
+        """
+    )
+
     def on_console(msg: ConsoleMessage) -> None:
         if msg.type in ("error",):
             collectors["console_errors"].append(msg.text)
@@ -156,6 +173,63 @@ def wait_for_real_content(page: Page, page_id: str, timeout_ms: int = 10_000):
     return False, (time.monotonic() - start) * 1000.0, f"timeout:last={last_state}"
 
 
+def verify_ai_strategy_data(page: Page) -> tuple[bool, str]:
+    """Open one strategy and validate semantic data, not just the page shell."""
+    try:
+        try:
+            page.wait_for_selector(".scan-cell-btn", state="visible", timeout=5_000)
+        except Exception:
+            warming = page.locator(".strategy-scan-page").inner_text()
+            if "预热" in warming or "warming" in warming.lower():
+                return True, "warming-index-shell"
+            raise
+        page.locator(".scan-cell-btn").first.click()
+        page.wait_for_selector(
+            "#strategy-detail-panel .strategy-market-operation",
+            state="visible",
+            timeout=120_000,
+        )
+        page.wait_for_selector(
+            "#strategy-detail-panel .strategy-decision-audit",
+            state="visible",
+            timeout=15_000,
+        )
+
+        operation_cards = page.locator(
+            "#strategy-detail-panel .strategy-operation-card"
+        ).count()
+        missing_status_cards = page.locator(
+            "#strategy-detail-panel .strategy-operation-card",
+            has_text="置信 数据不足",
+        ).count()
+        used_evidence = page.locator(
+            "#strategy-detail-panel .strategy-audit-list li"
+        ).count()
+        cross_rows = page.locator(
+            "#strategy-detail-panel .strategy-decision-audit tbody"
+        ).first.locator("tr").count()
+        audit_text = page.locator(
+            "#strategy-detail-panel .strategy-decision-audit"
+        ).inner_text()
+
+        failures = []
+        if operation_cards < 5:
+            failures.append(f"operation_cards={operation_cards}")
+        if missing_status_cards >= 5:
+            failures.append(f"all_categories_data_insufficient={missing_status_cards}")
+        if used_evidence < 1 or "当前没有满足有效期和质量门槛的影子信号" in audit_text:
+            failures.append("shadow_evidence_empty")
+        if cross_rows < 1 or "交叉验证数据不足" in audit_text:
+            failures.append("cross_validation_empty")
+        if "0 项输入" in audit_text or "暂无覆盖记录" in audit_text:
+            failures.append("indicator_coverage_empty")
+        if "审计快照不完整" in audit_text:
+            failures.append("audit_snapshot_incomplete")
+        return not failures, "ok" if not failures else ",".join(failures)
+    except Exception as exc:
+        return False, f"semantic-check-failed:{exc}"
+
+
 def verify_one_page(page: Page, page_id: str, route: str, baseline: bool) -> dict:
     url = f"{BASE_URL}{route}"
     collectors = make_error_collectors()
@@ -169,7 +243,10 @@ def verify_one_page(page: Page, page_id: str, route: str, baseline: bool) -> dic
         "content_ok": False,
         "duration_ms": 0.0,
         "state": "",
+        "data_integrity_ok": None,
+        "data_integrity_state": "not-applicable",
         "screenshot": None,
+        "long_task_max_ms": 0.0,
     }
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)
@@ -181,6 +258,10 @@ def verify_one_page(page: Page, page_id: str, route: str, baseline: bool) -> dic
     result["content_ok"] = ok
     result["duration_ms"] = round(dur, 1)
     result["state"] = state
+    if ok and page_id == "ai-strategy":
+        integrity_ok, integrity_state = verify_ai_strategy_data(page)
+        result["data_integrity_ok"] = integrity_ok
+        result["data_integrity_state"] = integrity_state
 
     # 截图
     out_dir = BASELINE_DIR if baseline else SCREENSHOT_DIR
@@ -194,6 +275,17 @@ def verify_one_page(page: Page, page_id: str, route: str, baseline: bool) -> dic
     result["console_errors"] = collectors["console_errors"]
     result["pageerrors"] = collectors["pageerrors"]
     result["failed_responses"] = collectors["failed_responses"]
+    try:
+        result["long_task_max_ms"] = round(
+            float(
+                page.evaluate(
+                    "() => Math.max(0, ...(window.__verifyLongTasks || []))"
+                )
+            ),
+            1,
+        )
+    except Exception:
+        pass
     return result
 
 
@@ -229,6 +321,7 @@ def verify_spa_switch(page: Page, page_ids: list[str]) -> list[dict]:
             )
             continue
         try:
+            page.evaluate("() => { window.__verifyLongTasks = []; }")
             page.click(sel)
         except Exception as e:
             rows.append(
@@ -247,6 +340,14 @@ def verify_spa_switch(page: Page, page_ids: list[str]) -> list[dict]:
                 "ok": ok,
                 "duration_ms": round(dur, 1),
                 "state": state,
+                "long_task_max_ms": round(
+                    float(
+                        page.evaluate(
+                            "() => Math.max(0, ...(window.__verifyLongTasks || []))"
+                        )
+                    ),
+                    1,
+                ),
             }
         )
     return rows
@@ -297,12 +398,19 @@ def main(argv: list[str]) -> int:
                 ctx = browser.new_context(viewport={"width": 1366, "height": 900})
                 page = ctx.new_page()
                 r = verify_one_page(page, pid, PAGE_ROUTES[pid], args.baseline)
-                ok = r["content_ok"] and not r["console_errors"] and not r["pageerrors"]
+                ok = (
+                    r["content_ok"]
+                    and r["data_integrity_ok"] is not False
+                    and not r["console_errors"]
+                    and not r["pageerrors"]
+                )
                 tag = "OK" if ok else "FAIL"
                 print(
                     f"{tag}  dur={r['duration_ms']}ms state={r['state']} "
                     f"console_errs={len(r['console_errors'])} "
-                    f"pageerrors={len(r['pageerrors'])}"
+                    f"pageerrors={len(r['pageerrors'])} "
+                    f"data={r['data_integrity_state']} "
+                    f"longtask={r['long_task_max_ms']}ms"
                 )
                 report["per_page"].append(r)
                 ctx.close()
@@ -326,7 +434,10 @@ def main(argv: list[str]) -> int:
                 pname = r["page_id"]
                 dur = r["duration_ms"]
                 state = r["state"]
-                print(f"  [{tag}] {pname:<22} dur={dur:>7.1f}ms state={state}")
+                print(
+                    f"  [{tag}] {pname:<22} dur={dur:>7.1f}ms "
+                    f"longtask={r.get('long_task_max_ms', 0):>6.1f}ms state={state}"
+                )
             ctx.close()
 
         browser.close()
@@ -335,7 +446,12 @@ def main(argv: list[str]) -> int:
     pp_fail = sum(
         1
         for r in report["per_page"]
-        if not r["content_ok"] or r["console_errors"] or r["pageerrors"]
+        if (
+            not r["content_ok"]
+            or r["data_integrity_ok"] is False
+            or r["console_errors"]
+            or r["pageerrors"]
+        )
     )
     sp_fail = sum(1 for r in report["spa_switches"] if not r["ok"])
     sp_slow = sum(1 for r in report["spa_switches"] if r["ok"] and r["duration_ms"] >= 3000.0)
