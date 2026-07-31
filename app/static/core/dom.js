@@ -116,7 +116,7 @@ export function formatNumber(value, digits = 2) {
   const num = Number(value);
   if (Number.isNaN(num)) return "-";
   const safeDigits = Math.max(0, Math.min(Number(digits) || 0, 2));
-  return num.toLocaleString("zh-CN", {
+  return num.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: safeDigits,
   });
@@ -359,3 +359,104 @@ export function dataFreshnessHint(updatedAt, status, cacheStatus) {
   else hint = formatDateTime(updatedAt);
   return `<span class="freshness-hint">${escapeHtml(hint)}</span>`;
 }
+
+/* ============================================================
+ * §16.B — Unified <Chip> & <Button> components
+ * ------------------------------------------------------------
+ * Add-only: this block does NOT delete or rename any existing
+ * chip/button variant. Existing callers (`impactChip`, `statusChip`,
+ * `<button class="primary-button">` etc.) keep working unchanged.
+ *
+ * Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.B
+ * ============================================================ */
+
+const CHIP_TONE_CLASS = {
+  bull: "chip-bull",
+  bear: "chip-bear",
+  neutral: "chip-neutral",
+  warning: "chip-warning",
+  danger: "chip-danger",
+  info: "chip-info",
+  success: "chip-success",
+  event: "chip-event",
+};
+
+const CHIP_VARIANT_CLASS = {
+  solid: "chip-solid",
+  soft: "chip-soft",
+  outline: "chip-outline",
+};
+
+const TONE_KEYS = Object.keys(CHIP_TONE_CLASS);
+
+/**
+ * mountChip — semantic-tone chip component.
+ *
+ *   tone ∈ { bull, bear, neutral, warning, danger, info, success, event }
+ *   variant ∈ { solid, soft, outline }                  (default: soft)
+ *   icon ∈ string | null                                (optional leading glyph)
+ *   text ∈ string                                       (required, HTML-escaped)
+ *
+ * Returns HTML string. Example:
+ *   mountChip({ tone: "bull", variant: "solid", text: "看涨" })
+ *   → '<span class="chip chip-bull chip-solid">看涨</span>'
+ */
+export function mountChip({ tone = "neutral", variant = "soft", icon = null, text = "" } = {}) {
+  const toneKey = TONE_KEYS.includes(tone) ? tone : "neutral";
+  const variantKey = Object.prototype.hasOwnProperty.call(CHIP_VARIANT_CLASS, variant) ? variant : "soft";
+  const toneClass = CHIP_TONE_CLASS[toneKey];
+  const variantClass = CHIP_VARIANT_CLASS[variantKey];
+  const iconPart = icon ? `<span class="chip-icon" aria-hidden="true">${escapeHtml(icon)}</span>` : "";
+  return `<span class="chip ${toneClass} ${variantClass}">${iconPart}${escapeHtml(text)}</span>`;
+}
+
+const BUTTON_VARIANT_CLASS = {
+  primary: "btn-primary",
+  secondary: "btn-secondary",
+  ghost: "btn-ghost",
+  danger: "btn-danger",
+  tab: "btn-tab",
+};
+
+const BUTTON_SIZE_CLASS = {
+  sm: "btn-sm",
+  md: "btn-md",
+  lg: "btn-lg",
+};
+
+/**
+ * mountButton — unified button component.
+ *
+ *   variant ∈ { primary, secondary, ghost, danger, tab }  (default: primary)
+ *   size    ∈ { sm, md, lg }                             (default: md)
+ *   iconLeft / iconRight ∈ string | null                 (optional glyph, HTML-escaped)
+ *   text    ∈ string                                     (required)
+ *   attrs   ∈ Record<string,string>                      (additional HTML attrs, e.g. id / data-* / type)
+ *
+ * Returns HTML string. Example:
+ *   mountButton({ variant: "secondary", iconLeft: "↻", text: "刷新", attrs: { id: "x-refresh" } })
+ *   → '<button type="button" id="x-refresh" class="btn btn-secondary btn-md"><span class="btn-icon" aria-hidden="true">↻</span>刷新</button>'
+ */
+export function mountButton({
+  variant = "primary",
+  size = "md",
+  iconLeft = null,
+  iconRight = null,
+  text = "",
+  attrs = {},
+  type = "button",
+} = {}) {
+  const variantKey = Object.prototype.hasOwnProperty.call(BUTTON_VARIANT_CLASS, variant) ? variant : "primary";
+  const sizeKey = Object.prototype.hasOwnProperty.call(BUTTON_SIZE_CLASS, size) ? size : "md";
+  const safeText = escapeHtml(text || "");
+  const left = iconLeft ? `<span class="btn-icon" aria-hidden="true">${escapeHtml(iconLeft)}</span>` : "";
+  const right = iconRight ? `<span class="btn-icon" aria-hidden="true">${escapeHtml(iconRight)}</span>` : "";
+  // Build attribute string from attrs (caller-controlled, must be safe strings).
+  const attrParts = [`type="${escapeHtml(type)}"`, `class="btn ${BUTTON_VARIANT_CLASS[variantKey]} ${BUTTON_SIZE_CLASS[sizeKey]}"`];
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (typeof v !== "string" && typeof v !== "number") continue;
+    attrParts.push(`${escapeHtml(k)}="${escapeHtml(String(v))}"`);
+  }
+  return `<button ${attrParts.join(" ")}>${left}${safeText}${right}</button>`;
+}
+

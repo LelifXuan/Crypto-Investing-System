@@ -2411,7 +2411,167 @@ a.status-chip:focus-visible {
   color: var(--warning);
 }
 
-.tooltip-icon {
+/* ============================================================
+ * §16.B — Unified <Chip> classes
+ * ------------------------------------------------------------
+ * Add-only: existing legacy .chip / .chip-warn / .chip-warm /
+ * .chip-cool / .chip-bullish / .chip-bearish / etc. classes
+ * are NOT renamed or removed. New `mountChip()` in
+ * core/dom.js emits these.
+ *
+ * Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.B
+ *
+ * Note: base .chip class is declared at styles.css:1264 and is
+ * intentionally not repeated here to avoid cascade ambiguity.
+ * ============================================================ */
+
+/* Tones — semantic colors. Visibility relies on the existing
+ * --bullish / --bearish / --neutral / --warning / --danger / --info
+ * / --accent-strong tokens defined in :root. */
+.chip-bull,
+.chip-success {
+  background: var(--bullish-soft);
+  color: var(--bullish);
+}
+.chip-bear,
+.chip-danger {
+  background: var(--bearish-soft);
+  color: var(--bearish);
+}
+.chip-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.chip-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.chip-event {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.chip-neutral {
+  background: var(--neutral-soft);
+  color: var(--neutral);
+}
+
+/* Variants override fill / stroke on top of the tone. */
+.chip-soft {
+  /* default soft variant — relies on the tone class above for fill / text. */
+}
+.chip-solid {
+  font-weight: 700;
+  padding: 6px 12px;
+}
+.chip-solid.chip-bull,
+.chip-solid.chip-success { background: var(--bullish); color: #fff; }
+.chip-solid.chip-bear,
+.chip-solid.chip-danger { background: var(--bearish); color: #fff; }
+.chip-solid.chip-warning,
+.chip-solid.chip-event   { background: var(--warning); color: #fff; }
+.chip-solid.chip-info    { background: var(--info); color: #fff; }
+.chip-solid.chip-neutral { background: var(--neutral); color: #fff; }
+
+.chip-outline {
+  background: transparent;
+  border: 1px solid currentColor;
+  padding: 5px 11px;
+}
+
+.chip-icon {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 0.9em;
+  line-height: 1;
+}
+
+/* ============================================================
+ * §16.B — Unified <Button> classes
+ * ------------------------------------------------------------
+ * Add-only: existing .primary-button / .ghost-button /
+ * .alert-action-button / .tab-button / .secondary / .secondary-button
+ * / .button-link etc. are NOT renamed. New `mountButton()` in
+ * core/dom.js emits .btn / .btn-{variant} / .btn-{size}.
+ * ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-weight: 600;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color var(--transition-hover), box-shadow var(--transition-hover),
+              background var(--transition-hover), transform var(--transition-hover),
+              color var(--transition-hover);
+  text-decoration: none;
+  user-select: none;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-sm { padding: 6px 12px;  font-size: 13px; }
+.btn-md { padding: 9px 16px;  font-size: 14px; }
+.btn-lg { padding: 12px 22px; font-size: 16px; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: var(--surface);
+  box-shadow: var(--shadow-button);
+}
+.btn-primary:hover { box-shadow: var(--shadow-button-hover); transform: translateY(-1px); }
+
+.btn-secondary {
+  background: rgba(255, 251, 245, 0.92);
+  color: var(--accent-strong);
+  border-color: rgba(15, 118, 110, 0.14);
+}
+.btn-secondary:hover { background: rgba(255, 251, 245, 0.98); box-shadow: var(--shadow-button); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--accent-strong);
+  border-color: transparent;
+}
+.btn-ghost:hover { background: var(--hover-tint); }
+
+.btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger-strong);
+}
+
+.btn-tab {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted-strong);
+  border-color: rgba(175, 154, 123, 0.18);
+  border-radius: 999px;
+}
+.btn-tab[aria-selected="true"],
+.btn-tab.is-active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: var(--surface);
+  border-color: transparent;
+}
+
+.btn-icon {
+  display: inline-block;
+  line-height: 1;
+}
+
+
   display: inline-grid;
   place-items: center;
   width: 20px;
