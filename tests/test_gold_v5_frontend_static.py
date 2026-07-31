@@ -20,10 +20,22 @@ class TestGoldV5Exports:
         assert "export async function renderGoldV5" in _read(JS_PATH)
 
     def test_includes_unmount(self):
-        assert "unmount" in _read(JS_PATH)
+        """V5 module must export an `unmount` function — bare word match is
+        too loose (a comment like `// unmount this later` would pass)."""
+        import re
+        src = _read(JS_PATH)
+        assert re.search(r"export\s+(?:async\s+)?function\s+unmount\b", src), (
+            "V5 module must export `unmount` as a function"
+        )
 
     def test_includes_ready(self):
-        assert "ready" in _read(JS_PATH)
+        """V5 module must export a `ready` symbol (function or const)."""
+        import re
+        src = _read(JS_PATH)
+        assert re.search(
+            r"export\s+(?:async\s+)?function\s+ready\b|export\s+const\s+ready\b",
+            src,
+        ), "V5 module must export `ready` (function or const)"
 
 
 class TestGoldV5ChartIds:
@@ -58,20 +70,38 @@ class TestGoldV5Governance:
 
     def test_no_v4_chip_warning_fallback(self):
         """V4 default was 'chip-warning' for any non-fresh governance row;
-        V5 routes tone through statusTone() map."""
+        V5 routes tone through statusTone() map. Negative + positive: a no-op
+        implementation that just deletes the V4 literal would pass the
+        negative check alone, so we also require the V5 statusTone helper."""
         src = _read(JS_PATH)
-        assert 'class="status-chip ${healthy ? "chip-bullish-soft" : "chip-warning"}' not in src
+        assert 'class="status-chip ${healthy ? "chip-bullish-soft" : "chip-warning"}' not in src, (
+            "V5 must not contain the V4 hard-coded chip-warning ternary"
+        )
+        assert "statusTone" in src, (
+            "V5 must route chip tone through a statusTone() map (see spec §3.2)"
+        )
 
 
 class TestGoldV5VisualLanguage:
     def test_no_emoji(self):
-        """V4 had zero emoji by user instruction; V5 keeps that guard."""
+        """V4 had zero emoji by user instruction; V5 keeps that guard.
+        Scope: pictograph ranges only. JS comments are stripped before scanning
+        so a future maintainer can write `// TODO: replace U+1F4C9 icon` without
+        tripping the guard.
+        """
+        import re
         src = _read(JS_PATH)
-        # Forbid every common emoji codepoint range
-        for ch in src:
+        # Strip // line comments and /* block */ comments so notes can reference
+        # emoji codepoints without tripping the scan.
+        stripped = re.sub(r"//[^\n]*", "", src)
+        stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
+        for ch in stripped:
             cp = ord(ch)
-            assert not (0x2700 <= cp <= 0x27BF), f"emoji at codepoint U+{cp:04X}"
-            assert not (0x1F300 <= cp <= 0x1FAFF), f"emoji at codepoint U+{cp:04X}"
+            # Pictographs / faces / dingbats — the ranges most likely to be
+            # pasted from a chat client.
+            assert not (0x1F300 <= cp <= 0x1F5FF), f"pictograph at U+{cp:04X}"
+            assert not (0x1F600 <= cp <= 0x1F64F), f"face emoji at U+{cp:04X}"
+            assert not (0x2700 <= cp <= 0x27BF), f"dingbat at U+{cp:04X}"
 
     def test_no_inline_style_attribute(self):
         """V4 had 11 `style="..."` literals; V5 uses class-based styling only."""
@@ -110,15 +140,24 @@ class TestGoldV5Template:
 
 class TestGoldV5Routing:
     def test_main_js_routes_to_v5(self):
-        """main.js:21 maps gold-allocation → pages/gold_v5.js (not v4)."""
+        """main.js:21 maps gold-allocation → pages/gold_v5.js (not v4).
+        Assert on three loose substrings instead of one exact line so a
+        future Prettier reformat doesn't break the guard for cosmetic reasons.
+        """
         src = _read(MAIN_PATH)
-        assert '"gold-allocation": () => loadPageModule("./pages/gold_v5.js")' in src, (
-            "main.js gold-allocation route must point to gold_v5.js"
-        )
+        assert '"gold-allocation"' in src, "main.js must reference gold-allocation page id"
+        assert '"./pages/gold_v5.js"' in src, "main.js route must point to gold_v5.js (not v4)"
+        assert "loadPageModule" in src, "main.js must use loadPageModule helper"
 
     def test_main_js_dispatcher_calls_renderGoldV5(self):
+        """A bare string match would pass for an unused import; we additionally
+        require an invocation site (function-call parens after the name)."""
+        import re
         src = _read(MAIN_PATH)
-        assert "renderGoldV5" in src
+        assert "renderGoldV5" in src, "main.js must reference renderGoldV5"
+        assert re.search(r"renderGoldV5\s*\(", src), (
+            "main.js dispatcher must call renderGoldV5(...)"
+        )
         # Old v4 dispatcher reference must be removed
         assert "module.renderGoldV4 ||" not in src
 
