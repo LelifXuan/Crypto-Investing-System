@@ -93,10 +93,11 @@ def test_source_freshness_uses_business_timeframe_not_cache_age() -> None:
 def test_frontend_critical_paths_are_progressive() -> None:
     analysis = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
     monitoring = (ROOT / "app/static/pages/monitoring.js").read_text(encoding="utf-8")
-    # 2026-07-23: gold_allocation.js was renamed to gold_v4.js during the
-    # gold allocation page V3 → V4 refactor. The page id is still
-    # 'gold-allocation' (see main.js) but the source filename is gold_v4.js.
-    gold = (ROOT / "app/static/pages/gold_v4.js").read_text(encoding="utf-8")
+    # 2026-07-31: gold_v4.js was superseded by gold_v5.js during the
+    # gold allocation page V4 → V5 refactor (analysis-page visual alignment).
+    # The page id is still 'gold-allocation' (see main.js) but the source
+    # filename is now gold_v5.js.
+    gold = (ROOT / "app/static/pages/gold_v5.js").read_text(encoding="utf-8")
     main = (ROOT / "app/static/main.js").read_text(encoding="utf-8")
 
     initial_analysis = analysis[
@@ -110,13 +111,13 @@ def test_frontend_critical_paths_are_progressive() -> None:
     monitoring_load = monitoring[monitoring.index("async function loadDashboard") :]
     assert "await api.getMacroOverview" not in monitoring_load
 
-    # 2026-07-23: gold_v4.js exports renderGoldV4 (not renderGoldAllocation).
-    render_gold = gold[gold.index("export async function renderGoldV4"):]
+    # 2026-07-31: gold_v5.js exports renderGoldV5 (not renderGoldV4 nor
+    # renderGoldAllocation — the V5 refactor renamed the entry point).
+    render_gold = gold[gold.index("export async function renderGoldV5"):]
     assert "await loadExecutionPlan()" not in render_gold
-    # 2026-07-23: gold_v4.js uses `ready: ready` (local var name), not
-    # `ready: loadPromise`. Both shapes are equivalent — the local var
-    # was renamed when the V4 refactor landed.
-    assert "ready: ready" in render_gold
+    # 2026-07-31: gold_v5.js exports a top-level `ready = true` const
+    # (not a loadPromise). The lifecycle exports renderGoldV5, unmount, ready.
+    assert "export const ready" in render_gold
 
     assert "https://cdn.jsdelivr.net/npm/chart.js" not in main
     assert "/static/vendor/chart.umd.js" in main

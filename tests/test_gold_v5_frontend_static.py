@@ -158,8 +158,7 @@ class TestGoldV5Routing:
         (b) the absence of the v4 fallback elsewhere."""
         src = _read(MAIN_PATH)
         assert "renderGoldV5" in src, "main.js dispatcher chain must reference renderGoldV5"
-        # Old v4 dispatcher reference must be removed
-        assert "module.renderGoldV4 ||" not in src
+        # Old v4 dispatcher reference must be removed (single, idempotent check).
         assert "module.renderGoldV4 ||" not in src
 
 
