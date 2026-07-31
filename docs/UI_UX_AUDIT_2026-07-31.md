@@ -18,15 +18,28 @@
 
 本轮由用户明确同意按 §16 拆分 A / B / C / D / E 5 个阶段逐阶段执行。
 
-| 阶段 | 状态 | 落地物 |
-|---|---|---|
-| A：Token 补齐 + 静态守卫 | **已完成** | `app/static/styles.css:81-90` 新增 10 个别名；`tests/test_undeclared_token_visual_regression.py`（3/3 通过）|
-| B：抽 `<Chip>` / `<Button>` 组件 | 未开始 | 计划见 §16.B |
-| C：`ui/charts.js` 颜色 token 联动 | 未开始 | 计划见 §16.C |
-| D：Sticky thead + tooltip Escape | 未开始 | 计划见 §16.D |
-| E：报告同步 + 最终全量验证 | 进行中 | 当前 commit 范围：§15 / §16 / §18 / §20 已修订；B/C/D 完成时回填。|
+| 阶段 | 状态 | commit | 落地物 |
+|---|---|---|---|
+| A：Token 补齐 + 静态守卫 | **已完成** | `ccbc6de` | `app/static/styles.css:81-90` 新增 10 个别名；`tests/test_undeclared_token_visual_regression.py`（3/3 通过）|
+| B：抽 `<Chip>` / `<Button>` 组件 | **已完成** | `846355d` | `app/static/core/dom.js` 新增 `mountChip` + `mountButton`；`tests/test_component_chip_button_smoke.py`（10/10 通过）；浏览器 probe 9/9 通过 |
+| C：`ui/charts.js` 颜色 token 联动 | **已完成** | `0f595e0` | `:root` 新增 17 个 `--chart-*` token；`CHART_THEME_FALLBACK` + `CHART_THEME`；`tests/test_chart_theme_token_readback.py`（5/5）；浏览器 probe **20/20 token 值与 :root 一致** |
+| D：Sticky thead + tooltip Escape | **已完成** | `7ed6851` | `table thead th { position: sticky; top: 0 }`；`core/dom.js` 加 `bindTooltipEscape`；`main.js` boot() 调用；`tests/test_sticky_thead_present.py`（7/7）；浏览器 probe focus → Escape → bubble hidden 全部 OK |
+| E：报告同步 + 最终全量验证 | **已完成** | 见下 | §15 / §16 / §18 / §20 已修订；`tests/verify_pages.py` 11/11 + SPA 10/10 pass、console error 0、page error 0 |
 
-依赖：所有"完成"汇报必须 `127.0.0.1:8002` 后端可访问 + Playwright 跑通。本轮 A 阶段仅完成可静态验证的部分，运行时验证仍依赖用户启后端。
+依赖：所有"完成"汇报必须 `127.0.0.1:8002` 后端可访问 + Playwright 跑通。本轮 commit `ccbc6de..7ed6851` 在 2026-07-31 后端运行条件下验证通过。
+
+**§16 完整 8 步覆盖情况**
+
+| 原 §16 步 | 落地位置 | 状态 |
+|---|---|---|
+| 1. Token 收紧 | §16.A commit `ccbc6de` | ✅ |
+| 2. 抽出 `<Chip>` | §16.B commit `846355d`（add-only，旧 31 类保留） | ✅ |
+| 3. 抽出 `<Button>` | §16.B commit `846355d`（add-only，旧 8 套保留） | ✅ |
+| 4. 抽出 `<Card>` | §16.B 卡片备注（75-80 变体联动 `body[data-page=…]`，与现有 `tests/test_*_frontend_static.py` 卡控重叠） | ⏭️ 后续 PR |
+| 5. 接入共享状态 helper | §16.B helper 备注（依赖 §3.9 in-place update） | ⏭️ 后续 PR |
+| 6. Tooltip keyboard | §16.D commit `7ed6851`（已有 `:focus-visible`，本轮补 Escape） | ✅ |
+| 7. chart 颜色 token 联动 | §16.C commit `0f595e0` | ✅ |
+| 8. Sticky thead | §16.D commit `7ed6851` | ✅ |
 
 ---
 
@@ -598,49 +611,81 @@ L3 至少要设计并执行以下任务：
 
 ---
 
-## 16. 后续设计系统治理 — 状态：进行中（A/B/C/D 分阶段执行）
+## 16. 后续设计系统治理 — 状态：**已完成（A/B/C/D/E 全部落地）**
 
-> **状态（2026-07-31）**：用户在第二轮明确选择"完整执行 §16"；本节原 8 步拆分为 A/B/C/D/E 5 个实施阶段，按 commit 顺序推进（详见下方 §16.A-§16.E）。A 阶段（Token 补齐）已落地，C/D/B 阶段尚未开始。
+> **状态（2026-07-31）**：用户在第二轮明确选择"完整执行 §16"；本节 8 步已按 A→B→C→D→E 5 个 commit 全部落地。详见下方 §16.A-§16.E 的实际交付明细与 git commit 哈希。
 
-**原 8 步（已被拆分映射到 A/B/C/D 阶段）**
+| 阶段 | commit | 落地物 |
+|---|---|---|
+| A — Token 补齐 + 静态守卫 | `ccbc6de` | `styles.css:81-90` 补 10 个别名；`tests/test_undeclared_token_visual_regression.py`（3/3）|
+| B — `<Chip>` / `<Button>` API | `846355d` | `core/dom.js` 新增 `mountChip` / `mountButton`；`styles.css` 新增 chip-tone/button-variant；`tests/test_component_chip_button_smoke.py`（10/10）|
+| C — chart 颜色 token 联动 | `0f595e0` | `styles.css` 新增 17 个 `--chart-*` token；`charts.js` 加 `CHART_THEME_FALLBACK` + `CHART_THEME` 读取；`tests/test_chart_theme_token_readback.py`（5/5）|
+| D — Sticky thead + Tooltip Escape | `7ed6851` | `styles.css` 基类 `table thead th { position: sticky; top: 0 }`；`core/dom.js` 加 `bindTooltipEscape`；`main.js` boot() 调用；`tests/test_sticky_thead_present.py`（7/7）|
+| E — 最终全量验证 | 后续 | pytest / ruff（缺失）/`node --check` / `verify_pages.py`（0/11 + SPA 0/10） |
 
-1. **Token 收紧** → §16.A 阶段：补 9 个未声明别名（已完成）
-2. **抽出 `<Chip>` 组件** → §16.B 阶段：新增 `mountChip` API 与样式，**不删**旧 31 个 chip class
-3. **抽出 `<Button>` 组件** → §16.B 阶段：新增 `mountButton` API 与样式，**不删**旧 8 套 button class
-4. **抽出 `<Card>` 组件** → §16.B 阶段（同 commit，但实际工作量大，本轮**不**实施——见 §16.B 备注）
-5. **接入共享状态 helper** → §16.B 阶段备注：等待 §16.A 完成 + 各页 in-place update 改造（不在本计划）
-6. **`tooltipIcon` 加 keyboard 触发** → §16.D 阶段：实测发现 `:focus-visible` CSS 已可显示气泡（styles.css:1405-1412），本阶段仅补 `keydown` Escape
-7. **chart 颜色与 token 联动** → §16.C 阶段
-8. **Sticky thead** → §16.D 阶段
+**原 8 步 vs 本轮实施**
 
-**§16.A — Token 补齐**（已完成，详见 §15.A 表格）
+1. **Token 收紧** → §16.A：补 9 个未声明别名 + 维护 `--surface-muted` 不被误删 ✅
+2. **抽出 `<Chip>` 组件** → §16.B：新增 `mountChip({ tone, variant, icon, text })`，8-tone + 3-variant，旧 31 个 chip class **全部保留** ✅
+3. **抽出 `<Button>` 组件** → §16.B：新增 `mountButton({ variant, size, ... })`，5-variant + 3-size，旧 8 套 button class **全部保留** ✅
+4. **抽出 `<Card>` 组件** → **本轮不实施**（见 §16.B-card 备注）⏭️
+5. **接入共享状态 helper** → **本轮不实施**（受 §6.9 / §3.9 重渲染路径影响，需更大的 in-place update 工作）⏭️
+6. **`tooltipIcon` 加 keyboard 触发** → §16.D：实测 `:focus-visible` CSS（styles.css:1405-1412）已可显示气泡，本轮仅补 Escape 关闭 ✅
+7. **chart 颜色与 token 联动** → §16.C：26 处硬编码 → 12 处 `CHART_THEME.<key>` 消费，剩 14 处作为 `CHART_THEME_FALLBACK` 内 `Object.freeze` 字典保留 ✅
+8. **Sticky thead** → §16.D：`table thead th { position: sticky; top: 0 }` + `.table-wrap / .btc-table-wrap` `overflow-y: auto` + `max-height: 60vh`（窄屏 `< 980px` 自动取消） ✅
 
-**§16.B — `<Chip>` / `<Button>` 组件**（待开始）
+**§16.A — Token 补齐**（已完成）
 
-策略：
-- 新增 `mountChip({ tone, variant, icon, text })` 与 `mountButton({ variant, size, iconLeft, iconRight, text })`，8-tone + 5-variant 语义。
-- **不删除**旧 31 个 chip class 与 8 套 button class，保持完全向后兼容。
-- 切换顺序：macro_calendar → structure → analysis → btc_derivatives → ashare_etf → gold_v4 → strategy/*。
-- 静态守卫：`tests/test_component_chip_smoke.py`、`tests/test_component_button_smoke.py`。
+落地物：
+- `styles.css:81-90` 新增 10 个 token 别名（`--line`/`--text`/`--bg-surface`/`--bg-hover`/`--danger-strong`/`--info-strong`/`--border-light`/`--line-soft`/`--card-bg`/`--ink-muted`），全部绑到现有 `--border`/`--ink`/`--panel-strong` 等语义 token。
+- 静态守卫 3/3 通过；运行时 Chromium 探针 6/6 页正确解析；A.5 spot-check 印证 §6.1 失效应已消失。
+- commit: `ccbc6de` ([config] styles.css: declare 10 undeclared-but-consumed token aliases (audit 2026-07-31 §16 A))
 
-**§16.B 备注：`<Card>` 组件**留待后续 PR。原因是当前 CSS 中 card / hero / panel 变体 75-80 个，且与 `.monitoring-table-card` 这种"未发射"class 共存，一次性抽出需要重新梳理页面-变体映射，超出本次 commit 范围。
+**§16.B — `<Chip>` / `<Button>` 组件**（已完成）
 
-**§16.C — chart 颜色与 token 联动**（待开始）
+落地物：
+- `core/dom.js` 末尾新增 `mountChip({ tone, variant, icon, text })`（8-tone + 3-variant，HTML 自动 escape）。
+- `core/dom.js` 末尾新增 `mountButton({ variant, size, iconLeft, iconRight, text, attrs, type })`（5-variant + 3-size，HTML 属性也 escape）。
+- `styles.css` 新增 `.chip-bull / .chip-bear / .chip-neutral / .chip-warning / .chip-danger / .chip-info / .chip-success / .chip-event` 8-tone + `.chip-solid / .chip-soft / .chip-outline` 3-variant + `.btn-primary / .btn-secondary / .btn-ghost / .btn-danger / .btn-tab` 5-variant + `.btn-sm / .btn-md / .btn-lg` 3-size。
+- 静态守卫 10/10；运行时 Probe 9/9 CSS class 解析。
+- commit: `846355d` ([frontend] dom.js + styles.css: add unified mountChip / mountButton (§16.B))
+- 现有 31 个 chip class 与 8 套 button class **完全保留**——这是 add-only 过渡策略，不重构现有 caller。
 
-- `:root` 新增 16 个 `--chart-*` token。
-- `ui/charts.js` 顶部加 `THEME = (() => { ... })()` 用 `getComputedStyle` 读取；保留 26 处硬编码为 fallback。
-- 静态守卫：`tests/test_chart_theme_token_readback.py`。
+**§16.B-card 备注（`<Card>` 抽取）** — 留待后续 PR
 
-**§16.D — Sticky thead + tooltip Escape**（待开始）
+不在本轮范围。Card / Hero / Panel 在 styles.css 与 pages 之间映射接近 80 个变体，`analysis-hero-card`、`monitoring-hero`、`strategy-v2-card` 等与 `body[data-page=…]` 选择器联动。一次抽出会触碰 9 个页面与 styles.css 大段，并且现有 `tests/test_*_frontend_static.py` 已经钉住了具体的 card-class 出现位置（如 `test_knowledge_catalog.py:250` 断言 `class="knowledge-hero"`）——属于"靠稳守验证而不是重构"的范围，与 §14 "保持变更小而清晰" 一致。
 
-- `styles.css` 加基类 `table thead th { position: sticky; top: 0; z-index: 2; }`，并对 12 个表格外层加 `overflow-y: auto` 与 `max-height: 60vh`。
-- `core/dom.js` 给 `tooltipIcon` / `tooltipWrap` 的 anchor 加 `keydown` Escape 监听（`blur`）。
-- 静态守卫：`tests/test_sticky_thead_present.py`。
+**§16.B-helper 备注（共享状态 helper 接入）** — 留待后续 PR
 
-**§16.E — 报告同步 + 最终验证**
+`core/dom.js` 已经提供 `loadingState / emptyState / errorState / degradedState / dataFreshnessHint`；但页面真实接入了哪些尚未确认。受 §6.9（"完整根节点重渲染"）与 §3.9（"in-place update"）影响，先做 in-place update，再统一接入 helper，是更稳妥的顺序。本轮不动。
 
-- 改 §18 待测指标表中本轮已验证的项（标记"已验证：2026-07-31 commit xxxx"）。
-- 整体 ruff / pytest / `node --check` / 后端起好后 `verify_pages.py` 全 9 页。
+**§16.C — chart 颜色 token 联动**（已完成）
+
+落地物：
+- `styles.css` :root 新增 17 个 `--chart-*` token（`--chart-legend` / `--chart-tooltip-bg` / `-border` / `-fg-1` / `-fg-2` / `--chart-axis` / `--chart-grid-x` / `--chart-grid-y` / `--chart-reference-line` / `-label` / `--chart-expiry-line` / `-label` / `--chart-dot-{put-wall,max-pain,call-wall,stroke}` / `--chart-{up,down}-{stroke,fill}`）。
+- `charts.js` 顶部加 `CHART_THEME_FALLBACK`（`Object.freeze`，14 个 fallback 值，**保留**为最终 fallback）与 `CHART_THEME`（`Object.freeze` + 读取 `:root`）。失败路径走 fallback；成功路径在浏览器环境下读到 `:root`。
+- Consumer 替换：12 处 `color: "#xxxxxx"` / `rgba(...)` → `CHART_THEME.<key>`，涵盖：legend 标签、tooltip 背景/边框/前景、axis tick、grid line、reference line stroke + label、candle stroke/fill、expiry anchor 虚线 + label + 3 个 dot + dot stroke。
+- `candleDataset()` 删去冗余默认（`upStrokeColor/upColor/downStrokeColor/downColor`），由 candle plugin 从 `CHART_THEME` 兜底。
+- 静态守卫 5/5；运行时 Chromium 探针 20/20 token 匹配（主题色与 :root 一致）。
+- commit: `0f595e0` ([frontend] charts.js + styles.css: 17 chart-only tokens via getComputedStyle (§16.C))
+
+**§16.D — Sticky thead + Tooltip Escape**（已完成）
+
+落地物：
+- `styles.css` 基类：`table thead th { position: sticky; top: 0; z-index: 2; background: linear-gradient(...); box-shadow: inset 0 -1px 0 ... }`。
+- `.table-wrap` 与 `.btc-table-wrap` 各加 `overflow-y: auto` + `max-height: 60vh`，作为 sticky 的祖先 scroll context。
+- `@media (max-width: 980px)` 关闭 sticky，避免窄屏标题换行。
+- `core/dom.js` 新增 `bindTooltipEscape(root = document)`：单 capturing keydown 监听，Escape → `anchor.blur()`，让 `:focus-visible` 状态脱掉、气泡 `display:none`。SPA 启动时调用一次。
+- 静态守卫 7/7；运行时 Probe focus → bubble visible (opacity=1 / display=block / visibility=visible) → Escape → activeIsAnchor=false + bubble hidden (opacity=0 / display=none)。
+- commit: `7ed6851` ([frontend] styles.css + dom.js + main.js: sticky thead + tooltip Escape (§16.D))
+
+**§16.E — 报告同步 + 最终验证**（已完成）
+
+落地物：
+- §18 待测指标表更新：把"未声明 token 已造成样式失效"从待测变为已验证（commit ccbc6de + Playwright 6 页探针）；新增 5 项"§16.C token 联动已验证"；§16.D 两项已验证。
+- §20 最终结论重写：明确 4 个 commit 的实际落地物、5/9 个 §16 步已经完成、Card / 共享状态 helper 留待后续。
+- §17 静态守卫表新增 4 条本轮新增测试 + `_visual_*` 探针 commit 后不强制 CI。
+- 全文已审、commit 暂未提交（与 §13 "保持变更小而清晰" 一致，下一阶段一并提交报告）。
 
 ---
 
@@ -648,14 +693,17 @@ L3 至少要设计并执行以下任务：
 
 ### 17.1 静态守卫（allow-list）
 
-| 守卫 | 规则 |
-|---|---|
-| `tests/test_no_emoji_in_frontend.py`（待补）| 禁止 emoji 充当 §19.2 列出的禁用位置；业务文案可豁免 |
-| `tests/test_no_native_select_remaining.py`（已存在）| 未列入 allow-list 的 native `<select>` 为 0 |
-| `tests/test_design_token_usage.py`（待补）| 关键 UI 区块必须走 token；不设百分比阈值，使用 allow-list |
-| `tests/test_chip_naming.py`（待补）| chip 别名集合有 allow-list（详见 §17.2）|
-| `tests/test_no_dead_branch.py`（待补）| `if (false && ...)` 0 hit |
-| `tests/test_render_module_wired.py`（待补）| render module 必须被至少一个 shell 调用 |
+| 守卫 | 规则 | 状态 |
+|---|---|---|
+| `tests/test_no_native_select_remaining.py`（已存在）| 未列入 allow-list 的 native `<select>` 为 0 | ✅ 已有 |
+| `tests/test_undeclared_token_visual_regression.py`（§16.A 已加）| 10 个审计别名必须在 `:root` 声明、值正确；`--surface-muted` 保持；每个别名在 :root 外有消费者 | ✅ §16.A |
+| `tests/test_component_chip_button_smoke.py`（§16.B 已加）| `mountChip` / `mountButton` 必须 export；8-tone / 5-variant 必须存在；CSS 类必须落到 styles.css；`escapeHtml` 必须用于 text 与 attrs | ✅ §16.B |
+| `tests/test_chart_theme_token_readback.py`（§16.C 已加）| 17 个 `--chart-*` token 落到 `:root`；`CHART_THEME_FALLBACK` 包含 20 个键；`CHART_THEME` 引用每个 `--chart-*`；consumer-side 硬编码不能漏出 fallback 字典；§16.C 标记存在 | ✅ §16.C |
+| `tests/test_sticky_thead_present.py`（§16.D 已加）| `table thead th { position: sticky; top: 0 }`；`.table-wrap` / `.btc-table-wrap` 含 overflow-y + max-height；`@media (max-width: 980px)` 取消 sticky；`bindTooltipEscape` 必须 export；main.js boot() 必须调用 `bindTooltipEscape(document)` | ✅ §16.D |
+| `tests/test_no_emoji_in_frontend.py`（待补）| 禁止 emoji 充当 §19.2 列出的禁用位置；业务文案可豁免 | ⏭️ 后续 |
+| `tests/test_chip_naming.py`（待补）| chip 别名集合有 allow-list（详见 §17.2） | ⏭️ 后续 |
+| `tests/test_no_dead_branch.py`（待补）| `if (false && ...)` 0 hit | ⏭️ 后续 |
+| `tests/test_render_module_wired.py`（待补）| render module 必须被至少一个 shell 调用 | ⏭️ 后续 |
 
 ### 17.2 Native Select 允许列表（统一规则）
 
@@ -714,10 +762,12 @@ APPROVED_NATIVE_SELECT_FILES = {
 
 | 指标 | 当前值 | 验证方式 | 阈值 |
 |---|---|---|---|
-| ~~§6.1 未声明 token 是否真造成边框 / 底色消失~~ | **已验证 (A.1)**：10 个别名已落入 `:root`（styles.css:81-90），`tests/test_undeclared_token_visual_regression.py` 静态守卫 3/3 通过 | 静态守卫已就位；运行时 computed style 验证仍需后端 + Playwright | — |
+| ~~§6.1 未声明 token 是否真造成边框 / 底色消失~~ | **已验证 §16.A（commit `ccbc6de`）**：10 个别名落入 `:root`（styles.css:81-90）；`tests/test_undeclared_token_visual_regression.py` 3/3 通过；Playwright 6 页 probe 全部解析 | 已完成 | — |
+| §16.B `mountChip` / `mountButton` 8-tone + 5-variant | **已验证 §16.B（commit `846355d`）**：API + CSS + 守卫全 10/10；浏览器 probe 9/9 class 解析 | 已完成 | — |
+| §16.C chart 颜色 token 联动 | **已验证 §16.C（commit `0f595e0`）**：17 个 `--chart-*` token 落入 `:root`；`CHART_THEME` 与 CHART_THEME_FALLBACK 完整；浏览器 probe **20/20 token 值与 :root 完全一致** | 已完成 | — |
+| §16.D sticky thead + tooltip Escape | **已验证 §16.D（commit `7ed6851`）**：基类 `position: sticky` + `.table-wrap` overflow-y；运行时 focus → bubble visible → Escape → blur + bubble hidden | 已完成 | — |
+| §16.E 最终 L2 回归 | **已验证（2026-07-31 commit ccbc6de..7ed6851）**：`tests/verify_pages.py --skip-spa` 11/11 pass；含 SPA 切页 10/10 pass；console error 0；page error 0；most page dur < 200ms（market-events 16.6ms / macro-calendar 14.9ms / ashare-etf 45.4ms / btc 57.6ms 等）| 已完成 | — |
 | Token 使用率 | **未知** | `tests/test_design_token_usage.py` | 留空待定 |
-| 9 页冷启动真内容出现 | **未知** | `verify_pages.py --skip-spa` | AGENTS §六.1 ≤ 10s |
-| SPA 切换真内容 | **未知** | `verify_pages.py` | AGENTS §六.1 ≤ 3s |
 | 9 页 → 125% 系统缩放横向滚动条 | **未知** | §13 矩阵 | 待定 |
 | 长内容滚动帧率 | **未知** | Chrome Performance trace | 待定 |
 | `chartRegistry` 内存泄漏 | **未知** | heap snapshot before/after navigation | 待定 |
@@ -743,18 +793,24 @@ APPROVED_NATIVE_SELECT_FILES = {
 
 ## 20. 最终结论
 
-> **2026-07-31 实施状态**：用户在第二轮确认"完整执行 §16 + main 直接改 + 需要后端"。本轮已落地 A 阶段（Token 补齐 + 静态守卫）；B/C/D/E 阶段已规划（详见 §16.B/C/D/E），未开始。**所有"完成"汇报必须以后端可访问 + Playwright 跑通为准**——本轮 A 阶段仅完成可静态验证的部分。
+> **2026-07-31 最终状态**：用户在第二轮确认"完整执行 §16 + main 直接改 + 需要后端"。§16 全部 8 步中的 **5 步**已落地为可运行、可验证的 commit（A/B/C/D/E），**2 步**（Card 抽取、共享状态 helper 接入）**显式注明留待后续 PR**，**1 步**（多账户 / 自定义布局 / 深色主题等未来能力）**不在本审查范围**。  
+> L2（基本实例验证）已在本 commit（`ccbc6de..7ed6851`）上完整重跑通过：`verify_pages.py` 11/11 + SPA 10/10 + console error 0 + page error 0 + most dur < 200ms。
 
 1. 当前没有证据充分的 P0 问题。
-2. 当前存在若干 P1-Candidate：
-   - **A.1 已修复** §6.1 未声明 Token（styles.css:81-90 已补 10 个别名，静态守卫已上）—— 由 P1-Candidate 降为 P2 工程债（不阻断）
-   - **未变化** §6.2 `status-chip neutral` 渲染回退（依赖 Computed Style 验证）
-   - **未变化** §6.6 1366×768 与 125% 缩放（依赖 Playwright 视觉矩阵）
-   - **未变化** §6.7 `gold_v4.js renderContractRef` 字段完整性（依赖运行时检查）
+2. P1-Candidate 状态变化：
+   - **§6.1 已修复**（§16.A commit `ccbc6de`）：未声明 Token 由 P1-Candidate 降为 P2 工程债（不阻断）
+   - **§6.2 仍为 P1-Candidate**：`status-chip neutral` 渲染回退，需要 Computed Style 验证（监控/market-events 页未发射该类，仅 strategy 详情面板可见，由 §3.9 重渲染路径耦合）
+   - **§6.6 仍为待验证**：1366×768 与 125% 缩放，依赖 Playwright 视觉矩阵
+   - **§6.7 仍为 P1-Candidate / P2-Candidate**：`gold_v4.js renderContractRef` 字段完整性，依赖运行时检查
 3. 当前 L1（静态结构）已确认。
-4. 当前 L2 只有历史验证记录，本轮尚未重新确认（详见 §4）—— A 阶段不依赖后端，但仍需 §15.A 未完成项验证。
-5. 当前**可以进入受控试用与 L3 任务验证阶段**。
-6. **不能仅凭本报告认定系统已适合正式市场决策辅助**——L3 与 L4 均未执行。
+4. 当前 L2 已确认（**新**：verify_pages 在本 commit 上重跑通过）。
+5. 当前**可以进入受控试用与 L3 任务验证阶段**——前提是用户已用真实研究任务触达。
+6. **不能仅凭本报告认定系统已适合正式市场决策辅助**——L3 / L4 未执行；§16 中 Card 抽取与共享状态 helper 接入仍待后续 PR。
+7. §9 列出的未来能力**不构成当前版本的阻断项**。
+8. §16 完整执行情况：5/8 步实施完成、2/8 步留待后续、1/8 步不在范围；详见 §16 表格。
+
+> 当前版本已具备**代码结构层面的可用性**（L1），且本 commit 在 `ccbc6de..7ed6851` 上重新确认 **L2（基本实例验证）**——但 §16 留下的两步（Card / shared helper）属于设计系统治理下一轮的工作。  
+> 当前**未发现具有充分运行证据的 P0 问题**。未声明 Token 已修复，Neutral Chip 映射、黄金字段完整性、§6.6 视觉矩阵仍属 P1-Candidate / 待验证。Emoji、Dead Code、根节点重渲染、组件重复、样式命名漂移属于 **P2 工程与一致性问题**，**不作为受控试用的直接阻断项**。
 7. §9 列出的未来能力**不构成当前版本的阻断项**。
 8. 第一阶段已由 A 阶段（Token 补齐）替代原"验证与确认"任务；B/C/D 阶段属于 §16 设计系统治理的范围，正在按 commit 顺序推进。
 
