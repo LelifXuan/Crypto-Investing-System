@@ -11545,6 +11545,18 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .toolbar-grid .field .dropdown { width: 100%; }
 
 /* === gold-allocation v5 — visual alignment with analysis page === */
+
+/* NOTE: This block intentionally overrides the following pre-existing
+ * (gold_v4.js-era) class selectors while both modules coexist during Tasks 3-7:
+ *   .gold-formula-box, .gold-formula-item, .gold-gate-row, .gold-gate-num,
+ *   .gold-governance, .gold-price-banner, .gold-price-value,
+ *   .gold-recommend-amount, .gold-weight-bar, .gold-weight-fill
+ * Cascade order means v5 wins for any element bearing these class names —
+ * this is the intended v5 visual. When Task 8 deletes
+ * app/static/pages/gold_v4.js, this caveat can be removed. Until then,
+ * the gold-allocation route must load only v5, never v4.
+ */
+
 .gold-hero .card-head-inline {
   gap: 16px;
   align-items: flex-end;
