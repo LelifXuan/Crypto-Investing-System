@@ -1,4 +1,4 @@
-import { setRoot } from "./core/dom.js";
+import { setRoot, bindTooltipEscape } from "./core/dom.js";
 
 const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
 const moduleLoadPromises = new Map();
@@ -125,10 +125,7 @@ function loadScriptOnce(src, globalName) {
 }
 
 async function ensureAssetsForPage(pageId) {
-  if (pageId === "ai-strategy") {
-    ensureStylesheetOnce(`/static/styles-v15.css${assetVersion}`, "styles-v15");
-  }
-  if (pageId === "market-analysis" || pageId === "btc-derivatives") {
+  if (pageId === "market-analysis" || pageId === "btc-derivatives" || pageId === "gold-allocation") {
     await loadScriptOnce(`/static/vendor/chart.umd.js${assetVersion}`, "Chart");
   }
 }
@@ -153,6 +150,8 @@ async function boot() {
   const pageId = document.body.dataset.page;
   const loadModule = pageModules[pageId];
   if (!loadModule) return;
+  // §16.D — install Escape->blur on tooltip anchors once per SPA boot.
+  bindTooltipEscape(document);
   let module;
   try {
     await ensureAssetsForPage(pageId);
@@ -192,6 +191,12 @@ async function boot() {
   try {
     activeController = normalizeController(await renderPage());
     await activeController.mount();
+    if (pageId !== "ai-strategy") {
+      // AI strategy has the largest local renderer graph. Warm it once after
+      // the first visible page renders so opening the workbench remains within
+      // the 500 ms SPA-shell budget even on a cold browser context.
+      setTimeout(() => prefetchPage("ai-strategy"), 0);
+    }
   } catch (error) {
     console.error("page:render:error", pageId, error);
     activeController = null;

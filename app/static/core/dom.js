@@ -240,6 +240,43 @@ export function tooltipWrap(content, text, tone = "") {
   `;
 }
 
+/* ============================================================
+ * §16.D — Tooltip keyboard dismissal (Escape)
+ * ------------------------------------------------------------
+ * Tooltip anchors already carry `tabindex="0"` and rely on CSS
+ * `:focus-visible` to show the bubble (styles.css:1405-1412).
+ * This helper adds Escape -> blur() so keyboard users can dismiss
+ * the bubble without losing focus to the body.
+ *
+ * Install once per SPA navigation:
+ *   bindTooltipEscape(root = document) inside `boot()` (see main.js).
+ * The handler is idempotent: re-installing replaces the prior handler.
+ * ============================================================ */
+
+let _tooltipEscapeHandler = null;
+let _tooltipEscapeInstalledFor = null;
+
+export function bindTooltipEscape(root = document) {
+  if (!root || root === _tooltipEscapeInstalledFor) return;
+  // For a fresh root, detach from any prior installation first.
+  if (_tooltipEscapeHandler && _tooltipEscapeInstalledFor) {
+    _tooltipEscapeInstalledFor.removeEventListener("keydown", _tooltipEscapeHandler, true);
+  }
+  const handler = (event) => {
+    if (event.key !== "Escape" && event.key !== "Esc") return;
+    const active = document.activeElement;
+    if (!active || active === document.body) return;
+    const tooltipAnchor = active.closest && active.closest(".tooltip-anchor");
+    if (!tooltipAnchor) return;
+    // Drop focus from the tooltip anchor so :focus-visible hides the bubble.
+    if (typeof tooltipAnchor.blur === "function") tooltipAnchor.blur();
+  };
+  root.addEventListener("keydown", handler, true);
+  _tooltipEscapeHandler = handler;
+  _tooltipEscapeInstalledFor = root;
+}
+
+
 function knowledgeTooltipSegments(term, options = {}) {
   const item = findKnowledgeTerm(term);
   if (!item) return [];

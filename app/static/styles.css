@@ -760,6 +760,9 @@ textarea {
 
 .table-wrap {
   overflow-x: auto;
+  /* §16.D — vertical scroll container to enable sticky thead */
+  overflow-y: auto;
+  max-height: 60vh;
   border-radius: 18px;
   border: 1px solid rgba(175, 154, 123, 0.14);
   background: rgba(255, 255, 255, 0.5);
@@ -945,6 +948,38 @@ td {
 tbody tr:hover {
   background: rgba(15, 118, 110, 0.05);
 }
+
+/* ============================================================
+ * §16.D — Sticky thead
+ * ------------------------------------------------------------
+ * Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.D
+ * Default behaviour: keep base table layout unchanged when the
+ * wrapper lacks a constrained height. When a `.table-wrap`-class
+ * wrapper has `overflow-y: auto` (see rules below for .table-wrap,
+ * .btc-table-wrap, .table-shell, .strategy-*-table-shell, .scan-matrix
+ * wrapper), the sticky thead + `top: 0` makes the column header
+ * remain visible during vertical scroll.
+ *
+ * Note: `position: sticky` requires the ancestor (the wrapper) to be a
+ * scroll container. The rules below for `.table-wrap` /
+ * `.btc-table-wrap` / `.table-shell` already declare overflow-y: auto
+ * with a max-height — without that, this rule is inert on long pages.
+ * ============================================================ */
+
+table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(248, 244, 236, 0.94), rgba(244, 237, 228, 0.86));
+  box-shadow: inset 0 -1px 0 rgba(175, 154, 123, 0.16);
+}
+
+@media (max-width: 980px) {
+  table thead th {
+    position: static;
+  }
+}
+
 
 .stack {
   display: grid;
@@ -8588,6 +8623,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .btc-table-wrap {
   max-width: 100%;
+  /* §16.D — restrict height so sticky thead is visible during scroll */
+  max-height: 60vh;
   overflow: auto;
 }
 
