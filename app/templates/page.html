@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} | Market Research Terminal</title>
   <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}">
-  {% if page_id == "ai-strategy" %}
-  <link rel="stylesheet" href="/static/styles-v15.css?v={{ asset_version }}">
-  {% endif %}
 </head>
 <body data-page="{{ page_id }}" data-page-title="{{ title }}">
   <header class="shell-header">
@@ -43,7 +40,9 @@
     </div>
   </nav>
 
-  <main id="page-root"></main>
+  <main id="page-root">
+    {# gold-allocation dedicated shell removed in v5 — JS-rendered hero is now the only first-paint hero #}
+  </main>
 
   <script>window.__ASSET_VERSION__ = "{{ asset_version }}";</script>
   <script type="module" src="/static/main.js?v={{ asset_version }}"></script>
