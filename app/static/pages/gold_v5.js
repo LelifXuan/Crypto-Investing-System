@@ -115,14 +115,22 @@ function scenarioLabel(active) {
 // ----- Render functions ----------------------------------------------------
 
 function renderHero(data) {
+  // Backend payload (see gold.py:466-486) ships market_scenarios as both
+  //   active_scenario   (string — primary label)
+  //   active_scenarios  (string[] — full ordered list, may contain extras
+  //                       like LIQUIDITY_SHOCK that override the primary)
+  // We read both: active_scenario drives the subtitle; active_scenarios
+  // powers the optional LIQUIDITY_SHOCK chip.
+  const activeList = data?.market_scenarios?.active_scenarios || [];
   const active =
-    data?.market_scenarios?.active_scenario ||
-    (data?.refresh_state === "setup_required" ? "setup_required" : null);
+    activeList[0] || data?.refresh_state === "setup_required"
+      ? "setup_required"
+      : null;
   const setupRequired = data?.snapshot?.status === "setup_required";
   const subtitle = setupRequired
     ? "请先在策略页配置组合与执行纪律。"
     : `宏观判断: ${scenarioLabel(active || "DATA_DEGRADED")}`;
-  const shock = data?.market_scenarios?.active_scenarios?.includes("LIQUIDITY_SHOCK");
+  const shock = activeList.includes("LIQUIDITY_SHOCK");
 
   return `
     <section class="gold-hero">
@@ -237,6 +245,11 @@ function renderSpotDca(data) {
   const base = data?.base_dca || {};
   const dip = data?.dip_add || {};
   const drawdownCode = dip?.status || "WAIT_DRAWDOWN";
+  // Macro/liquidity gate: explicit LIQUIDITY_SHOCK from market_scenarios
+  // wins; otherwise we use base_dca.status as a proxy for "macro permits
+  // execution". Falling through to DATA_DEGRADED (when both are missing)
+  // is intentionally conservative — false-positive here would let a setup
+  // with no data through to a chip-event "正常" tone, which is misleading.
   const macroCode = data?.market_scenarios?.active_scenarios?.includes("LIQUIDITY_SHOCK")
     ? "LIQUIDITY_SHOCK"
     : data?.base_dca?.status || "DATA_DEGRADED";
