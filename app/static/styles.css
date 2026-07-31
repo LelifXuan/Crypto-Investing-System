@@ -9489,15 +9489,27 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .strategy-v2-grid.five {
-  /* 2026-07-25: bumped from repeat(5, minmax(0, 1fr)) to repeat(auto-fit,
-     minmax(280px, 1fr)) so the 6 market-operation dimension cards always
-     fit in either a 3×2 or 2×3 grid. The previous fixed-5 layout forced
-     a 5×1 row at most viewports — at 1280px panel-width that means
-     ~185px per card, which cramped the title row's flex container and
-     broke 2-character Chinese words ('看多' rendered as 看\n多). The
-     responsive floor of 280px lets each card breathe on wider viewports
-     and gracefully collapses to 2 columns on narrower ones. */
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* 2026-07-31: fixed 3 columns (was auto-fit minmax(280px,1fr)).
+     The previous auto-fit layout rendered the 5-card case as 3+2 with
+     row 2 stretched to ~50% width each — visually mismatched against
+     the 3 cards in row 1. The fixed 3-col layout always produces equal
+     card widths; for the 5-card case the 2nd row naturally shows the
+     first 2 columns and leaves column 3 empty, which reads as a
+     deliberate grouping. On narrow panels (<960px) drop to 2 cols;
+     <560px to 1 col. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .strategy-v2-grid.five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .strategy-v2-grid.five {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .strategy-v2-grid.evidence {
@@ -9518,60 +9530,191 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   margin: 8px 0;
 }
 
-/* 2026-07-25: market-operation dimension card. Rendered as a <details>
-   whose <summary> contains an eyebrow, a title row (direction + status),
-   a meaning paragraph, and a 'click to expand' small. The previous flex
-   layout (`flex` + `justify-content: space-between`) crammed the
-   2-character Chinese direction ('看多') and the long status string
-   ('数据可用 · 置信 70%') onto overlapping lines inside a 200px card.
-   We stack the title row vertically so each piece is on its own line. */
+/* ============================================================
+ * §17 Market Operation dimension card — visual rework (2026-07-31)
+ *
+ * 4 explicit summary layers (eyebrow / direction+chevron / confidence
+ * chip / meaning) replace the previous cramped flex column. Detail
+ * body gets dashed dividers between paragraphs and SVG-style tone
+ * bullets replacing the browser default <ul> disc.
+ * ============================================================ */
 .strategy-operation-card {
   min-height: 0;
   padding: 0;
   overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  transition: box-shadow 160ms ease, transform 160ms ease;
 }
+.strategy-operation-card:hover { box-shadow: var(--shadow-card-hover); }
+.strategy-operation-card[open] { box-shadow: var(--shadow-card); }
 
 .strategy-operation-card > summary {
-  min-height: 190px;
-  padding: 20px;
+  min-height: 200px;
+  padding: 20px 22px 16px;
   cursor: pointer;
   list-style: none;
-}
-
-.strategy-operation-card > summary::-webkit-details-marker {
-  display: none;
-}
-
-.strategy-operation-card > summary small {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.strategy-operation-card-title {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  margin: 8px 0 12px;
+  gap: 12px;
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-soft);
+  -webkit-backdrop-filter: var(--blur-soft);
+  border-radius: 12px 12px 0 0;
+}
+.strategy-operation-card[open] > summary {
+  border-radius: 12px 12px 0 0;
+  border-bottom: 1px solid var(--border-glass-soft);
 }
 
+.strategy-operation-card > summary::-webkit-details-marker { display: none; }
+.strategy-operation-card > summary::marker { display: none; }
+
+/* Layer 1: eyebrow */
+.strategy-operation-card > summary > .eyebrow {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+/* Layer 2: direction row — large + tone color + chevron SVG injected
+ * via a <span class="op-chevron"> marker added in markup. */
+.strategy-operation-card-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
 .strategy-operation-card-title strong {
-  color: var(--text);
-  font-size: 1.08rem;
-  line-height: 1.2;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
   white-space: nowrap;
 }
+.strategy-operation-card[data-tone="bull"]    .strategy-operation-card-title strong { color: var(--bullish-strong); }
+.strategy-operation-card[data-tone="bear"]    .strategy-operation-card-title strong { color: var(--bearish-strong); }
+.strategy-operation-card[data-tone="neutral"] .strategy-operation-card-title strong { color: var(--muted-strong); }
 
-.strategy-operation-card-title span {
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.4;
-  /* 2026-07-25: when the status + confidence string is long enough to
-     wrap inside a 200px-wide card, drop the hyphenation and use natural
-     word breaks so '看多 / 数据可用 · 置信 70%' stays legible on one or
-     two lines instead of single-character-per-line. */
-  overflow-wrap: anywhere;
+/* Chevron injected next to direction label */
+.op-chevron {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  opacity: 0.55;
+  transition: transform 160ms ease;
 }
+.strategy-operation-card[open] .op-chevron {
+  transform: rotate(90deg);
+}
+
+/* Layer 3: confidence chip */
+.strategy-operation-card-title span {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(91, 138, 131, 0.10);
+  color: var(--accent-strong);
+  white-space: nowrap;
+  text-transform: none;
+}
+
+/* Layer 4: meaning */
+.strategy-operation-card > summary > p:not(.eyebrow) {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Affordance at bottom of summary: small + chevron + label */
+.strategy-operation-card > summary > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+.strategy-operation-card > summary > small:hover { text-decoration: underline; }
+.op-chevron-label { line-height: 1; }
+
+/* Detail body — rhythm via dashed dividers, evidence via tone bullets */
+.strategy-operation-card-detail {
+  padding: 16px 22px 20px;
+  display: grid;
+  gap: 10px;
+  background: rgba(252, 249, 243, 0.5);
+}
+
+.strategy-operation-card-detail p {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border-glass-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.strategy-operation-card-detail p:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.strategy-operation-card-detail p strong {
+  display: inline-block;
+  min-width: 72px;
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+  vertical-align: top;
+}
+
+.strategy-operation-card-detail ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 10px;
+  border-bottom: 1px dashed var(--border-glass-soft);
+  display: grid;
+  gap: 6px;
+}
+.strategy-operation-card-detail ul:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.strategy-operation-card-detail ul li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.strategy-operation-card-detail ul li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.65em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.55;
+}
+.strategy-operation-card[data-tone="bear"]    .strategy-operation-card-detail ul li::before { background: var(--bearish); }
+.strategy-operation-card[data-tone="neutral"] .strategy-operation-card-detail ul li::before { background: var(--neutral); }
 
 .strategy-v2-card p,
 .strategy-evidence-item p,
