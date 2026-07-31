@@ -71,6 +71,23 @@
      Candlestick wicks use these so up/down stay unambiguous in dense price charts. */
   --direction-up: #16a34a;
   --direction-down: #dc2626;
+
+  /* === Undeclared-but-consumed token aliases (audit 2026-07-31 §16 A.1) ===
+     These were referenced by selectors but never defined, causing CSS
+     `var(--<name>)` to invalidate entire declarations (e.g. borders,
+     background-color, color) at consumption sites. Re-binding them here
+     restores expected visual output. Each alias maps to an existing semantic
+     token; no new color value is introduced. */
+  --line: var(--border);
+  --text: var(--ink);
+  --bg-surface: var(--panel-strong);
+  --bg-hover: rgba(91, 138, 131, 0.10);
+  --danger-strong: #7a4630;
+  --info-strong: #4a6f95;
+  --border-light: rgba(160, 140, 108, 0.14);
+  --line-soft: rgba(160, 140, 108, 0.10);
+  --card-bg: var(--surface-elevated);
+  --ink-muted: #5e6a78;
 }
 
 * {
