@@ -8,13 +8,13 @@ Asserts:
   5. dropdown.js close() / destroy() both call clearHighlight.
   6. dropdown.js emits per-option id under makeOptionId().
   7. dropdown.js sets aria-controls / aria-haspopup / aria-expanded.
+  8. committing a value clears keyboard highlight and pointer picks close.
 
 Audit reference: docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
 """
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +32,10 @@ def test_no_border_left_accent_on_selected_item():
         r"\.dropdown-item\[aria-selected=\"true\"\][^{}]*border-left-color\s*:",
         src,
     )
-    assert not bad, "Dropdown selected option must not set border-left-color (causes moon/arc artifact)"
+    assert not bad, (
+        "Dropdown selected option must not set border-left-color "
+        "(causes moon/arc artifact)"
+    )
 
 
 def test_no_border_left_rule_on_item():
@@ -78,10 +81,26 @@ def test_dropdown_js_defines_fit_popover():
 
 def test_close_calls_clear_highlight():
     src = _read(DROPDOWN_JS)
-    # locate function close() {...} and ensure the body contains clearHighlight(popover, root)
-    close_block = re.search(r"function\s+close\s*\([^)]*\)\s*\{([^}]+)\}", src, re.S)
-    assert close_block, "close() body not found"
-    assert "clearHighlight" in close_block.group(1), \
+    # Locate `function close() {` and walk braces to find the matching close.
+    # The previous regex `[^}]+` failed as soon as a nested `}` was added
+    # (e.g. an `if (popover) { ... }` cleanup block), even though the
+    # function still calls clearHighlight. This balanced walker is robust
+    # to inner blocks while keeping the assertion surface minimal.
+    match = re.search(r"function\s+close\s*\([^)]*\)\s*\{", src)
+    assert match, "close() not found in dropdown.js"
+    start = match.end()
+    depth = 1
+    i = start
+    while i < len(src) and depth > 0:
+        ch = src[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        i += 1
+    assert depth == 0, "close() body has unbalanced braces"
+    body = src[start : i - 1]
+    assert "clearHighlight" in body, \
         "close() must call clearHighlight to satisfy INV-2"
 
 
@@ -121,5 +140,18 @@ def test_dev_only_multi_selected_warning():
         "INV-1 dev-only console.warn missing — should fire when >1 aria-selected items present"
 
 
-if __name__ == "__main__":
-    sys.exit(pytest.main([__file__, "-v"]))
+def test_committed_selection_clears_stale_highlight():
+    src = _read(DROPDOWN_JS)
+    select_block = src[
+        src.index("function selectValue") : src.index("function indexOfSelected")
+    ]
+    assert "syncSelected(popover, value);" in select_block
+    assert "clearHighlight(popover, root);" in select_block
+    assert "activeIndex = -1;" in select_block
+
+
+def test_pointer_pick_closes_popover_after_selection():
+    src = _read(DROPDOWN_JS)
+    open_block = src[src.index("function open()") : src.index("function close()")]
+    assert "selectValue(value);" in open_block
+    assert "close();" in open_block

@@ -181,6 +181,23 @@ function fitPopover(root, popover, opts) {
   }
   popover.style.left = `${Math.round(left)}px`;
   popover.style.zIndex = String(Z_INDEX);
+
+  // === Origin-aware entrance (Emil Kowalski bar) =====================
+  // Popover scales in from the trigger, not from its own center. The
+  // popover is `position: fixed` so transform-origin px values are
+  // relative to the popover's own box — convert the trigger's viewport
+  // rect into popover-local coordinates.
+  // placement is "bottom-*" (popover hangs below trigger) → origin at
+  // trigger's top-center inside the popover box; "top-*" → bottom-center.
+  const popoverTop = parseFloat(popover.style.top) || chosenTop;
+  const popoverLeft = parseFloat(popover.style.left) || left;
+  const triggerCx = rect.left + rect.width / 2;
+  const triggerCy = (placement && placement.startsWith("top"))
+    ? rect.bottom
+    : rect.top;
+  const originX = Math.round(triggerCx - popoverLeft);
+  const originY = Math.round(triggerCy - popoverTop);
+  popover.style.setProperty("--transform-origin", `${originX}px ${originY}px`);
 }
 
 function ensureIconSlot(root, hasIcon) {
@@ -257,6 +274,12 @@ export function mountDropdown(root, options) {
     opts.value = value;
     renderLabel(root, currentLabel(opts.items, value), opts.placeholder);
     syncSelected(popover, value);
+    // A keyboard highlight describes navigation, not committed selection.
+    // Clear it whenever the value changes so the previously selected option
+    // cannot retain a second highlighted background while the new option is
+    // already marked aria-selected=true.
+    clearHighlight(popover, root);
+    activeIndex = -1;
     if (!silent) opts.onChange(value, prev);
   }
 
@@ -286,7 +309,19 @@ export function mountDropdown(root, options) {
     if (root.classList.contains(OPEN_CLASS)) return;
     if (activeInstance && activeInstance !== instance) activeInstance.close({ silent: true });
     activeInstance = instance;
-    if (!popover) popover = buildPopover(root, opts, (v) => selectValue(v));
+    if (!popover) {
+      popover = buildPopover(root, opts, (value) => {
+        selectValue(value);
+        // Pointer selection is a committed action. Closing immediately keeps
+        // the control consistent with native single-select behaviour and
+        // prevents selected + stale-active states from being visible together.
+        close();
+      });
+    }
+    // Show the popover first (hidden=false) so getBoundingClientRect works
+    // for fitPopover. fitPopover sets the popover's position and the
+    // --transform-origin custom property. Then we flip the entrance class
+    // on the next frame so the scale starts from the right anchor.
     popover.hidden = false;
     root.classList.add(OPEN_CLASS);
     root.setAttribute("aria-expanded", "true");
@@ -298,13 +333,21 @@ export function mountDropdown(root, options) {
     activeIndex = indexOfSelected();
     if (activeIndex >= 0) syncHighlight();
     fitPopover(root, popover, opts);
+    // Flip the entrance class on the next frame so transform-origin is
+    // already set when the scale transition begins.
+    requestAnimationFrame(() => {
+      popover.classList.add("is-entering");
+    });
   }
 
   function close() {
     if (!root.classList.contains(OPEN_CLASS)) return;
     root.classList.remove(OPEN_CLASS);
     root.setAttribute("aria-expanded", "false");
-    if (popover) popover.hidden = true;
+    if (popover) {
+      popover.classList.remove("is-entering");
+      popover.hidden = true;
+    }
     // Hard cleanup of keyboard highlight (INV-2)
     clearHighlight(popover, root);
     activeIndex = -1;
@@ -442,5 +485,3 @@ export function mountDropdown(root, options) {
   };
   return instance;
 }
-
-export { mountDropdown };

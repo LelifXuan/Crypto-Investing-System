@@ -67,6 +67,23 @@
   --hover-tint-strong: rgba(91, 138, 131, 0.18);
   --transition-hover: 180ms ease;
 
+  /* === Motion tokens (Emil Kowalski bar) =============================
+     Custom curves: built-in CSS easings are too weak for deliberate UI motion.
+     --ease-out is the workhorse (entrances, presses, hovers).
+     --ease-drawer is the iOS-style curve (panels, sheets, modals).
+     --ease-in-out is for on-screen morphs (toggles, color blends).
+     --dur-press < --dur-hover < --dur-elevate < --dur-drawer — keep the ladder.
+     Aliases (--motion-fast / --motion-hover) make call sites one line. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 120ms;
+  --dur-hover: 180ms;
+  --dur-elevate: 220ms;
+  --dur-drawer: 240ms;
+  --motion-fast: var(--dur-press) var(--ease-out);
+  --motion-hover: var(--dur-hover) var(--ease-out);
+
   /* Directional signals — only place where saturated Tailwind primaries remain.
      Candlestick wicks use these so up/down stay unambiguous in dense price charts. */
   --direction-up: #16a34a;
@@ -227,16 +244,18 @@ h2 {
 .card {
   padding: var(--card-padding);
   transition:
-    transform 180ms ease,
-    box-shadow 180ms ease,
-    border-color 180ms ease,
-    background 180ms ease;
+    transform var(--motion-hover),
+    box-shadow var(--motion-hover),
+    border-color var(--motion-hover),
+    background var(--motion-hover);
 }
 
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
-  border-color: rgba(15, 118, 110, 0.2);
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+    border-color: rgba(15, 118, 110, 0.2);
+  }
 }
 
 .card,
@@ -326,17 +345,19 @@ h2 {
   border: 1px solid rgba(170, 151, 124, 0.18);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
   transition:
-    background 160ms ease,
-    color 160ms ease,
-    transform 160ms ease,
-    border-color 160ms ease;
+    background 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 160ms var(--ease-out),
+    border-color 160ms var(--ease-out);
 }
 
-.main-nav a:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--accent-strong);
-  border-color: rgba(15, 118, 110, 0.18);
+@media (hover: hover) and (pointer: fine) {
+  .main-nav a:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.84);
+    color: var(--accent-strong);
+    border-color: rgba(15, 118, 110, 0.18);
+  }
 }
 
 body[data-page="market-events"] .main-nav a[href="/market-events-page"],
@@ -665,10 +686,9 @@ textarea {
   border: 1px solid var(--border);
   padding: 12px 14px;
   transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background 160ms ease,
-    transform 160ms ease;
+    border-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out),
+    background 160ms var(--ease-out);
 }
 
 button {
@@ -679,9 +699,42 @@ button {
   box-shadow: var(--shadow-button);
 }
 
-button:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-button-hover);
+/* === Press feedback (Emil Kowalski bar) ============================
+   Every pressable surface acknowledges the click with a small scale.
+   Subtle (0.97) — enough to feel responsive, not enough to feel jumpy.
+   Touch-gated hover (below) prevents stuck-lift after tap. */
+button,
+.main-nav a,
+.ghost-button,
+.alert-action-button,
+.chip-button,
+.cta-button,
+.tab-button,
+[data-pressable] {
+  transition:
+    transform var(--motion-hover),
+    background var(--motion-hover),
+    border-color var(--motion-hover),
+    box-shadow var(--motion-hover),
+    color var(--motion-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-button-hover);
+  }
+}
+
+button:active,
+.main-nav a:active,
+.ghost-button:active,
+.alert-action-button:active,
+.chip-button:active,
+.cta-button:active,
+.tab-button:active,
+[data-pressable]:active {
+  transform: scale(0.97);
 }
 
 button.secondary {
@@ -7380,10 +7433,11 @@ ul.terminal-summary-watch li {
 }
 
 .page-transition {
-  animation: pageFadeIn 0.22s ease-out;
+  animation: pageFadeIn 200ms var(--ease-out);
 }
 .page-transition-out {
-  animation: pageFadeOut 0.12s ease-in;
+  /* Exit is a system response — snap. ease-in on UI is a block. */
+  animation: pageFadeOut 80ms linear;
 }
 @keyframes pageFadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -8287,6 +8341,19 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.btc-toolbar-static-value {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(31, 42, 58, 0.1);
+  border-radius: 14px;
+  background: rgba(238, 241, 236, 0.72);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .btc-chart-toolbar select {
@@ -10800,7 +10867,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   z-index: 100;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s;
+  transition: opacity 200ms var(--ease-out);
 }
 
 .strategy-detail-overlay.is-visible {
@@ -10822,7 +10889,9 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   overflow-y: auto;
   overflow-x: hidden;
   transform: translateX(100%);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* iOS drawer curve (Emil Kowalski bar). Transition (not keyframe) so
+     rapid open/close retargets smoothly instead of restarting from zero. */
+  transition: transform var(--dur-drawer) var(--ease-drawer);
   display: flex;
   flex-direction: column;
 }
@@ -11303,7 +11372,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   width: 14px;
   height: 14px;
   color: var(--muted);
-  transition: transform 120ms ease;
+  /* Rotate around the tail (slightly below center) so the flip reads
+     as "opening", not "spinning in place". */
+  transform-origin: 50% 60%;
+  transition: transform 140ms var(--ease-out);
   flex: 0 0 auto;
 }
 
@@ -11320,7 +11392,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border-top-color: var(--accent);
   border-radius: 50%;
   margin-left: 6px;
-  animation: dropdown-spin 800ms linear infinite;
+  /* 600ms reads as "alive" without delay; 800ms feels slow in a dashboard. */
+  animation: dropdown-spin 600ms linear infinite;
 }
 
 @keyframes dropdown-spin {
@@ -11357,6 +11430,20 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border-radius: 16px;
   box-shadow: var(--shadow-card);
   overflow: hidden;
+  /* Origin-aware entrance: scale from the trigger (set by JS as
+     `--transform-origin: <x>px <y>px`). Fallback to top-center.
+     Pre-enter state is scale(0.96) + opacity 0; .is-entering flips to settled.
+     Transition (not keyframe) so rapid re-open retargets smoothly. */
+  transform-origin: var(--transform-origin, 50% 0%);
+  transform: scale(0.96);
+  opacity: 0;
+  transition:
+    transform var(--motion-fast),
+    opacity var(--motion-fast);
+}
+.dropdown-popover.is-entering {
+  transform: scale(1);
+  opacity: 1;
 }
 
 .dropdown-popover[hidden] { display: none; }
@@ -11725,4 +11812,27 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   align-items: center;
   justify-content: center;
   min-height: 80px;
+}
+
+/* === Reduced motion baseline (Emil Kowalski bar) =====================
+   Vestibular users get the gentlest possible motion: opacity/color
+   changes still convey state (so "what changed" is not lost), but
+   transforms/animations/loops are reduced to 0.01ms.
+   Per Standard 8: gentler, not zero. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Drop infinite-loop spinners/pulses entirely — they re-traumatize. */
+  .loading-pulse,
+  .nav-skeleton-shimmer,
+  .vol-compression-spin,
+  .dropdown-spin {
+    animation: none !important;
+  }
 }
