@@ -107,6 +107,16 @@ class EtfSimulationPoint(BaseModel):
     # so this curve shows what the user would have earned by skipping
     # DCA entirely and going all-in at the start.
     lump_sum_value: Decimal = Decimal("0")
+    # Cash-on-cash return for the DCA strategy at this snapshot:
+    # (total_value - cost_value) / cost_value. Zero when cost_value
+    # is 0 (the first month-end before any DCA fires) so the line
+    # starts cleanly at the origin. Quantised to 4 decimals
+    # (0.01% precision) so the chart can plot it directly.
+    return_pct: Decimal = Decimal("0")
+    # Cash-on-cash return for the buy-and-hold lump-sum benchmark at
+    # this snapshot: (lump_sum_value - lump_sum_total_cash) /
+    # lump_sum_total_cash. Zero when the benchmark never opened.
+    lump_sum_return_pct: Decimal = Decimal("0")
 
 
 class EtfSimulationSummary(BaseModel):

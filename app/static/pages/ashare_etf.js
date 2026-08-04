@@ -114,6 +114,16 @@ function pct(value) {
   return `${formatNumber(number * 100, 2)}%`;
 }
 
+// Like ``pct`` but always emits a sign on non-zero values so the user
+// can read -71.93% as "DCA underperformed buy-and-hold by 71.93%"
+// rather than "DCA return is -71.93%".
+function pctSigned(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  const sign = number > 0 ? "+" : "";
+  return `${sign}${formatNumber(number * 100, 2)}%`;
+}
+
 function amountText(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
@@ -294,9 +304,9 @@ function _renderEquitySummaryCards(summary, meta, mode) {
         sub: `区间 ${months} 个月 · ${rebalances} 次调仓`,
       },
       {
-        label: "最大回撤",
-        value: pct(summary.max_drawdown_pct),
-        sub: `高 ${money(summary.peak_total_value)} · 低 ${money(summary.trough_total_value)}`,
+        label: "一次性投入(对比)",
+        value: money(summary.lump_sum_final_value),
+        sub: `DCA 相对 ${pctSigned(summary.lump_sum_vs_dca_pct)}`,
       },
     ];
     return cards
@@ -540,32 +550,49 @@ function _renderEquityChart(data, mode) {
 
   if (mode === "simulation") {
     labels = (data.months || []).map((d) => String(d));
-    const totalValue = (data.series || []).map((p) => Number(p.total_value));
     const costValue = (data.series || []).map((p) => Number(p.cost_value));
-    // Buy-and-hold lump-sum benchmark: same total cash outlay as the
-    // DCA strategy, opened equal-weight across all 7 symbols on
-    // from_month's first trading day, no rebalancing after that.
-    const lumpSumValue = (data.series || []).map(
-      (p) => Number(p.lump_sum_value || 0),
+    // Cash-on-cash returns from the backend (decimal strings, e.g.
+    // "0.0523" = +5.23%). The DCA return and the lump-sum benchmark
+    // return both start at ~0 on from_month and pivot on the same
+    // axis, so the user can read the chart as "who is winning and
+    // by how much" without squinting at absolute money. The raw
+    // lump_sum_value (absolute money) is still surfaced in the stat
+    // cards below — see _renderEquitySummaryCards.
+    const dcaReturnPct = (data.series || []).map(
+      (p) => Number(p.return_pct || 0),
+    );
+    const lumpSumReturnPct = (data.series || []).map(
+      (p) => Number(p.lump_sum_return_pct || 0),
     );
     if (!labels.length) return;
     datasets = [
-      lineDataset("组合市值", totalValue, "rgba(31, 42, 58, 0.78)", {
+      lineDataset("定投收益率", dcaReturnPct, "rgba(31, 42, 58, 0.78)", {
         fill: "origin",
         backgroundColor: "rgba(110, 155, 148, 0.18)",
         borderWidth: 2.6,
         tension: 0.18,
+        yAxisID: "y",
       }),
+      // 累计投入 stays as an absolute-amount reference line on the
+      // right y-axis so the user can see DCA cadence alongside the
+      // percentage curves without losing the money context.
       lineDataset("累计投入", costValue, "rgba(110, 90, 60, 0.7)", {
         borderDash: [6, 4],
         borderWidth: 1.8,
         tension: 0.1,
+        yAxisID: "y1",
       }),
-      lineDataset("一次性投入", lumpSumValue, "rgba(140, 100, 60, 0.85)", {
-        borderDash: [2, 3],
-        borderWidth: 1.6,
-        tension: 0.0,
-      }),
+      lineDataset(
+        "一次性投入 收益率",
+        lumpSumReturnPct,
+        "rgba(140, 100, 60, 0.85)",
+        {
+          borderDash: [2, 3],
+          borderWidth: 1.6,
+          tension: 0.0,
+          yAxisID: "y",
+        },
+      ),
     ];
     // Annotate rebalance events with vertical dashed lines. The referenceLines
     // plugin finds the x position by label match (string compare); we pass
@@ -581,7 +608,17 @@ function _renderEquityChart(data, mode) {
           || REBALANCE_LINE_COLORS.neutral,
         width: 1.6,
         label: "调仓",
-      }));
+      }))
+      .concat([{
+        // Zero baseline on the percentage axis so positive / negative
+        // returns are immediately readable.
+        type: "horizontalLine",
+        axis_id: "y",
+        y: 0,
+        color: "rgba(120, 120, 120, 0.45)",
+        width: 1.0,
+        dash: [4, 4],
+      }]);
   } else {
     // Holdings (legacy equity-curve endpoint payload)
     labels = (data.labels || []).map((d) => String(d));
@@ -613,7 +650,15 @@ function _renderEquityChart(data, mode) {
         legend: { display: true, position: "bottom" },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label} ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 2 })}`,
+            label: (ctx) => {
+              const label = ctx.dataset.label || "";
+              // Percentage-bearing datasets print × 100 with a % suffix
+              // so the y-axis label format matches the tooltip.
+              if (label.includes("收益率")) {
+                return `${label} ${formatNumber(ctx.parsed.y * 100, 2)}%`;
+              }
+              return `${label} ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 0 })}`;
+            },
             // When the hovered x lands on a rebalance month, append a
             // buy/sell breakdown to the tooltip so users see which ETFs
             // were trimmed and which were topped up.
@@ -646,9 +691,24 @@ function _renderEquityChart(data, mode) {
       },
       scales: {
         y: {
+          type: "linear",
+          position: "left",
+          ticks: {
+            // y values are decimal fractions (0.0523 = +5.23%); the
+            // callback multiplies by 100 so the axis labels read as
+            // percentages without forcing the user to do the math.
+            callback: (v) => `${formatNumber(v * 100, 1)}%`,
+          },
+          title: { display: true, text: "收益率" },
+        },
+        y1: {
+          type: "linear",
+          position: "right",
           ticks: {
             callback: (v) => formatNumber(v, { maximumFractionDigits: 0 }),
           },
+          title: { display: true, text: "累计投入(元)" },
+          grid: { drawOnChartArea: false },
         },
       },
     },

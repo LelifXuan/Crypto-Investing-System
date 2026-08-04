@@ -462,6 +462,7 @@ def run_simulation(
         snapshot.lump_sum_value = _lump_sum_value(
             lump_sum_shares, nav_index, month_end
         )
+        _populate_return_pcts(snapshot, lump_sum_total_cash)
         points.append(snapshot)
 
         # Step 1: Monthly DCA on the last trading day of the month.
@@ -533,6 +534,7 @@ def run_simulation(
                     rb_snapshot.lump_sum_value = _lump_sum_value(
                         lump_sum_shares, nav_index, rebalance_date
                     )
+                    _populate_return_pcts(rb_snapshot, lump_sum_total_cash)
                     points.append(rb_snapshot)
                 trigger = _maybe_rebalance(
                     state,
@@ -629,6 +631,29 @@ def _lump_sum_value(
             Decimal("0.01")
         )
     return total
+
+
+def _populate_return_pcts(
+    snapshot: EtfSimulationPoint,
+    lump_sum_total_cash: Decimal,
+) -> None:
+    """Fill ``snapshot.return_pct`` and ``snapshot.lump_sum_return_pct``.
+
+    Both are cash-on-cash returns: ``(value − cost) / cost``. We quantise
+    to 4 decimal places (0.01% precision) so the chart can plot them
+    directly without further scaling. Both default to 0 when their
+    denominator is zero (first month-end before any DCA fires; or the
+    benchmark never opened).
+    """
+    if snapshot.cost_value > 0:
+        snapshot.return_pct = (
+            (snapshot.total_value - snapshot.cost_value) / snapshot.cost_value
+        ).quantize(Decimal("0.0001"))
+    if lump_sum_total_cash > 0 and snapshot.lump_sum_value > 0:
+        snapshot.lump_sum_return_pct = (
+            (snapshot.lump_sum_value - lump_sum_total_cash)
+            / lump_sum_total_cash
+        ).quantize(Decimal("0.0001"))
 
 
 def _snapshot(
@@ -885,11 +910,24 @@ def _summarize(
         )
     series = [p.total_value for p in points]
     cost_series = [p.cost_value for p in points]
-    starting = cost_series[0]
     final = series[-1]
+    # Cash-on-cash return at to_date = (final - cost_at_to_date) /
+    # cost_at_to_date. This matches the convention used by the per-
+    # snapshot ``return_pct`` field so the summary agrees with the
+    # chart endpoint. Anchoring on cost_series[0] would always be 0
+    # (the first snapshot is BEFORE any DCA fires), and anchoring on
+    # the first non-zero cost would overstate the return (because
+    # monthly DCA inflates the cost basis over time).
+    starting = cost_series[-1] if cost_series else Decimal("0")
     peak = max(series)
     trough = min(series)
-    running_peak = starting
+    # Drawdown uses the FIRST non-zero total_value as the initial
+    # peak so the pre-DCA zero-snapshot doesn't trip a phantom -100%
+    # drawdown.
+    running_peak = Decimal("0")
+    for v in series:
+        if v > 0 and (running_peak == 0 or v > running_peak):
+            running_peak = v
     max_dd = Decimal("0")
     for v in series:
         if v > running_peak:
