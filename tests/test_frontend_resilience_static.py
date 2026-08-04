@@ -209,6 +209,9 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     assert "rebalance_offset_days" in source
     assert "etf-equity-offset-days" in source
     assert "调仓延后" in source
+    # Lump-sum buy-and-hold benchmark line (added 2026-08-04):
+    assert "lump_sum_value" in source
+    assert "一次性投入" in source
     assert "data-field=\"currentPrice\"" not in source
     assert "行情读取中" not in source
     assert "手动输入现价" not in source

@@ -259,6 +259,26 @@ def _advance_trading_days(
     return None
 
 
+def _first_trading_day(
+    month_first: date,
+    nav_by_date: dict[date, float],
+) -> date | None:
+    """Return the first trading day on-or-after ``month_first`` with NAV.
+
+    Symmetric counterpart of ``_month_end_trading_day``: walks forward
+    up to 35 days (covers any month-long data gap) from the 1st of the
+    month. Returns ``None`` if no trading day is found.
+    """
+    if not nav_by_date:
+        return None
+    cursor = month_first
+    for _ in range(35):
+        if cursor in nav_by_date:
+            return cursor
+        cursor = date.fromordinal(cursor.toordinal() + 1)
+    return None
+
+
 def _returns_matrix(
     series_by_code: dict[str, list[tuple[date, float]]], window: int
 ) -> tuple[np.ndarray, list[date]] | None:
@@ -359,6 +379,72 @@ def run_simulation(
     warnings: list[str] = []
     cumulative_friction = Decimal("0")
 
+    # Pre-compute the buy-and-hold lump-sum benchmark. We allocate
+    # the same total cash the DCA strategy will eventually deploy,
+    # split equally across HALO + cashflow, snap to whole lots, then
+    # mark the position to market at every snapshot date. The shares
+    # count is fixed after opening day — no rebalancing.
+    lump_sum_shares: dict[str, int] = {c: 0 for c in ALL_HALO_CODES}
+    lump_sum_shares[CASHFLOW_SYMBOL] = 0
+    lump_sum_total_cash = Decimal("0")
+    first_td = _first_trading_day(
+        cursor_month, nav_index.get(CASHFLOW_SYMBOL, {})
+    )
+    if first_td is not None:
+        # Walk every month in the window to compute the total DCA
+        # outlay. We reuse the same month_end detection as the main
+        # loop so the outlay reflects what the DCA strategy will
+        # actually spend (no look-ahead beyond to_date).
+        lump_nav_index = nav_index
+        lump_cursor = cursor_month
+        while lump_cursor <= to_date:
+            lump_me = _month_end_trading_day(
+                lump_cursor, lump_nav_index.get(CASHFLOW_SYMBOL, {})
+            )
+            if lump_me is None or lump_me > to_date or lump_me > coverage_end:
+                break
+            for code in ALL_HALO_CODES:
+                p = lump_nav_index[code].get(lump_me)
+                if p is None or p <= 0:
+                    continue
+                lump_sum_total_cash += (
+                    Decimal(params.dca_lots_halo * params.lot_size) * Decimal(str(p))
+                )
+            cf_p = lump_nav_index[CASHFLOW_SYMBOL].get(lump_me)
+            if cf_p is not None and cf_p > 0:
+                lump_sum_total_cash += (
+                    Decimal(params.dca_lots_cashflow * params.lot_size)
+                    * Decimal(str(cf_p))
+                )
+            lump_cursor = _advance_month(lump_cursor)
+        # Open the lump-sum position on first_td. Equal-weight across
+        # all 7 symbols (6 HALO + 1 cashflow) — the DCA strategy also
+        # buys each symbol with the same number of lots per month, so
+        # this is the natural benchmark.
+        n_codes = len(ALL_HALO_CODES) + 1
+        cash_per_code = (lump_sum_total_cash / Decimal(n_codes)).quantize(
+            Decimal("0.01")
+        )
+        for code, _share_target in (
+            [(c, ALL_HALO_CODES) for c in ALL_HALO_CODES]
+            + [(CASHFLOW_SYMBOL, None)]
+        ):
+            price_open = nav_index[code].get(first_td)
+            if price_open is None or price_open <= 0:
+                continue
+            # Snap to whole lots of params.lot_size shares so the
+            # benchmark is realistic (you can't buy 53.7 shares).
+            notional_per_lot = Decimal(str(params.lot_size)) * Decimal(
+                str(price_open)
+            )
+            if notional_per_lot <= 0:
+                continue
+            lots = int((cash_per_code / notional_per_lot).to_integral_value(
+                rounding="ROUND_FLOOR"
+            ))
+            if lots > 0:
+                lump_sum_shares[code] = lots * params.lot_size
+
     while cursor_month <= to_date:
         # Find the last trading day in this month that has data
         month_end = _month_end_trading_day(cursor_month, nav_index.get(CASHFLOW_SYMBOL, {}))
@@ -370,8 +456,12 @@ def run_simulation(
             warnings.append(f"simulation_truncated_at:{month_end}:coverage_end={coverage_end}")
             break
 
-        # End-of-month snapshot (before DCA/rebalance of THIS month)
+        # End-of-month snapshot (before DCA/rebalance of THIS month).
+        # Also compute the buy-and-hold benchmark for the same date.
         snapshot = _snapshot(state, cash, nav_index, month_end)
+        snapshot.lump_sum_value = _lump_sum_value(
+            lump_sum_shares, nav_index, month_end
+        )
         points.append(snapshot)
 
         # Step 1: Monthly DCA on the last trading day of the month.
@@ -439,6 +529,9 @@ def run_simulation(
                 if rebalance_date != month_end:
                     rb_snapshot = _snapshot(
                         state, cash, nav_index, rebalance_date
+                    )
+                    rb_snapshot.lump_sum_value = _lump_sum_value(
+                        lump_sum_shares, nav_index, rebalance_date
                     )
                     points.append(rb_snapshot)
                 trigger = _maybe_rebalance(
@@ -512,6 +605,30 @@ def _advance_month(d: date) -> date:
     if d.month == 12:
         return date(d.year + 1, 1, 1)
     return date(d.year, d.month + 1, 1)
+
+
+def _lump_sum_value(
+    lump_sum_shares: dict[str, int],
+    nav_index: dict[str, dict[date, float]],
+    asof: date,
+) -> Decimal:
+    """Mark the buy-and-hold lump-sum position to market on ``asof``.
+
+    Returns Decimal("0") when no symbol has a NAV on that date
+    (defensive against data gaps). The caller decides whether to skip
+    the snapshot entirely.
+    """
+    total = Decimal("0")
+    for code, shares in lump_sum_shares.items():
+        if shares <= 0:
+            continue
+        price = nav_index.get(code, {}).get(asof)
+        if price is None or price <= 0:
+            continue
+        total += (Decimal(shares) * Decimal(str(price))).quantize(
+            Decimal("0.01")
+        )
+    return total
 
 
 def _snapshot(
@@ -763,6 +880,8 @@ def _summarize(
             rebalance_count=rebalance_count,
             cumulative_friction=cumulative_friction,
             months_simulated=0,
+            lump_sum_final_value=zero,
+            lump_sum_vs_dca_pct=zero,
         )
     series = [p.total_value for p in points]
     cost_series = [p.cost_value for p in points]
@@ -780,6 +899,15 @@ def _summarize(
             if dd < max_dd:
                 max_dd = dd
     total_return = (final - starting) / starting if starting > 0 else Decimal("0")
+    # Lump-sum benchmark: same total cash outlay, opened on from_month's
+    # first trading day, no rebalancing. ``lump_sum_vs_dca_pct`` is the
+    # DCA outperformance vs buy-and-hold; positive means DCA won.
+    lump_series = [p.lump_sum_value for p in points]
+    lump_final = lump_series[-1] if lump_series else Decimal("0")
+    if lump_final > 0:
+        vs_dca = (final - lump_final) / lump_final
+    else:
+        vs_dca = Decimal("0")
     return EtfSimulationSummary(
         final_total_value=final.quantize(Decimal("0.01")),
         final_cost_value=cost_series[-1].quantize(Decimal("0.01")),
@@ -790,6 +918,8 @@ def _summarize(
         rebalance_count=rebalance_count,
         cumulative_friction=cumulative_friction,
         months_simulated=len(points),
+        lump_sum_final_value=lump_final.quantize(Decimal("0.01")),
+        lump_sum_vs_dca_pct=vs_dca,
     )
 
 

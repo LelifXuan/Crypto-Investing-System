@@ -542,6 +542,12 @@ function _renderEquityChart(data, mode) {
     labels = (data.months || []).map((d) => String(d));
     const totalValue = (data.series || []).map((p) => Number(p.total_value));
     const costValue = (data.series || []).map((p) => Number(p.cost_value));
+    // Buy-and-hold lump-sum benchmark: same total cash outlay as the
+    // DCA strategy, opened equal-weight across all 7 symbols on
+    // from_month's first trading day, no rebalancing after that.
+    const lumpSumValue = (data.series || []).map(
+      (p) => Number(p.lump_sum_value || 0),
+    );
     if (!labels.length) return;
     datasets = [
       lineDataset("组合市值", totalValue, "rgba(31, 42, 58, 0.78)", {
@@ -554,6 +560,11 @@ function _renderEquityChart(data, mode) {
         borderDash: [6, 4],
         borderWidth: 1.8,
         tension: 0.1,
+      }),
+      lineDataset("一次性投入", lumpSumValue, "rgba(140, 100, 60, 0.85)", {
+        borderDash: [2, 3],
+        borderWidth: 1.6,
+        tension: 0.0,
       }),
     ];
     // Annotate rebalance events with vertical dashed lines. The referenceLines

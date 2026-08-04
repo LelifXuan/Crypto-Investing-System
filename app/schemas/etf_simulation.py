@@ -100,6 +100,13 @@ class EtfSimulationPoint(BaseModel):
     cash_value: Decimal  # uninvested cash (after dca + rebalance settles)
     per_symbol_shares: dict[str, int]
     per_symbol_value: dict[str, Decimal]
+    # Buy-and-hold benchmark: total_value of an equal-weight lump-sum
+    # position opened on the FIRST trading day of from_month, funded
+    # with the same total cash that the DCA strategy eventually
+    # deploys. After the opening day the position never rebalances,
+    # so this curve shows what the user would have earned by skipping
+    # DCA entirely and going all-in at the start.
+    lump_sum_value: Decimal = Decimal("0")
 
 
 class EtfSimulationSummary(BaseModel):
@@ -112,6 +119,14 @@ class EtfSimulationSummary(BaseModel):
     rebalance_count: int
     cumulative_friction: Decimal
     months_simulated: int
+    # Buy-and-hold benchmark for the same total cash outlay as the
+    # DCA strategy (no rebalancing after opening day).
+    lump_sum_final_value: Decimal = Decimal("0")
+    # DCA strategy outperformance vs the lump-sum benchmark at to_date.
+    # Positive means DCA beat buy-and-hold; negative means lump-sum
+    # won. Zero when the benchmark never opened (no NAV history at
+    # from_month's first trading day).
+    lump_sum_vs_dca_pct: Decimal = Decimal("0")
 
 
 class EtfSimulationMeta(BaseModel):

@@ -955,3 +955,119 @@ def test_rebalance_uses_post_dca_prices_when_offset_nonzero() -> None:
             assert cur_w > tgt_w, (
                 f"512400 should be overweight; got cur={cur_w}, tgt={tgt_w}"
             )
+
+
+# --- Lump-sum buy-and-hold benchmark -------------------------------
+
+
+def test_lump_sum_value_present_in_every_snapshot() -> None:
+    """Every snapshot must carry a lump_sum_value (default 0 when the
+    benchmark never opened, but in the normal case > 0)."""
+    nav = _build_minimal_nav()
+    result = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    series = result["series"]
+    assert series, "expected at least one snapshot"
+    # All snapshots must have a lump_sum_value key.
+    for snap in series:
+        assert "lump_sum_value" in snap
+        assert snap["lump_sum_value"] is not None
+    # In a normal run with cached NAV data, the lump_sum_value should
+    # be > 0 (the position opens on from_month's first trading day
+    # with 7 × N shares × ~1.0).
+    last_lump = float(series[-1]["lump_sum_value"])
+    assert last_lump > 0, (
+        f"lump_sum_value should be positive; got {last_lump}"
+    )
+
+
+def test_lump_sum_final_equals_sum_of_shares_times_prices() -> None:
+    """The lump-sum benchmark's final value equals shares × closing
+    price for each symbol. With 1 lot each per ETF at price ~1.0 the
+    value should be ~7 × 100 × last_close."""
+    nav = _build_minimal_nav()
+    result = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    lump_final = float(result["summary"]["lump_sum_final_value"])
+    # Per-share final values for each symbol at to_date.
+    last_snap = result["series"][-1]
+    per_symbol_sum = sum(
+        float(v) for v in last_snap["per_symbol_value"].values()
+    )
+    # The lump_sum_final in summary must match the per-snapshot
+    # lump_sum_value (both derived from shares × price at the same
+    # date).
+    assert abs(lump_final - float(last_snap["lump_sum_value"])) < 0.01, (
+        f"summary.lump_sum_final_value ({lump_final}) ≠ last snapshot "
+        f"lump_sum_value ({last_snap['lump_sum_value']})"
+    )
+    # With flat prices the per-symbol and lump-sum series must agree
+    # closely: lump_sum_shares are floor(cash/7/price/lot)*lot for
+    # each of 7 symbols, so lump_sum_value ≈ 7 × same_lots × close.
+    # We just check that the totals are within a small ratio of each
+    # other (DCA gets ~1 lot per ETF, lump_sum gets some lots per
+    # ETF depending on rounding).
+    assert per_symbol_sum > 0
+    assert abs(lump_final - per_symbol_sum) / max(per_symbol_sum, 1) < 0.05
+
+
+def test_summary_includes_lump_sum_vs_dca_pct() -> None:
+    """summary.lump_sum_vs_dca_pct reflects DCA outperformance vs the
+    buy-and-hold benchmark. Sign conventions:
+      > 0 → DCA beat buy-and-hold
+      < 0 → buy-and-hold beat DCA
+      = 0 → never opened (no NAV at from_month first trading day)
+    """
+    nav = _build_minimal_nav()
+    result = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    s = result["summary"]
+    assert "lump_sum_vs_dca_pct" in s
+    assert "lump_sum_final_value" in s
+    # Both numeric, can be positive or negative depending on market.
+    vs = float(s["lump_sum_vs_dca_pct"])
+    dca_final = float(s["final_total_value"])
+    lump_final = float(s["lump_sum_final_value"])
+    assert lump_final > 0
+    if dca_final != lump_final:
+        # Sign must match (final - lump) / lump.
+        expected = (dca_final - lump_final) / lump_final
+        assert abs(vs - expected) < 1e-6, (
+            f"lump_sum_vs_dca_pct={vs} ≠ expected {expected}"
+        )
+
+
+def test_lump_sum_shares_does_not_rebalance() -> None:
+    """After opening day, the lump-sum position never buys or sells.
+    Confirmed indirectly: ``lump_sum_value`` at every snapshot is
+    exactly ``opening_shares × close``, with no extra lots accumulating
+    from monthly DCA. With flat prices throughout, lump_sum_value
+    must stay constant at the opening notional."""
+    nav = _build_minimal_nav()
+    result = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    first_snap = result["series"][0]
+    # The lump-sum position opens on from_month's first trading day
+    # and never rebalances after that. With flat prices throughout,
+    # lump_sum_value must stay constant at the opening notional.
+    first_lump = float(first_snap["lump_sum_value"])
+    assert first_lump > 0
+    for i, snap in enumerate(result["series"]):
+        lv = float(snap["lump_sum_value"])
+        if i > 0:
+            assert abs(lv - first_lump) < 0.5, (
+                f"snapshot {i} lump_sum_value={lv} drifted from "
+                f"opening={first_lump} (flat-price scenario)"
+            )
