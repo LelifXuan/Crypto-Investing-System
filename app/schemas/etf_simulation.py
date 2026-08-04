@@ -30,8 +30,8 @@ from pydantic import BaseModel, Field
 class EtfSimulationParams(BaseModel):
     """Strategy parameters exposed to the user (mirrors xlsx INPUTS tab)."""
 
-    dca_lots_halo: int = Field(100, ge=0, description="Monthly lots per HALO ETF")
-    dca_lots_cashflow: int = Field(100, ge=0, description="Monthly lots for cashflow ETF")
+    dca_lots_halo: int = Field(1, ge=0, description="Monthly lots per HALO ETF")
+    dca_lots_cashflow: int = Field(1, ge=0, description="Monthly lots for cashflow ETF")
     lot_size: int = Field(100, ge=1, description="Shares per lot (default 100)")
     rebalance_bandwidth: Decimal = Field(
         Decimal("0.20"), ge=Decimal("0"), le=Decimal("1"),

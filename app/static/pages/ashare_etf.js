@@ -221,8 +221,8 @@ function _buildSimulationPayload() {
     from_month: fromMonthIso,
     to_date: _todayIso(),
     params: {
-      dca_lots_halo: 100,
-      dca_lots_cashflow: 100,
+      dca_lots_halo: 1,
+      dca_lots_cashflow: 1,
       lot_size: 100,
       rebalance_bandwidth: "0.20",
       single_weight_cap: "0.25",
