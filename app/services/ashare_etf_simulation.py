@@ -571,35 +571,56 @@ def _maybe_rebalance(
     # 6. Generate trades: target_market_value = total × target_w
     # We treat the HALO sleeve as a self-balancing subset: target total
     # = current HALO total (cash is left untouched for the cashflow ETF).
+    #
+    # Sells are executed BEFORE buys, with the most-overweight symbols
+    # sold first. This makes the "high-drift sells, low-drift buys" intent
+    # explicit in the code (rather than implicit in symbol-tuple order)
+    # and lets the API expose a per-symbol trade rationale (side +
+    # target_weight / current_weight / drift_pct) so the front end can
+    # show *why* each ETF was traded. Because the strategy assumes
+    # infinite cash and halo_total is fixed across the rebalance,
+    # sequential vs parallel execution is bit-equivalent on the final
+    # state — only the execution order changes.
     trades: dict[str, Decimal] = {}
-    friction = Decimal("0")
-    new_shares: dict[str, int] = {}
+    candidates: list[tuple[str, Decimal]] = []
     for i, code in enumerate(ALL_HALO_CODES):
         target_value = (halo_total * Decimal(str(target_w[i]))).quantize(Decimal("0.01"))
         current_value = current_values[code]
         delta = (target_value - current_value).quantize(Decimal("0.01"))
         trades[code] = delta
-        if delta == 0:
-            new_shares[code] = state[code].shares
-            continue
+        if delta != 0:
+            candidates.append((code, delta))
+
+    # Sort: sells (delta<0) most-overweight first (most negative delta),
+    # then buys (delta>0) most-underweight first (most positive delta).
+    sells_sorted = sorted(
+        [(c, d) for c, d in candidates if d < 0],
+        key=lambda x: x[1],  # ascending delta → most negative first
+    )
+    buys_sorted = sorted(
+        [(c, d) for c, d in candidates if d > 0],
+        key=lambda x: -x[1],  # descending delta → most positive first
+    )
+    execution_order = sells_sorted + buys_sorted
+
+    friction = Decimal("0")
+    for code, delta in execution_order:
         price = nav_index[code].get(asof)
         if price is None or price <= 0:
-            new_shares[code] = state[code].shares
             continue
-        # delta > 0 = buy; delta < 0 = sell
+        # delta > 0 = buy; delta < 0 = sell.
         # We round share counts to lot_size for execution realism, with
         # trade-off bias going to the larger side so we don't exceed the
         # target_value on buys.
         share_delta_raw = float(delta) / float(price)
         share_delta = int(round(share_delta_raw / params.lot_size)) * params.lot_size
-        new_shares[code] = max(0, state[code].shares + share_delta)
-        share_diff = Decimal(new_shares[code]) - Decimal(state[code].shares)
+        new_shares_count = max(0, state[code].shares + share_delta)
+        share_diff = Decimal(new_shares_count) - Decimal(state[code].shares)
         actual_delta = (share_diff * Decimal(str(price))).quantize(Decimal("0.01"))
-        actual_delta = actual_delta.quantize(Decimal("0.01"))
         # Friction on the absolute traded notional
         friction += (abs(actual_delta) * params.friction_rate).quantize(Decimal("0.01"))
         # Update state
-        state[code].shares = new_shares[code]
+        state[code].shares = new_shares_count
         if actual_delta > 0:
             state[code].cost_basis += actual_delta
         else:
@@ -614,7 +635,54 @@ def _maybe_rebalance(
     event.rebalance_trades = {code: trades[code] for code in ALL_HALO_CODES}
     event.friction_cost = friction
     event.notes = "triggered (drift > {:.0%})".format(theta)
+    # Per-symbol rationale so consumers can show why each ETF was traded.
+    event.trade_rationale = _build_trade_rationale(
+        trades, target_w, current_w, drift
+    )
+    event.sell_count = sum(
+        1 for v in trades.values() if v < 0
+    )
+    event.buy_count = sum(
+        1 for v in trades.values() if v > 0
+    )
     return (trades, friction)
+
+
+def _build_trade_rationale(
+    trades: dict[str, Decimal],
+    target_w: np.ndarray,
+    current_w: dict[str, float],
+    drift: dict[str, float],
+) -> dict[str, dict[str, str]]:
+    """Annotate every traded ETF with side + target/current/drift + notional.
+
+    Insertion order matches the engine's execution order: sells first
+    (most-overweight first), then buys (most-underweight first). This lets
+    consumers key the rationale dict and read it in execution order.
+
+    Symbols with zero notional (no trade) are excluded so consumers can
+    ``Object.keys(rationale)`` to get just the traded set.
+    """
+    code_index = {code: i for i, code in enumerate(ALL_HALO_CODES)}
+    rationale: dict[str, dict[str, str]] = {}
+    # Build sorted execution order: sells ascending by notional, then buys
+    # descending by notional — same key the engine uses to pick the next
+    # symbol to mutate.
+    traded = [(c, v) for c, v in trades.items() if v != 0]
+    sells = sorted([(c, v) for c, v in traded if v < 0], key=lambda x: x[1])
+    buys = sorted(
+        [(c, v) for c, v in traded if v > 0], key=lambda x: -x[1]
+    )
+    for code, notional in sells + buys:
+        i = code_index[code]
+        rationale[code] = {
+            "side": "sell" if notional < 0 else "buy",
+            "target_weight": f"{float(target_w[i]):.4f}",
+            "current_weight": f"{float(current_w.get(code, 0.0)):.4f}",
+            "drift_pct": f"{float(drift.get(code, 0.0)):.4f}",
+            "notional": str(notional),
+        }
+    return rationale
 
 
 def _summarize(

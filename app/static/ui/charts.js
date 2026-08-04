@@ -379,9 +379,19 @@ const referenceLines = {
         const xScale = scales.x;
         if (!xScale) return;
         const labels = chart.data.labels || [];
-        const index = labels.findIndex(
-          (label) => Number(label) === Number(annotation.x),
+        // Accept both numeric indices (legacy callers passing index strings)
+        // and date/string labels. The previous implementation did
+        // ``Number(label) === Number(annotation.x)`` which always returned
+        // NaN===NaN → false for ISO date labels, silently dropping every
+        // string-x annotation. Try string equality first, then numeric.
+        let index = labels.findIndex(
+          (label) => String(label) === String(annotation.x),
         );
+        if (index < 0) {
+          index = labels.findIndex(
+            (label) => Number(label) === Number(annotation.x),
+          );
+        }
         if (index < 0) return;
         const x = xScale.getPixelForValue(index);
         if (!Number.isFinite(x)) return;

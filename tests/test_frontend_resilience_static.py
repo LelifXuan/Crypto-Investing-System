@@ -196,6 +196,13 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     assert "组合权益曲线" in source
     assert "策略模拟" in source
     assert "持仓回放" in source
+    # Rebalance trade-selection UI (added 2026-08-04, sells-first ordering):
+    assert "_buildRebalanceByDate" in source
+    assert "rebalanceByDate" in source
+    assert "REBALANCE_LINE_COLORS" in source
+    assert "dominatedBy" in source
+    assert "本次调仓" in source
+    assert "trade_rationale" in source
     assert "data-field=\"currentPrice\"" not in source
     assert "行情读取中" not in source
     assert "手动输入现价" not in source

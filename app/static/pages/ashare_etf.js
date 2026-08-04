@@ -452,6 +452,55 @@ function renderEquityCurve(data, mode) {
   _renderEquityChart(data, mode);
 }
 
+// Color cue for the rebalance vertical-line annotation:
+// - dominatedBy === "sell": more symbols sold than bought this month →
+//   bearish red. The strategy was trimming overweight positions.
+// - dominatedBy === "buy": more bought than sold → bullish green.
+//   Strategy was topping up underweight positions.
+// - dominatedBy === "neutral": equal counts or single-side → muted grey.
+const REBALANCE_LINE_COLORS = {
+  sell: "rgba(190, 90, 60, 0.7)",
+  buy: "rgba(80, 140, 110, 0.7)",
+  neutral: "rgba(120, 120, 120, 0.55)",
+};
+
+function _buildRebalanceByDate(events) {
+  // Map date-string -> { sells: [[code, notional], ...], buys: [...],
+  //   dominatedBy, sellTotal, buyTotal, rationale } so the chart can
+  // both colour the dashed line and surface a tooltip breakdown on hover.
+  // Sells and buys are sorted by the engine's execution order:
+  // sells ascending by notional (most-overweight first), buys descending
+  // by notional (most-underweight first).
+  const out = new Map();
+  (events || [])
+    .filter((e) => e && e.kind === "quarterly_rebalance")
+    .forEach((e) => {
+      const trades = e.rebalance_trades || {};
+      const sells = Object.entries(trades)
+        .filter(([, v]) => Number(v) < 0)
+        .map(([code, v]) => [code, Math.abs(Number(v))])
+        .sort((a, b) => b[1] - a[1]); // largest |sell| first for display
+      const buys = Object.entries(trades)
+        .filter(([, v]) => Number(v) > 0)
+        .map(([code, v]) => [code, Number(v)])
+        .sort((a, b) => b[1] - a[1]); // largest buy first for display
+      let dominatedBy = "neutral";
+      if (sells.length > buys.length) dominatedBy = "sell";
+      else if (buys.length > sells.length) dominatedBy = "buy";
+      const sellTotal = sells.reduce((acc, [, v]) => acc + v, 0);
+      const buyTotal = buys.reduce((acc, [, v]) => acc + v, 0);
+      out.set(String(e.date), {
+        sells,
+        buys,
+        dominatedBy,
+        sellTotal,
+        buyTotal,
+        rationale: e.trade_rationale || {},
+      });
+    });
+  return out;
+}
+
 function _renderEquityChart(data, mode) {
   const canvas = document.getElementById("etf-equity-canvas");
   if (!canvas) return;
@@ -464,6 +513,7 @@ function _renderEquityChart(data, mode) {
   let labels;
   let datasets;
   let annotations = [];
+  let rebalanceByDate = new Map();
 
   if (mode === "simulation") {
     labels = (data.months || []).map((d) => String(d));
@@ -483,28 +533,21 @@ function _renderEquityChart(data, mode) {
         tension: 0.1,
       }),
     ];
-    // Annotate rebalance events with vertical dashed lines. The chart.js
-    // referenceLines plugin's verticalLine support requires x to match the
-    // label text (it does findIndex by Number equality, which works for
-    // numeric indices but not for date strings). We pass the index as a
-    // string label and rely on chartjs' xScale category positioning — when
-    // labels are strings, verticalLine uses the label position directly.
-    const rebalanceMonths = (data.events || [])
-      .filter((e) => e.kind === "quarterly_rebalance")
-      .map((e) => e.date);
-    annotations = rebalanceMonths
-      .map((d) => {
-        if (!labels.includes(String(d))) return null;
-        return {
-          type: "verticalLine",
-          axis_id: "x",
-          x: String(d),
-          color: "rgba(190, 90, 60, 0.55)",
-          width: 1.4,
-          label: "调仓",
-        };
-      })
-      .filter(Boolean);
+    // Annotate rebalance events with vertical dashed lines. The referenceLines
+    // plugin finds the x position by label match (string compare); we pass
+    // the date string verbatim so the dashed line lands on the exact month.
+    rebalanceByDate = _buildRebalanceByDate(data.events);
+    annotations = Array.from(rebalanceByDate.entries())
+      .filter(([d]) => labels.includes(d))
+      .map(([d, info]) => ({
+        type: "verticalLine",
+        axis_id: "x",
+        x: d,
+        color: REBALANCE_LINE_COLORS[info.dominatedBy]
+          || REBALANCE_LINE_COLORS.neutral,
+        width: 1.6,
+        label: "调仓",
+      }));
   } else {
     // Holdings (legacy equity-curve endpoint payload)
     labels = (data.labels || []).map((d) => String(d));
@@ -526,18 +569,51 @@ function _renderEquityChart(data, mode) {
     annotations,
     data: { labels, datasets },
     options: {
-      scales: {
-        y: {
-          ticks: {
-            callback: (v) => formatNumber(v, { maximumFractionDigits: 0 }),
-          },
-        },
-      },
+      // Forward the rebalance annotations to the custom ``referenceLines``
+      // chart.js plugin (see charts.js:363) so the vertical dashed lines
+      // actually render on the canvas. Without this explicit merge the
+      // top-level ``annotations`` config only reaches the plugin when
+      // the caller also passes ``axes``, which the equity curve does not.
       plugins: {
+        referenceLines: { annotations },
         legend: { display: true, position: "bottom" },
         tooltip: {
           callbacks: {
             label: (ctx) => `${ctx.dataset.label} ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 2 })}`,
+            // When the hovered x lands on a rebalance month, append a
+            // buy/sell breakdown to the tooltip so users see which ETFs
+            // were trimmed and which were topped up.
+            afterBody: (items) => {
+              if (mode !== "simulation" || !items?.length) return "";
+              const xLabel = String(items[0].label || "");
+              const info = rebalanceByDate.get(xLabel);
+              if (!info) return "";
+              const lines = [
+                "",
+                `本次调仓 ${info.sells.length} 卖 / ${info.buys.length} 买`,
+              ];
+              // Show top 3 of each side; remaining count is summarised.
+              info.sells.slice(0, 3).forEach(([code, v]) => {
+                lines.push(`  卖 ${code} ${formatNumber(v, { maximumFractionDigits: 0 })}`);
+              });
+              if (info.sells.length > 3) {
+                lines.push(`  …还有 ${info.sells.length - 3} 笔卖出`);
+              }
+              info.buys.slice(0, 3).forEach(([code, v]) => {
+                lines.push(`  买 ${code} ${formatNumber(v, { maximumFractionDigits: 0 })}`);
+              });
+              if (info.buys.length > 3) {
+                lines.push(`  …还有 ${info.buys.length - 3} 笔买入`);
+              }
+              return lines;
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: (v) => formatNumber(v, { maximumFractionDigits: 0 }),
           },
         },
       },
@@ -963,6 +1039,7 @@ export async function renderAshareEtf() {
   // overview / quote deck / workbench.
   void loadEquityCurve();
   return {
+    async mount() { await loadPromise; },
     async unmount() {
       activeController?.abort();
       planController?.abort();

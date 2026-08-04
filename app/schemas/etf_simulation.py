@@ -64,6 +64,13 @@ class EtfSimulationEvent(BaseModel):
     rebalance_trades: dict[str, Decimal] = Field(
         default_factory=dict
     )  # symbol -> traded notional (positive=buy, negative=sell)
+    # Per-symbol rationale for why this ETF was traded. Populated only when
+    # ``kind == "quarterly_rebalance"``; left empty otherwise. Schema is
+    # ``{symbol: {side, target_weight, current_weight, drift_pct, notional}}``.
+    # ``side`` is "buy" or "sell"; weights and drift are decimal strings.
+    trade_rationale: dict[str, dict[str, str]] = Field(default_factory=dict)
+    sell_count: int = 0  # number of HALO symbols sold in this event
+    buy_count: int = 0   # number of HALO symbols bought in this event
     friction_cost: Decimal = Decimal("0")
     notes: str = ""
 
