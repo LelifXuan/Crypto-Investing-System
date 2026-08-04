@@ -256,6 +256,11 @@ async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
     # Pull NAV for every HALO + cashflow symbol across the full window.
     codes = list(ALL_HALO_CODES) + [SIM_CASHFLOW]
     nav_by_code: dict[str, NavSeries] = {}
+    # Track the actual provider that supplied data so the response
+    # ``meta.data_source`` reflects reality (e.g. "sina_kline" when
+    # Eastmoney was unreachable). We pick the most-common non-default
+    # provider to keep the meta stable across mixed-source responses.
+    provider_counts: dict[str, int] = {}
     for code in codes:
         try:
             snap = await history_service.get_snapshot(
@@ -272,6 +277,7 @@ async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
                 name=None,
             )
             continue
+        provider_counts[snap.source] = provider_counts.get(snap.source, 0) + 1
         nav_by_code[code] = NavSeries(
             code=snap.code,
             market=snap.market,
@@ -288,6 +294,12 @@ async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Override the default ``eastmoney_kline`` with the actual provider
+    # that served the bulk of the data (e.g. "sina_kline").
+    if provider_counts:
+        actual_source = max(provider_counts, key=provider_counts.get)
+        if actual_source:
+            result["meta"]["data_source"] = actual_source
     return EtfSimulationResponse.model_validate(result)
 
 

@@ -210,12 +210,19 @@ class EtfHistoryService:
     def _write_cache(
         self, code: str, snapshot: EtfHistorySnapshot, latest: EtfHistoryFetchResult
     ) -> None:
+        # Reflect the real provider that returned data (e.g. "sina_kline"
+        # when Eastmoney's CDN was unreachable). Falls back to the client's
+        # nominal provider_id when the chain has no success marker yet.
+        actual_source = (
+            getattr(self.client, "last_success_source", None)
+            or self.client.provider_id
+        )
         payload = {
             "code": snapshot.code,
             "market": snapshot.market,
             "secid": snapshot.secid,
             "name": snapshot.name or latest.name,
-            "source": self.client.provider_id,
+            "source": actual_source,
             "coverage_start": snapshot.coverage_start.isoformat(),
             "coverage_end": snapshot.coverage_end.isoformat(),
             "last_updated": snapshot.last_updated.isoformat(),

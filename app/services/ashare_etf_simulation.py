@@ -290,9 +290,17 @@ def run_simulation(
     if CASHFLOW_SYMBOL not in nav_by_code:
         raise ValueError(f"missing NAV for cashflow symbol {CASHFLOW_SYMBOL}")
 
-    # Coverage metadata
-    coverage_start = min(min(d for d, _ in s.points) for s in nav_by_code.values() if s.points)
-    coverage_end = max(max(d for d, _ in s.points) for s in nav_by_code.values() if s.points)
+    # Coverage metadata. When ALL series are empty (upstream outage),
+    # we still need valid ISO dates for the response schema — fall back
+    # to ``from_month`` / ``to_date`` so the caller sees an honest
+    # "no data" envelope rather than a 500.
+    series_with_data = [s for s in nav_by_code.values() if s.points]
+    if series_with_data:
+        coverage_start = min(min(d for d, _ in s.points) for s in series_with_data)
+        coverage_end = max(max(d for d, _ in s.points) for s in series_with_data)
+    else:
+        coverage_start = from_month
+        coverage_end = to_date
 
     # Earliest date on which EVERY HALO symbol has data — the natural
     # default for the simulation's from_month (so the user starts at the
@@ -400,14 +408,30 @@ def run_simulation(
 
     # Source status: ok if all HALO + cashflow had any data
     symbols_with_data = list(state.keys())
+    # source_status reflects NAV coverage honestly:
+    # - "unavailable" when no symbol returned any points (upstream outage)
+    # - "partial"   when at least one symbol has data but not all
+    # - "ok"        when every requested symbol has data
+    if not series_with_data:
+        source_status = "unavailable"
+    elif missing:
+        source_status = "partial"
+    else:
+        source_status = "ok"
+    # Track which HALO codes actually have data (not just present in the dict).
+    symbols_with_data = sorted({
+        s.code for s in series_with_data if s.code in ALL_HALO_CODES
+    })
+    # HALO codes that have no usable NAV at all.
+    halo_missing = [c for c in ALL_HALO_CODES if c not in symbols_with_data]
     meta = EtfSimulationMeta(
         data_source="eastmoney_kline",
         fetched_at=now,
         coverage_start=coverage_start,
         coverage_end=coverage_end,
         symbols_with_data=symbols_with_data,
-        symbols_missing=missing,
-        source_status="partial" if missing else "ok",
+        symbols_missing=halo_missing,
+        source_status=source_status,  # type: ignore[arg-type]
         halos_listing_start=halos_listing_start,
     )
 

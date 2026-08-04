@@ -381,3 +381,40 @@ def test_run_simulation_meta_halos_listing_start_with_staggered_data() -> None:
     # 561560 = 2025-01-01, others = 2025-03-03 (60 days after Jan 1)
     # max of these = 2025-03-03
     assert result["meta"]["halos_listing_start"] == "2025-03-03"
+
+# --- Defensive: empty-state handling ------------------------------------
+
+
+def test_run_simulation_returns_empty_envelope_when_all_series_empty() -> None:
+    """When upstream fetch failed for every symbol, the endpoint must NOT
+    crash with ``min() iterable argument is empty``; instead it returns a
+    well-formed response with zero series points and source_status='unavailable'
+    so the UI can render an honest empty-state rather than a 500.
+
+    This guards the regression where the original `min(min(...) ...)`
+    raised on the empty generator and surfaced as a 400 to the frontend.
+    """
+    nav_by_code = {
+        c: NavSeries(code=c, market="SH", points=[], name=None)
+        for c in ALL_HALO_CODES + (CASHFLOW_SYMBOL,)
+    }
+    result = run_simulation(
+        nav_by_code=nav_by_code,
+        from_month=date(2025, 1, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    # Schema fields must be present and well-formed (no None for required dates)
+    assert result["series"] == []
+    assert result["events"] == []
+    assert result["months"] == []
+    # Meta falls back to from_month/to_date instead of crashing
+    assert result["meta"]["coverage_start"] == "2025-01-01"
+    assert result["meta"]["coverage_end"] == "2026-08-04"
+    assert result["meta"]["source_status"] == "unavailable"
+    # No HALO data → no listing-start can be computed.
+    assert result["meta"]["halos_listing_start"] is None
+    # Summary is zero, not None
+    assert result["summary"]["months_simulated"] == 0
+    # Decimal("0") serialises as "0", not "0.00" — just confirm it's zero.
+    assert float(result["summary"]["final_total_value"]) == 0.0

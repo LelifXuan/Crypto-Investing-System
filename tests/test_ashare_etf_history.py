@@ -14,13 +14,16 @@ import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import httpx  # noqa: F401  # used in forward-ref type hints below
 import pytest
 
 from app.integrations.cn_etf_history import (
     EastmoneyFundKlineClient,
     EtfHistoryFetchResult,
     EtfKlinePoint,
+    SinaFundKlineClient,
     _parse_kline_line,
+    _parse_sina_payload,
 )
 from app.services.ashare_etf_history import (
     EtfHistoryService,
@@ -423,3 +426,291 @@ def test_cache_dir_creates_subdir(tmp_path: Path, monkeypatch) -> None:
     result = cache_dir()
     assert result.exists()
     assert result.name == "fund_history"
+
+
+# --- Sina Finance adapter parsing --------------------------------------
+
+
+def test_parse_sina_payload_happy_path() -> None:
+    payload = [
+        {"day": "2024-08-01", "open": "0.960", "close": "0.964",
+         "high": "0.975", "low": "0.960", "volume": "4883"},
+        {"day": "2024-08-02", "open": "0.970", "close": "0.980",
+         "high": "0.985", "low": "0.965", "volume": "5021"},
+    ]
+    points = _parse_sina_payload(payload)
+    assert len(points) == 2
+    assert points[0].trade_date == date(2024, 8, 1)
+    assert points[0].close == 0.964
+    assert points[0].volume == 4883
+    assert points[0].amount is None  # Sina doesn't provide amount
+    assert points[0].amplitude_pct is None
+    # Sina returns most-recent first; parser must sort ascending.
+    assert points[0].trade_date < points[1].trade_date
+
+
+def test_parse_sina_payload_skips_bad_rows() -> None:
+    payload = [
+        {"day": "2024-08-01", "close": "1.0"},  # happy
+        {"day": "garbage", "close": "1.0"},     # bad date
+        {"day": "2024-08-02", "close": None},   # missing close
+        {"day": "2024-08-03"},                   # no close
+        "not a dict",                            # wrong shape
+    ]
+    points = _parse_sina_payload(payload)
+    assert len(points) == 1
+    assert points[0].trade_date == date(2024, 8, 1)
+
+
+def test_parse_sina_payload_empty_input() -> None:
+    assert _parse_sina_payload([]) == []
+    assert _parse_sina_payload(None) == []  # type: ignore[arg-type]
+    assert _parse_sina_payload({"oops": 1}) == []  # wrong shape
+
+
+# --- Sina client end-to-end (with httpx transport patched) -------------
+
+
+@pytest.mark.asyncio
+async def test_sina_client_parses_httpx_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SinaFundKlineClient parses httpx Response JSON without a real HTTP call."""
+    import httpx
+
+    sample_payload = [
+        {"day": "2024-08-01", "open": "1.0", "close": "1.05",
+         "high": "1.06", "low": "0.99", "volume": "100"},
+        {"day": "2024-08-02", "open": "1.05", "close": "1.07",
+         "high": "1.08", "low": "1.04", "volume": "120"},
+    ]
+
+    class _FakeClient:
+        def __init__(self, source_key: str = "x", **kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "_FakeClient":
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, url: str, params: dict[str, str]) -> httpx.Response:
+            request = httpx.Request("GET", url, params=params)
+            return httpx.Response(200, json=sample_payload, request=request)
+
+    monkeypatch.setattr(
+        "app.integrations.cn_etf_history.client_for_source", _FakeClient
+    )
+    client = SinaFundKlineClient()
+    result = await client.fetch_history("561560")
+    assert result.code == "561560"
+    assert result.market == "SH"
+    assert len(result.points) == 2
+    assert result.points[0].trade_date == date(2024, 8, 1)
+    assert result.points[1].close == 1.07
+
+
+@pytest.mark.asyncio
+async def test_sina_client_uses_sz_prefix_for_sz_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify SZ ETFs use sz159xxx prefix, not sh."""
+    captured: dict[str, str] = {}
+
+    class _FakeClient:
+        def __init__(self, source_key: str = "x", **kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "_FakeClient":
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, url: str, params: dict[str, str]) -> httpx.Response:
+            captured["symbol"] = params["symbol"]
+            request = httpx.Request("GET", url, params=params)
+            return httpx.Response(200, json=[], request=request)
+
+    monkeypatch.setattr(
+        "app.integrations.cn_etf_history.client_for_source", _FakeClient
+    )
+    client = SinaFundKlineClient()
+    with pytest.raises(RuntimeError):
+        await client.fetch_history("159201")
+    assert captured["symbol"] == "sz159201"
+
+
+# --- Eastmoney → Sina chain fallback ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_falls_through_to_sina_when_all_urls_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When every Eastmoney URL fails, the chain falls through to Sina."""
+
+    class _FailingEMClient:
+        def __init__(self, source_key: str = "x", **kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "_FailingEMClient":
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, *args, **kwargs) -> None:
+            raise RuntimeError("eastmoney unreachable")
+
+    class _OkSinaClient:
+        def __init__(self) -> None:
+            self.called_with: list[str] = []
+
+        async def fetch_history(self, code: str, **_):
+            self.called_with.append(code)
+            return EtfHistoryFetchResult(
+                code=code,
+                market="SH",
+                secid=f"1.{code}",
+                name=None,
+                total_bars=1,
+                points=[_make_point(date(2026, 8, 4), 1.234)],
+                fetched_at=datetime(2026, 8, 4, tzinfo=UTC),
+            )
+
+    monkeypatch.setattr(
+        "app.integrations.cn_etf_history.client_for_source", _FailingEMClient
+    )
+
+    sina = _OkSinaClient()
+    em = EastmoneyFundKlineClient(sina_fallback=sina)
+    result = await em.fetch_history("561560")
+    assert sina.called_with == ["561560"]
+    assert len(result.points) == 1
+    assert em.last_success_source == "sina_kline"
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_does_not_call_sina_when_em_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify chain doesn't pay the Sina cost when Eastmoney returns data."""
+
+    em_payload = {
+        "data": {
+            "name": "电力ETF",
+            "dktotal": 1,
+            "klines": ["2026-08-04,1.0,1.05,1.06,0.99,100,105,1.5"],
+        }
+    }
+
+    class _OkEMClient:
+        def __init__(self, source_key: str = "x", **kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "_OkEMClient":
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, *args, **kwargs):
+            import httpx
+            request = httpx.Request("GET", "https://push2his.eastmoney.com/")
+            return httpx.Response(200, json=em_payload, request=request)
+
+    sina_called = {"v": False}
+
+    class _TrackingSina:
+        async def fetch_history(self, code: str, **_):
+            sina_called["v"] = True
+            raise AssertionError("should not be called when EM succeeds")
+
+    monkeypatch.setattr(
+        "app.integrations.cn_etf_history.client_for_source", _OkEMClient
+    )
+    em = EastmoneyFundKlineClient(sina_fallback=_TrackingSina())
+    result = await em.fetch_history("561560")
+    assert em.last_success_source == "eastmoney_kline"
+    assert len(result.points) == 1
+    assert result.points[0].close == 1.05
+    assert not sina_called["v"]
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_raises_when_both_sources_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Final error message must surface BOTH the EM and Sina failures."""
+
+    class _FailingEMClient:
+        def __init__(self, source_key: str = "x", **kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "_FailingEMClient":
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, *args, **kwargs) -> None:
+            raise RuntimeError("eastmoney boom")
+
+    class _FailingSina:
+        async def fetch_history(self, code: str, **_):
+            raise RuntimeError("sina boom")
+
+    monkeypatch.setattr(
+        "app.integrations.cn_etf_history.client_for_source", _FailingEMClient
+    )
+    em = EastmoneyFundKlineClient(sina_fallback=_FailingSina())
+    with pytest.raises(RuntimeError) as excinfo:
+        await em.fetch_history("561560")
+    msg = str(excinfo.value)
+    assert "eastmoney" in msg
+    assert "sina" in msg
+    assert "boom" in msg
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_treats_empty_payload_as_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If Eastmoney returns 200 but klines=[] we must not silently succeed."""
+
+    class _EmptyEMClient:
+        def __init__(self, source_key: str = "x", **kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "_EmptyEMClient":
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, *args, **kwargs):
+            import httpx
+            request = httpx.Request("GET", "https://push2his.eastmoney.com/")
+            return httpx.Response(200, json={"data": {"klines": []}}, request=request)
+
+    class _OkSina:
+        async def fetch_history(self, code: str, **_):
+            return EtfHistoryFetchResult(
+                code=code,
+                market="SH",
+                secid=f"1.{code}",
+                name=None,
+                total_bars=1,
+                points=[_make_point(date(2026, 8, 4), 1.0)],
+                fetched_at=datetime(2026, 8, 4, tzinfo=UTC),
+            )
+
+    monkeypatch.setattr(
+        "app.integrations.cn_etf_history.client_for_source", _EmptyEMClient
+    )
+    em = EastmoneyFundKlineClient(sina_fallback=_OkSina())
+    result = await em.fetch_history("561560")
+    assert em.last_success_source == "sina_kline"
+    assert len(result.points) == 1
