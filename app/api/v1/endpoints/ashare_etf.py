@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,9 +21,17 @@ from app.schemas.etf_equity_curve import (
     EtfEquityCurveRequest,
     EtfEquityCurveResponse,
 )
+from app.schemas.etf_simulation import (
+    EtfSimulationRequest,
+    EtfSimulationResponse,
+)
 from app.services.ashare_etf_equity import build_equity_curve
 from app.services.ashare_etf_history import EtfHistoryService
-from app.services.ashare_etf_quotes import AShareETFQuoteService, EastmoneyDirectETFClient
+from app.services.ashare_etf_quotes import (
+    AShareETFQuoteService,
+    EastmoneyDirectETFClient,
+    market_for_code,
+)
 from app.services.ashare_etf_rebalance import (
     CASHFLOW_SYMBOL,
     ETFPosition,
@@ -31,6 +41,17 @@ from app.services.ashare_etf_rebalance import (
     optimize_etf_rebalance,
     validate_halo_positions,
 )
+from app.services.ashare_etf_simulation import (
+    ALL_HALO_CODES,
+    NavSeries,
+    run_simulation,
+)
+from app.services.ashare_etf_simulation import (
+    CASHFLOW_SYMBOL as SIM_CASHFLOW,
+)
+
+logger = logging.getLogger(__name__)
+UTC = timezone.utc
 
 router = APIRouter(prefix="/ashare-etf", tags=["ashare-etf"])
 etf_router = APIRouter(prefix="/etf", tags=["etf"])
@@ -212,6 +233,78 @@ async def _equity_curve(payload: EtfEquityCurveRequest) -> EtfEquityCurveRespons
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return EtfEquityCurveResponse.model_validate(result)
 
+
+async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
+    """Run the HALO Rolling-252-Cov strategy simulation.
+
+    Loads 252+ trading days of NAV for each HALO symbol + the cashflow
+    ETF, then walks forward month-by-month from ``from_month`` applying
+    monthly DCA + bandwidth-triggered quarterly rebalances.
+
+    The endpoint never *predicts* the future — it replays the actual
+    historical price series with the strategy's transaction rules
+    layered on top. If ``to_date`` is in the past, the curve ends at
+    ``to_date``; if it's in the present/future, the simulation stops at
+    the latest available NAV.
+    """
+    history_service = _build_history_service()
+    # Default from_month to a sensible 1-year lookback if caller passes
+    # the very first day of the most-recent month.
+    from_month = date(payload.from_month.year, payload.from_month.month, 1)
+    to_date = payload.to_date or datetime.now(tz=UTC).date()
+
+    # Pull NAV for every HALO + cashflow symbol across the full window.
+    codes = list(ALL_HALO_CODES) + [SIM_CASHFLOW]
+    nav_by_code: dict[str, NavSeries] = {}
+    for code in codes:
+        try:
+            snap = await history_service.get_snapshot(
+                code, from_date=from_month, to_date=to_date
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "etf_simulation:history_fetch_failed code=%s err=%s", code, exc
+            )
+            nav_by_code[code] = NavSeries(
+                code=code,
+                market=market_for_code(code),
+                points=[],
+                name=None,
+            )
+            continue
+        nav_by_code[code] = NavSeries(
+            code=snap.code,
+            market=snap.market,
+            points=[(p.trade_date, p.close) for p in snap.points],
+            name=snap.name,
+        )
+
+    try:
+        result = run_simulation(
+            nav_by_code=nav_by_code,
+            from_month=from_month,
+            to_date=to_date,
+            params=payload.params,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return EtfSimulationResponse.model_validate(result)
+
+
+@router.post("/simulation", response_model=EtfSimulationResponse)
+async def post_ashare_etf_simulation(
+    payload: EtfSimulationRequest,
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> EtfSimulationResponse:
+    return await _simulation(payload)
+
+
+@etf_router.post("/simulation", response_model=EtfSimulationResponse)
+async def post_etf_simulation(
+    payload: EtfSimulationRequest,
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> EtfSimulationResponse:
+    return await _simulation(payload)
 
 
 @router.get("/catalog", response_model=AShareEtfCatalogResponse)
