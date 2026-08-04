@@ -204,7 +204,17 @@ function _defaultEquityFromDate() {
 
 function _buildSimulationPayload() {
   const monthRaw = document.getElementById("etf-equity-from-month")?.value;
-  const fromMonth = monthRaw || _defaultSimulationMonth();
+  // On the very first discovery call (no user input yet, no cache), ask
+  // for a wide window so the backend can return meta.halos_listing_start.
+  // Subsequent calls use the actual input value.
+  let fromMonth;
+  if (monthRaw) {
+    fromMonth = monthRaw;
+  } else if (equityCurveCache?.meta?.halos_listing_start) {
+    fromMonth = String(equityCurveCache.meta.halos_listing_start).slice(0, 7);
+  } else {
+    fromMonth = "2020-01";  // discovery: ask wide, backend narrows via meta
+  }
   // Convert YYYY-MM → first day of month for the API
   const fromMonthIso = `${fromMonth}-01`;
   return {
@@ -351,9 +361,14 @@ function renderEquityCurve(data, mode) {
         : "等待历史数据";
 
   // Default input values from cache or sensible default
+  // For simulation mode: prefer the backend's halos_listing_start (the
+  // first month when EVERY HALO ETF is trading) over a hardcoded 1y-ago.
+  const haloListing = equityCurveCache?.meta?.halos_listing_start
+    ? String(equityCurveCache.meta.halos_listing_start).slice(0, 7)
+    : null;
   const fromMonthDefault = equityCurveCache?.from_month
     ? equityCurveCache.from_month.slice(0, 7)
-    : _defaultSimulationMonth();
+    : (haloListing || _defaultSimulationMonth());
   const fromDateDefault = equityCurveCache?.from_date || _defaultEquityFromDate();
 
   root.innerHTML = `

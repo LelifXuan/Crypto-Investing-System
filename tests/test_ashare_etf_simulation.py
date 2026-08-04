@@ -321,3 +321,57 @@ def test_run_simulation_decimal_end_to_end() -> None:
         # Force conversion to Decimal — should never raise
         Decimal(s["total_value"])
         Decimal(s["cost_value"])
+
+
+def test_run_simulation_meta_halos_listing_start() -> None:
+    """halos_listing_start = MAX of all HALO symbols' earliest data point.
+
+    Different ETFs list at different times; the simulation's natural
+    starting month is the first month when the WHOLE basket is trading.
+    """
+    nav = _build_minimal_nav()
+    result = run_simulation(
+        nav_by_code=nav,
+        from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    # All symbols in _build_minimal_nav start at 2025-08-01 → max = same day
+    assert result["meta"]["halos_listing_start"] == "2025-08-01"
+
+
+def test_run_simulation_meta_halos_listing_start_with_staggered_data() -> None:
+    """When HALO symbols start at different dates, halos_listing_start is the LATEST."""
+    from datetime import timedelta
+
+    def gen(code: str, market: str, start_offset_days: int) -> NavSeries:
+        pts = []
+        d0 = date(2025, 1, 1)
+        d = d0 + timedelta(days=start_offset_days)
+        end = date(2026, 8, 4)
+        while d <= end:
+            if d.weekday() < 5:
+                pts.append((d, 1.0))
+            d += timedelta(days=1)
+        return _build_nav(code, market, pts)
+
+    # 561560 starts 2025-01-01, others start 2025-03-01 (60 days later)
+    nav = {
+        "561560": gen("561560", "SH", 0),
+        "159930": gen("159930", "SZ", 60),
+        "512400": gen("512400", "SH", 60),
+        "516950": gen("516950", "SH", 60),
+        "512660": gen("512660", "SH", 60),
+        "563010": gen("563010", "SH", 60),
+        CASHFLOW_SYMBOL: gen(CASHFLOW_SYMBOL, "SZ", 0),
+    }
+    result = run_simulation(
+        nav_by_code=nav,
+        from_month=date(2025, 1, 1),
+        to_date=date(2025, 6, 1),
+        params=EtfSimulationParams(),
+    )
+    # Earliest for each symbol:
+    # 561560 = 2025-01-01, others = 2025-03-03 (60 days after Jan 1)
+    # max of these = 2025-03-03
+    assert result["meta"]["halos_listing_start"] == "2025-03-03"

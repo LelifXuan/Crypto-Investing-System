@@ -294,6 +294,17 @@ def run_simulation(
     coverage_start = min(min(d for d, _ in s.points) for s in nav_by_code.values() if s.points)
     coverage_end = max(max(d for d, _ in s.points) for s in nav_by_code.values() if s.points)
 
+    # Earliest date on which EVERY HALO symbol has data — the natural
+    # default for the simulation's from_month (so the user starts at the
+    # first month where the full basket is already trading, not before
+    # some ETF had even listed).
+    halo_first_dates: list[date] = []
+    for code in ALL_HALO_CODES:
+        series = nav_by_code.get(code)
+        if series and series.points:
+            halo_first_dates.append(min(d for d, _ in series.points))
+    halos_listing_start = max(halo_first_dates) if halo_first_dates else None
+
     nav_index: dict[str, dict[date, float]] = {code: s.by_date for code, s in nav_by_code.items()}
 
     # Per-symbol state
@@ -397,6 +408,7 @@ def run_simulation(
         symbols_with_data=symbols_with_data,
         symbols_missing=missing,
         source_status="partial" if missing else "ok",
+        halos_listing_start=halos_listing_start,
     )
 
     return EtfSimulationResponse(

@@ -97,6 +97,10 @@ class EtfSimulationMeta(BaseModel):
     symbols_with_data: list[str] = Field(default_factory=list)
     symbols_missing: list[str] = Field(default_factory=list)
     source_status: Literal["ok", "partial", "stale", "unavailable"] = "ok"
+    # Earliest date on which all HALO symbols have data — the suggested
+    # default from_month for the simulation (so the user starts at the
+    # first month where every HALO ETF is already trading).
+    halos_listing_start: date | None = None
 
 
 class EtfSimulationResponse(BaseModel):
