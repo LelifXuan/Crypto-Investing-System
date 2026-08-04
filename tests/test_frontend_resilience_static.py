@@ -1,10 +1,44 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _extract_function_body(source: str, fn_name: str) -> str:
+    """Return the source of ``fn_name`` from a JS file.
+
+    Locates the ``function <fn_name>(...) {`` opener and slices until the
+    next top-level ``function`` / ``export function`` declaration (or
+    EOF). Used by the static guards below to scope assertions to a
+    single render function so a wrong config in the equity curve cannot
+    pass the assertion by hiding inside an unrelated function.
+    """
+    match = re.search(rf"^function {re.escape(fn_name)}\b", source, re.MULTILINE)
+    if not match:
+        return ""
+    start = match.start()
+    rest = source[start + 1:]
+    next_fn = re.search(r"^(?:export\s+)?function\s+\w+\b", rest, re.MULTILINE)
+    end = start + 1 + (next_fn.start() if next_fn else len(rest))
+    return source[start:end]
+
+
+def _strip_js_comments(source: str) -> str:
+    """Strip ``//`` and ``/* */`` comments so substring assertions ignore
+    prose that happens to mention a forbidden identifier (e.g. a comment
+    explaining the bug that the assertion is guarding against)."""
+    # Block comments first to avoid leaving stray ``//`` from inside them.
+    no_block = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    no_line = re.sub(r"//[^\n]*", "", no_block)
+    return no_line
+
+
+def _function_body_no_comments(source: str, fn_name: str) -> str:
+    return _strip_js_comments(_extract_function_body(source, fn_name))
 
 
 def test_structure_entry_uses_versioned_dynamic_import() -> None:
@@ -220,6 +254,27 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     assert "一次性投入 收益率" in source
     assert "horizontalLine" in source
     assert "y1" in source
+    # Dual-axis guard (added 2026-08-05): the yield view must use the
+    # ``axes:`` path so the absolute-yuan cumulative-cost dataset can
+    # ride on its own ``y1`` scale. The historical ``axisProfile: "price"``
+    # + manual ``options.scales.y`` path only created a single ``y`` scale,
+    # which silently coerced ``y1`` datasets onto ``y`` and squashed the
+    # percent curves flat against zero. Comments are stripped first so
+    # the prose in the explanatory comment block does not trip the
+    # "axisProfile forbidden" assertion.
+    yield_render = _function_body_no_comments(source, "_renderEquityChart")
+    assert yield_render, "_renderEquityChart not found in ashare_etf.js"
+    assert "axisProfile: \"price\"" not in yield_render, (
+        "ashare_etf yield view must use axes: {y, y1} path, not axisProfile=price"
+    )
+    assert "axes:" in yield_render
+    assert "y: {" in yield_render
+    assert "y1: {" in yield_render
+    assert "value_format: \"percent\"" in yield_render
+    assert "value_format: \"integer\"" in yield_render, (
+        "ashare_etf yield view right axis must declare value_format "
+        "for stable rendering of cumulative-yuan labels"
+    )
     assert "data-field=\"currentPrice\"" not in source
     assert "行情读取中" not in source
     assert "手动输入现价" not in source

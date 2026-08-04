@@ -252,7 +252,13 @@ export function buildAdaptiveScaleOptionsForAxes(
             display: spec.display_ticks !== false,
             color: CHART_THEME.axis,
             font: { size: 11, weight: "500" },
-            callback: (value) => formatChartValue(value, spec.value_format || spec.unit),
+            // 2026-08-05: opt-in custom tick formatter. When the caller
+            // supplies ``spec.tick_callback`` it fully overrides the
+            // ``value_format``/``unit`` pipeline, letting dual-axis
+            // charts (e.g. ashare_etf yield view) emit currency labels
+            // (``¥1.5万``) that ``formatChartValue`` cannot produce.
+            callback: spec.tick_callback
+              || ((value) => formatChartValue(value, spec.value_format || spec.unit)),
           },
           grid: {
             color: CHART_THEME.gridY,

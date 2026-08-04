@@ -636,7 +636,39 @@ function _renderEquityChart(data, mode) {
 
   renderChart("ashare-etf-equity-canvas", canvas, {
     type: "line",
-    axisProfile: "price",
+    // 2026-08-05: dual-axis yield view. The earlier ``axisProfile: "price"``
+    // + manual ``options.scales.y`` path only created a single ``y`` scale,
+    // so the absolute-yuan ``累计投入`` dataset (bound to ``y1``) was
+    // silently coerced onto the same axis as the two percent curves.
+    // Chart.js then auto-fit the domain to the absolute yuan range
+    // (0–50万) and squashed the percent curves flat against zero. The
+    // ``axes:`` path produces one independent scale per axisId, so the
+    // DCA / lump-sum return curves stay readable while the cumulative
+    // cost reference line stays in yuan.
+    axes: {
+      y: {
+        profile: "percent",
+        position: "left",
+        value_format: "percent",
+        padding_ratio: 0.12,
+      },
+      y1: {
+        // 元 label via ``value_format: "integer"`` — keeps the right
+        // axis compact using the standard ``formatChartValue`` pipeline
+        // (renders ``12,482``). The earlier ``tick_callback`` for the
+        // 元 → 万元 transform was correctly wired into
+        // ``buildAdaptiveScaleOptionsForAxes`` but the resulting
+        // per-scale ticks array came back empty in the running chart,
+        // so the simpler unit path is the safer default. The prefix
+        // ¥ is added by the static guard; the runtime formatter stays
+        // locale-neutral.
+        profile: "raw",
+        position: "right",
+        value_format: "integer",
+        grid: false,
+        padding_ratio: 0.06,
+      },
+    },
     annotations,
     data: { labels, datasets },
     options: {
@@ -687,28 +719,6 @@ function _renderEquityChart(data, mode) {
               return lines;
             },
           },
-        },
-      },
-      scales: {
-        y: {
-          type: "linear",
-          position: "left",
-          ticks: {
-            // y values are decimal fractions (0.0523 = +5.23%); the
-            // callback multiplies by 100 so the axis labels read as
-            // percentages without forcing the user to do the math.
-            callback: (v) => `${formatNumber(v * 100, 1)}%`,
-          },
-          title: { display: true, text: "收益率" },
-        },
-        y1: {
-          type: "linear",
-          position: "right",
-          ticks: {
-            callback: (v) => formatNumber(v, { maximumFractionDigits: 0 }),
-          },
-          title: { display: true, text: "累计投入(元)" },
-          grid: { drawOnChartArea: false },
         },
       },
     },
