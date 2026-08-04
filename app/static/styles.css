@@ -6059,9 +6059,10 @@ body[data-page="ai-strategy"] main {
 }
 
 .etf-control-strip {
-  align-items: end;
+  align-items: stretch;
   display: grid;
   gap: 10px;
+  grid-auto-rows: 1fr;
   grid-template-columns: minmax(150px, 0.9fr) minmax(140px, 0.8fr) repeat(5, minmax(100px, 1fr));
   margin-top: 14px;
 }
@@ -6069,11 +6070,12 @@ body[data-page="ai-strategy"] main {
 .etf-control-strip label,
 .etf-control-strip span,
 .etf-summary-grid span {
+  align-items: start;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(26, 47, 55, 0.08);
   border-radius: 8px;
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   padding: 9px 10px;
 }
@@ -6086,6 +6088,25 @@ body[data-page="ai-strategy"] main {
   font-weight: 800;
 }
 
+/* The execution-mode label wraps a dropdown trigger. We strip the
+   inner button's chrome so the trigger visually fuses with the cell —
+   title ("执行模式") stays, button keeps width:100% but loses its own
+   border/background, so it reads as one tile like the KPI cells. */
+.etf-control-strip label > .dropdown {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: none;
+  height: 36px;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.etf-control-strip label > .dropdown:hover:not([disabled]):not(.is-open) {
+  border-color: rgba(26, 47, 55, 0.18);
+  box-shadow: none;
+}
+
 .etf-control-strip input,
 .etf-control-strip select,
 .etf-cell-input {
@@ -6095,8 +6116,10 @@ body[data-page="ai-strategy"] main {
   color: var(--ink);
   font: inherit;
   font-size: 13px;
+  height: 36px;
   min-width: 0;
   padding: 7px 8px;
+  width: 100%;
 }
 
 .etf-control-strip strong {
