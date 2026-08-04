@@ -217,6 +217,17 @@ function _buildSimulationPayload() {
   }
   // Convert YYYY-MM → first day of month for the API
   const fromMonthIso = `${fromMonth}-01`;
+  // Read the rebalance offset input (number of trading days between
+  // month-end DCA and quarter-end rebalance). Clamp to backend range
+  // [0, 20]. Empty / NaN falls back to the backend default of 5.
+  const offsetInput = document.getElementById("etf-equity-offset-days")?.value;
+  let rebalanceOffsetDays = 5;
+  if (offsetInput !== undefined && offsetInput !== "") {
+    const parsed = Number(offsetInput);
+    if (Number.isFinite(parsed)) {
+      rebalanceOffsetDays = Math.max(0, Math.min(20, Math.round(parsed)));
+    }
+  }
   return {
     from_month: fromMonthIso,
     to_date: _todayIso(),
@@ -231,6 +242,7 @@ function _buildSimulationPayload() {
       dianxin_cap: "0.12",
       friction_rate: "0.001",
       iterations: 15,
+      rebalance_offset_days: rebalanceOffsetDays,
     },
   };
 }
@@ -394,6 +406,13 @@ function renderEquityCurve(data, mode) {
                    min="2020-01" max="${escapeHtml(_todayIso().slice(0, 7))}"
                    step="any"
                    value="${escapeHtml(fromMonthDefault)}">
+          </label>
+          <label class="etf-equity-offset">
+            <span>调仓延后(交易日)</span>
+            <input type="number" id="etf-equity-offset-days"
+                   min="0" max="20" step="1"
+                   value="5"
+                   title="月度 DCA 之后 N 个交易日再调仓；0=同日；5=推荐。">
           </label>`
               : `
           <label class="etf-equity-from">
@@ -441,6 +460,10 @@ function renderEquityCurve(data, mode) {
     const monthInput = document.getElementById("etf-equity-from-month");
     if (monthInput) {
       monthInput.addEventListener("change", () => void loadEquityCurve());
+    }
+    const offsetInput = document.getElementById("etf-equity-offset-days");
+    if (offsetInput) {
+      offsetInput.addEventListener("change", () => void loadEquityCurve());
     }
   } else {
     const dateInput = document.getElementById("etf-equity-from-date");

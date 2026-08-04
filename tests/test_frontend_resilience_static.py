@@ -203,6 +203,12 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     assert "dominatedBy" in source
     assert "本次调仓" in source
     assert "trade_rationale" in source
+    # Rebalance offset input (added 2026-08-04, delay quarterly rebalance N
+    # trading days post-DCA so the ERC target rebalances against the
+    # post-DCA shape, not the instant-after-DCA shape):
+    assert "rebalance_offset_days" in source
+    assert "etf-equity-offset-days" in source
+    assert "调仓延后" in source
     assert "data-field=\"currentPrice\"" not in source
     assert "行情读取中" not in source
     assert "手动输入现价" not in source

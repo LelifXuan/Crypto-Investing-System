@@ -231,6 +231,34 @@ def _month_end_trading_day(month_first: date, nav_by_date: dict[date, float]) ->
     return None
 
 
+def _advance_trading_days(
+    anchor: date,
+    n: int,
+    nav_by_date: dict[date, float],
+) -> date | None:
+    """Return the trading day that is exactly ``n`` trading days after ``anchor``.
+
+    Walks forward calendar-day by calendar-day, skipping any date absent
+    from ``nav_by_date``. Returns ``None`` if the walk goes more than 60
+    calendar days without finding enough trading days (defensive against
+    data gaps or pathological inputs).
+    """
+    if n <= 0:
+        return anchor
+    if not nav_by_date:
+        return None
+    cursor = anchor
+    days_walked = 0
+    while days_walked < 60:
+        cursor = date.fromordinal(cursor.toordinal() + 1)
+        if cursor in nav_by_date:
+            n -= 1
+            if n <= 0:
+                return cursor
+        days_walked += 1
+    return None
+
+
 def _returns_matrix(
     series_by_code: dict[str, list[tuple[date, float]]], window: int
 ) -> tuple[np.ndarray, list[date]] | None:
@@ -346,10 +374,11 @@ def run_simulation(
         snapshot = _snapshot(state, cash, nav_index, month_end)
         points.append(snapshot)
 
-        # 1. Monthly DCA on the last trading day of the month.
+        # Step 1: Monthly DCA on the last trading day of the month.
         # The strategy assumes the user can fund every DCA buy regardless
         # of cash reserves (infinite credit line). We track cumulative
         # cost_basis but do NOT model cash depletion.
+        cashflow_price = nav_index[CASHFLOW_SYMBOL].get(month_end)
         for code in ALL_HALO_CODES:
             price = nav_index[code].get(month_end)
             if price is None or price <= 0:
@@ -358,7 +387,6 @@ def run_simulation(
             notional = (Decimal(shares_added) * Decimal(str(price))).quantize(Decimal("0.01"))
             state[code].shares += shares_added
             state[code].cost_basis += notional
-        cashflow_price = nav_index[CASHFLOW_SYMBOL].get(month_end)
         if cashflow_price is not None and cashflow_price > 0:
             cf_added = params.dca_lots_cashflow * params.lot_size
             cf_notional = (
@@ -367,10 +395,19 @@ def run_simulation(
             state[CASHFLOW_SYMBOL].shares += cf_added
             state[CASHFLOW_SYMBOL].cost_basis += cf_notional
 
-        # 2. Quarterly rebalance check (Mar/Jun/Sep/Dec)
+        # Step 2: Quarterly rebalance (Mar/Jun/Sep/Dec).
+        #
+        # When ``rebalance_offset_days > 0`` the rebalance fires N trading
+        # days AFTER the DCA. This lets the rebalance "see" the price
+        # drift introduced by the DCA itself plus ~1 week of market noise,
+        # so the ERC target gets a fairer chance to rebalance towards the
+        # post-DCA shape. ``event.date`` is anchored to the rebalance day
+        # (which may fall in the next calendar month); ``event.dca_date``
+        # preserves the original month-end DCA date for back-reference.
         is_quarter_end = month_end.month in (3, 6, 9, 12)
         event = EtfSimulationEvent(
             date=month_end,
+            dca_date=month_end,
             kind="monthly_dca_only",
             cashflow_shares_added=(
                 params.dca_lots_cashflow * params.lot_size if cashflow_price else 0
@@ -383,19 +420,43 @@ def run_simulation(
         )
 
         if is_quarter_end:
-            trigger = _maybe_rebalance(
-                state,
-                cash,
-                nav_index,
-                month_end,
-                params,
-                event,
-            )
-            if trigger is not None:
-                # trigger = (trades dict, friction cost) where cash has
-                # already been mutated by the caller; we only need to
-                # accumulate friction here.
-                cumulative_friction += trigger[1]
+            offset = params.rebalance_offset_days
+            if offset > 0:
+                rebalance_date = _advance_trading_days(
+                    month_end, offset, nav_index.get(CASHFLOW_SYMBOL, {})
+                )
+            else:
+                rebalance_date = month_end
+            if (
+                rebalance_date is not None
+                and rebalance_date <= to_date
+                and rebalance_date <= coverage_end
+            ):
+                # Snapshot the post-DCA state on the rebalance day so the
+                # chart shows two markers for quarter-ends: one at DCA
+                # and one at rebalance. Skipped silently if the offset
+                # pushes the rebalance beyond the data window.
+                if rebalance_date != month_end:
+                    rb_snapshot = _snapshot(
+                        state, cash, nav_index, rebalance_date
+                    )
+                    points.append(rb_snapshot)
+                trigger = _maybe_rebalance(
+                    state,
+                    cash,
+                    nav_index,
+                    rebalance_date,
+                    params,
+                    event,
+                )
+                if trigger is not None:
+                    # trigger = (trades dict, friction cost) where cash
+                    # has already been mutated by the caller; we only
+                    # need to accumulate friction here.
+                    cumulative_friction += trigger[1]
+                event.date = rebalance_date
+                event.rebalance_date = rebalance_date
+                event.rebalance_offset_days = offset
 
         events.append(event)
 

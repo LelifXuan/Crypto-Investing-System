@@ -46,6 +46,17 @@ class EtfSimulationParams(BaseModel):
         description="Round-trip friction as fraction of traded notional",
     )
     iterations: int = Field(15, ge=1, le=50, description="ERC iterations per rebalance")
+    # Quarter-end rebalance executes N trading days AFTER the month-end DCA.
+    # 0 keeps the original behaviour (DCA + rebalance on the same trading day,
+    # which underweights the post-DCA drift). Recommended 5: the rebalance
+    # then sees the price drift the DCA itself introduced plus ~1 week of
+    # market noise, so the ERC target gets a fairer chance to "catch up"
+    # with the post-DCA shape. Cap at 20 (~1 calendar month) to prevent
+    # the rebalance from drifting into the next quarter's DCA window.
+    rebalance_offset_days: int = Field(
+        5, ge=0, le=20,
+        description="Trading days between month-end DCA and quarter-end rebalance",
+    )
 
 
 class EtfSimulationRequest(BaseModel):
@@ -58,6 +69,13 @@ class EtfSimulationEvent(BaseModel):
     """A single simulated event at month-end (DCA or rebalance)."""
 
     date: date
+    # When ``rebalance_offset_days > 0``, ``date`` is the date the rebalance
+    # fires (which may be in the next calendar month if offset is large).
+    # ``dca_date`` always records the underlying month-end DCA that
+    # triggered the offset. Both are equal when offset = 0.
+    dca_date: date | None = None
+    rebalance_date: date | None = None
+    rebalance_offset_days: int = 0
     kind: Literal["monthly_dca", "quarterly_rebalance", "no_trigger", "monthly_dca_only"]
     cashflow_shares_added: int = 0
     halo_dca: dict[str, int] = Field(default_factory=dict)  # per-symbol shares added

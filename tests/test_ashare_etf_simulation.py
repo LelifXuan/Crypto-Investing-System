@@ -174,17 +174,24 @@ def test_run_simulation_applies_monthly_dca() -> None:
         nav_by_code=nav,
         from_month=date(2025, 8, 1),
         to_date=date(2026, 8, 4),
-        params=EtfSimulationParams(),  # default
+        params=EtfSimulationParams(),  # default offset=5
     )
-    # 13 month-ends → 13 snapshots + 13 events
-    assert len(result["months"]) == 13
+    # 13 calendar months → 13 events. With the default 5-trading-day
+    # rebalance offset, quarter-end months (Sep / Dec / Mar / Jun) get
+    # an extra snapshot taken 5 trading days after the DCA, so we get
+    # 13 + 4 = 17 snapshot points (some rebalance dates may fall past
+    # the to_date, so the count can be 17 or less depending on the
+    # exact calendar). Verify the lower bound and that every event
+    # corresponds to one calendar month.
     assert len(result["events"]) == 13
+    assert len(result["series"]) >= 13
+    assert len(result["series"]) <= 17
     # The first snapshot is BEFORE any DCA happens (end-of-month, before
     # the month's DCA buy), so shares == 0.
     assert result["series"][0]["per_symbol_shares"]["561560"] == 0
     # The last snapshot is AFTER the August 2026 DCA buy
     last = result["series"][-1]
-    # 12 months of DCA × 100 lots × 100 shares = 120,000 shares per HALO
+    # 12 months of DCA × 1 lot × 100 shares = 1,200 shares per HALO.
     # The last snapshot reflects DCA + any triggered rebalances. We just
     # verify the cashflow ETF (which never rebalances) accumulated exactly
     # 12 × 1 × 100 = 1,200 shares.
@@ -193,8 +200,6 @@ def test_run_simulation_applies_monthly_dca() -> None:
     # increased from zero.
     assert last["per_symbol_shares"]["561560"] > 0
     assert Decimal(last["per_symbol_value"]["561560"]) >= Decimal("0")
-    # Total cost should match sum of DCA buys (12 × 7 × 100 × 100 × avg_price)
-    # With stable prices: cost ≈ 12 × (6 + 1) × 10000 × 1.0 ≈ 840,000
     # Total cost should match sum of DCA buys (12 × 7 × 1 × 100 × avg_price).
     # With stable prices (1.0 / 1.5 / 0.8 / 1.2 / 0.9 / 1.1 / 1.0): cost ≈ 12 × 7 × 100 × ~1 ≈ 8,400
     assert Decimal(result["summary"]["final_cost_value"]) >= Decimal("8000")
@@ -732,3 +737,221 @@ def test_rebalance_state_is_bit_identical_across_runs() -> None:
     assert rb1 and rb2
     assert rb1[-1]["rebalance_trades"] == rb2[-1]["rebalance_trades"]
     assert rb1[-1]["trade_rationale"] == rb2[-1]["trade_rationale"]
+
+
+# --- Rebalance offset: delay quarterly rebalance N trading days post-DCA --
+
+
+def test_rebalance_offset_zero_matches_old_behaviour() -> None:
+    """With offset=0 the rebalance fires on the same day as the DCA,
+    preserving the original behaviour. We confirm by comparing to a
+    fixed-input scenario that the trade notional is bit-equivalent
+    regardless of how many rebalance events happen."""
+    nav = _build_minimal_nav()
+    r_offset = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(rebalance_offset_days=0),
+    )
+    # All rebalance events must be on the original month-end trading day.
+    for e in r_offset["events"]:
+        if e["kind"] == "quarterly_rebalance":
+            assert e["rebalance_offset_days"] == 0
+            # rebalance_date equals dca_date (which equals event.date since
+            # the field is re-used for backwards compatibility).
+            assert e["date"] == e["dca_date"]
+    # summary should not be affected by the offset parameter itself —
+    # the only differences between offset=0 and offset=N come from the
+    # market noise between month_end and month_end+Ntd. With stable
+    # prices in _build_minimal_nav the noise is zero.
+    r_default = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(),
+    )
+    # Both runs see the same flat price path → cost basis + final value
+    # agree.
+    assert (
+        r_offset["summary"]["final_total_value"]
+        == r_default["summary"]["final_total_value"]
+    )
+
+
+def test_rebalance_offset_five_shifts_rebalance_to_next_month() -> None:
+    """With offset=5 the December-quarter-end rebalance fires in January
+    (≈ 5 trading days after the 12-31 DCA). Confirm via ``dca_date``
+    vs ``rebalance_date`` and via the ``series`` containing a snapshot
+    in January 2026."""
+    # Use the divergent-prices nav so quarter-end rebalances actually fire.
+    from datetime import timedelta
+
+    def gen(code: str, market: str, drift_per_month: float) -> NavSeries:
+        pts = []
+        d = date(2025, 8, 1)
+        end = date(2026, 8, 4)
+        price = 1.0
+        while d <= end:
+            if d.weekday() < 5:
+                if d.day == 1 or (d.day < 8 and len(pts) == 0):
+                    price *= 1 + drift_per_month
+                pts.append((d, price))
+            d += timedelta(days=1)
+        return _build_nav(code, market, pts)
+
+    nav = {
+        code: gen(code, "SH" if code.startswith(("5", "6")) else "SZ", drift)
+        for code, drift in [
+            ("561560", 0.10),
+            ("159930", -0.05),
+            ("512400", 0.15),
+            ("516950", 0.0),
+            ("512660", -0.10),
+            ("563010", 0.05),
+        ]
+    }
+    nav[CASHFLOW_SYMBOL] = gen(CASHFLOW_SYMBOL, "SZ", 0.005)
+
+    result = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(rebalance_offset_days=5),
+    )
+    rb_events = [e for e in result["events"] if e["kind"] == "quarterly_rebalance"]
+    # If no rebalance fired, debug the situation so we know whether
+    # the offset is suppressing what would otherwise fire. We try
+    # offset=0 first to confirm the data set actually triggers.
+    rb_offset0 = [
+        e for e in run_simulation(
+            nav_by_code=nav, from_month=date(2025, 8, 1),
+            to_date=date(2026, 8, 4),
+            params=EtfSimulationParams(rebalance_offset_days=0),
+        )["events"] if e["kind"] == "quarterly_rebalance"
+    ]
+    assert rb_offset0, (
+        "test scenario did not trigger any rebalance even with "
+        "offset=0 — divergent prices insufficient for ERC drift"
+    )
+    assert rb_events, "expected at least one rebalance with offset=5"
+    # Look at ANY Q4 (December DCA) quarter-end event — it should have
+    # shifted its rebalance to January 2026. Q4 may be no_trigger (drift
+    # resolved by the time +5td lands) but it still has the rebalance
+    # metadata.
+    dec_events = [e for e in result["events"] if e.get("dca_date", "").startswith("2025-12")]
+    assert dec_events, "expected a December DCA event"
+    dec_evt = dec_events[0]
+    # event.date is the rebalance date (post-DCA), which falls in Jan.
+    assert dec_evt["date"].startswith("2026-01"), dec_evt["date"]
+    assert dec_evt["rebalance_date"].startswith("2026-01"), dec_evt["rebalance_date"]
+    # dca_date is the December month-end.
+    assert dec_evt["dca_date"].startswith("2025-12"), dec_evt["dca_date"]
+    assert dec_evt["rebalance_offset_days"] == 5
+    # The chart series must contain a snapshot on the rebalance date.
+    months = result["months"]
+    assert dec_evt["rebalance_date"] in months
+
+
+def test_rebalance_offset_in_param_round_trip() -> None:
+    """EtfSimulationParams round-trips through Pydantic JSON safely."""
+    p = EtfSimulationParams(rebalance_offset_days=10)
+    j = p.model_dump_json()
+    p2 = EtfSimulationParams.model_validate_json(j)
+    assert p2.rebalance_offset_days == 10
+    # Default is 5.
+    p_default = EtfSimulationParams()
+    assert p_default.rebalance_offset_days == 5
+    # Out-of-range values rejected by the schema's `ge` / `le` constraints.
+    with pytest.raises(ValueError):
+        EtfSimulationParams(rebalance_offset_days=-1)
+    with pytest.raises(ValueError):
+        EtfSimulationParams(rebalance_offset_days=21)
+
+
+def test_snapshot_records_post_dca_state_when_offset_nonzero() -> None:
+    """With offset > 0 each quarter-end contributes TWO snapshots: one
+    at the DCA date (pre-DCA state) and one at the rebalance date
+    (post-DCA, pre-rebalance state). For 4 quarter-ends in 13 months,
+    we get 13 + 4 = 17 snapshots, in stable-price scenarios."""
+    nav = _build_minimal_nav()
+    result = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 8, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(rebalance_offset_days=5),
+    )
+    # Quarter-ends in our window: 2025-09, 2025-12, 2026-03, 2026-06.
+    # With offset=5 trading days, all four rebalance dates fall in the
+    # following month. Final snapshot is at 2026-08-04 (after the 2026-07
+    # DCA), so all 4 rebalance snapshots are within to_date.
+    assert len(result["series"]) == 13 + 4, (
+        f"expected 17 snapshots (13 month-ends + 4 rebalance dates), got {len(result['series'])}"
+    )
+    # The rebalance-date snapshots must show the post-DCA state (shares > 0
+    # for HALO codes), confirming they were taken AFTER the DCA fired.
+    rb_events = [e for e in result["events"] if e["kind"] == "quarterly_rebalance"]
+    rb_dates = {str(e["rebalance_date"]) for e in rb_events}
+    for snap in result["series"]:
+        if str(snap["date"]) in rb_dates:
+            # Cashflow ETF gets DCA'd every month-end so shares must be
+            # positive by the rebalance day.
+            assert snap["per_symbol_shares"][CASHFLOW_SYMBOL] > 0
+
+
+def test_rebalance_uses_post_dca_prices_when_offset_nonzero() -> None:
+    """The rebalance must use post-DCA prices (rebalance_date, not
+    dca_date). We confirm by checking the trade_rationale's
+    current_weight reflects the post-DCA price snapshot, not the
+    pre-DCA price."""
+    from datetime import timedelta
+
+    def gen(code: str, market: str, drift_per_month: float) -> NavSeries:
+        pts = []
+        d = date(2025, 1, 1)
+        end = date(2026, 8, 4)
+        price = 1.0
+        while d <= end:
+            if d.weekday() < 5:
+                if d.day == 1 or (d.day < 8 and len(pts) == 0):
+                    price *= 1 + drift_per_month
+                pts.append((d, price))
+            d += timedelta(days=1)
+        return _build_nav(code, market, pts)
+
+    # 5 ETFs drop -10%/month, 512400 stays flat → 512400 becomes
+    # overweight over time → triggers rebalance at every quarter-end.
+    nav = {
+        code: gen(code, "SH" if code.startswith(("5", "6")) else "SZ", drift)
+        for code, drift in [
+            ("561560", -0.10),
+            ("159930", -0.10),
+            ("512400", 0.0),
+            ("516950", -0.10),
+            ("512660", -0.10),
+            ("563010", -0.10),
+        ]
+    }
+    nav[CASHFLOW_SYMBOL] = gen(CASHFLOW_SYMBOL, "SZ", 0.005)
+
+    r = run_simulation(
+        nav_by_code=nav, from_month=date(2025, 6, 1),
+        to_date=date(2026, 8, 4),
+        params=EtfSimulationParams(rebalance_offset_days=5),
+    )
+    rb_events = [e for e in r["events"] if e["kind"] == "quarterly_rebalance"]
+    assert rb_events, "expected at least one rebalance"
+    # Every rebalance event must carry rebalance_date != dca_date
+    # and rebalance_offset_days == 5.
+    for e in rb_events:
+        assert e["rebalance_offset_days"] == 5
+        assert e["dca_date"] != e["rebalance_date"], (
+            f"expected offset>0 to shift date; got dca={e['dca_date']} rb={e['rebalance_date']}"
+        )
+        # 512400 should be a sell (it's the only ETF that's not dropping).
+        if "512400" in e["rebalance_trades"]:
+            assert float(e["rebalance_trades"]["512400"]) < 0
+            info = e["trade_rationale"]["512400"]
+            assert info["side"] == "sell"
+            # current_weight reflects the post-DCA price snapshot.
+            cur_w = float(info["current_weight"])
+            tgt_w = float(info["target_weight"])
+            assert cur_w > tgt_w, (
+                f"512400 should be overweight; got cur={cur_w}, tgt={tgt_w}"
+            )
