@@ -15,6 +15,12 @@ from app.schemas.etf import (
     AShareEtfQuoteResponse,
     AShareEtfSourceHealthResponse,
 )
+from app.schemas.etf_equity_curve import (
+    EtfEquityCurveRequest,
+    EtfEquityCurveResponse,
+)
+from app.services.ashare_etf_equity import build_equity_curve
+from app.services.ashare_etf_history import EtfHistoryService
 from app.services.ashare_etf_quotes import AShareETFQuoteService, EastmoneyDirectETFClient
 from app.services.ashare_etf_rebalance import (
     CASHFLOW_SYMBOL,
@@ -179,6 +185,34 @@ async def _rebalance_plan(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _build_history_service() -> EtfHistoryService:
+    return EtfHistoryService()
+
+
+async def _equity_curve(payload: EtfEquityCurveRequest) -> EtfEquityCurveResponse:
+    """Reconstruct the historical mark-to-market curve for a portfolio.
+
+    The endpoint never returns projection data — only honest historical
+    replay. Symbols missing NAV history are reported in
+    ``meta.symbols_missing`` so the UI can surface that explicitly.
+    """
+    from app.services.ashare_etf_equity import _normalize_positions
+
+    history_service = _build_history_service()
+    positions = _normalize_positions(payload.positions)
+    try:
+        result = await build_equity_curve(
+            history_service=history_service,
+            positions=positions,
+            cash=payload.cash,
+            from_date=payload.from_date,
+            to_date=payload.to_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return EtfEquityCurveResponse.model_validate(result)
+
+
 
 @router.get("/catalog", response_model=AShareEtfCatalogResponse)
 async def get_ashare_etf_catalog(
@@ -217,6 +251,22 @@ async def plan_ashare_etf_rebalance(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ) -> AShareEtfRebalancePlanResponse:
     return await _rebalance_plan(payload)
+
+
+@router.post("/equity-curve", response_model=EtfEquityCurveResponse)
+async def get_ashare_etf_equity_curve(
+    payload: EtfEquityCurveRequest,
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> EtfEquityCurveResponse:
+    return await _equity_curve(payload)
+
+
+@etf_router.post("/equity-curve", response_model=EtfEquityCurveResponse)
+async def get_etf_equity_curve(
+    payload: EtfEquityCurveRequest,
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> EtfEquityCurveResponse:
+    return await _equity_curve(payload)
 
 
 @etf_router.get("/catalog", response_model=AShareEtfCatalogResponse)
