@@ -207,6 +207,14 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 15000,
     });
   },
+  getEtfSimulation(payload, options = {}) {
+    return requestJson("/ashare-etf/simulation", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 30000,
+    });
+  },
   getGoldAllocation(options = {}) {
     return requestJson("/gold/allocation", {
       ttl: options.force ? 0 : 30,

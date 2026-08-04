@@ -170,23 +170,59 @@ function renderShell() {
 }
 
 // ---------------------------------------------------------------------------
-// ETF equity curve (custom-start → today mark-to-market replay)
+// ETF equity curve module
+//
+// Two modes (toggled in the UI):
+//   - simulation (default): start at 0, walk forward from the chosen month
+//     applying monthly DCA + bandwidth-triggered quarterly rebalances
+//     (HALO Rolling-252-Cov strategy replay).
+//   - holdings: faithful mark-to-market replay of the user's current
+//     portfolio from a chosen start day to today (existing endpoint,
+//     kept for users who want to see their actual PnL).
 // ---------------------------------------------------------------------------
 
 let equityCurveController = null;
 let equityCurveCache = null;
-
-function _defaultEquityFromDate() {
-  const today = new Date();
-  // 1 year back is a sensible default that keeps the chart readable on first
-  // load without overwhelming the upstream endpoint on every visit.
-  const oneYear = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-  return oneYear.toISOString().slice(0, 10);
-}
+let equityCurveMode = "simulation";
 
 function _todayIso() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
+}
+
+function _defaultSimulationMonth() {
+  const today = new Date();
+  // 1 year back as YYYY-MM string (month-precision input)
+  return `${today.getFullYear() - 1}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function _defaultEquityFromDate() {
+  const today = new Date();
+  const oneYear = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+  return oneYear.toISOString().slice(0, 10);
+}
+
+function _buildSimulationPayload() {
+  const monthRaw = document.getElementById("etf-equity-from-month")?.value;
+  const fromMonth = monthRaw || _defaultSimulationMonth();
+  // Convert YYYY-MM → first day of month for the API
+  const fromMonthIso = `${fromMonth}-01`;
+  return {
+    from_month: fromMonthIso,
+    to_date: _todayIso(),
+    params: {
+      dca_lots_halo: 100,
+      dca_lots_cashflow: 100,
+      lot_size: 100,
+      rebalance_bandwidth: "0.20",
+      single_weight_cap: "0.25",
+      commodity_cap: "0.35",
+      stability_floor: "0.25",
+      dianxin_cap: "0.12",
+      friction_rate: "0.001",
+      iterations: 15,
+    },
+  };
 }
 
 function _buildEquityPayload() {
@@ -220,7 +256,40 @@ function _buildEquityPayload() {
   };
 }
 
-function _renderEquitySummaryCards(summary, meta) {
+function _renderEquitySummaryCards(summary, meta, mode) {
+  if (mode === "simulation") {
+    const rebalances = summary.rebalance_count ?? 0;
+    const months = summary.months_simulated ?? 0;
+    const cards = [
+      {
+        label: "当前组合市值",
+        value: money(summary.final_total_value),
+        sub: `累计投入 ${money(summary.final_cost_value)}`,
+      },
+      {
+        label: "累计收益率",
+        value: pct(summary.total_return_pct),
+        sub: `区间 ${months} 个月 · ${rebalances} 次调仓`,
+      },
+      {
+        label: "最大回撤",
+        value: pct(summary.max_drawdown_pct),
+        sub: `高 ${money(summary.peak_total_value)} · 低 ${money(summary.trough_total_value)}`,
+      },
+    ];
+    return cards
+      .map(
+        (c) => `
+          <span class="etf-equity-stat">
+            <small>${escapeHtml(c.label)}</small>
+            <strong>${escapeHtml(c.value)}</strong>
+            <em>${escapeHtml(c.sub)}</em>
+          </span>
+        `,
+      )
+      .join("");
+  }
+  // holdings (legacy equity curve)
   const cards = [
     {
       label: "当前总市值",
@@ -251,7 +320,7 @@ function _renderEquitySummaryCards(summary, meta) {
     .join("");
 }
 
-function _renderEquityCaption(meta, warnings) {
+function _renderEquityCaption(meta, warnings, mode) {
   const source = escapeHtml(meta.data_source || "eastmoney_kline");
   const fetched = escapeHtml(formatDateTime(meta.fetched_at));
   const coverage = `${meta.coverage_start} → ${meta.coverage_end}`;
@@ -267,11 +336,12 @@ function _renderEquityCaption(meta, warnings) {
   return `数据源 ${source} · 覆盖 ${coverage} · 抓取 ${fetched}${missing}${missingSymbols}${warn}`;
 }
 
-function renderEquityCurve(curve) {
+function renderEquityCurve(data, mode) {
   const root = document.getElementById("etf-equity-curve");
   if (!root) return;
-  const summary = curve?.summary || {};
-  const meta = curve?.meta || {};
+  mode = mode || equityCurveMode || "simulation";
+  const summary = data?.summary || {};
+  const meta = data?.meta || {};
   const sourceStatus = meta.source_status || "ok";
   const statusHint =
     sourceStatus === "ok"
@@ -279,82 +349,167 @@ function renderEquityCurve(curve) {
       : sourceStatus === "partial"
         ? "数据不完整"
         : "等待历史数据";
-  const defaultFrom = equityCurveCache?.from_date || _defaultEquityFromDate();
-  const fromValue = equityCurveCache?.from_date || defaultFrom;
+
+  // Default input values from cache or sensible default
+  const fromMonthDefault = equityCurveCache?.from_month
+    ? equityCurveCache.from_month.slice(0, 7)
+    : _defaultSimulationMonth();
+  const fromDateDefault = equityCurveCache?.from_date || _defaultEquityFromDate();
 
   root.innerHTML = `
     <div class="card etf-equity-curve">
       <header class="etf-equity-head">
         <div>
-          <p class="eyebrow">组合权益曲线 · 历史回放</p>
-          <h2>自选起始日 → 至今的市值轨迹</h2>
+          <p class="eyebrow">组合权益曲线 · ${mode === "simulation" ? "策略模拟" : "持仓回放"}</p>
+          <h2>${mode === "simulation" ? "HALO 滚动 252 日协方差 · 月度定投 + 季度再平衡" : "自选起始日 → 至今的市值轨迹"}</h2>
         </div>
         <div class="etf-equity-controls">
+          <div class="etf-equity-mode">
+            <button type="button" class="etf-equity-mode-btn ${mode === "simulation" ? "is-active" : ""}"
+                    data-equity-mode="simulation" id="etf-equity-mode-simulation">策略模拟</button>
+            <button type="button" class="etf-equity-mode-btn ${mode === "holdings" ? "is-active" : ""}"
+                    data-equity-mode="holdings" id="etf-equity-mode-holdings">持仓回放</button>
+          </div>
+          ${
+            mode === "simulation"
+              ? `
+          <label class="etf-equity-from">
+            <span>起始月份</span>
+            <input type="month" id="etf-equity-from-month"
+                   min="2020-01" max="${escapeHtml(_todayIso().slice(0, 7))}"
+                   step="any"
+                   value="${escapeHtml(fromMonthDefault)}">
+          </label>`
+              : `
           <label class="etf-equity-from">
             <span>起始日</span>
             <input type="date" id="etf-equity-from-date"
                    min="2020-01-01" max="${escapeHtml(_todayIso())}"
                    step="any"
-                   value="${escapeHtml(fromValue)}">
-          </label>
+                   value="${escapeHtml(fromDateDefault)}">
+          </label>`
+          }
           <button type="button" class="primary-action" id="etf-equity-generate">
             生成曲线
           </button>
         </div>
       </header>
       <div class="etf-equity-stats">
-        ${_renderEquitySummaryCards(summary, meta)}
+        ${_renderEquitySummaryCards(summary, meta, mode)}
       </div>
       <div class="etf-equity-canvas-wrap">
-        <canvas id="etf-equity-canvas" height="280"></canvas>
+        <canvas id="etf-equity-canvas" height="300"></canvas>
       </div>
-      <p class="etf-equity-caption">${_renderEquityCaption(meta, curve?.warnings || [])}${statusHint ? ` · <strong>${escapeHtml(statusHint)}</strong>` : ""}</p>
+      <p class="etf-equity-caption">${_renderEquityCaption(meta, data?.warnings || [], mode)}${statusHint ? ` · <strong>${escapeHtml(statusHint)}</strong>` : ""}</p>
       <div id="etf-equity-status"></div>
     </div>
   `;
 
-  // Wire button (idempotent — renderAll may be called multiple times).
-  const btn = document.getElementById("etf-equity-generate");
-  if (btn) btn.addEventListener("click", () => void loadEquityCurve());
-  const dateInput = document.getElementById("etf-equity-from-date");
-  if (dateInput) {
-    dateInput.addEventListener("change", () => {
-      // Auto-refresh on date change so the user sees immediate feedback.
-      void loadEquityCurve();
+  // Wire buttons
+  const generateBtn = document.getElementById("etf-equity-generate");
+  if (generateBtn) {
+    generateBtn.addEventListener("click", () => void loadEquityCurve());
+  }
+  const modeButtons = document.querySelectorAll(".etf-equity-mode-btn");
+  modeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nextMode = btn.getAttribute("data-equity-mode");
+      if (nextMode && nextMode !== equityCurveMode) {
+        equityCurveMode = nextMode;
+        // Re-render shell (with empty cache for the new mode) and fetch
+        renderEquityCurve(equityCurveCache, equityCurveMode);
+        void loadEquityCurve();
+      }
     });
+  });
+  if (mode === "simulation") {
+    const monthInput = document.getElementById("etf-equity-from-month");
+    if (monthInput) {
+      monthInput.addEventListener("change", () => void loadEquityCurve());
+    }
+  } else {
+    const dateInput = document.getElementById("etf-equity-from-date");
+    if (dateInput) {
+      dateInput.addEventListener("change", () => void loadEquityCurve());
+    }
   }
 
-  _renderEquityChart(curve);
+  _renderEquityChart(data, mode);
 }
 
-function _renderEquityChart(curve) {
+function _renderEquityChart(data, mode) {
   const canvas = document.getElementById("etf-equity-canvas");
   if (!canvas) return;
   if (typeof window.Chart === "undefined") {
-    // Chart.js failed to load; leave an empty card rather than crashing.
     return;
   }
-  const labels = (curve?.labels || []).map((d) => String(d));
-  const totalValue = (curve?.total_value || []).map((v) => Number(v));
-  if (!labels.length || !totalValue.length) {
-    destroyChartsForPage("ashare-etf-equity-");
-    return;
+  destroyChartsForPage("ashare-etf-equity-");
+  if (!data) return;
+
+  let labels;
+  let datasets;
+  let annotations = [];
+
+  if (mode === "simulation") {
+    labels = (data.months || []).map((d) => String(d));
+    const totalValue = (data.series || []).map((p) => Number(p.total_value));
+    const costValue = (data.series || []).map((p) => Number(p.cost_value));
+    if (!labels.length) return;
+    datasets = [
+      lineDataset("组合市值", totalValue, "rgba(31, 42, 58, 0.78)", {
+        fill: "origin",
+        backgroundColor: "rgba(110, 155, 148, 0.18)",
+        borderWidth: 2.6,
+        tension: 0.18,
+      }),
+      lineDataset("累计投入", costValue, "rgba(110, 90, 60, 0.7)", {
+        borderDash: [6, 4],
+        borderWidth: 1.8,
+        tension: 0.1,
+      }),
+    ];
+    // Annotate rebalance events with vertical dashed lines. The chart.js
+    // referenceLines plugin's verticalLine support requires x to match the
+    // label text (it does findIndex by Number equality, which works for
+    // numeric indices but not for date strings). We pass the index as a
+    // string label and rely on chartjs' xScale category positioning — when
+    // labels are strings, verticalLine uses the label position directly.
+    const rebalanceMonths = (data.events || [])
+      .filter((e) => e.kind === "quarterly_rebalance")
+      .map((e) => e.date);
+    annotations = rebalanceMonths
+      .map((d) => {
+        if (!labels.includes(String(d))) return null;
+        return {
+          type: "verticalLine",
+          axis_id: "x",
+          x: String(d),
+          color: "rgba(190, 90, 60, 0.55)",
+          width: 1.4,
+          label: "调仓",
+        };
+      })
+      .filter(Boolean);
+  } else {
+    // Holdings (legacy equity-curve endpoint payload)
+    labels = (data.labels || []).map((d) => String(d));
+    const totalValue = (data.total_value || []).map((v) => Number(v));
+    if (!labels.length) return;
+    datasets = [
+      lineDataset("总市值", totalValue, "rgba(31, 42, 58, 0.78)", {
+        fill: "origin",
+        backgroundColor: "rgba(110, 155, 148, 0.18)",
+        borderWidth: 2.6,
+        tension: 0.18,
+      }),
+    ];
   }
-  const dataset = lineDataset(
-    "总市值",
-    totalValue,
-    "rgba(31, 42, 58, 0.78)",
-    {
-      fill: "origin",
-      backgroundColor: "rgba(110, 155, 148, 0.18)",
-      borderWidth: 2.6,
-      tension: 0.18,
-    },
-  );
+
   renderChart("ashare-etf-equity-canvas", canvas, {
     type: "line",
     axisProfile: "price",
-    data: { labels, datasets: [dataset] },
+    annotations,
+    data: { labels, datasets },
     options: {
       scales: {
         y: {
@@ -364,10 +519,10 @@ function _renderEquityChart(curve) {
         },
       },
       plugins: {
-        legend: { display: false },
+        legend: { display: true, position: "bottom" },
         tooltip: {
           callbacks: {
-            label: (ctx) => `总市值 ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 2 })}`,
+            label: (ctx) => `${ctx.dataset.label} ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 2 })}`,
           },
         },
       },
@@ -379,23 +534,36 @@ async function loadEquityCurve() {
   const statusRoot = document.getElementById("etf-equity-status");
   equityCurveController?.abort();
   equityCurveController = new AbortController();
+  const isSim = equityCurveMode === "simulation";
   if (statusRoot) {
-    statusRoot.innerHTML = statusBanner("正在拉取 ETF 历史净值...", "loading");
+    statusRoot.innerHTML = statusBanner(
+      isSim ? "正在模拟 HALO 滚动策略..." : "正在拉取 ETF 历史净值...",
+      "loading",
+    );
   }
   try {
-    const payload = _buildEquityPayload();
-    const curve = await api.getEtfEquityCurve(payload, {
-      signal: equityCurveController.signal,
-    });
-    equityCurveCache = curve;
+    let payload;
+    let result;
+    if (isSim) {
+      payload = _buildSimulationPayload();
+      result = await api.getEtfSimulation(payload, {
+        signal: equityCurveController.signal,
+      });
+    } else {
+      payload = _buildEquityPayload();
+      result = await api.getEtfEquityCurve(payload, {
+        signal: equityCurveController.signal,
+      });
+    }
+    equityCurveCache = result;
     if (statusRoot) statusRoot.innerHTML = "";
-    renderEquityCurve(curve);
+    renderEquityCurve(result, equityCurveMode);
   } catch (error) {
     if (error?.name === "AbortError") return;
     console.error("ashare-etf:equity-curve:error", error);
     if (statusRoot) {
       statusRoot.innerHTML = statusBanner(
-        `权益曲线拉取失败:${error?.message || "unknown"}`,
+        `曲线拉取失败:${error?.message || "unknown"}`,
         "warning",
       );
     }

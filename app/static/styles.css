@@ -11955,6 +11955,37 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 12px;
 }
 
+.etf-equity-mode {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(26, 47, 55, 0.08);
+  border-radius: 8px;
+  display: inline-flex;
+  padding: 4px;
+}
+
+.etf-equity-mode-btn {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.etf-equity-mode-btn.is-active {
+  background: rgba(31, 42, 58, 0.92);
+  color: #f7f6f1;
+}
+
+.etf-equity-mode-btn:hover:not(.is-active) {
+  background: rgba(110, 155, 148, 0.18);
+  color: var(--ink);
+}
+
 .etf-equity-from {
   align-items: stretch;
   background: rgba(255, 255, 255, 0.62);
