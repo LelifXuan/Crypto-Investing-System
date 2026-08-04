@@ -8,6 +8,7 @@
 | Computed Dataset | `computed_dataset_cache` 表 | 预计算数据集，例如策略信号 bundle |
 | Macro Provider TTL | 内存与 `runtime/cache/` | 宏观 API 响应缓存 |
 | ETF Quotes Disk | `runtime/cache/ashare_etf_quotes.json` | A 股 ETF 报价磁盘缓存 |
+| ETF History Disk | `runtime/cache/fund_history/{code}.json` | A 股 ETF 历史日频 NAV 缓存（权益曲线/历史回放） |
 | Seed Cache | `app/assets/seed_cache/` | 便携版预置种子数据 |
 | Translation Text | `translation_text_cache` 表 | 翻译文本去重与复用 |
 
