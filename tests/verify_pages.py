@@ -87,7 +87,7 @@ REAL_CONTENT_SELECTORS = {
     # alert-center was removed; /alerts-page now routes to ai-strategy (see app/web/router.py).
     "alert-center": [".strategy-scan-page", ".strategy-v2-toolbar"],
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
-    "ashare-etf": ["#etf-overview", "#etf-groups"],
+    "ashare-etf": ["#etf-overview", "#etf-equity-curve"],
     "btc-derivatives": [".btc-derivatives-page", ".btc-chart-overview"],
     "ai-strategy": [
         ".strategy-scan-page",

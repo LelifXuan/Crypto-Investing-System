@@ -199,6 +199,14 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 12000,
     });
   },
+  getEtfEquityCurve(payload, options = {}) {
+    return requestJson("/ashare-etf/equity-curve", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 15000,
+    });
+  },
   getGoldAllocation(options = {}) {
     return requestJson("/gold/allocation", {
       ttl: options.force ? 0 : 30,

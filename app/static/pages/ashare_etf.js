@@ -1,5 +1,6 @@
 import { api } from "../core/api.js";
 import { escapeHtml, formatDateTime, formatNumber, setRoot, statusBanner } from "../core/dom.js";
+import { destroyChartsForPage, lineDataset, renderChart } from "../ui/charts.js";
 import { mountDropdown } from "../ui/dropdown.js";
 
 const STORAGE_KEY = "ashare.etf.dca.rebalance.v1";
@@ -164,7 +165,241 @@ function renderShell() {
     <section id="etf-overview"></section>
     <section id="etf-quote-deck"></section>
     <section id="etf-workbench"></section>
+    <section id="etf-equity-curve"></section>
   `);
+}
+
+// ---------------------------------------------------------------------------
+// ETF equity curve (custom-start → today mark-to-market replay)
+// ---------------------------------------------------------------------------
+
+let equityCurveController = null;
+let equityCurveCache = null;
+
+function _defaultEquityFromDate() {
+  const today = new Date();
+  // 1 year back is a sensible default that keeps the chart readable on first
+  // load without overwhelming the upstream endpoint on every visit.
+  const oneYear = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+  return oneYear.toISOString().slice(0, 10);
+}
+
+function _todayIso() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function _buildEquityPayload() {
+  const positions = [];
+  for (const etf of HALO_ETFS) {
+    const saved = state.positions[etf.symbol] || { shares: 0, costPrice: 0 };
+    if (Number(saved.shares) > 0) {
+      positions.push({
+        symbol: etf.symbol,
+        code: etf.code,
+        shares: Number(saved.shares),
+        cost_price: String(saved.costPrice ?? 0),
+      });
+    }
+  }
+  const cashflow = state.positions[CASHFLOW_ETF.symbol] || { shares: 0, costPrice: 0 };
+  if (Number(cashflow.shares) > 0) {
+    positions.push({
+      symbol: CASHFLOW_ETF.symbol,
+      code: CASHFLOW_ETF.code,
+      shares: Number(cashflow.shares),
+      cost_price: String(cashflow.costPrice ?? 0),
+    });
+  }
+  const fromDateRaw = document.getElementById("etf-equity-from-date")?.value;
+  return {
+    from_date: fromDateRaw || _defaultEquityFromDate(),
+    to_date: _todayIso(),
+    cash: String(state.cashToInvest ?? 0),
+    positions,
+  };
+}
+
+function _renderEquitySummaryCards(summary, meta) {
+  const cards = [
+    {
+      label: "当前总市值",
+      value: money(summary.current_total_value),
+      sub: `起 ${money(summary.starting_total_value)}`,
+    },
+    {
+      label: "累计收益率",
+      value: pct(summary.total_return_pct),
+      sub: `区间 ${summary.days_observed} 个交易日`,
+    },
+    {
+      label: "最大回撤",
+      value: pct(summary.max_drawdown_pct),
+      sub: `高 ${money(summary.peak_total_value)} · 低 ${money(summary.trough_total_value)}`,
+    },
+  ];
+  return cards
+    .map(
+      (c) => `
+        <span class="etf-equity-stat">
+          <small>${escapeHtml(c.label)}</small>
+          <strong>${escapeHtml(c.value)}</strong>
+          <em>${escapeHtml(c.sub)}</em>
+        </span>
+      `,
+    )
+    .join("");
+}
+
+function _renderEquityCaption(meta, warnings) {
+  const source = escapeHtml(meta.data_source || "eastmoney_kline");
+  const fetched = escapeHtml(formatDateTime(meta.fetched_at));
+  const coverage = `${meta.coverage_start} → ${meta.coverage_end}`;
+  const missing = meta.missing_dates?.length
+    ? ` · 缺失 ${meta.missing_dates.length} 个交易日(沿用前日净值)`
+    : "";
+  const missingSymbols = meta.symbols_missing?.length
+    ? ` · ${meta.symbols_missing.length} 个 ETF 无数据: ${escapeHtml(meta.symbols_missing.join(", "))}`
+    : "";
+  const warn = (warnings && warnings.length)
+    ? ` · 警告 ${warnings.length} 条`
+    : "";
+  return `数据源 ${source} · 覆盖 ${coverage} · 抓取 ${fetched}${missing}${missingSymbols}${warn}`;
+}
+
+function renderEquityCurve(curve) {
+  const root = document.getElementById("etf-equity-curve");
+  if (!root) return;
+  const summary = curve?.summary || {};
+  const meta = curve?.meta || {};
+  const sourceStatus = meta.source_status || "ok";
+  const statusHint =
+    sourceStatus === "ok"
+      ? ""
+      : sourceStatus === "partial"
+        ? "数据不完整"
+        : "等待历史数据";
+  const defaultFrom = equityCurveCache?.from_date || _defaultEquityFromDate();
+  const fromValue = equityCurveCache?.from_date || defaultFrom;
+
+  root.innerHTML = `
+    <div class="card etf-equity-curve">
+      <header class="etf-equity-head">
+        <div>
+          <p class="eyebrow">组合权益曲线 · 历史回放</p>
+          <h2>自选起始日 → 至今的市值轨迹</h2>
+        </div>
+        <div class="etf-equity-controls">
+          <label class="etf-equity-from">
+            <span>起始日</span>
+            <input type="date" id="etf-equity-from-date"
+                   min="2020-01-01" max="${escapeHtml(_todayIso())}"
+                   step="any"
+                   value="${escapeHtml(fromValue)}">
+          </label>
+          <button type="button" class="primary-action" id="etf-equity-generate">
+            生成曲线
+          </button>
+        </div>
+      </header>
+      <div class="etf-equity-stats">
+        ${_renderEquitySummaryCards(summary, meta)}
+      </div>
+      <div class="etf-equity-canvas-wrap">
+        <canvas id="etf-equity-canvas" height="280"></canvas>
+      </div>
+      <p class="etf-equity-caption">${_renderEquityCaption(meta, curve?.warnings || [])}${statusHint ? ` · <strong>${escapeHtml(statusHint)}</strong>` : ""}</p>
+      <div id="etf-equity-status"></div>
+    </div>
+  `;
+
+  // Wire button (idempotent — renderAll may be called multiple times).
+  const btn = document.getElementById("etf-equity-generate");
+  if (btn) btn.addEventListener("click", () => void loadEquityCurve());
+  const dateInput = document.getElementById("etf-equity-from-date");
+  if (dateInput) {
+    dateInput.addEventListener("change", () => {
+      // Auto-refresh on date change so the user sees immediate feedback.
+      void loadEquityCurve();
+    });
+  }
+
+  _renderEquityChart(curve);
+}
+
+function _renderEquityChart(curve) {
+  const canvas = document.getElementById("etf-equity-canvas");
+  if (!canvas) return;
+  if (typeof window.Chart === "undefined") {
+    // Chart.js failed to load; leave an empty card rather than crashing.
+    return;
+  }
+  const labels = (curve?.labels || []).map((d) => String(d));
+  const totalValue = (curve?.total_value || []).map((v) => Number(v));
+  if (!labels.length || !totalValue.length) {
+    destroyChartsForPage("ashare-etf-equity-");
+    return;
+  }
+  const dataset = lineDataset(
+    "总市值",
+    totalValue,
+    "rgba(31, 42, 58, 0.78)",
+    {
+      fill: "origin",
+      backgroundColor: "rgba(110, 155, 148, 0.18)",
+      borderWidth: 2.6,
+      tension: 0.18,
+    },
+  );
+  renderChart("ashare-etf-equity-canvas", canvas, {
+    type: "line",
+    axisProfile: "price",
+    data: { labels, datasets: [dataset] },
+    options: {
+      scales: {
+        y: {
+          ticks: {
+            callback: (v) => formatNumber(v, { maximumFractionDigits: 0 }),
+          },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `总市值 ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 2 })}`,
+          },
+        },
+      },
+    },
+  });
+}
+
+async function loadEquityCurve() {
+  const statusRoot = document.getElementById("etf-equity-status");
+  equityCurveController?.abort();
+  equityCurveController = new AbortController();
+  if (statusRoot) {
+    statusRoot.innerHTML = statusBanner("正在拉取 ETF 历史净值...", "loading");
+  }
+  try {
+    const payload = _buildEquityPayload();
+    const curve = await api.getEtfEquityCurve(payload, {
+      signal: equityCurveController.signal,
+    });
+    equityCurveCache = curve;
+    if (statusRoot) statusRoot.innerHTML = "";
+    renderEquityCurve(curve);
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    console.error("ashare-etf:equity-curve:error", error);
+    if (statusRoot) {
+      statusRoot.innerHTML = statusBanner(
+        `权益曲线拉取失败:${error?.message || "unknown"}`,
+        "warning",
+      );
+    }
+  }
 }
 
 function renderOverview() {
@@ -426,6 +661,7 @@ function renderAll(statusHtml = "") {
   document.getElementById("etf-status").innerHTML = statusHtml;
   document.getElementById("etf-quote-deck").innerHTML = renderQuoteDeck();
   document.getElementById("etf-workbench").innerHTML = renderWorkbench();
+  renderEquityCurve(equityCurveCache);
   bindControls();
   restoreFocusedField(focused);
 }
@@ -540,13 +776,19 @@ export async function renderAshareEtf() {
   const loadPromise = loadQuotes().catch((error) => {
     console.error("ashare-etf:initial-load:error", error);
   });
+  // Equity curve loads in parallel — never blocks initial paint of the
+  // overview / quote deck / workbench.
+  void loadEquityCurve();
   return {
     async unmount() {
       activeController?.abort();
       planController?.abort();
+      equityCurveController?.abort();
       activeController = null;
       planController = null;
+      equityCurveController = null;
       if (debounceTimer) window.clearTimeout(debounceTimer);
+      destroyChartsForPage("ashare-etf-equity-");
       void loadPromise.catch(() => null);
     },
     async pause() {},

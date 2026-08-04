@@ -125,7 +125,13 @@ function loadScriptOnce(src, globalName) {
 }
 
 async function ensureAssetsForPage(pageId) {
-  if (pageId === "market-analysis" || pageId === "btc-derivatives" || pageId === "gold-allocation") {
+  if (
+    pageId === "market-analysis" ||
+    pageId === "btc-derivatives" ||
+    pageId === "gold-allocation" ||
+    pageId === "ashare-etf" ||
+    pageId === "cn-etf"
+  ) {
     await loadScriptOnce(`/static/vendor/chart.umd.js${assetVersion}`, "Chart");
   }
 }

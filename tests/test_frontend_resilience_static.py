@@ -185,6 +185,13 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     assert "captureFocusedField" in source
     assert "restoreFocusedField" in source
     assert "targetWeight" in source
+    # Equity-curve module locks (added 2026-08-04):
+    assert "getEtfEquityCurve" in source
+    assert "renderEquityCurve" in source
+    assert "etf-equity-curve" in source
+    assert "etf-equity-canvas" in source
+    assert "etf-equity-from-date" in source
+    assert "组合权益曲线" in source
     assert "data-field=\"currentPrice\"" not in source
     assert "行情读取中" not in source
     assert "手动输入现价" not in source

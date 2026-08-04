@@ -8170,6 +8170,61 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   min-height: 230px;
 }
 
+/* §16.D — 指标状态与多空证据:统一 4×2 等高网格
+ * ------------------------------------------------------------
+ * JS renderEvidenceLayer() 早把 4 个 indicator_judgements + 4 个
+ * inference_blocks 装进 .btc-evidence-grid(单容器)。但 styles.css
+ * 之前从未定义过该容器与 .btc-evidence-tile,默认 display: block 让
+ * 8 个 tile 垂直堆叠成一条长条(单卡 200-300px × 8 ≈ 2000px)。
+ * 这里补 4 列 + grid-auto-rows: 1fr,使两行等高,空带消失。
+ * 与 .btc-evidence-columns(旧决策卡,4 列但内容更稀)保持视觉对齐。
+ */
+.btc-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.btc-evidence-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 14px;
+  background: rgba(15, 118, 110, 0.05);
+  min-height: 0;
+}
+
+.btc-evidence-tile > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.btc-evidence-tile > h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.btc-evidence-tile > p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.btc-evidence-tile > p > strong {
+  color: var(--accent-strong);
+  margin-right: 4px;
+}
+
 .btc-indicator-semantics .btc-decision-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 18px;
@@ -8745,6 +8800,18 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   /* §16.D — restrict height so sticky thead is visible during scroll */
   max-height: 60vh;
   overflow: auto;
+}
+
+/* §16.D override — 标准到期日期限矩阵按内容自然撑开,不内嵌纵向滚动。
+ * 窗口高度不够时让外层页面整体滚动;横向滚动仍由 .btc-table-wrap 提供。
+ * thead 的 position: sticky 在无 overflow-y 容器内会粘到外层滚动祖先
+ * (通常为 window/<main>),页面外滚时表头随之外滚,
+ * 与"窗口高度不够就拉高一点"的预期一致。
+ */
+.btc-table-wrap.btc-maturity-table-wrap {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .btc-table {
@@ -11857,5 +11924,131 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   .vol-compression-spin,
   .dropdown-spin {
     animation: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * ETF equity curve (historical mark-to-market replay)
+ * ------------------------------------------------------------------ */
+
+.etf-equity-curve {
+  margin-top: 18px;
+  padding: 18px 20px;
+}
+
+.etf-equity-head {
+  align-items: flex-end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.etf-equity-head h2 {
+  margin: 4px 0 0;
+}
+
+.etf-equity-controls {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+}
+
+.etf-equity-from {
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(26, 47, 55, 0.08);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.etf-equity-from > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.etf-equity-from input {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  height: 32px;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.etf-equity-stats {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.etf-equity-stat {
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(26, 47, 55, 0.08);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 12px;
+}
+
+.etf-equity-stat small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.etf-equity-stat strong {
+  font-size: 18px;
+}
+
+.etf-equity-stat em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.etf-equity-canvas-wrap {
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(26, 47, 55, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.etf-equity-caption {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+@media (max-width: 1180px) {
+  .etf-equity-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .etf-equity-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .etf-equity-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .etf-equity-controls {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
   }
 }
