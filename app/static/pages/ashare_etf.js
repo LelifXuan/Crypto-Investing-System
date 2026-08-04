@@ -163,9 +163,9 @@ function sourceStatusLabel(payload) {
 function renderShell() {
   setRoot(`
     <section id="etf-overview"></section>
+    <section id="etf-equity-curve"></section>
     <section id="etf-quote-deck"></section>
     <section id="etf-workbench"></section>
-    <section id="etf-equity-curve"></section>
   `);
 }
 
