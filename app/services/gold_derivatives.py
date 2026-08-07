@@ -230,61 +230,78 @@ async def _fetch_bybit(client: httpx.AsyncClient, symbol: str) -> GoldPerpRow:
 
 async def _fetch_okx(client: httpx.AsyncClient, symbol: str) -> GoldPerpRow:
     row = GoldPerpRow(provider="okx", symbol=symbol)
-    # /public/funding-rate returns current funding rate.
-    try:
-        resp = await client.get(
-            "/api/v5/public/funding-rate",
-            params={"instId": symbol},
-        )
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        if data:
-            item = data[0]
-            row.funding_rate = _to_decimal(item.get("fundingRate"))
-            ts = item.get("fundingTime") or item.get("nextFundingTime")
-            if ts is not None:
-                row.timestamp_ms = int(ts)
-    except Exception as exc:
-        row.error = f"okx-funding:{exc}"[:200]
-    # /public/open-interest returns contracts only.
-    try:
-        resp = await client.get(
-            "/api/v5/public/open-interest",
-            params={"instType": "SWAP", "instId": symbol},
-        )
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        if data:
-            item = data[0]
-            row.oi_contracts = _to_decimal(item.get("oi"))
-            row.oi_usd = _to_decimal(item.get("oiUsd"))
-    except Exception as exc:
-        row.error = (row.error or "") + f"; okx-oi:{exc}"[:200]
+    # OKX exposes funding rate + OI on two distinct endpoints; issue them
+    # concurrently so a slow OI response does not add to funding latency.
+    async def _funding() -> dict | None:
+        try:
+            resp = await client.get(
+                "/api/v5/public/funding-rate",
+                params={"instId": symbol},
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            return data[0] if data else None
+        except Exception as exc:
+            row.error = f"okx-funding:{exc}"[:200]
+            return None
+
+    async def _open_interest() -> dict | None:
+        try:
+            resp = await client.get(
+                "/api/v5/public/open-interest",
+                params={"instType": "SWAP", "instId": symbol},
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            return data[0] if data else None
+        except Exception as exc:
+            row.error = (row.error or "") + f"; okx-oi:{exc}"[:200]
+            return None
+
+    funding_item, oi_item = await asyncio.gather(_funding(), _open_interest())
+    if funding_item:
+        row.funding_rate = _to_decimal(funding_item.get("fundingRate"))
+        ts = funding_item.get("fundingTime") or funding_item.get("nextFundingTime")
+        if ts is not None:
+            row.timestamp_ms = int(ts)
+    if oi_item:
+        row.oi_contracts = _to_decimal(oi_item.get("oi"))
+        row.oi_usd = _to_decimal(oi_item.get("oiUsd"))
     return row
 
 
 async def _fetch_binance(client: httpx.AsyncClient, symbol: str) -> GoldPerpRow:
     row = GoldPerpRow(provider="binance", symbol=symbol)
-    # premiumIndex returns markPrice + lastFundingRate
-    try:
-        resp = await client.get("/fapi/v1/premiumIndex", params={"symbol": symbol})
-        resp.raise_for_status()
-        item = resp.json()
-        row.mark_price = _to_decimal(item.get("markPrice"))
-        row.funding_rate = _to_decimal(item.get("lastFundingRate"))
-        ts = item.get("time")
+    # Binance exposes markPrice + fundingRate on /premiumIndex and OI on
+    # /openInterest; run both concurrently so the per-venue wall time is
+    # bounded by the slowest of the two endpoints.
+    async def _premium() -> dict | None:
+        try:
+            resp = await client.get("/fapi/v1/premiumIndex", params={"symbol": symbol})
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            row.error = f"binance-prem:{exc}"[:200]
+            return None
+
+    async def _open_interest() -> dict | None:
+        try:
+            resp = await client.get("/fapi/v1/openInterest", params={"symbol": symbol})
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            row.error = (row.error or "") + f"; binance-oi:{exc}"[:200]
+            return None
+
+    prem_item, oi_item = await asyncio.gather(_premium(), _open_interest())
+    if prem_item:
+        row.mark_price = _to_decimal(prem_item.get("markPrice"))
+        row.funding_rate = _to_decimal(prem_item.get("lastFundingRate"))
+        ts = prem_item.get("time")
         if ts is not None:
             row.timestamp_ms = int(ts)
-    except Exception as exc:
-        row.error = f"binance-prem:{exc}"[:200]
-    # openInterest returns contracts (1 PAXG contract = 1 troy oz).
-    try:
-        resp = await client.get("/fapi/v1/openInterest", params={"symbol": symbol})
-        resp.raise_for_status()
-        item = resp.json()
-        row.oi_contracts = _to_decimal(item.get("openInterest"))
-    except Exception as exc:
-        row.error = (row.error or "") + f"; binance-oi:{exc}"[:200]
+    if oi_item:
+        row.oi_contracts = _to_decimal(oi_item.get("openInterest"))
     return row
 
 

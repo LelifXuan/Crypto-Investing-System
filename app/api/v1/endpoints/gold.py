@@ -652,13 +652,16 @@ async def get_gold_workbench(
     policy = await policy_repo.latest(user.tenant_id, user.user_id) if policy_repo else None
 
     macro_payload = await _macro_payload(repo)
-    # GoldDerivativesService.build_snapshot() makes a live HTTP call to
-    # gateio.ws with a 10s timeout. Bound the wait so a slow/unreachable
-    # network cannot block the workbench response; fall back to {} on
-    # timeout/exception (governance shows the derivatives row as missing).
+    # GoldDerivativesService.build_snapshot() fans out to 6 perp endpoints
+    # across Bybit + OKX + Binance plus a CFTC weekly pull. The perp layer
+    # is concurrent (``asyncio.gather``) so the worst-case wall time is
+    # the slowest single venue (~10s) plus the COT request (~20s). Bound
+    # the wait so a slow/unreachable network cannot block the workbench
+    # response; fall back to ``{}`` on timeout/exception (governance shows
+    # the derivatives row as missing).
     try:
         derivatives = await asyncio.wait_for(
-            GoldDerivativesService().build_snapshot(), timeout=2.0
+            GoldDerivativesService().build_snapshot(), timeout=15.0
         )
     except Exception:
         derivatives = {}
