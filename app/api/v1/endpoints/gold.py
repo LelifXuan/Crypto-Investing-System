@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +16,14 @@ from app.schemas.gold_allocation import (
     GoldExecutionPlanResponse,
     GoldMarketStateResponse,
 )
+from app.schemas.gold_v3 import (
+    GoldContractRef,
+    GoldIndicatorConfirmation,
+    GoldSignalLight,
+    GoldSpotDca,
+    GoldV3AllocationResponse,
+)
+from app.schemas.gold_workbench import GoldWorkbenchRead
 from app.services.gold_allocation_engine import build_gold_allocation_plan
 from app.services.gold_dca_dip import (
     GoldExecutionComposer,
@@ -23,17 +35,15 @@ from app.services.gold_dca_dip import (
     normalize_candle,
     now_utc,
 )
-from app.services.gold_macro_adapter import _gold_macro_snapshot, macro_overview_to_gold_macro
-from app.schemas.gold_v3 import (
-    GoldContractRef,
-    GoldIndicatorConfirmation,
-    GoldSignalLight,
-    GoldSpotDca,
-    GoldV3AllocationResponse,
-)
 from app.services.gold_derivatives import GoldDerivativesService
+from app.services.gold_macro_adapter import _gold_macro_snapshot, macro_overview_to_gold_macro
+from app.services.gold_workbench import GoldPolicyRepository, build_gold_decisions
 from app.services.macro_overview import MacroOverviewService
-from app.services.xaut_market_state import XAUT_INSTRUMENT_ID, XautMarketStateService
+from app.services.xaut_market_state import (
+    XAUT_INSTRUMENT_ID,
+    XautMarketStateService,
+    build_xaut_market_state_from_candles,
+)
 
 router = APIRouter(prefix="/gold", tags=["gold"])
 
@@ -477,5 +487,332 @@ async def get_gold_v3_allocation(
 async def get_gold_derivatives(
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ) -> dict:
-    """Gate.io OI/funding rate + local COT snapshot."""
+    """Bybit + OKX + Binance (PAXG + XAUT) + CFTC COT, weighted."""
     return await GoldDerivativesService().build_snapshot()
+
+
+@router.post("/derivatives/refresh")
+async def refresh_gold_derivatives(
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
+) -> dict:
+    """Force a full re-fetch across all 6 perp endpoints + CFTC COT.
+
+    The workbench reads ``/derivatives`` on a short TTL; this endpoint
+    exists for callers that want to bypass any client-side cache and
+    trigger a synchronous refresh (e.g. a manual "refresh" button in
+    an admin debug drawer). The response body mirrors ``GET /derivatives``.
+    """
+    return await GoldDerivativesService().refresh_all(force=True)
+
+
+# ── Workbench (V5 page aggregation) ────────────────────────────────────────
+# gold_v5.js consumes one GoldWorkbenchRead payload instead of fanning out to
+# /gold/v3/allocation + /gold/market-state + /gold/derivatives. The workbench
+# mints a snapshot_id and caches the raw candles it computed; the chart
+# endpoint returns those candles so the 5 page charts render without a second
+# market computation.
+
+# In-process snapshot cache. snapshot_id -> {candles, observed_at}.
+# Single-process per the architecture (AGENTS.md §九.4); swap with Redis
+# before multi-worker deployment. TTL-bounded to prevent unbounded growth.
+_gold_chart_cache: dict[str, dict[str, object]] = {}
+_GOLD_CHART_CACHE_TTL_SECONDS = 600
+
+
+def _gold_cache_chart(snapshot_id: str, candles: list[object]) -> str:
+    _gold_chart_cache[snapshot_id] = {
+        "candles": candles,
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return snapshot_id
+
+
+def _gold_evict_stale_cache() -> None:
+    """Drop entries older than TTL. Called opportunistically on read."""
+    now = datetime.now(timezone.utc)
+    stale: list[str] = []
+    for sid, entry in _gold_chart_cache.items():
+        try:
+            observed = datetime.fromisoformat(str(entry["observed_at"]))
+        except (TypeError, ValueError):
+            stale.append(sid)
+            continue
+        if (now - observed).total_seconds() > _GOLD_CHART_CACHE_TTL_SECONDS:
+            stale.append(sid)
+    for sid in stale:
+        _gold_chart_cache.pop(sid, None)
+
+
+def _gold_quote_age_seconds(market_state: dict[str, object]) -> int | None:
+    """Age of the latest XAUT daily bar in seconds, measured in trading-day units.
+
+    The workbench is fed daily candles (one bar per UTC day), so a
+    second-granularity freshness gate against ``ts_open`` would permanently
+    flag the quote stale minutes after the bar opens — the policy's
+    ``quote_max_age_seconds`` (e.g. 30s) is written for the intraday live
+    quote path, not for a daily-candle feed. A daily bar is fresh while it is
+    today's or yesterday's; an older bar counts as stale (age = seconds since
+    the bar, which exceeds any reasonable threshold and blocks the DCA gates).
+    """
+    updated_at = market_state.get("updated_at")
+    if not updated_at:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(updated_at))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    days_lag = (now.date() - ts.date()).days
+    if days_lag <= 1:
+        # Today's or yesterday's bar — the daily decision can act on it.
+        return 0
+    return max(0, int((now - ts).total_seconds()))
+
+
+def _gold_confirmations_passed(
+    market_state: dict[str, object], tech: dict[str, object]
+) -> int:
+    """Count of the 5 dip-add confirmations that currently pass.
+
+    Mirrors the V3 endpoint's confirmation gate (RSI ≤ 40, %B ≤ 0.2,
+    EMA20 distance ≤ −2%, CCI ≤ −80, volume Z ≥ 1.5) so the workbench
+    dip_add status agrees with /gold/v3/allocation instead of the codex
+    draft's hard-coded 0 (which made READY_FIXED_ADD unreachable).
+    """
+    checks = [
+        tech.get("rsi_14") is not None and float(tech["rsi_14"]) <= 40,
+        tech.get("boll_pct_b") is not None and float(tech["boll_pct_b"]) <= 0.2,
+        tech.get("ema20_distance") is not None and float(tech["ema20_distance"]) <= -0.02,
+        tech.get("cci_20") is not None and float(tech["cci_20"]) <= -80,
+        market_state.get("volume_zscore") is not None
+        and float(market_state["volume_zscore"]) >= 1.5,
+    ]
+    return sum(1 for passed in checks if passed)
+
+
+def _gold_source_manifest(
+    *,
+    policy_present: bool,
+    candles_present: bool,
+    derivatives_present: bool,
+    price_present: bool,
+    observed_at: str | None,
+) -> list[dict[str, object]]:
+    """Source-readiness rows consumed by renderGovernance (gold_v5.js).
+
+    gold_v5.js looks up rows by ``source_key`` and reads ``freshness_state``
+    + ``age_seconds`` for the label; ``ready`` is the boolean gate. Freshness
+    states: fresh / stale / degraded / missing (see labelForFreshness).
+    """
+    return [
+        {
+            "source_key": "gold_policy",
+            "ready": policy_present,
+            "freshness_state": "fresh" if policy_present else "missing",
+            "age_seconds": None,
+        },
+        {
+            "source_key": "gold_spot_quote",
+            "ready": candles_present and price_present,
+            "freshness_state": "fresh" if candles_present and price_present else "missing",
+            "age_seconds": None,
+        },
+        {
+            "source_key": "gold_derivatives",
+            "ready": derivatives_present,
+            "freshness_state": "degraded" if derivatives_present else "missing",
+            "age_seconds": None,
+        },
+        {
+            "source_key": "gold_observed_at",
+            "ready": bool(observed_at),
+            "freshness_state": "fresh" if observed_at else "missing",
+            "age_seconds": None,
+        },
+    ]
+
+
+@router.get("/workbench", response_model=GoldWorkbenchRead)
+async def get_gold_workbench(
+    user: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+    session: AsyncSession = Depends(get_db_session),
+) -> GoldWorkbenchRead:
+    """Aggregated gold workbench (V5 shape) for the gold-allocation page.
+
+    Combines the user's policy (latest version), the XAUT market state
+    (price / drawdown / MA / indicators), the macro overview (liquidity
+    shock), and the derivatives snapshot. Charts are snapshot-bound:
+    ``chart_series_or_chart_token.snapshot_id`` → GET /gold/workbench/charts/
+    {snapshot_id} returns the candles cached for this response.
+    """
+    repo = _repository(session)
+    policy_repo = GoldPolicyRepository(session) if session is not None else None
+    policy = await policy_repo.latest(user.tenant_id, user.user_id) if policy_repo else None
+
+    macro_payload = await _macro_payload(repo)
+    # GoldDerivativesService.build_snapshot() makes a live HTTP call to
+    # gateio.ws with a 10s timeout. Bound the wait so a slow/unreachable
+    # network cannot block the workbench response; fall back to {} on
+    # timeout/exception (governance shows the derivatives row as missing).
+    try:
+        derivatives = await asyncio.wait_for(
+            GoldDerivativesService().build_snapshot(), timeout=2.0
+        )
+    except Exception:
+        derivatives = {}
+
+    # Load XAUT_USDT 1d candles for both the indicators and the chart
+    # snapshot. build_xaut_market_state_from_candles() only returns computed
+    # indicators, so we read the raw series via the repository to bind them to
+    # the snapshot_id. Bound the load to 5s; on timeout/DB error fall back to
+    # empty (the chart endpoint then returns count=0 and the frontend shows
+    # the empty state instead of dead canvases).
+    candles_1d: list[object] = []
+    if session is not None:
+        try:
+            candles_1d = await asyncio.wait_for(
+                MarketRepository(session).list_candles(
+                    XAUT_INSTRUMENT_ID, "1d", limit=220
+                ),
+                timeout=5.0,
+            )
+        except Exception:
+            candles_1d = []
+
+    market_state_1d = build_xaut_market_state_from_candles(candles_1d)
+    # _compute_technical_indicators expects float close/high/low; ORM
+    # Numeric(38,18) returns Decimal. normalize_candle converts to the same
+    # float shape the V3 endpoint feeds it (gold.py:380-386).
+    normalized = [
+        item for item in (normalize_candle(c) for c in candles_1d) if item
+    ]
+    tech = _compute_technical_indicators(normalized) if normalized else {}
+    price = market_state_1d.get("price")
+    observed_at = market_state_1d.get("updated_at")
+    quote_age_seconds = _gold_quote_age_seconds(market_state_1d)
+
+    liquidity_shock = bool(
+        (macro_payload or {}).get("_diagnostics", {}).get("liquidity_shock_detected")
+    )
+    execution_state = (
+        await policy_repo.execution_state(user.tenant_id, user.user_id)
+        if policy_repo is not None
+        else {}
+    )
+
+    if policy is not None:
+        decisions = build_gold_decisions(
+            policy,
+            quote_age_seconds=quote_age_seconds,
+            drawdown_60d=market_state_1d.get("drawdown_60d"),
+            confirmations_passed=_gold_confirmations_passed(market_state_1d, tech),
+            liquidity_shock=liquidity_shock,
+            executed_today=bool(execution_state.get("executed_today")),
+            last_dip_add_date=execution_state.get("last_dip_add_date"),
+        )
+    else:
+        decisions = {
+            "portfolio": {},
+            "strategic_allocation": {},
+            "base_dca": {"status": "NO_POLICY"},
+            "dip_add": {"status": "NO_POLICY"},
+        }
+
+    # Mint a chart snapshot_id and cache the candles for the chart endpoint.
+    _gold_evict_stale_cache()
+    snapshot_id = str(uuid4())
+    _gold_cache_chart(snapshot_id, candles_1d)
+
+    payload: dict[str, object] = {
+        "schema_version": "2.0.0",
+        "snapshot": {
+            "status": "ok" if policy is not None else "setup_required",
+            "observed_at": observed_at,
+        },
+        "portfolio": decisions.get("portfolio", {}),
+        "strategic_allocation": decisions.get("strategic_allocation", {}),
+        "base_dca": decisions.get("base_dca", {}),
+        "dip_add": decisions.get("dip_add", {}),
+        "market_scenarios": {
+            "active_scenarios": ["LIQUIDITY_SHOCK"] if liquidity_shock else [],
+            "active_scenario": "LIQUIDITY_SHOCK" if liquidity_shock else None,
+        },
+        "technical_summary": {
+            "ma50": market_state_1d.get("sma_50"),
+            "sma200": market_state_1d.get("sma_200"),
+            "drawdown_60d": market_state_1d.get("drawdown_60d"),
+            "natr": market_state_1d.get("natr_14"),
+            "volume_zscore": market_state_1d.get("volume_zscore"),
+            "ema20_distance": tech.get("ema20_distance"),
+            "rsi14": tech.get("rsi_14"),
+            "bollinger_pctb": tech.get("boll_pct_b"),
+            "price": price,
+            "updated_at": observed_at,
+        },
+        "derivatives": {
+            "oi_change_4w": derivatives.get("oi_change_4w"),
+            "funding_rate": derivatives.get("funding_rate"),
+            "cot_net_spec_percentile": derivatives.get("cot_net_spec_percentile"),
+            "open_interest": derivatives.get("open_interest"),
+        },
+        "chart_series_or_chart_token": {
+            "snapshot_id": snapshot_id,
+            "path": f"/api/v1/gold/workbench/charts/{snapshot_id}",
+            "count": len(candles_1d),
+        },
+        "source_manifest": _gold_source_manifest(
+            policy_present=policy is not None,
+            candles_present=bool(candles_1d),
+            derivatives_present=bool(derivatives),
+            price_present=price is not None,
+            observed_at=observed_at,
+        ),
+        "refresh_state": "ok" if policy is not None else "setup_required",
+    }
+    return GoldWorkbenchRead.model_validate(payload)
+
+
+@router.get("/workbench/charts/{snapshot_id}")
+async def get_gold_workbench_charts(
+    snapshot_id: str,
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> dict[str, object]:
+    """Return the cached candles bound to a workbench snapshot_id.
+
+    The workbench endpoint mints a snapshot_id and caches the candles it
+    computed for that response; this endpoint returns the same series so the
+    frontend can render charts without recomputing. Single-process in-memory
+    cache with a 10-minute TTL.
+    """
+    _gold_evict_stale_cache()
+    entry = _gold_chart_cache.get(snapshot_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=404, detail=f"snapshot_id not found or expired: {snapshot_id}"
+        )
+
+    def candle_to_dict(candle: object) -> dict[str, object]:
+        # ORM Decimal/DateTime are not JSON-serializable by Pydantic; convert
+        # to portable plain values (ISO string for the x-axis label).
+        return {
+            "ts_open": (
+                candle.ts_open.isoformat()
+                if getattr(candle, "ts_open", None) is not None
+                else None
+            ),
+            "open": float(candle.open) if getattr(candle, "open", None) is not None else None,
+            "high": float(candle.high) if getattr(candle, "high", None) is not None else None,
+            "low": float(candle.low) if getattr(candle, "low", None) is not None else None,
+            "close": float(candle.close) if getattr(candle, "close", None) is not None else None,
+            "volume": (
+                float(candle.volume) if getattr(candle, "volume", None) is not None else 0.0
+            ),
+        }
+
+    return {
+        "snapshot_id": snapshot_id,
+        "observed_at": entry["observed_at"],
+        "candles": [candle_to_dict(c) for c in entry["candles"]],
+    }
