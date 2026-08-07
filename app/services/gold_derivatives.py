@@ -22,7 +22,7 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Optional
 
@@ -73,7 +73,7 @@ def _to_decimal(value: object) -> Optional[Decimal]:
         return value
     try:
         return D(str(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         return None
 
 
