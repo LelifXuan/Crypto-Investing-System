@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import csv
 import io
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal
+from pathlib import Path
 from typing import Optional
 
 from app.core.decimal_utils import D
+from app.core.paths import app_paths
 from app.services.macro.providers.base import MacroFetchResult
 from app.services.network.http_client_factory import client_for_source
 
@@ -29,8 +31,84 @@ _COL_OI = 7  # Total Open Interest
 _COL_MM_LONG = 11  # Managed Money Long
 _COL_MM_SHORT = 12  # Managed Money Short
 
-# Percentile cache file (stores historical net positions for percentile calc)
-_CACHE_MAX_POINTS = 104  # ~2 years of weekly data
+# Percentile cache file (stores historical net positions for percentile calc).
+# Persisted to disk so percentile history survives across process restarts.
+_CACHE_MAX_POINTS = 156  # ~3 years of weekly data
+_HISTORY_FILE = "gold_history.json"
+_HISTORY_ROOT = app_paths.cache_dir / "cftc"
+
+
+@dataclass(slots=True)
+class CftcHistoryCache:
+    """Append-only disk-backed ring buffer of weekly ``net_pct_of_oi`` values.
+
+    Each entry is keyed by the report date so re-fetching the same week
+    is idempotent. The cache survives process restarts so percentile
+    history does not reset every time the workbench endpoint is hit
+    with a freshly-constructed provider.
+    """
+
+    path: Path
+    max_points: int = _CACHE_MAX_POINTS
+    _points: list[tuple[str, float]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self._points = self._load()
+
+    def _load(self) -> list[tuple[str, float]]:
+        if not self.path.exists():
+            return []
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(raw, list):
+            return []
+        out: list[tuple[str, float]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            date = item.get("date")
+            value = item.get("net_pct_of_oi")
+            if not isinstance(date, str):
+                continue
+            try:
+                out.append((date, float(value)))
+            except (TypeError, ValueError):
+                continue
+        return out[-self.max_points:]
+
+    def _flush(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = [{"date": d, "net_pct_of_oi": v} for d, v in self._points]
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(self.path)
+
+    def append(self, report_date: datetime, net_pct_of_oi: float) -> None:
+        """Append a new weekly observation, idempotent on date."""
+        key = report_date.astimezone(UTC).date().isoformat()
+        # Replace existing entry for this week (in case the same week is
+        # re-fetched with a revised value).
+        self._points = [(d, v) for d, v in self._points if d != key]
+        self._points.append((key, float(net_pct_of_oi)))
+        if len(self._points) > self.max_points:
+            self._points = self._points[-self.max_points:]
+        self._flush()
+
+    def history(self) -> list[float]:
+        """Return net_pct_of_oi history excluding the latest entry.
+
+        Used to compute percentile rank of the current observation
+        against its prior peers.
+        """
+        return [v for _, v in self._points[:-1]]
+
+    def latest(self) -> Optional[float]:
+        return self._points[-1][1] if self._points else None
+
+    def __len__(self) -> int:
+        return len(self._points)
 
 
 @dataclass(slots=True)
@@ -93,13 +171,18 @@ class CftcCotProvider:
     """Fetches CFTC COT data for gold futures and computes net speculative positioning.
 
     Returns the Managed Money net position as a fraction of total open interest.
-    Also maintains a percentile history for the ``cot_net_spec_percentile`` metric.
+    Also maintains a percentile history for the ``cot_net_spec_percentile`` metric,
+    persisted to disk so the percentile does not reset every request.
     """
 
     provider_key = "cftc"
 
-    def __init__(self):
-        self._history: list[float] = []  # historical net_pct_of_oi values
+    def __init__(self, history_cache: Optional[CftcHistoryCache] = None):
+        # Default disk-backed cache so percentile history survives across
+        # process restarts. Tests can inject a tmpdir-backed cache.
+        self._history_cache = history_cache or CftcHistoryCache(
+            path=_HISTORY_ROOT / _HISTORY_FILE,
+        )
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
         return source_provider == self.provider_key and source_kind == "raw_series"
@@ -118,12 +201,10 @@ class CftcCotProvider:
 
         net_pct = snapshot.net_pct_of_oi
 
-        # Update percentile history
-        self._history.append(net_pct)
-        if len(self._history) > _CACHE_MAX_POINTS:
-            self._history = self._history[-_CACHE_MAX_POINTS:]
-
-        percentile = _compute_percentile(self._history[:-1], net_pct)  # exclude current from history
+        # Update on-disk percentile history (idempotent on report date).
+        self._history_cache.append(snapshot.report_date, net_pct)
+        history = self._history_cache.history()
+        percentile = _compute_percentile(history, net_pct)
 
         return MacroFetchResult(
             observation_ts=snapshot.report_date,
@@ -138,20 +219,22 @@ class CftcCotProvider:
                 "managed_money_net": snapshot.managed_money_net,
                 "net_pct_of_oi": net_pct,
                 "percentile": percentile,
-                "history_points": len(self._history),
+                "history_points": len(self._history_cache),
             },
         )
 
     def get_latest_percentile(self) -> Optional[float]:
         """Return the percentile of the most recent net position.
-        
-        Requires at least one prior fetch_latest() call to populate history.
+
+        Computed from the on-disk history cache. Returns None when fewer
+        than 2 weekly observations exist (percentile undefined).
         """
-        if len(self._history) < 2:
+        if len(self._history_cache) < 2:
             return None
-        current = self._history[-1]
-        history = self._history[:-1]
-        return _compute_percentile(history, current)
+        latest = self._history_cache.latest()
+        if latest is None:
+            return None
+        return _compute_percentile(self._history_cache.history(), latest)
 
     async def healthcheck(self) -> tuple[str, Optional[str]]:
         try:
