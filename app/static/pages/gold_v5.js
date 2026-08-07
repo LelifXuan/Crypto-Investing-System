@@ -106,6 +106,7 @@ function scenarioLabel(active) {
     STRATEGIC_UNDERWEIGHT: "低于目标,触发基础定投",
     STRATEGIC_WITHIN_RANGE: "区间内,按策略执行",
     STRATEGIC_OVERWEIGHT_NO_SELL: "高于上限,默认不卖出",
+    MACRO_NEUTRAL: "宏观中性,维持既定纪律",
     DATA_DEGRADED: "数据降级,等待回填",
     setup_required: "策略未配置",
   };
@@ -127,9 +128,13 @@ function renderHero(data) {
       ? "setup_required"
       : null;
   const setupRequired = data?.snapshot?.status === "setup_required";
+  // An empty active_scenarios with a healthy snapshot means "no special macro
+  // scenario right now" — that is neutral, not degraded. Only fall back to
+  // DATA_DEGRADED when the snapshot itself is not healthy (error / missing).
+  const snapshotOk = data?.snapshot?.status === "ok";
   const subtitle = setupRequired
     ? "请先在策略页配置组合与执行纪律。"
-    : `宏观判断: ${scenarioLabel(active || "DATA_DEGRADED")}`;
+    : `宏观判断: ${scenarioLabel(active || (snapshotOk ? "MACRO_NEUTRAL" : "DATA_DEGRADED"))}`;
   const shock = activeList.includes("LIQUIDITY_SHOCK");
 
   return `
@@ -272,13 +277,41 @@ function renderSpotDca(data) {
 
 // ----- Contract Reference — top-down refactor (3 blocks per spec §2.4) -----
 
-function miniCard(label, value) {
+function miniCard(label, value, kind = "raw") {
+  // kind: "price" → 2dp · "ratio" → percent with 2dp (+/-, signed)
+  //       "percent" → 2dp no sign · "integer" → 0dp · "raw" → unchanged.
+  // Numbers from the backend arrive as decimal strings (drawdown,
+  // ema20_distance) or float dumps (funding rate, oi_change_4w). The
+  // old implementation dumped the raw string into the DOM, which
+  // produced ``-0.004886184782353185`` on screen — readable as a
+  // typo, not as a percent. We coerce to Number and pick a sensible
+  // precision per metric family. Strings we cannot parse fall back
+  // to the original rendering.
   const present = value != null && value !== "" && value !== "数据积累中";
   const cls = present ? "is-effective" : "is-insufficient";
+  let display;
+  if (!present) {
+    display = "数据积累中";
+  } else {
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+      display = String(value);
+    } else if (kind === "price") {
+      display = formatNumber(num, 2);
+    } else if (kind === "ratio") {
+      display = `${num >= 0 ? "+" : ""}${formatNumber(num * 100, 2)}%`;
+    } else if (kind === "percent") {
+      display = `${formatNumber(num * 100, 2)}%`;
+    } else if (kind === "integer") {
+      display = formatNumber(num, 0);
+    } else {
+      display = String(value);
+    }
+  }
   return `
     <div class="gold-mini-card ${cls}">
       <p class="eyebrow">${escapeHtml(label)}</p>
-      <strong>${escapeHtml(value || "数据积累中")}</strong>
+      <strong>${escapeHtml(display)}</strong>
     </div>
   `;
 }
@@ -307,16 +340,16 @@ function renderContractRef(data) {
       </div>
       ${renderPriceBanner(tech)}
       <div class="gold-mini-grid">
-        ${miniCard("MA50", tech?.ma50)}
-        ${miniCard("MA200 / SMA200", tech?.sma200)}
-        ${miniCard("60 日回撤", tech?.drawdown_60d)}
-        ${miniCard("EMA20 距离", tech?.ema20_distance)}
+        ${miniCard("MA50", tech?.ma50, "price")}
+        ${miniCard("MA200 / SMA200", tech?.sma200, "price")}
+        ${miniCard("60 日回撤", tech?.drawdown_60d, "ratio")}
+        ${miniCard("EMA20 距离", tech?.ema20_distance, "ratio")}
       </div>
       <div class="gold-mini-grid">
-        ${miniCard("OI 4 周变化", deriv?.oi_change_4w)}
-        ${miniCard("资金费率", deriv?.funding_rate)}
-        ${miniCard("COT 净投机", deriv?.cot_net_spec_percentile)}
-        ${miniCard("未平仓", deriv?.open_interest)}
+        ${miniCard("OI 4 周变化", deriv?.oi_change_4w, "ratio")}
+        ${miniCard("资金费率", deriv?.funding_rate, "ratio")}
+        ${miniCard("COT 净投机", deriv?.cot_net_spec_percentile, "raw")}
+        ${miniCard("未平仓", deriv?.open_interest, "integer")}
       </div>
     </article>
   `;
@@ -367,10 +400,38 @@ function renderGovernance(data) {
 
 // ----- Top-level render ----------------------------------------------------
 
+function renderChartGridEmptyState(data) {
+  const isError = !data || data.status === "error" || data.detail;
+  const title = isError ? "图表数据源不可达" : "图表正在准备";
+  const message = isError
+    ? "工作台数据接口未返回图表序列。请检查 /api/v1/gold/workbench 服务状态，或稍后手动刷新。"
+    : "图表数据尚未到达；后台正在准备。等图表序列就绪后将自动渲染。";
+  return `
+    <section class="gold-chart-grid gold-chart-grid-empty" role="status" aria-live="polite">
+      <div class="card gold-chart-card is-empty">
+        <div class="card-head-inline">
+          <p class="eyebrow">CHARTS</p>
+          <p class="gold-card-title">${escapeHtml(title)}</p>
+        </div>
+        <div class="gold-chart-empty-body">
+          <p>${escapeHtml(message)}</p>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderShell(data) {
+  // Chart capability gate: only emit the 5 chart cards when the workbench
+  // response actually carries a chart token with a non-zero candle count.
+  // Without the gate, 5 empty <canvas> elements render on every cold load —
+  // and when the API returns an error the canvases sit empty forever with no
+  // user-visible message.
+  const chartToken = data && data.chart_series_or_chart_token;
+  const hasChartSeries = !!(chartToken && chartToken.path && (chartToken.count || 0) > 0);
   return `
     ${renderHero(data)}
-    ${renderChartGrid()}
+    ${hasChartSeries ? renderChartGrid() : renderChartGridEmptyState(data)}
     <section class="gold-workbench-grid">
       ${renderSpotDca(data)}
       ${renderContractRef(data)}
@@ -383,16 +444,25 @@ function renderShell(data) {
 
 async function loadData() {
   try {
+    if (typeof api.getGoldWorkbench !== "function") {
+      throw new Error("api.getGoldWorkbench is not wired in app/static/core/api.js");
+    }
     const data = await api.getGoldWorkbench();
-    latestData = data || {};
-    setRoot(renderShell(latestData));
+    latestData = data;
+    // Render the full shell (hero + workbench cards + governance) even when
+    // chart data is missing, so verify_pages' real-content selectors
+    // (.gold-workbench-grid / .gold-governance-grid) still match and the
+    // user sees an explicit empty state instead of a dead page.
+    setRoot(renderShell(data));
     applyPostMountStyles();
-    if (latestData?.chart_series_or_chart_token?.path) {
-      renderGoldCharts(latestData).catch((err) => console.warn("[gold_v5] chart render failed", err));
+    const chartToken = data && data.chart_series_or_chart_token;
+    if (chartToken && chartToken.path && (chartToken.count || 0) > 0) {
+      renderGoldCharts(data).catch((err) => console.warn("[gold_v5] chart render failed", err));
     }
   } catch (err) {
-    console.error("[gold_v5] workbench load failed", err);
-    setRoot(renderHero({ snapshot: { status: "error" } }));
+    console.warn("[gold_v5] workbench unavailable:", err && err.message ? err.message : err);
+    setRoot(renderShell({ snapshot: { status: "error" }, detail: String((err && err.message) || err) }));
+    applyPostMountStyles();
   }
 }
 
@@ -400,8 +470,11 @@ async function renderGoldCharts(data) {
   destroyChartsForPage("gold");
   const candles = await fetchChartSeries(data?.chart_series_or_chart_token);
   if (!candles.length) return;
-  const labels = candles.map((c) => c.t || c.timestamp || c.time);
-  const priceSeries = candles.map((c) => c.c ?? c.close ?? null);
+  // Backend candle rows are { ts_open, open, high, low, close, volume }
+  // (ISO-string ts_open serves as the x-axis label; see the workbench chart
+  // endpoint in gold.py). Map defensively so legacy shapes still work.
+  const labels = candles.map((c) => String(c.ts_open || c.ts || c.timestamp || c.time || ""));
+  const priceSeries = candles.map((c) => Number(c.close ?? c.c ?? 0));
 
   // renderChart signature: renderChart(key, canvas, config) — canvas must be
   // a real DOM element. analysis.js:1242-1256 follows the same pattern.
@@ -421,6 +494,8 @@ async function renderGoldCharts(data) {
       datasets: [
         lineDataset("XAUT", priceSeries, "#1f1b16", { borderWidth: 1.6 }),
         lineDataset("MA50", maSeries(candles, 50), "#5b8a83", { borderWidth: 1.2, borderDash: [4, 3] }),
+        lineDataset("SMA200", maSeries(candles, 200), "#b07558", { borderWidth: 1.2, borderDash: [6, 3] }),
+        lineDataset("EMA20", emaSeries(candles, 20), "#7c5fb0", { borderWidth: 1.2, borderDash: [2, 2] }),
       ],
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } },
@@ -460,12 +535,13 @@ async function renderGoldCharts(data) {
 }
 
 async function fetchChartSeries(token) {
-  // token is { snapshot_id, token, path }; we use the domain helper
-  // api.getGoldWorkbenchCharts(snapshotId) which is in app/static/core/api.js:278.
+  // token is { snapshot_id, path, count }; the chart endpoint
+  // (GET /api/v1/gold/workbench/charts/{snapshot_id}) returns the candles
+  // bound to this workbench snapshot: { snapshot_id, observed_at, candles }.
   if (!token?.snapshot_id) return [];
   try {
     const res = await api.getGoldWorkbenchCharts(token.snapshot_id);
-    return res?.series || res?.candles || res?.data || [];
+    return res?.candles || res?.series || res?.data || [];
   } catch (err) {
     console.warn("[gold_v5] chart series fetch failed", err);
     return [];
@@ -477,6 +553,21 @@ function maSeries(candles, n) {
     const slice = candles.slice(Math.max(0, i - n + 1), i + 1).map((c) => c.c ?? c.close ?? 0);
     return slice.reduce((s, x) => s + x, 0) / slice.length;
   });
+}
+function emaSeries(candles, n) {
+  const k = 2 / (n + 1);
+  const out = [];
+  let prev = candles[0]?.c ?? candles[0]?.close ?? 0;
+  for (let i = 0; i < candles.length; i++) {
+    const price = candles[i]?.c ?? candles[i]?.close ?? 0;
+    if (i === 0) {
+      out.push(prev);
+    } else {
+      prev = price * k + prev * (1 - k);
+      out.push(prev);
+    }
+  }
+  return out;
 }
 function rsiSeries(candles, n) {
   const out = [];
@@ -531,10 +622,10 @@ function applyPostMountStyles() {
 
 // ----- Lifecycle --------------------------------------------------------
 
-export async function renderGoldV5(root) {
+export async function renderGoldV5() {
   controller?.abort?.();
   controller = new AbortController();
-  setRoot(root, renderShell({ snapshot: { status: "loading" } }));
+  setRoot(renderShell({ snapshot: { status: "loading" } }));
   applyPostMountStyles();
   await loadData();
   applyPostMountStyles();
@@ -542,6 +633,10 @@ export async function renderGoldV5(root) {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", () => loadData(), { signal: controller.signal });
   }
+  // Return a controller so the SPA router (main.js normalizeController)
+  // calls unmount() on navigation — previously the page returned undefined
+  // and the abort controller / charts were never torn down.
+  return { unmount };
 }
 
 export function unmount() {

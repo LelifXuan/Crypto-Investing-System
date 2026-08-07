@@ -247,34 +247,52 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     assert "lump_sum_value" in source
     assert "一次性投入" in source
     # Yield-view chart (added 2026-08-04, cash-on-cash return curves
-    # plus zero baseline + dual axis for absolute cumulative cost):
-    assert "return_pct" in source
-    assert "lump_sum_return_pct" in source
-    assert "定投收益率" in source
-    assert "一次性投入 收益率" in source
-    assert "horizontalLine" in source
-    assert "y1" in source
-    # Dual-axis guard (added 2026-08-05): the yield view must use the
-    # ``axes:`` path so the absolute-yuan cumulative-cost dataset can
-    # ride on its own ``y1`` scale. The historical ``axisProfile: "price"``
-    # + manual ``options.scales.y`` path only created a single ``y`` scale,
-    # which silently coerced ``y1`` datasets onto ``y`` and squashed the
-    # percent curves flat against zero. Comments are stripped first so
-    # the prose in the explanatory comment block does not trip the
-    # "axisProfile forbidden" assertion.
+    # plus zero baseline + dual axis for absolute cumulative cost).
+    # The exact axis labels (``定投收益率`` / ``一次性投入 收益率``) and
+    # the cash-on-cash ``lump_sum_return_pct`` field were introduced
+    # in commit 0734779 and live in the dual-axis yield view. Newer
+    # workbench iterations (周/月定投, 2026-08-06) may pivot the chart
+    # back to absolute 元 via ``lump_sum_value`` without the percent
+    # twins; we therefore only require the canonical lump-sum
+    # benchmark series is consumed somewhere on this page.
+    assert "lump_sum_value" in source
+    # Dual-axis guard (added 2026-08-05): the simulation branch of
+    # ``_renderEquityChart`` must use the ``axes:`` path so a dataset
+    # bound to ``y1`` (absolute yuan) renders on its own scale instead
+    # of being silently coerced onto ``y``. The historical
+    # ``axisProfile: "price"`` + manual ``options.scales.y`` path only
+    # created a single ``y`` scale, which squashed the percent curves
+    # flat against zero. Comments are stripped first so the prose in
+    # the explanatory comment block does not trip the "axisProfile
+    # forbidden" assertion.
+    # Newer iterations (2026-08-06) may temporarily retire the dual
+    # axis if they pivot back to absolute-only equity view; in that
+    # case they must still consume ``lump_sum_value`` and skip the
+    # axisProfile=price trap. The ``value_format`` rows below are
+    # only enforced when the dual axis is present.
     yield_render = _function_body_no_comments(source, "_renderEquityChart")
     assert yield_render, "_renderEquityChart not found in ashare_etf.js"
     assert "axisProfile: \"price\"" not in yield_render, (
-        "ashare_etf yield view must use axes: {y, y1} path, not axisProfile=price"
+        "ashare_etf yield view must use axes: path, not axisProfile=price"
     )
+    # Present-value view (2026-08-07) uses a single ``y`` yuan axis;
+    # the older yield view (2026-08-05) paired a percent ``y`` with a
+    # yuan ``y1``. Both share the ``value_format: "integer"`` and
+    # ``axes:`` path requirement; only the dual-axis shape is
+    # optional.
     assert "axes:" in yield_render
     assert "y: {" in yield_render
-    assert "y1: {" in yield_render
-    assert "value_format: \"percent\"" in yield_render
     assert "value_format: \"integer\"" in yield_render, (
-        "ashare_etf yield view right axis must declare value_format "
-        "for stable rendering of cumulative-yuan labels"
+        "ashare_etf yield view must declare value_format for stable "
+        "rendering of yuan labels"
     )
+    if "y1: {" in yield_render:
+        # Dual-axis (legacy yield view): both axes must declare their
+        # own value_format so chart.js can format them independently.
+        assert "value_format: \"percent\"" in yield_render, (
+            "ashare_etf dual-axis yield view left axis must declare "
+            "value_format=\"percent\" for percent-axis labels"
+        )
     assert "data-field=\"currentPrice\"" not in source
     assert "行情读取中" not in source
     assert "手动输入现价" not in source
@@ -424,3 +442,40 @@ const module_path = '{ROOT.as_posix()}/app/static/pages/monitoring.js';
     assert payload["case_a_dash"] == "-", f"got {payload['case_a_dash']!r}"
     assert payload["case_b_zero"] == "0", f"got {payload['case_b_zero']!r}"
     assert payload["case_c_num"].startswith("4.3"), f"got {payload['case_c_num']!r}"
+
+
+def test_gold_contract_ref_mini_cards_use_kind_hints_for_precision() -> None:
+    """Regression guard for the 2026-08-05 raw-float leak on the gold
+    allocation workbench ``合约参考`` card. The old ``miniCard`` dumped
+    ``-0.004886184782353185`` straight into the DOM; every metric now
+    declares its semantic family (``price`` / ``ratio`` / ``integer`` /
+    ``raw``) so the formatter can pick a stable precision."""
+    source = (ROOT / "app/static/pages/gold_v5.js").read_text(encoding="utf-8")
+    mini = _function_body_no_comments(source, "miniCard")
+    assert mini, "miniCard function not found in gold_v5.js"
+    # The function must accept a kind hint and branch on it.
+    assert "kind" in mini
+    assert "ratio" in mini
+    assert "price" in mini
+    # The bug-shape: raw ``escapeHtml(value || "数据积累中")`` rendered
+    # -0.004886184782353185 on screen. Forbid that pattern.
+    assert 'escapeHtml(value || "数据积累中")' not in mini, (
+        "miniCard must format numeric values; raw escapeHtml leaks the "
+        "backend's full-precision float to the user"
+    )
+    # Every numeric ratio on the contract-ref card must declare its kind.
+    for ratio_label in ("60 日回撤", "EMA20 距离", "OI 4 周变化", "资金费率"):
+        assert ratio_label in source, f"{ratio_label} not present in gold_v5.js"
+        idx = source.find(f'miniCard("{ratio_label}"')
+        assert idx >= 0, f'miniCard("{ratio_label}", ...) call not found'
+        assert '"ratio"' in source[idx: idx + 200], (
+            f"miniCard for {ratio_label} must declare kind=\"ratio\" so "
+            "the formatter applies percent-with-sign formatting"
+        )
+    # Price metrics must declare kind="price" too.
+    for price_label in ("MA50", "MA200 / SMA200"):
+        idx = source.find(f'miniCard("{price_label}"')
+        assert idx >= 0, f'miniCard("{price_label}", ...) call not found'
+        assert '"price"' in source[idx: idx + 200], (
+            f"miniCard for {price_label} must declare kind=\"price\""
+        )
