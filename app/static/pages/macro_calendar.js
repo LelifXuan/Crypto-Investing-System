@@ -115,9 +115,15 @@ function renderMonthGrid(items, activeMonth) {
   return `
     <article class="card">
       <div class="calendar-head">
-        <button id="calendar-prev-month" type="button">←</button>
-        <strong>${activeMonth.getFullYear()} 年 ${MONTH_NAMES[activeMonth.getMonth()]}</strong>
-        <button id="calendar-next-month" type="button">→</button>
+        <button id="calendar-prev-month" class="calendar-month-button" type="button" aria-label="查看上个月" title="上个月">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.5-5 5.5 5 5.5"/></svg>
+          <span>上个月</span>
+        </button>
+        <strong class="calendar-current-month" aria-live="polite">${activeMonth.getFullYear()} 年 ${MONTH_NAMES[activeMonth.getMonth()]}</strong>
+        <button id="calendar-next-month" class="calendar-month-button" type="button" aria-label="查看下个月" title="下个月">
+          <span>下个月</span>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"/></svg>
+        </button>
       </div>
       <div class="calendar-weekdays">${WEEKDAY_NAMES.map((name) => `<span>${name}</span>`).join("")}</div>
       <div class="calendar-grid">${cells.join("")}</div>
@@ -135,7 +141,7 @@ function renderCalendarTable(items) {
           <p class="section-summary">按时间顺序查看发布安排与实际结果，便于复盘宏观扰动。</p>
         </div>
         <div class="toolbar compact-toolbar">
-          <button id="macro-sync-button" type="button">同步宏观</button>
+          <button id="macro-sync-button" class="primary-button compact" type="button">同步宏观</button>
         </div>
       </div>
       <div class="table-wrap">

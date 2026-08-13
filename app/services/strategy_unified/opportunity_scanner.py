@@ -39,7 +39,10 @@ def compute_opportunity_score(
             consistency = 100
         elif max_same == 2:
             # Deadlock: both bullish and bearish have substantial votes
-            if modules_direction_tally.get("bullish", 0) >= 2 and modules_direction_tally.get("bearish", 0) >= 2:
+            if (
+                modules_direction_tally.get("bullish", 0) >= 2
+                and modules_direction_tally.get("bearish", 0) >= 2
+            ):
                 consistency = 0
             else:
                 consistency = 50
@@ -98,8 +101,14 @@ class OpportunityScanner:
         instrument_codes: dict[str, str],
         *,
         timeframes: tuple[str, ...] = SCAN_TIMEFRAMES,
+        force: bool = False,
     ) -> ScanResult:
-        """Sequentially scan all instruments × timeframes (shared DB session)."""
+        """Sequentially scan all instruments × timeframes (shared DB session).
+
+        ``force=False`` reads each cell from cache (fast — ~2-3 s for the full
+        universe on a warm DB); ``force=True`` rebuilds every cell from source
+        data and is only triggered by the user's explicit refresh.
+        """
         now = datetime.now(timezone.utc)
         items: list[ScanItem] = []
 
@@ -108,7 +117,7 @@ class OpportunityScanner:
             for tf in timeframes:
                 try:
                     service = UnifiedStrategyService(self._repository)
-                    payload = await service.build_unified_strategy(iid, force=False)
+                    payload = await service.build_unified_strategy(iid, force=force)
                     item = _extract_scan_item(payload, iid, code, tf)
                     if item is not None:
                         items.append(item)
@@ -168,7 +177,16 @@ def _extract_scan_item(
     #   - if payload has no status field at all → "unknown"
     status_raw = (payload.get("status") or "").strip()
     degraded_components = payload.get("degraded_components") or []
-    if status_raw == "degraded" or (isinstance(degraded_components, list) and degraded_components):
+    has_published_detail = bool(
+        payload.get("timeframe_stack")
+        or payload.get("signal_coverage")
+        or (payload.get("market_decision_snapshot") or {}).get("snapshot_id")
+    )
+    if (
+        status_raw == "degraded"
+        or (isinstance(degraded_components, list) and degraded_components)
+        or not has_published_detail
+    ):
         cache_state = "missing"
     elif status_raw in {"ready", "ready_with_warnings"}:
         cache_state = "fresh"

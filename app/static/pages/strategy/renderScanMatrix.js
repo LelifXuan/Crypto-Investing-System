@@ -15,7 +15,9 @@ export function renderScanMatrix(matrix, instruments, onSelect) {
       const cells = ["1w", "1d", "4h"]
         .map((tf) => {
           const item = matrix.find(
-            (m) => m.instrument_code === inst.code && m.timeframe === tf
+            (m) => (
+              m.instrument_id === inst.id || m.instrument_code === inst.code
+            ) && m.timeframe === tf
           );
           return renderCell(item, inst.id, tf);
         })
@@ -57,8 +59,8 @@ function renderCell(item, instrumentId, timeframe) {
     ["missing", "warming", "error"].includes(item.cache_state)
   ) {
     return `<td class="scan-cell scan-cell-pending">
-      <button class="scan-cell-btn" data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}">
-        <small>数据待补</small>
+      <button class="scan-cell-btn" type="button" disabled aria-disabled="true">
+        <small>数据构建中</small>
       </button>
     </td>`;
   }

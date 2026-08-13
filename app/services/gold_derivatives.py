@@ -19,7 +19,10 @@ HTTP<->Python hop).
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -40,6 +43,64 @@ _CACHE_DIR = app_paths.cache_dir / "gold_derivatives"
 _OI_CACHE_FILE = "aggregated_oi.jsonl"
 _MAX_OI_SNAPSHOTS = 12  # ~3 months of weekly history
 _4_WEEKS_DAYS = 28
+
+# Short-TTL in-memory cache for ``build_snapshot()`` (single-flight).
+# The workbench endpoint (GET /gold/workbench) previously blocked ~5-6s per
+# page load re-fetching all 6 perp venues + CFTC; the UI only needs the
+# aggregated view at interactive speed. AGENTS.md §九.2: keep a bounded
+# staleness window — 120s is ≪ the 28-day OI comparison horizon, so the
+# weekly aggregate stays trustworthy. ``refresh_all()`` (POST
+# /gold/derivatives/refresh) bypasses this cache explicitly.
+_SNAPSHOT_TTL_SECONDS = float(os.environ.get("GOLD_SNAPSHOT_TTL_SECONDS", "120"))
+_snapshot_cache: dict[str, Any] = {"ts": 0.0, "payload": None}
+_snapshot_fetch_lock = asyncio.Lock()
+
+# Disk-persisted last-known-good layer below the in-memory cache. Perp OI /
+# funding are minute-level live data, so this lives under ``runtime/cache``
+# (gitignored) rather than the tracked ``data/`` dir — unlike the CFTC weekly
+# baseline, venue snapshots are private per-machine fetch results that must
+# not ship with the repo. A cold process reads yesterday's aggregate in
+# milliseconds instead of blocking on 6 venue HTTP calls; stale-on-fetch
+# failure keeps the last good values (AGENTS.md §九.2 stale_revalidating).
+_SNAPSHOT_DISK_TTL_SECONDS = float(os.environ.get("GOLD_SNAPSHOT_DISK_TTL_SECONDS", str(6 * 3600)))
+_SNAPSHOT_DISK_FILE = _CACHE_DIR / "snapshot.json"
+
+
+def _read_snapshot_disk() -> dict | None:
+    """Return the disk snapshot if fresh (<6h), else None (stale or absent)."""
+    if not _SNAPSHOT_DISK_FILE.exists():
+        return None
+    try:
+        mtime = _SNAPSHOT_DISK_FILE.stat().st_mtime
+        if (time.time() - mtime) >= _SNAPSHOT_DISK_TTL_SECONDS:
+            return None
+        data = json.loads(_SNAPSHOT_DISK_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _read_snapshot_disk_allow_stale() -> dict | None:
+    """Return the disk snapshot regardless of age (last-known-good fallback)."""
+    if not _SNAPSHOT_DISK_FILE.exists():
+        return None
+    try:
+        data = json.loads(_SNAPSHOT_DISK_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _write_snapshot_disk(payload: dict) -> None:
+    """Persist a fresh snapshot (tmp + replace so a crash never truncates)."""
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _SNAPSHOT_DISK_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_SNAPSHOT_DISK_FILE)
+    except OSError:
+        # Cache is an optimization — a failed write must not fail the fetch.
+        pass
 
 # ─── Per-venue endpoint registry ────────────────────────────────────────
 # Each tuple: (provider_key, symbol, kind, funding_endpoint, oi_endpoint)
@@ -392,6 +453,42 @@ class GoldDerivativesService:
         return [row for row in rows if row is not None]
 
     async def build_snapshot(self) -> dict:
+        """Cached entry point — memory → disk (last-known-good) → live.
+
+        Concurrent callers (workbench + derivatives endpoints) share one
+        HTTP fan-out instead of each re-fetching 6 perp venues + CFTC.
+        Returns a deep copy so callers cannot mutate the cache.
+        Use ``refresh_all(force=True)`` to bypass.
+        """
+        now = time.monotonic()
+        async with _snapshot_fetch_lock:
+            cached = _snapshot_cache["payload"]
+            if cached is not None and (now - _snapshot_cache["ts"]) < _SNAPSHOT_TTL_SECONDS:
+                return copy.deepcopy(cached)
+            # Cold process / expired memory → disk last-known-good (ms, no HTTP).
+            disk = _read_snapshot_disk()
+            if disk is not None:
+                _snapshot_cache["ts"] = now
+                _snapshot_cache["payload"] = disk
+                return copy.deepcopy(disk)
+            payload = await self._build_snapshot_uncached()
+            # Live fetch returned no usable venue data (e.g. regional blocks /
+            # network flake) but a stale disk copy exists → keep last-known-good
+            # instead of degrading the UI to zeros (AGENTS.md §九.2). Do NOT
+            # re-write the stale payload (would refresh its TTL); it only backs
+            # the in-memory copy until the next live fetch succeeds.
+            if not payload.get("open_interest"):
+                stale = _read_snapshot_disk_allow_stale()
+                if stale is not None:
+                    stale["derivatives_note"] = "实时抓取不可用，展示磁盘缓存(可能过期)"
+                    payload = stale
+            else:
+                _write_snapshot_disk(payload)
+            _snapshot_cache["ts"] = now
+            _snapshot_cache["payload"] = payload
+            return copy.deepcopy(payload)
+
+    async def _build_snapshot_uncached(self) -> dict:
         rows = await self.fetch_all_perps()
         valid_rows = [r for r in rows if r.is_valid()]
 
@@ -459,10 +556,17 @@ class GoldDerivativesService:
         }
 
     async def refresh_all(self, *, force: bool = True) -> dict:
-        """Manual refresh entry point — bypasses any short-term cache."""
-        # Currently the service does not cache HTTP responses (every call
-        # re-fetches). This method exists as a stable hook for the
-        # POST /gold/derivatives/refresh endpoint and to make the
-        # ``force`` intent explicit at the API boundary.
-        _ = force
-        return await self.build_snapshot()
+        """Manual refresh entry point — bypasses the short-TTL cache.
+
+        Fetches fresh perp + COT data unconditionally (when ``force``) and
+        replaces both the in-memory and disk caches, so the UI's refresh
+        button and the POST /gold/derivatives/refresh endpoint get live data
+        instead of a ≤120s-old snapshot.
+        """
+        if not force:
+            return await self.build_snapshot()
+        payload = await self._build_snapshot_uncached()
+        _write_snapshot_disk(payload)
+        _snapshot_cache["ts"] = time.monotonic()
+        _snapshot_cache["payload"] = payload
+        return copy.deepcopy(payload)

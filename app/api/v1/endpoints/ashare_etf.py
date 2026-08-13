@@ -43,11 +43,9 @@ from app.services.ashare_etf_rebalance import (
 )
 from app.services.ashare_etf_simulation import (
     ALL_HALO_CODES,
+    CASHFLOW_CODE,
     NavSeries,
     run_simulation,
-)
-from app.services.ashare_etf_simulation import (
-    CASHFLOW_SYMBOL as SIM_CASHFLOW,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,17 +233,20 @@ async def _equity_curve(payload: EtfEquityCurveRequest) -> EtfEquityCurveRespons
 
 
 async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
-    """Run the HALO Rolling-252-Cov strategy simulation.
+    """Run the ETF 资金投入 strategy simulation (定稿 2026-08-06).
 
-    Loads 252+ trading days of NAV for each HALO symbol + the cashflow
-    ETF, then walks forward month-by-month from ``from_month`` applying
-    monthly DCA + bandwidth-triggered quarterly rebalances.
+    Loads NAV for each of the 6 HALO symbols from the CACHED history
+    database (``fetch=False`` — the simulation never triggers an upstream
+    pull; today's new bars are appended to the cache by an explicit import
+    step, e.g. ``scripts/import_etf_history_csv.py``). It then walks
+    forward month-by-month from ``from_month`` applying the initial build,
+    monthly DCA (only-buys) and bandwidth-triggered quarterly rebalances.
 
     The endpoint never *predicts* the future — it replays the actual
     historical price series with the strategy's transaction rules
     layered on top. If ``to_date`` is in the past, the curve ends at
     ``to_date``; if it's in the present/future, the simulation stops at
-    the latest available NAV.
+    the latest available cached NAV.
     """
     history_service = _build_history_service()
     # Default from_month to a sensible 1-year lookback if caller passes
@@ -253,8 +254,12 @@ async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
     from_month = date(payload.from_month.year, payload.from_month.month, 1)
     to_date = payload.to_date or datetime.now(tz=UTC).date()
 
-    # Pull NAV for every HALO + cashflow symbol across the full window.
-    codes = list(ALL_HALO_CODES) + [SIM_CASHFLOW]
+    # Read NAV for every HALO symbol + the cashflow ETF from the cached
+    # history database. The universe is 6 HALO ETFs + 1 cashflow ETF
+    # (159201) — the cashflow ETF receives its own weekly DCA leg and is
+    # never rebalanced or sold. If 159201 has no cached history (e.g. the
+    # from_month window predates its listing), its leg silently rolls.
+    codes = list(ALL_HALO_CODES) + [CASHFLOW_CODE]
     nav_by_code: dict[str, NavSeries] = {}
     # Track the actual provider that supplied data so the response
     # ``meta.data_source`` reflects reality (e.g. "sina_kline" when
@@ -264,7 +269,7 @@ async def _simulation(payload: EtfSimulationRequest) -> EtfSimulationResponse:
     for code in codes:
         try:
             snap = await history_service.get_snapshot(
-                code, from_date=from_month, to_date=to_date
+                code, from_date=from_month, to_date=to_date, fetch=False
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(

@@ -322,8 +322,8 @@ def test_terminal_summary_bearish_daily_headline_is_business_facing() -> None:
 
     assert "孤立指标投票" not in summary["headline"]
     assert "趋势连续性评估" not in summary["headline"]
-    assert "反弹" in summary["headline"]
     assert "VWAP" in summary["headline"]
+    assert "追空质量取决于" not in summary["headline"]
 
 
 # ---------------------------------------------------------------------------

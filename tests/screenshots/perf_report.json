@@ -1,0 +1,260 @@
+{
+  "thresholds": {
+    "long_task_warn": 100,
+    "long_task_fail": 200,
+    "dom_nodes_warn": 3000,
+    "dom_nodes_fail": 5000,
+    "lcp_warn": 2500,
+    "lcp_fail": 4000,
+    "cls_warn": 0.1,
+    "cls_fail": 0.25,
+    "fcp_warn": 1800,
+    "fcp_fail": 3000,
+    "js_size_warn": 500,
+    "js_size_fail": 1000,
+    "css_size_warn": 200,
+    "css_size_fail": 500,
+    "requests_warn": 50,
+    "requests_fail": 100
+  },
+  "per_page": [
+    {
+      "page_id": "market-analysis",
+      "metrics": {
+        "long_task_max_ms": 76,
+        "long_task_count": 3,
+        "dom_nodes": 300,
+        "lcp_ms": 0,
+        "cls": 0.0002,
+        "fcp_ms": 240,
+        "js_size_kb": 804.7,
+        "css_size_kb": 0.0,
+        "total_requests": 37
+      },
+      "findings": [
+        {
+          "check": "js-size",
+          "severity": "WARN",
+          "detail": "JS: 805KB > 500KB"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 1,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "monitoring-overview",
+      "metrics": {
+        "long_task_max_ms": 98,
+        "long_task_count": 2,
+        "dom_nodes": 695,
+        "lcp_ms": 0,
+        "cls": 0,
+        "fcp_ms": 104,
+        "js_size_kb": 463.9,
+        "css_size_kb": 0.0,
+        "total_requests": 32
+      },
+      "findings": [],
+      "fail_count": 0,
+      "warn_count": 0,
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "market-structure",
+      "metrics": {
+        "long_task_max_ms": 52,
+        "long_task_count": 1,
+        "dom_nodes": 349,
+        "lcp_ms": 0,
+        "cls": 0.0001,
+        "fcp_ms": 84,
+        "js_size_kb": 514.1,
+        "css_size_kb": 0.0,
+        "total_requests": 30
+      },
+      "findings": [
+        {
+          "check": "js-size",
+          "severity": "WARN",
+          "detail": "JS: 514KB > 500KB"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 1,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "market-events",
+      "metrics": {
+        "long_task_max_ms": 55,
+        "long_task_count": 1,
+        "dom_nodes": 812,
+        "lcp_ms": 0,
+        "cls": 0,
+        "fcp_ms": 184,
+        "js_size_kb": 460.1,
+        "css_size_kb": 0.0,
+        "total_requests": 30
+      },
+      "findings": [],
+      "fail_count": 0,
+      "warn_count": 0,
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "macro-calendar",
+      "metrics": {
+        "long_task_max_ms": 55,
+        "long_task_count": 1,
+        "dom_nodes": 834,
+        "lcp_ms": 0,
+        "cls": 0,
+        "fcp_ms": 88,
+        "js_size_kb": 431.3,
+        "css_size_kb": 0.0,
+        "total_requests": 28
+      },
+      "findings": [],
+      "fail_count": 0,
+      "warn_count": 0,
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "knowledge-base",
+      "metrics": {
+        "long_task_max_ms": 358,
+        "long_task_count": 2,
+        "dom_nodes": 4061,
+        "lcp_ms": 0,
+        "cls": 0,
+        "fcp_ms": 88,
+        "js_size_kb": 465.0,
+        "css_size_kb": 0.0,
+        "total_requests": 28
+      },
+      "findings": [
+        {
+          "check": "long-task",
+          "severity": "FAIL",
+          "detail": "Max long task: 358ms > 200ms"
+        },
+        {
+          "check": "dom-nodes",
+          "severity": "WARN",
+          "detail": "DOM nodes: 4061 > 3000"
+        }
+      ],
+      "fail_count": 1,
+      "warn_count": 1,
+      "verdict": "FAIL"
+    },
+    {
+      "page_id": "ashare-etf",
+      "metrics": {
+        "long_task_max_ms": 138,
+        "long_task_count": 4,
+        "dom_nodes": 487,
+        "lcp_ms": 0,
+        "cls": 0.0,
+        "fcp_ms": 88,
+        "js_size_kb": 576.4,
+        "css_size_kb": 0.0,
+        "total_requests": 15
+      },
+      "findings": [
+        {
+          "check": "long-task",
+          "severity": "WARN",
+          "detail": "Max long task: 138ms > 100ms"
+        },
+        {
+          "check": "js-size",
+          "severity": "WARN",
+          "detail": "JS: 576KB > 500KB"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 2,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "btc-derivatives",
+      "metrics": {
+        "long_task_max_ms": 299,
+        "long_task_count": 3,
+        "dom_nodes": 1458,
+        "lcp_ms": 0,
+        "cls": 0,
+        "fcp_ms": 652,
+        "js_size_kb": 749.8,
+        "css_size_kb": 0.0,
+        "total_requests": 32
+      },
+      "findings": [
+        {
+          "check": "long-task",
+          "severity": "FAIL",
+          "detail": "Max long task: 299ms > 200ms"
+        },
+        {
+          "check": "js-size",
+          "severity": "WARN",
+          "detail": "JS: 750KB > 500KB"
+        }
+      ],
+      "fail_count": 1,
+      "warn_count": 1,
+      "verdict": "FAIL"
+    },
+    {
+      "page_id": "ai-strategy",
+      "metrics": {
+        "long_task_max_ms": 58,
+        "long_task_count": 1,
+        "dom_nodes": 167,
+        "lcp_ms": 0,
+        "cls": 0.0,
+        "fcp_ms": 512,
+        "js_size_kb": 419.8,
+        "css_size_kb": 0.0,
+        "total_requests": 29
+      },
+      "findings": [],
+      "fail_count": 0,
+      "warn_count": 0,
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "gold-allocation",
+      "metrics": {
+        "long_task_max_ms": 56,
+        "long_task_count": 1,
+        "dom_nodes": 221,
+        "lcp_ms": 0,
+        "cls": 0,
+        "fcp_ms": 96,
+        "js_size_kb": 523.9,
+        "css_size_kb": 0.0,
+        "total_requests": 9
+      },
+      "findings": [
+        {
+          "check": "js-size",
+          "severity": "WARN",
+          "detail": "JS: 524KB > 500KB"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 1,
+      "verdict": "WARN"
+    }
+  ],
+  "summary": {
+    "total_pages": 10,
+    "pages_with_fails": 2,
+    "pages_with_warns": 4,
+    "total_fail_findings": 2,
+    "total_warn_findings": 7
+  }
+}

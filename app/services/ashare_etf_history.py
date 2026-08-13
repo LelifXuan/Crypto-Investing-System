@@ -106,13 +106,17 @@ class EtfHistoryService:
         from_date: date | None = None,
         to_date: date | None = None,
         force_refresh: bool = False,
+        fetch: bool = True,
     ) -> EtfHistorySnapshot:
         """Return the cached snapshot, fetching from upstream if necessary.
 
         ``from_date`` / ``to_date`` only narrow the returned ``points``;
-        they do not shrink the underlying cache. If either side of the
-        requested window extends past cached coverage, an incremental
-        fetch is triggered.
+        they do not shrink the underlying cache. If the requested window
+        extends past cached ``coverage_end``, a tail-only incremental
+        fetch is triggered — UNLESS ``fetch=False``, in which case the
+        cache is read as-is (the caller wants "database-only" history:
+        today's new bars are appended by an explicit import step, never
+        pulled implicitly during a computation).
         """
         normalized = str(code).strip()
         today = utc_now().date()
@@ -127,7 +131,7 @@ class EtfHistoryService:
             existing, from_date, to_date
         )
 
-        if needs_fetch:
+        if needs_fetch and fetch:
             await self._fetch_and_merge(normalized, from_date, to_date, existing)
             existing = self._read_cache(normalized)
 
@@ -137,6 +141,9 @@ class EtfHistoryService:
             )
 
         # Narrow points to the requested window (inclusive on both sides).
+        # With ``fetch=False`` the window may extend past cached coverage;
+        # we simply return everything the cache holds inside it (the
+        # coverage metadata tells the caller how fresh the data is).
         narrowed = [
             p for p in existing.points if from_date <= p.trade_date <= to_date
         ]
@@ -169,7 +176,15 @@ class EtfHistoryService:
     def _window_extends(
         snapshot: EtfHistorySnapshot, from_date: date, to_date: date
     ) -> bool:
-        return from_date < snapshot.coverage_start or to_date > snapshot.coverage_end
+        # Tail-only incremental fetch. We only extend FORWARD when the
+        # caller asks past cached coverage; an earlier ``from_date`` never
+        # triggers a leading backfill. The cache is the authority — it may
+        # hold imported/verified bars (e.g. CSV-imported closes) that an
+        # upstream re-fetch would silently overwrite or re-add (the 563010
+        # 2023-07-13 case: the user's bundled CSV starts 07-14, upstream
+        # keeps reporting 07-13). Starting the simulation earlier just
+        # narrows the returned window over already-cached history.
+        return to_date > snapshot.coverage_end
 
     def _read_cache(self, code: str) -> EtfHistorySnapshot | None:
         path = cache_path_for_code(code)
@@ -189,12 +204,16 @@ class EtfHistoryService:
         to_date: date,
         existing: EtfHistorySnapshot | None,
     ) -> None:
-        # Cold start: full backfill. Otherwise incremental from coverage_end+1.
+        # Cold start: full backfill. Otherwise STRICT tail append: fetch
+        # only from the day AFTER cached coverage_end, so an upstream
+        # re-fetch can never re-introduce/overwrite earlier bars (e.g.
+        # a CSV-imported or manually corrected close). The cache is the
+        # authority for everything it already holds.
         if existing is None:
             fetch_beg = from_date
             fetch_end = to_date
         else:
-            fetch_beg = min(from_date, existing.coverage_start)
+            fetch_beg = existing.coverage_end + timedelta(days=1)
             fetch_end = to_date
         try:
             result = await self.client.fetch_history(code, beg=fetch_beg, end=fetch_end)

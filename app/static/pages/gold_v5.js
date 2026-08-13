@@ -153,7 +153,7 @@ function renderHero(data) {
                 : ""
             }
           </div>
-          <button class="mock-button" id="gold-refresh">刷新 XAUT</button>
+          <button class="primary-button compact" id="gold-refresh">刷新 XAUT</button>
         </div>
       </article>
     </section>
@@ -161,9 +161,8 @@ function renderHero(data) {
 }
 
 function renderChartCard(chartId, eyebrow, title) {
-  const wideClass = chartId === "gold-chart-price" ? " is-wide" : "";
   return `
-    <article class="card gold-chart-card${wideClass}" id="${chartId}">
+    <article class="card gold-chart-card" id="${chartId}">
       <div class="card-head-inline">
         <p class="eyebrow">${escapeHtml(eyebrow)}</p>
         <p class="gold-card-title">${escapeHtml(title)}</p>
@@ -178,11 +177,12 @@ function renderChartCard(chartId, eyebrow, title) {
 function renderChartGrid() {
   return `
     <section class="gold-chart-grid">
-      ${renderChartCard("gold-chart-price", "PRICE & INDICATORS", "价格 · MA50 · SMA200 · EMA20")}
-      ${renderChartCard("gold-chart-rsi", "MOMENTUM", "RSI(14)")}
-      ${renderChartCard("gold-chart-bollinger", "VOLATILITY", "Bollinger %B · K(20,2)")}
+      ${renderChartCard("gold-chart-price", "TREND", "EMA 均线结构")}
+      ${renderChartCard("gold-chart-vegas", "STRUCTURE", "VEGAS 通道")}
+      ${renderChartCard("gold-chart-macd", "MOMENTUM", "MACD")}
       ${renderChartCard("gold-chart-volume", "VOLUME", "成交量")}
-      ${renderChartCard("gold-chart-drawdown", "RISK", "60 日回撤")}
+      ${renderChartCard("gold-chart-bollinger", "VOLATILITY", "BOLL · %B(20,2)")}
+      ${renderChartCard("gold-chart-rsi", "MOMENTUM", "RSI(14)")}
     </section>
   `;
 }
@@ -212,8 +212,8 @@ function renderFormulaBox(base, dip) {
   const dipAmount = dip?.amount;
   return `
     <div class="gold-formula-box">
-      <div class="gold-formula-item"><span>BASR · 基础定投</span><b>${money(baseAmount)}</b></div>
-      <div class="gold-formula-item"><span>FIXED · 黄金坑加仓</span><b>${money(dipAmount)}</b></div>
+      <div class="gold-formula-item"><span>基础定投</span><b>${money(baseAmount)}</b></div>
+      <div class="gold-formula-item"><span>回撤加仓</span><b>${money(dipAmount)}</b></div>
     </div>
   `;
 }
@@ -237,7 +237,8 @@ function renderRecommendRow(base, dip) {
   return `
     <div class="gold-recommend-row">
       <div>
-        <p class="eyebrow">建议金额</p>
+        <p class="eyebrow">TODAY</p>
+        <span class="gold-recommend-label">今日建议金额</span>
         <div class="gold-recommend-amount">${money(base?.amount)}</div>
       </div>
       <span class="chip">${chipForStatus(code, "今日最优基础动作")}</span>
@@ -264,13 +265,17 @@ function renderSpotDca(data) {
         <p class="eyebrow">SPOT DCA</p>
         <p class="gold-card-title">战略配置与今日动作</p>
       </div>
-      ${renderWeightRow(strategic)}
-      ${renderFormulaBox(base, dip)}
-      <div>
-        ${renderGateRow("①", "60 日回撤与连续确认", drawdownCode, "回撤阈值与连续确认门禁")}
-        ${renderGateRow("②", "宏观与流动性冲击门禁", macroCode, "宏观风险阻断基础定投")}
+      <div class="gold-dca-overview">
+        ${renderRecommendRow(base, dip)}
+        ${renderWeightRow(strategic)}
       </div>
-      ${renderRecommendRow(base, dip)}
+      <div class="gold-dca-detail-grid">
+        ${renderFormulaBox(base, dip)}
+        <div class="gold-dca-gates">
+          ${renderGateRow("①", "回撤确认", drawdownCode, "60 日回撤阈值与连续确认门禁")}
+          ${renderGateRow("②", "宏观门禁", macroCode, "宏观与流动性风险阻断基础定投")}
+        </div>
+      </div>
     </article>
   `;
 }
@@ -344,8 +349,6 @@ function renderContractRef(data) {
         ${miniCard("MA200 / SMA200", tech?.sma200, "price")}
         ${miniCard("60 日回撤", tech?.drawdown_60d, "ratio")}
         ${miniCard("EMA20 距离", tech?.ema20_distance, "ratio")}
-      </div>
-      <div class="gold-mini-grid">
         ${miniCard("OI 4 周变化", deriv?.oi_change_4w, "ratio")}
         ${miniCard("资金费率", deriv?.funding_rate, "ratio")}
         ${miniCard("COT 净投机", deriv?.cot_net_spec_percentile, "raw")}
@@ -355,44 +358,65 @@ function renderContractRef(data) {
   `;
 }
 
-// ----- Governance — 4-column mini-card grid (replaces V4 1xN strip) -------
+// ----- Governance — compact source ledger --------------------------------
 
-function governanceMiniCard(label, value, fresh) {
-  const cls = fresh ? "is-effective" : "is-insufficient";
+function formatSourceAge(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return "更新时间待确认";
+  if (value < 60) return `${Math.round(value)} 秒前更新`;
+  if (value < 3600) return `${Math.round(value / 60)} 分钟前更新`;
+  if (value < 86400) return `${Math.round(value / 3600)} 小时前更新`;
+  return `${Math.round(value / 86400)} 天前更新`;
+}
+
+function governanceSourceItem(manifest, label, sourceKey) {
+  const entry = (manifest || []).find((s) => s?.source_key === sourceKey);
+  const state = entry?.freshness_state || "missing";
   return `
-    <article class="card gold-mini-card ${cls}">
-      <p class="eyebrow">${escapeHtml(label)}</p>
-      <strong>${escapeHtml(value || "数据生成中")}</strong>
+    <article class="gold-governance-item" data-state="${escapeHtml(state)}">
+      <div class="gold-governance-label">
+        <span class="gold-governance-dot" aria-hidden="true"></span>
+        <span>${escapeHtml(label)}</span>
+      </div>
+      <strong>${escapeHtml(entry ? labelForFreshness(state) : "未配置")}</strong>
+      <small>${escapeHtml(entry ? formatSourceAge(entry.age_seconds) : "尚未接入数据源")}</small>
     </article>
   `;
 }
 
-function renderGovernanceMini(manifest, label, sourceKey) {
-  const entry = (manifest || []).find((s) => s?.source_key === sourceKey);
-  if (!entry) return governanceMiniCard(label, "未配置", false);
-  const state = entry.freshness_state || "missing";
-  const present = state === "fresh";
-  return governanceMiniCard(
-    label,
-    `${labelForFreshness(state)} · ${entry.age_seconds != null ? `${entry.age_seconds}s` : "—"}`,
-    present
-  );
+function governanceSnapshotItem(observed) {
+  const ready = !!observed && observed !== "—";
+  return `
+    <article class="gold-governance-item gold-governance-snapshot" data-state="${ready ? "fresh" : "missing"}">
+      <div class="gold-governance-label">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>
+        <span>快照时间</span>
+      </div>
+      <strong>${escapeHtml(ready ? observed : "等待快照")}</strong>
+      <small>${ready ? "UTC · 当前研究快照" : "尚未生成有效快照"}</small>
+    </article>
+  `;
 }
 
 function renderGovernance(data) {
   const manifest = data?.source_manifest || [];
   const observed = data?.snapshot?.observed_at || "—";
+  const sourceKeys = ["gold_policy", "gold_spot_quote", "gold_derivatives"];
+  const readyCount = sourceKeys.filter((sourceKey) => (
+    manifest.find((entry) => entry?.source_key === sourceKey)?.freshness_state === "fresh"
+  )).length;
   return `
-    <section class="gold-governance">
-      <div class="card-head-inline">
-        <p class="eyebrow">数据治理 · SNAPSHOT</p>
-        <p class="gold-card-title">来源就绪度</p>
+    <section class="card gold-governance" aria-labelledby="gold-governance-title">
+      <div class="gold-governance-head">
+        <p class="eyebrow">DATA GOVERNANCE</p>
+        <h2 id="gold-governance-title">数据就绪与快照</h2>
+        <p><strong>${readyCount}/${sourceKeys.length}</strong> 个数据源当前可用</p>
       </div>
       <div class="gold-governance-grid">
-        ${renderGovernanceMini(manifest, "策略配置", "gold_policy")}
-        ${renderGovernanceMini(manifest, "XAUT 行情", "gold_spot_quote")}
-        ${renderGovernanceMini(manifest, "衍生品", "gold_derivatives")}
-        ${governanceMiniCard("快照时间", observed, !!observed && observed !== "—")}
+        ${governanceSourceItem(manifest, "策略配置", "gold_policy")}
+        ${governanceSourceItem(manifest, "XAUT 行情", "gold_spot_quote")}
+        ${governanceSourceItem(manifest, "衍生品", "gold_derivatives")}
+        ${governanceSnapshotItem(observed)}
       </div>
     </section>
   `;
@@ -431,11 +455,11 @@ function renderShell(data) {
   const hasChartSeries = !!(chartToken && chartToken.path && (chartToken.count || 0) > 0);
   return `
     ${renderHero(data)}
-    ${hasChartSeries ? renderChartGrid() : renderChartGridEmptyState(data)}
     <section class="gold-workbench-grid">
       ${renderSpotDca(data)}
       ${renderContractRef(data)}
     </section>
+    ${hasChartSeries ? renderChartGrid() : renderChartGridEmptyState(data)}
     ${renderGovernance(data)}
   `;
 }
@@ -455,6 +479,11 @@ async function loadData() {
     // user sees an explicit empty state instead of a dead page.
     setRoot(renderShell(data));
     applyPostMountStyles();
+    // The SPA router's enter animation plays against the warming shell
+    // (its 300ms cleanup long expired while the 5-6s workbench request
+    // settled), so replay the transition against the real content to
+    // avoid a hard visual cut when the data lands.
+    replayPageEnter();
     const chartToken = data && data.chart_series_or_chart_token;
     if (chartToken && chartToken.path && (chartToken.count || 0) > 0) {
       renderGoldCharts(data).catch((err) => console.warn("[gold_v5] chart render failed", err));
@@ -463,7 +492,23 @@ async function loadData() {
     console.warn("[gold_v5] workbench unavailable:", err && err.message ? err.message : err);
     setRoot(renderShell({ snapshot: { status: "error" }, detail: String((err && err.message) || err) }));
     applyPostMountStyles();
+    replayPageEnter();
   }
+}
+
+/**
+ * Replay the SPA page-enter transition against freshly rendered content.
+ * main.js applies `.page-transition` once per boot right after the warming
+ * shell mounts, then removes it after ~300ms. The workbench request takes
+ * seconds, so the real content swap would otherwise be a hard cut. Re-adding
+ * the class here (mirroring main.js's reflow + cleanup) fades the new shell in.
+ */
+function replayPageEnter() {
+  const root = document.getElementById("page-root");
+  if (!root || root.childElementCount === 0) return;
+  void root.offsetWidth; // force reflow so the 'from' keyframe plays
+  root.classList.add("page-transition");
+  setTimeout(() => root.classList.remove("page-transition"), 300);
 }
 
 async function renderGoldCharts(data) {
@@ -489,6 +534,7 @@ async function renderGoldCharts(data) {
 
   renderInto("price", {
     type: "line",
+    axisProfile: "price",
     data: {
       labels,
       datasets: [
@@ -500,37 +546,61 @@ async function renderGoldCharts(data) {
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } },
   });
-  renderInto("rsi", {
+  renderInto("vegas", {
     type: "line",
+    axisProfile: "price",
     data: {
       labels,
-      datasets: [lineDataset("RSI14", rsiSeries(candles, 14), "#5b8a83", { borderWidth: 1.4 })],
+      datasets: [
+        lineDataset("XAUT", priceSeries, "#1f1b16", { borderWidth: 1.2 }),
+        lineDataset("快轨 144", emaSeries(candles, 144), "#5b8a83", { borderWidth: 1.8 }),
+        lineDataset("快轨 169", emaSeries(candles, 169), "#5b8a83", { fill: "-1", backgroundColor: "rgba(91, 138, 131, 0.10)", borderWidth: 1.8 }),
+        lineDataset("慢轨 576", emaSeries(candles, 576), "#7c5fb0", { borderDash: [7, 4], borderWidth: 1.7 }),
+        lineDataset("慢轨 676", emaSeries(candles, 676), "#7c5fb0", { fill: "-1", backgroundColor: "rgba(124, 95, 176, 0.08)", borderDash: [7, 4], borderWidth: 1.7 }),
+      ],
     },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } },
+    options: { responsive: true, maintainAspectRatio: false },
   });
-  renderInto("bollinger", {
-    type: "line",
+  const macd = macdSeries(candles, 12, 26, 9);
+  renderInto("macd", {
+    type: "bar",
+    axisProfile: "centeredZero",
     data: {
       labels,
-      datasets: [lineDataset("%B", bollingerPctB(candles, 20, 2), "#b07558", { borderWidth: 1.2 })],
+      datasets: [
+        barDataset("柱状图", macd.hist, macd.hist.map((value) => value >= 0 ? "rgba(91, 138, 131, 0.55)" : "rgba(176, 117, 88, 0.48)"), { borderRadius: 2 }),
+        lineDataset("MACD", macd.line, "#5b8a83", { borderWidth: 1.8 }),
+        lineDataset("信号线", macd.signal, "#b8924a", { borderDash: [6, 4], borderWidth: 1.6 }),
+      ],
     },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: -0.2, max: 1.2 } } },
+    options: { responsive: true, maintainAspectRatio: false },
   });
   renderInto("volume", {
     type: "bar",
+    axisProfile: "volume",
     data: {
       labels,
       datasets: [barDataset("Volume", candles.map((c) => c.v ?? c.volume ?? 0), "rgba(91, 138, 131, 0.55)")],
     },
     options: { responsive: true, maintainAspectRatio: false },
   });
-  renderInto("drawdown", {
+  renderInto("bollinger", {
     type: "line",
+    axisProfile: "ratio",
     data: {
       labels,
-      datasets: [lineDataset("Drawdown", drawdownSeries(candles, 60), "#b07558", { borderWidth: 1.4 })],
+      datasets: [lineDataset("%B", bollingerPctB(candles, 20, 2), "#b07558", { borderWidth: 1.2 })],
     },
-    options: { responsive: true, maintainAspectRatio: false },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: -0.2, max: 1.2 } } },
+  });
+  renderInto("rsi", {
+    type: "line",
+    axisProfile: "oscillator",
+    data: {
+      labels,
+      datasets: [lineDataset("RSI14", rsiSeries(candles, 14), "#5b8a83", { borderWidth: 1.4 })],
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } },
   });
 }
 
@@ -569,6 +639,20 @@ function emaSeries(candles, n) {
   }
   return out;
 }
+
+function macdSeries(candles, fastPeriod, slowPeriod, signalPeriod) {
+  const fast = emaSeries(candles, fastPeriod);
+  const slow = emaSeries(candles, slowPeriod);
+  const line = fast.map((value, index) => value - slow[index]);
+  const k = 2 / (signalPeriod + 1);
+  const signal = [];
+  let previous = line[0] || 0;
+  line.forEach((value, index) => {
+    previous = index === 0 ? value : value * k + previous * (1 - k);
+    signal.push(previous);
+  });
+  return { line, signal, hist: line.map((value, index) => value - signal[index]) };
+}
 function rsiSeries(candles, n) {
   const out = [];
   for (let i = 0; i < candles.length; i++) {
@@ -598,17 +682,6 @@ function bollingerPctB(candles, n, k) {
   }
   return out;
 }
-function drawdownSeries(candles, n) {
-  const out = [];
-  for (let i = 0; i < candles.length; i++) {
-    const slice = candles.slice(Math.max(0, i - n + 1), i + 1).map((c) => c.c ?? c.close ?? 0);
-    const peak = Math.max(...slice, 1);
-    const last = candles[i].c ?? candles[i].close ?? 0;
-    out.push(((last - peak) / peak) * 100);
-  }
-  return out;
-}
-
 // ----- Post-mount styling helper (avoids inline style attributes) ----------
 
 function applyPostMountStyles() {
@@ -625,7 +698,9 @@ function applyPostMountStyles() {
 export async function renderGoldV5() {
   controller?.abort?.();
   controller = new AbortController();
-  setRoot(renderShell({ snapshot: { status: "loading" } }));
+  // The warming shell is structurally complete so SPA navigation gets an
+  // immediate stable workspace while the workbench request settles.
+  setRoot(renderShell({ snapshot: { status: "loading" }, chart_series_or_chart_token: null }));
   applyPostMountStyles();
   await loadData();
   applyPostMountStyles();

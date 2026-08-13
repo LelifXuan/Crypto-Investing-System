@@ -28,7 +28,10 @@ def test_structure_page_local_filters_only_rerender() -> None:
 
 def test_structure_page_recovers_a_missing_snapshot_once_on_open() -> None:
     source = STRUCTURE_PAGE.read_text(encoding="utf-8", errors="ignore")
-    load_data_start = source.index("async function loadData")
+    # 2026-08-13: loadData is no longer `async function loadData` — the
+    # compact redesign uses `function loadData({ forceRefresh } = {})` with
+    # the async refresh handled inside.
+    load_data_start = source.index("function loadData({ forceRefresh")
     # V1.5.x: loadData is now invoked via .catch() so the page
     # returns a controller object immediately and the load
     # either settles or aborts in the background. Either of
@@ -42,7 +45,9 @@ def test_structure_page_recovers_a_missing_snapshot_once_on_open() -> None:
     assert "state.recoveryKeys.add(recoveryKey)" in load_data_source
     assert "await api.refreshStructure(instrumentId, timeframe)" in load_data_source
     assert "force: true" in load_data_source
-    assert "async function loadData({ forceRefresh = false } = {})" in source
+    # 2026-08-13: loadData is no longer `async` at declaration — the
+    # recovery/refresh path is awaited internally (line ~46 above).
+    assert "function loadData({ forceRefresh = false } = {})" in source
 
 
 def test_structure_page_manual_refresh_uses_refresh_then_bundle_reload() -> None:

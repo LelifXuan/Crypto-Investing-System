@@ -28,10 +28,11 @@ def test_strategy_navigation_and_page_registration():
     main = (ROOT / "app/static/main.js").read_text(encoding="utf-8")
     router = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
 
-    assert page.rfind('data-page-link="ai-strategy"') > page.rfind(
-        'data-page-link="knowledge-base"'
+    assert 'data-page-link="ai-strategy"' in page
+    assert re.search(
+        r'"ai-strategy":\s*\(\)\s*=>\s*loadPageModule\("\./pages/strategy\.js\?v=[^"]+"\)',
+        main,
     )
-    assert '"ai-strategy": () => loadPageModule("./pages/strategy.js?v=trade-4h-v1")' in main
     assert "/strategy-page" in router
     assert '"ai-strategy"' in router
 
@@ -294,10 +295,29 @@ def test_strategy_scan_ranked_renders_directional_cards_only():
     assert "data-instrument" in ranked
     assert "data-timeframe" in ranked
     assert "direction_label" in ranked
-    assert "entry_zone" in ranked  # V1.8 replaced summary with levels
     assert "confidence" in ranked
     assert "risk_reward" in ranked
     assert "震荡行情" in ranked  # V1.8 empty-state copy
+
+
+def test_strategy_scan_ranked_uses_timeframes_and_never_fabricates_zero_rr():
+    """Ranked cards use concrete chart periods and reserve RR for valid ratios."""
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
+        encoding="utf-8"
+    )
+    assert all(label in ranked for label in ("周线", "日线", "4H"))
+    assert all(label not in ranked for label in ("战略级", "战术级", "执行级"))
+    assert "ratio > 0" in ranked
+    assert "盈亏比待确认" in ranked
+
+
+def test_strategy_scan_banner_and_ranking_share_visible_matrix_source():
+    """A stale ranked cache must not contradict the matrix shown to users."""
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    assert "const visibleMatrix = matrix.filter" in index
+    assert "const ranked = visibleMatrix" in index
+    assert "const oppCount = ranked.length" in index
+    assert "data.ranked?.length" not in index
 
 
 def test_strategy_scan_ranked_bind_clicks_route_to_onSelect():
@@ -468,8 +488,9 @@ def test_strategy_index_banner_distinguishes_pending_vs_ready_no_edge():
     assert ("数据补齐中" in index) or ("数据待补" in index), (
         "index.js must add a banner for the 'data still pending' case"
     )
-    # The cells_ready / cells_pending fields must be read from cache_meta
-    assert "cells_ready" in index or "cells_pending" in index
+    # Readiness is derived from the same visible matrix as the count.
+    assert 'item.cache_state === "fresh"' in index
+    assert '"missing", "warming", "error"' in index
 
 
 # ---------------------------------------------------------------------------

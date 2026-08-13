@@ -820,6 +820,42 @@ APPROVED_NATIVE_SELECT_FILES = {
 
 ---
 
+## 21. 知识百科词条内容审查（2026-08-13）
+
+> **触发**：用户对知识百科页词条内容提出质疑（典型示例：A股 ETF 词条的"适用场景/示例"被填入 BTC 语境，与主题无关）。
+> **范围**：`app/static/core/knowledge.js`（v1.10，145 词条）逐条提取 definition / summary / formula / thresholds 核对；关键错误与系统实际实现交叉验证（图表 id、后端 wall 信号、页面文案口径）。
+> **审查方法**：脚本提取全部 145 词条核心字段 + 浏览器实测页面渲染 + 与 `btc_derivatives.js` 图表 id / 文案对照。
+
+### 21.1 已修复的硬伤
+
+| # | 严重度 | 词条 | 问题 | 修复 |
+|---|---|---|---|---|
+| 1 | **P0** | put-wall | 对冲方向自相矛盾：definition 写"做市商卖出 Put 后需在现货**卖出**对冲"却结论"形成天然**买盘/支撑**" | 统一为"卖出 Put 后 Delta 为正、价格下行时**买入**标的降敞口 → 天然买盘/支撑" |
+| 2 | **P0** | call-wall | 对冲结论矛盾：definition 写"**买入**对冲"却结论"形成**天然卖压**" | 统一为"short call 上行时买入对冲 → 向上磁吸"，并加注系统口径（敏感区非确定阻力） |
+| 3 | **P1** | iorb_corridor | 利率走廊上下限颠倒：IORB 标为"走廊上限" | 纠正为地板体系：IORB=下限（floor）、贴现窗口=上限、ON RRP=额外地板；两个差值指标（EFFR−IORB / IORB−ON RRP）含义分开 |
+| 4 | **P1** | standing_repo_facility | SRF 错配 2008 年（SRF 2021 年才设立） | 改为 2023 年 SVB 贴现窗口真实案例，并注明 SRF 设立时间 |
+| 5 | **P2** | contango-backwardation 等 9 处 | 引用过期图表名 "IV Risk Premium History" | 统一改为页面实际图表名（期权风险图） |
+| 6 | **P2** | standard-expiry / strike-surface | "B Maturity Ladder" 笔误 | 改为 "Maturity Ladder" |
+| 7 | **P2** | bayesian_setup_probability | summary 宣称"评估真实胜率"与 risk_note"硬编码启发式"自相矛盾 | 措辞改为"用 Bayesian 结构整合信号质量，评估 setup 触发价值" |
+
+### 21.2 A股 ETF 兜底文案污染（用户直接反馈）
+
+**根因**：`knowledge.js` 的 `defaultUsefulWhen()` / `defaultExample()` 兜底函数——任何未写 `useful_when` / `example` 字段的词条都会自动生成**以 BTC 为主语**的模板文案。A股 ETF 板块 6 个词条全部未写这两个字段 → 全部被填入"BTC 风险偏好和 A 股 ETF 资金轮动背离…""例如 BTC 日线仍在震荡…"等与主题无关的语境。
+
+**修复（双层）**：
+1. 6 个 A股 ETF 词条（cash_flow_etf / halo_etf / ashare_etf_quote_source / etf_vs_perp_spot / dividend_cashflow / heavy_assets_low_obsolescence）**补写专属 `useful_when` + `example`**，以 A股 本体为主语。
+2. 兜底函数 ashare-etf 分支改为**中性语境**（去掉 BTC 主位），未来新增 ETF 词条即使漏写字段也不会再被污染。
+
+### 21.3 回归防护要点（新增内容必须遵守）
+
+1. **词条补写场景字段**：新增 `category: "ashare-etf"` 或 `page_refs` 含 `ashare-etf` 的词条，必须自带 `useful_when`（≥3 条）与 `example`，否则会被兜底模板污染。
+2. **对冲方向口诀**：做市商对冲方向 = 反向对冲自己卖出的期权 Delta——**short put（Delta 正）下行买、short call（Delta 负）上行买**；Put Wall 形成买盘/支撑，Call Wall 形成向上磁吸，都不是"压力/卖压"。
+3. **图表引用必须用真实 id**：词条内引用页面图表，以 `btc_derivatives.js` 的 `RISK_CHART_VIEWS` 键 / 实际渲染标题为准（如 `options_risk_premium_history` → 期权风险图），禁止使用历史/过期名称。
+4. **宏观术语以标准定义为准**：利率走廊是地板体系（IORB=下限）；SRF 是 2021 年后的工具，历史案例不得错配。
+5. **验证门禁**：改 `app/static/core/knowledge.js` 后必跑 `node --check` + `tests/test_knowledge*` 前端静态测试；内容错误靠审查，不靠测试兜底。
+
+---
+
 ## 附录 A：grep 结果与证据命令
 
 > 本附录是 §6 / §7 的全部 grep 命令与其原始计数，便于复核。

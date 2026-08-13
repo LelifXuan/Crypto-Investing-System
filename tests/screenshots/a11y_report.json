@@ -1,0 +1,544 @@
+{
+  "static_findings": [],
+  "per_page": [
+    {
+      "page_id": "market-analysis",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "aria_elements": 7,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "monitoring-overview",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        3
+      ],
+      "aria_elements": 6,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "market-structure",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        3
+      ],
+      "aria_elements": 14,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "market-events",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2
+      ],
+      "aria_elements": 5,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "macro-calendar",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2
+      ],
+      "aria_elements": 51,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "knowledge-base",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        1,
+        2,
+        3,
+        4,
+        4
+      ],
+      "aria_elements": 433,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "ashare-etf",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=etf-cash)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        },
+        {
+          "check": "form-label",
+          "severity": "WARN",
+          "detail": "<input type=number> missing label (id=)"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 18,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        3,
+        3,
+        3
+      ],
+      "aria_elements": 5,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "btc-derivatives",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2
+      ],
+      "aria_elements": 27,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "ai-strategy",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        1,
+        2,
+        2,
+        3,
+        4
+      ],
+      "aria_elements": 5,
+      "verdict": "WARN"
+    },
+    {
+      "page_id": "gold-allocation",
+      "findings": [
+        {
+          "check": "heading-hierarchy",
+          "severity": "WARN",
+          "detail": "First heading is h2, not h1"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '市场研究终端'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '研究'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — 'Crypto'"
+        },
+        {
+          "check": "color-contrast",
+          "severity": "WARN",
+          "detail": "Contrast 3.2:1 < 4.5:1 — '配置'"
+        }
+      ],
+      "fail_count": 0,
+      "warn_count": 5,
+      "img_count": 0,
+      "low_contrast_samples": 4,
+      "heading_levels": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        1
+      ],
+      "aria_elements": 14,
+      "verdict": "WARN"
+    }
+  ],
+  "summary": {
+    "total_pages": 10,
+    "pages_with_fails": 0,
+    "total_fail_findings": 0,
+    "total_warn_findings": 63,
+    "static_findings": 0
+  }
+}

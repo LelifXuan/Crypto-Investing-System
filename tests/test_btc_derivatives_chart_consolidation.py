@@ -170,11 +170,11 @@ def test_dashboard_schema_accepts_axes_layout_and_selection_metadata() -> None:
         + validated.chart_layout.cards["exchange_crowding_snapshot"].span
         == 12
     )
-    assert (
-        validated.chart_layout.cards["key_levels_history"].span
-        + validated.chart_layout.cards["options_risk_premium_history"].span
-        == 12
-    )
+    # 2026-08-13: key_levels_history owns the full options row (span 12,
+    # expiry anchors overlay), so options_risk_premium_history no longer
+    # shares the row with it.
+    assert validated.chart_layout.cards["key_levels_history"].span == 12
+    assert validated.chart_layout.cards["options_risk_premium_history"].span == 6
     assert validated.futures.charts["leverage_pressure_timeline"].axes["y_price"].profile == "price"
     assert validated.selection.expiry_mode == "constant_maturity"
 

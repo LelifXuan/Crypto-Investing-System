@@ -306,6 +306,7 @@ def test_extract_scan_item_populates_cache_state():
     payload = {
         "trade_decision": {"side": "WAIT", "risk_reward": {}},
         "status": "ready",
+        "market_decision_snapshot": {"snapshot_id": "snapshot-ready"},
         "signal_coverage": [
             {"module": "price_structure", "confidence": 70.0},
             {"module": "macro_regime", "confidence": 30.0},
@@ -345,6 +346,7 @@ def test_extract_scan_item_marks_ready_with_warnings_as_fresh():
     payload = {
         "trade_decision": {"side": "WAIT", "risk_reward": {}},
         "status": "ready_with_warnings",
+        "market_decision_snapshot": {"snapshot_id": "snapshot-warning"},
     }
     item = _extract_scan_item(payload, "btc-usdt-perp", "btc-usdt-perp", "1d")
     assert item.cache_state == "fresh"
@@ -426,6 +428,7 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
                 "recommended_leverage": 0,
             },
             "status": cell_status,
+            "market_decision_snapshot": {"snapshot_id": f"snapshot-{idx}"},
             "signal_coverage": [
                 {"module": "price_structure", "confidence": 50.0 + idx},
             ],

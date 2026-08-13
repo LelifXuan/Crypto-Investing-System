@@ -77,19 +77,15 @@ def test_degraded_payload_shows_yellow_banner_not_red(base_url):
         page.goto(f"{base_url}/strategy-page", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
 
-        # Yellow degraded banner is visible
-        degraded = page.locator(".strategy-degraded-banner")
-        # Either banner is present OR data is rendered with degraded status — accept either
-        if degraded.count() == 0:
-            # Banner not shown because frontend fell through to model.degraded path
-            # Check status banner shows degraded message
-            status = page.locator("#strategy-status").inner_text()
-            assert "降级" in status or "degraded" in status.lower(), (
-                f"Expected degraded status message, got: {status}"
-            )
-        else:
-            # Banner is shown — verify it has yellow styling
-            assert degraded.is_visible()
+        first_cell = page.locator(".scan-cell-btn:not([disabled])").first
+        if first_cell.count():
+            first_cell.click()
+            pending = page.locator(".strategy-detail-pending")
+            pending.wait_for(state="visible", timeout=20_000)
+            assert pending.is_visible()
+            assert "策略详情尚未形成" in pending.inner_text()
+            assert page.locator(".strategy-market-operation").count() == 0
+            assert page.locator(".strategy-decision-audit").count() == 0
 
         # Red error-state is NOT present
         error_state = page.locator(".error-state")

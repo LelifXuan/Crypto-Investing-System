@@ -3,6 +3,15 @@ import { escapeHtml, formatDateTime, formatNumber, setRoot, statusBanner } from 
 import { destroyChartsForPage, lineDataset, renderChart } from "../ui/charts.js";
 import { mountDropdown } from "../ui/dropdown.js";
 
+// §Monet palette lock — read from CSS so the equity-curve chart and the
+// 0-axis baseline stay aligned with the rest of the site even if the
+// theme is later retuned in styles.css :root.
+function _monetToken(name, fallback) {
+  if (typeof window === "undefined" || !window.getComputedStyle) return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 const STORAGE_KEY = "ashare.etf.dca.rebalance.v1";
 
 const HALO_ETFS = [
@@ -37,7 +46,7 @@ let state = readSavedState();
 
 function defaultState() {
   return {
-    mode: "monthly_dca",
+    mode: "weekly_dca_monthly_rebalance",
     cashToInvest: 5000,
     positions: Object.fromEntries(
       HALO_ETFS.map((item) => [item.symbol, { shares: 0, costPrice: 0, currentPrice: "" }]),
@@ -57,7 +66,7 @@ function readSavedState() {
     );
     return {
       ...base,
-      mode: parsed.mode === "quarterly_rebalance" ? "quarterly_rebalance" : "monthly_dca",
+      mode: parsed.mode === "monthly_dca_quarterly_rebalance" ? "monthly_dca_quarterly_rebalance" : "weekly_dca_monthly_rebalance",
       cashToInvest: Number.isFinite(Number(parsed.cashToInvest)) ? Number(parsed.cashToInvest) : base.cashToInvest,
       positions: {
         ...base.positions,
@@ -106,6 +115,16 @@ function money(value, digits = 2) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return formatNumber(number, digits);
+}
+
+// Like ``money`` but always emits a sign on non-zero values, so a
+// strategy-vs-lump-sum 权益差 of -5,000 reads as "-5,000" (策略跑输)
+// rather than "5,000" which could be misread as a plain value.
+function moneySigned(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  const sign = number > 0 ? "+" : "";
+  return `${sign}${formatNumber(number, 2)}`;
 }
 
 function pct(value) {
@@ -158,7 +177,7 @@ function etfStateTextClass(state) {
 }
 
 function modeLabel(mode = state.mode) {
-  return mode === "quarterly_rebalance" ? "季度再平衡" : "月度定投";
+  return mode === "monthly_dca_quarterly_rebalance" ? "月度定投+季度调仓" : "周度定投+月度调仓";
 }
 
 function sourceStatusLabel(payload) {
@@ -183,9 +202,9 @@ function renderShell() {
 // ETF equity curve module
 //
 // Two modes (toggled in the UI):
-//   - simulation (default): start at 0, walk forward from the chosen month
-//     applying monthly DCA + bandwidth-triggered quarterly rebalances
-//     (HALO Rolling-252-Cov strategy replay).
+//   - simulation (default): replay the 资金投入 strategy (定稿 2026-08-06):
+//     initial build at the confirmed target weights, then monthly DCA
+//     (only-buys, under-allocated first) + quarter-end bandwidth review.
 //   - holdings: faithful mark-to-market replay of the user's current
 //     portfolio from a chosen start day to today (existing endpoint,
 //     kept for users who want to see their actual PnL).
@@ -194,16 +213,14 @@ function renderShell() {
 let equityCurveController = null;
 let equityCurveCache = null;
 let equityCurveMode = "simulation";
+// 定投频率 (说明书§2.2: 周定投与月定投只是资金到账频率的区别;首次建档后固定)。
+// 完整策略按周度定投执行(2026-08-07):HALO 六只周定投+季末带宽调仓,现金流
+// ETF 周定投只买不卖。
+let equityCurveFrequency = "week";
 
 function _todayIso() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
-}
-
-function _defaultSimulationMonth() {
-  const today = new Date();
-  // 1 year back as YYYY-MM string (month-precision input)
-  return `${today.getFullYear() - 1}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function _defaultEquityFromDate() {
@@ -227,31 +244,63 @@ function _buildSimulationPayload() {
   }
   // Convert YYYY-MM → first day of month for the API
   const fromMonthIso = `${fromMonth}-01`;
+  // 初始建仓资金 + 每期定投金额: read the inputs, fall back to the defaults
+  // (10000 / 1000) when absent or non-finite.
+  const capitalRaw = document.getElementById("etf-equity-initial-capital")?.value;
+  let initialCapital = "10000";
+  if (capitalRaw !== undefined && capitalRaw !== "") {
+    const parsed = Number(capitalRaw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      initialCapital = String(Math.round(parsed));
+    }
+  }
+  const monthlyRaw = document.getElementById("etf-equity-monthly-amount")?.value;
+  let periodAmount = "1000";
+  if (monthlyRaw !== undefined && monthlyRaw !== "") {
+    const parsed = Number(monthlyRaw);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      periodAmount = String(Math.round(parsed));
+    }
+  }
+  // 定投频率: 月定投(默认) 或 周定投 — 只是资金到账频率的区别(说明书§2.2/表0)。
+  let frequency = "month";
+  if (equityCurveFrequency === "week" || equityCurveFrequency === "month") {
+    frequency = equityCurveFrequency;
+  } else {
+    const freqEl = document.getElementById("etf-equity-frequency");
+    if (freqEl) {
+      const v = freqEl.dataset.frequency || freqEl.dataset.value;
+      if (v === "week" || v === "month") frequency = v;
+    }
+  }
   // Read the rebalance offset input (number of trading days between
-  // month-end DCA and quarter-end rebalance). Clamp to backend range
-  // [0, 20]. Empty / NaN falls back to the backend default of 5.
+  // month-end DCA and quarter-end bandwidth review). The spec says the
+  // review happens on the funding day or the next 1–2 trading days, so
+  // clamp to the backend range [0, 5]. Empty / NaN falls back to 0.
   const offsetInput = document.getElementById("etf-equity-offset-days")?.value;
-  let rebalanceOffsetDays = 5;
+  let rebalanceOffsetDays = 0;
   if (offsetInput !== undefined && offsetInput !== "") {
     const parsed = Number(offsetInput);
     if (Number.isFinite(parsed)) {
-      rebalanceOffsetDays = Math.max(0, Math.min(20, Math.round(parsed)));
+      rebalanceOffsetDays = Math.max(0, Math.min(5, Math.round(parsed)));
     }
   }
   return {
     from_month: fromMonthIso,
     to_date: _todayIso(),
     params: {
-      dca_lots_halo: 1,
-      dca_lots_cashflow: 1,
+      initial_capital: initialCapital,
+      period_amount: periodAmount,
+      frequency,
+      // 完整策略(2026-08-07):每周资金按 HALO:现金流 = cashflow_ratio:1
+      // 拆分(默认 6:1)。6/7 投入 HALO 六只(周定投+季末带宽调仓),1/7
+      // 投入现金流 ETF(159201,周定投只买不卖、永不调仓)。
+      cashflow_ratio: 6,
       lot_size: 100,
-      rebalance_bandwidth: "0.20",
-      single_weight_cap: "0.25",
-      commodity_cap: "0.35",
-      stability_floor: "0.25",
-      dianxin_cap: "0.12",
-      friction_rate: "0.001",
-      iterations: 15,
+      // Target weights / bandwidth / fees stay at the backend defaults
+      // (研究确认的表1 权重;带宽 max(权重×20%, 2.5pp);佣金万2.5、最低
+      // 佣金 5 元、滑点 0.1%) — the UI intentionally doesn't re-expose
+      // the research knobs, per spec §7 (研究测算不进入正式执行文件).
       rebalance_offset_days: rebalanceOffsetDays,
     },
   };
@@ -291,21 +340,46 @@ function _buildEquityPayload() {
 function _renderEquitySummaryCards(summary, meta, mode) {
   if (mode === "simulation") {
     const rebalances = summary.rebalance_count ?? 0;
+    const topups = summary.quarterly_topup_count ?? 0;
     const months = summary.months_simulated ?? 0;
+    // Present-value comparison (2026-08-07): the three headline numbers are
+    // all money, so the strategy-vs-buy-and-hold gap is readable at a glance
+    // without normalising to a return percentage.
+    const excess = Number(summary.final_total_value) - Number(summary.lump_sum_final_value);
+    // 2026-08-07: 5 stats in one row. 累计投入 promotes from a sub-line
+    // on the strategy card to its own headline stat — it is the
+    // denominator for every return metric and deserves first-class
+    // visibility. The strategy card drops the redundant 累计投入 figure
+    // from its sub (keeps 现金 + 调仓次数) so the two cards don't echo.
     const cards = [
       {
-        label: "当前组合市值",
+        label: "策略权益",
         value: money(summary.final_total_value),
-        sub: `累计投入 ${money(summary.final_cost_value)}`,
+        sub: `现金 ${money(summary.final_cash_value)} · ${rebalances} 次调仓 · ${topups} 次季末加码`,
       },
       {
-        label: "累计收益率",
-        value: pct(summary.total_return_pct),
-        sub: `区间 ${months} 个月 · ${rebalances} 次调仓`,
+        label: "策略累计投入",
+        value: money(summary.final_cost_value),
+        // 月均投入 ≈ 累计投入 / 区间月数;周度策略下"月均"是有意义的概览数字。
+        sub: months > 0
+          ? `月均 ${money(Number(summary.final_cost_value) / months)} · ${months} 个月`
+          : `${months} 个月`,
       },
       {
-        label: "一次性投入(对比)",
+        label: "现金流ETF 权益",
+        value: money(summary.final_cashflow_value),
+        sub: `份额 ${summary.final_cashflow_shares ?? 0} · 池内现金 ${money(summary.final_cashflow_cash)}`,
+      },
+      {
+        label: "一次性投入 权益",
         value: money(summary.lump_sum_final_value),
+        sub: `区间 ${months} 个月`,
+      },
+      {
+        // 旧 label "权益差(策略−一次性)" 的 em-dash 与汉字"一"同形,扫一眼分不清;
+        // 改用 ASCII "vs" + 醒目色块避免歧义。
+        label: "策略 vs 一次性",
+        value: moneySigned(excess),
         sub: `DCA 相对 ${pctSigned(summary.lump_sum_vs_dca_pct)}`,
       },
     ];
@@ -324,7 +398,7 @@ function _renderEquitySummaryCards(summary, meta, mode) {
   // holdings (legacy equity curve)
   const cards = [
     {
-      label: "当前总市值",
+      label: "当前总权益",
       value: money(summary.current_total_value),
       sub: `起 ${money(summary.starting_total_value)}`,
     },
@@ -368,6 +442,25 @@ function _renderEquityCaption(meta, warnings, mode) {
   return `数据源 ${source} · 覆盖 ${coverage} · 抓取 ${fetched}${missing}${missingSymbols}${warn}`;
 }
 
+// Read the CURRENT equity-control input values before the section is rebuilt
+// from innerHTML. Returns null for a control that doesn't exist yet (first
+// render / mode not active), so callers fall back to their defaults. This
+// preserves user edits across the post-fetch re-render instead of silently
+// resetting them to the template literals.
+function _captureEquityInputValues(root) {
+  const get = (id) => {
+    const el = root?.querySelector ? root.querySelector(`#${id}`) : null;
+    return el ? el.value : null;
+  };
+  return {
+    fromMonth: get("etf-equity-from-month"),
+    fromDate: get("etf-equity-from-date"),
+    initialCapital: get("etf-equity-initial-capital"),
+    periodAmount: get("etf-equity-monthly-amount"),
+    offsetDays: get("etf-equity-offset-days"),
+  };
+}
+
 function renderEquityCurve(data, mode) {
   const root = document.getElementById("etf-equity-curve");
   if (!root) return;
@@ -382,23 +475,51 @@ function renderEquityCurve(data, mode) {
         ? "数据不完整"
         : "等待历史数据";
 
-  // Default input values from cache or sensible default
-  // For simulation mode: prefer the backend's halos_listing_start (the
-  // first month when EVERY HALO ETF is trading) over a hardcoded 1y-ago.
+  // Preserve the user's typed control values across re-renders. This section
+  // is rebuilt from innerHTML on every response, so read the CURRENT inputs
+  // first and reuse them as the new defaults — otherwise the hard-coded
+  // template values (10000 / 1000 / 0) silently discard whatever the user
+  // entered for 初始建仓 / 每期定投 / 调仓延后.
+  const prevInputs = _captureEquityInputValues(root);
+
+  // Default input values from cache or sensible default.
+  // Simulation mode: the input defaults to the backend's
+  // ``halos_listing_start`` (the first trading day EVERY HALO ETF has
+  // data — the six-all-present day, e.g. 2023-07). On the very first
+  // render there is no cache yet, so the input is left EMPTY and
+  // ``_buildSimulationPayload`` issues a wide discovery call
+  // (from_month 2020-01) to learn that date; once the meta arrives the
+  // next render fills the input with it and a follow-up fetch replays
+  // from there (see loadEquityCurve).
   const haloListing = equityCurveCache?.meta?.halos_listing_start
     ? String(equityCurveCache.meta.halos_listing_start).slice(0, 7)
     : null;
-  const fromMonthDefault = equityCurveCache?.from_month
-    ? equityCurveCache.from_month.slice(0, 7)
-    : (haloListing || _defaultSimulationMonth());
-  const fromDateDefault = equityCurveCache?.from_date || _defaultEquityFromDate();
+  const fromMonthDefault = (prevInputs.fromMonth || "")
+    || haloListing
+    || (equityCurveCache?.from_month
+      ? equityCurveCache.from_month.slice(0, 7)
+      : "");
+  const fromDateDefault = prevInputs.fromDate
+    || equityCurveCache?.from_date
+    || _defaultEquityFromDate();
+  // Money controls: keep the user's edits (captured above); fall back to the
+  // spec defaults only when the input didn't exist yet (first render).
+  const capitalDefault = prevInputs.initialCapital !== null
+    ? prevInputs.initialCapital
+    : "10000";
+  const periodDefault = prevInputs.periodAmount !== null
+    ? prevInputs.periodAmount
+    : "1000";
+  const offsetDefault = prevInputs.offsetDays !== null
+    ? prevInputs.offsetDays
+    : "0";
 
   root.innerHTML = `
     <div class="card etf-equity-curve">
       <header class="etf-equity-head">
         <div>
           <p class="eyebrow">组合权益曲线 · ${mode === "simulation" ? "策略模拟" : "持仓回放"}</p>
-          <h2>${mode === "simulation" ? "HALO 滚动 252 日协方差 · 月度定投 + 季度再平衡" : "自选起始日 → 至今的市值轨迹"}</h2>
+          <h2>${mode === "simulation" ? "HALO & 现金流 ETF" : "自选起始日 → 至今的权益轨迹"}</h2>
         </div>
         <div class="etf-equity-controls">
           <div class="etf-equity-mode">
@@ -417,12 +538,38 @@ function renderEquityCurve(data, mode) {
                    step="any"
                    value="${escapeHtml(fromMonthDefault)}">
           </label>
+          <label class="etf-equity-from">
+            <span>初始建仓(元)</span>
+            <input type="number" id="etf-equity-initial-capital"
+                   min="1" step="100" value="${escapeHtml(capitalDefault)}"
+                   title="首次批准投入的资金,按目标权重一次性建仓(说明书 §2.1)。">
+          </label>
+          <label class="etf-equity-from">
+            <span>每期定投(元)</span>
+            <input type="number" id="etf-equity-monthly-amount"
+                   min="0" step="100" value="${escapeHtml(periodDefault)}"
+                   title="每期定投金额(周/月);按 6:1 拆分:6/7 投入 HALO 六只(周定投+季末调仓),1/7 投入现金流 ETF(159201,只买不卖)。">
+          </label>
+          <label class="etf-equity-from">
+            <span>定投频率</span>
+            <button class="dropdown etf-equity-freq-btn"
+                    id="etf-equity-frequency"
+                    data-dropdown-id="etf-equity-frequency"
+                    type="button"
+                    aria-label="定投频率"
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+              <span class="dropdown-icon" data-slot="icon" hidden></span>
+              <span class="dropdown-label">${equityCurveFrequency === "week" ? "周定投" : "月定投"}</span>
+              <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+          </label>
           <label class="etf-equity-offset">
             <span>调仓延后(交易日)</span>
             <input type="number" id="etf-equity-offset-days"
-                   min="0" max="20" step="1"
-                   value="5"
-                   title="月度 DCA 之后 N 个交易日再调仓；0=同日；5=推荐。">
+                   min="0" max="5" step="1"
+                   value="${escapeHtml(offsetDefault)}"
+                   title="季末定投计入后,带宽复核可延后 0–2 个交易日;不机械等 5/10 日(说明书 §5.6)。">
           </label>`
               : `
           <label class="etf-equity-from">
@@ -437,6 +584,7 @@ function renderEquityCurve(data, mode) {
             生成曲线
           </button>
         </div>
+        ${mode === "simulation" ? `<p class="etf-equity-strategy-note">资金按 6:1 分配至 HALO 六只与现金流 ETF（159201，仅买不卖）</p>` : ""}
       </header>
       <div class="etf-equity-stats">
         ${_renderEquitySummaryCards(summary, meta, mode)}
@@ -471,6 +619,29 @@ function renderEquityCurve(data, mode) {
     if (monthInput) {
       monthInput.addEventListener("change", () => void loadEquityCurve());
     }
+    const capitalInput = document.getElementById("etf-equity-initial-capital");
+    if (capitalInput) {
+      capitalInput.addEventListener("change", () => void loadEquityCurve());
+    }
+    const monthlyInput = document.getElementById("etf-equity-monthly-amount");
+    if (monthlyInput) {
+      monthlyInput.addEventListener("change", () => void loadEquityCurve());
+    }
+    const freqInput = document.getElementById("etf-equity-frequency");
+    if (freqInput) {
+      mountDropdown(freqInput, {
+        items: [
+          { value: "month", label: "月定投" },
+          { value: "week", label: "周定投" },
+        ],
+        value: equityCurveFrequency,
+        placeholder: "选择频率",
+        onChange: (v) => {
+          equityCurveFrequency = v === "week" ? "week" : "month";
+          void loadEquityCurve();
+        },
+      });
+    }
     const offsetInput = document.getElementById("etf-equity-offset-days");
     if (offsetInput) {
       offsetInput.addEventListener("change", () => void loadEquityCurve());
@@ -492,9 +663,39 @@ function renderEquityCurve(data, mode) {
 //   Strategy was topping up underweight positions.
 // - dominatedBy === "neutral": equal counts or single-side → muted grey.
 const REBALANCE_LINE_COLORS = {
-  sell: "rgba(190, 90, 60, 0.7)",
-  buy: "rgba(80, 140, 110, 0.7)",
-  neutral: "rgba(120, 120, 120, 0.55)",
+  // §Monet palette lock: sell → --bearish (#b07558), buy → --accent (#5b8a83),
+  // neutral → --neutral (#7d8893). Aligns with monitoring/analysis/btc charts.
+  sell: "rgba(176, 117, 88, 0.7)",
+  buy: "rgba(91, 138, 131, 0.7)",
+  neutral: "rgba(125, 136, 147, 0.55)",
+};
+
+// Monet-palette tokens resolved at render time so any future theme
+// retune in styles.css propagates here. Fallbacks match :root in
+// styles.css (Monet-aligned palette block) so a stale computed style
+// still produces a sensible colour.
+const EQUITY_COLORS = {
+  primary:        _monetToken("--accent", "#5b8a83"),           // --bullish / --accent
+  primarySoft:    _monetToken("--bullish-soft", "rgba(91, 138, 131, 0.18)"),
+  bearish:        _monetToken("--bearish", "#b07558"),          // --bearish
+  bearishSoft:    _monetToken("--bearish-soft", "rgba(176, 117, 88, 0.18)"),
+  neutral:        _monetToken("--neutral", "#7d8893"),          // --neutral
+  neutralSoft:    _monetToken("--neutral-soft", "rgba(125, 136, 147, 0.14)"),
+  // Fill colour for the strategy-market-value area UNDER the curve
+  // (changed 2026-08-07 from --bullish-soft to a neutral tone so the
+  // weekly contrast bars sit on a non-tinted canvas; with a teal fill,
+  // "up" bars disappeared into the fill and the strategy-vs-lump-sum
+  // signal was unreadable).
+  fillArea:       _monetToken("--neutral-soft", "rgba(125, 136, 147, 0.14)"),
+  // Weekly contrast-bar fills use SOLID palette anchors at higher
+  // alpha (0.55) so the strategy-vs-lump-sum signal is visible at
+  // chart-thumbnail size. The legacy --*-soft tokens at alpha 0.18
+  // were visually indistinguishable from the neutral fill area.
+  weeklyUpFill:   "rgba(91, 138, 131, 0.55)",                   // 策略赢 → 青绿
+  weeklyDownFill: "rgba(176, 117, 88, 0.55)",                   // 策略输 → 暖棕
+  weeklyEvenFill: "rgba(125, 136, 147, 0.45)",                  // 持平 → 中性
+  referenceLine:  _monetToken("--warning", "#b8924a"),          // --warning / --warm
+  zeroBaseline:   _monetToken("--chart-reference-line", "rgba(83, 99, 108, 0.72)"),
 };
 
 function _buildRebalanceByDate(events) {
@@ -543,60 +744,93 @@ function _renderEquityChart(data, mode) {
   destroyChartsForPage("ashare-etf-equity-");
   if (!data) return;
 
+  // Weekly x-axis granularity: when the backend emits a weekly
+  // mark-to-market trail, prefer it over the legacy monthly labels so
+  // the equity curve and the weekly bars line up tick-for-tick.
+  const weeklySeries = Array.isArray(data.weekly_series) && data.weekly_series.length
+    ? data.weekly_series
+    : null;
+  const weeks = Array.isArray(data.weeks) && data.weeks.length
+    ? data.weeks
+    : null;
+
   let labels;
   let datasets;
   let annotations = [];
   let rebalanceByDate = new Map();
 
   if (mode === "simulation") {
-    labels = (data.months || []).map((d) => String(d));
-    const costValue = (data.series || []).map((p) => Number(p.cost_value));
-    // Cash-on-cash returns from the backend (decimal strings, e.g.
-    // "0.0523" = +5.23%). The DCA return and the lump-sum benchmark
-    // return both start at ~0 on from_month and pivot on the same
-    // axis, so the user can read the chart as "who is winning and
-    // by how much" without squinting at absolute money. The raw
-    // lump_sum_value (absolute money) is still surfaced in the stat
-    // cards below — see _renderEquitySummaryCards.
-    const dcaReturnPct = (data.series || []).map(
-      (p) => Number(p.return_pct || 0),
-    );
-    const lumpSumReturnPct = (data.series || []).map(
-      (p) => Number(p.lump_sum_return_pct || 0),
-    );
+    // Prefer weekly granularity when the backend provides it (2026-08-07):
+    // the equity curve, the rebalance annotations, and the weekly bars
+    // all line up at weekly x-axis ticks so the user sees one bar per
+    // ISO week. Falls back to monthly labels if no weekly trail is
+    // present (legacy clients / cached responses).
+    if (weeklySeries && weeks) {
+      labels = weeks.map((d) => String(d));
+    } else {
+      labels = (data.months || []).map((d) => String(d));
+    }
+    const srcSeries = weeklySeries || data.series || [];
+    const costValue = srcSeries.map((p) => Number(p.cost_value));
+    // Present-value curves (2026-08-07): the strategy's total market value
+    // vs the same-cash lump-sum benchmark vs the cumulative invested capital.
+    // All three are money on one yuan axis, so the DCA-vs-buy-and-hold gap is
+    // directly comparable (the old return-percentage pair was dominated by
+    // the early lump-sum deployment and looked near-identical to the
+    // benchmark). The strategy series is the FULL strategy — initial build +
+    // 周/月定投 + 季末带宽调仓 — not a plain DCA line.
+    const strategyValue = srcSeries.map((p) => Number(p.total_value || 0));
+    const lumpSumValue = srcSeries.map((p) => Number(p.lump_sum_value || 0));
     if (!labels.length) return;
     datasets = [
-      lineDataset("定投收益率", dcaReturnPct, "rgba(31, 42, 58, 0.78)", {
+      // Full-strategy present value — --accent (Monet teal), matching the
+      // headline curve colour of the monitoring/analysis/btc charts.
+      lineDataset("策略权益", strategyValue, EQUITY_COLORS.primary, {
         fill: "origin",
-        backgroundColor: "rgba(110, 155, 148, 0.18)",
+        // 2026-08-07: switched from --bullish-soft to a neutral fill
+        // (see EQUITY_COLORS.fillArea comment) so the weekly contrast
+        // bars on top of the strategy curve are readable.
+        backgroundColor: EQUITY_COLORS.fillArea,
         borderWidth: 2.6,
         tension: 0.18,
-        yAxisID: "y",
       }),
-      // 累计投入 stays as an absolute-amount reference line on the
-      // right y-axis so the user can see DCA cadence alongside the
-      // percentage curves without losing the money context.
-      lineDataset("累计投入", costValue, "rgba(110, 90, 60, 0.7)", {
+      // 累计投入 reference line — how much capital was actually deployed
+      // (initial + every 定投), so the gap to the strategy value reads as
+      // the unrealised gain. --warning (warm amber) keeps it distinct.
+      lineDataset("累计投入", costValue, EQUITY_COLORS.referenceLine, {
         borderDash: [6, 4],
         borderWidth: 1.8,
         tension: 0.1,
-        yAxisID: "y1",
       }),
+      // Buy-and-hold benchmark — same-cash lump sum opened on from_month,
+      // never rebalanced.
+      // 2026-08-07: bumped to a denser stroke (--info blue, larger dash
+      // gap, 2.4px width) so the curve survives the weekly-x-axis
+      // view. In the legacy monthly view a 1.6px [2,3] amber dash was
+      // readable; under the weekly view the lump-sum curve sits in the
+      // bottom ~5% of the chart range (the cashflow-pool value starts
+      // at -658, the y-axis therefore extends to ≈ -12895, and the
+      // cashflow-only portion of the lump-sum value hovers within a
+      // 17px band at the chart bottom) so the old thin amber dashed
+      // line was invisible. The blue dash is also visually distinct
+      // from the cumulative-cost line (which stays amber) so the two
+      // reference lines are easy to tell apart.
       lineDataset(
-        "一次性投入 收益率",
-        lumpSumReturnPct,
-        "rgba(140, 100, 60, 0.85)",
+        "一次性投入 权益",
+        lumpSumValue,
+        _monetToken("--info", "#6b86a8"),
         {
-          borderDash: [2, 3],
-          borderWidth: 1.6,
+          borderDash: [8, 5],
+          borderWidth: 2.4,
           tension: 0.0,
-          yAxisID: "y",
         },
       ),
     ];
     // Annotate rebalance events with vertical dashed lines. The referenceLines
     // plugin finds the x position by label match (string compare); we pass
-    // the date string verbatim so the dashed line lands on the exact month.
+    // the date string verbatim so the dashed line lands on the exact
+    // funding date (matches either the weekly tick or the monthly tick
+    // according to the chart's x-axis granularity).
     rebalanceByDate = _buildRebalanceByDate(data.events);
     annotations = Array.from(rebalanceByDate.entries())
       .filter(([d]) => labels.includes(d))
@@ -608,68 +842,78 @@ function _renderEquityChart(data, mode) {
           || REBALANCE_LINE_COLORS.neutral,
         width: 1.6,
         label: "调仓",
-      }))
-      .concat([{
-        // Zero baseline on the percentage axis so positive / negative
-        // returns are immediately readable.
-        type: "horizontalLine",
-        axis_id: "y",
-        y: 0,
-        color: "rgba(120, 120, 120, 0.45)",
-        width: 1.0,
-        dash: [4, 4],
-      }]);
+      }));
   } else {
     // Holdings (legacy equity-curve endpoint payload)
     labels = (data.labels || []).map((d) => String(d));
-    const totalValue = (data.total_value || []).map((v) => Number(v));
+const totalValue = (data.total_value || []).map((v) => Number(v));
     if (!labels.length) return;
     datasets = [
-      lineDataset("总市值", totalValue, "rgba(31, 42, 58, 0.78)", {
+      // Holdings-mode legacy curve — same Monet teal as the DCA mode
+      // so switching between simulation / holdings doesn't recolour
+      // the headline curve.
+      lineDataset("总权益", totalValue, EQUITY_COLORS.primary, {
         fill: "origin",
-        backgroundColor: "rgba(110, 155, 148, 0.18)",
+        // Same neutral fill as the simulation curve (2026-08-07) so
+        // weekly contrast bars / legend swatches stay consistent
+        // across modes.
+        backgroundColor: EQUITY_COLORS.fillArea,
         borderWidth: 2.6,
         tension: 0.18,
       }),
     ];
   }
 
+  // Build weekly bars overlay items: one bar per ISO-week x-position,
+  // coloured by strategy-vs-lump-sum return-pct delta. The plugin reads
+  // strategyValue from datasets[0].data[index] (the 策略权益 curve) so
+  // each bar is automatically clamped to live INSIDE the strategy
+  // market-value fill area (top edge = curve, bottom edge = y=0).
+  let weeklyBarsItems = [];
+  let weeklyByDate = new Map();
+  if (mode === "simulation" && weeklySeries && weeks) {
+    weeklyBarsItems = weeklySeries.map((p, i) => {
+      const dateStr = String(weeks[i]);
+      const diffPct = Number(p.return_pct || 0) - Number(p.lump_sum_return_pct || 0);
+      return { x: dateStr, diffPct };
+    });
+    weeklySeries.forEach((p, i) => {
+      const dateStr = String(weeks[i]);
+      weeklyByDate.set(dateStr, {
+        strategy_pct: Number(p.return_pct || 0),
+        lump_pct: Number(p.lump_sum_return_pct || 0),
+        diff_pct: Number(p.return_pct || 0) - Number(p.lump_sum_return_pct || 0),
+      });
+    });
+  }
+
   renderChart("ashare-etf-equity-canvas", canvas, {
     type: "line",
-    // 2026-08-05: dual-axis yield view. The earlier ``axisProfile: "price"``
-    // + manual ``options.scales.y`` path only created a single ``y`` scale,
-    // so the absolute-yuan ``累计投入`` dataset (bound to ``y1``) was
-    // silently coerced onto the same axis as the two percent curves.
-    // Chart.js then auto-fit the domain to the absolute yuan range
-    // (0–50万) and squashed the percent curves flat against zero. The
-    // ``axes:`` path produces one independent scale per axisId, so the
-    // DCA / lump-sum return curves stay readable while the cumulative
-    // cost reference line stays in yuan.
+    // 2026-08-07: present-value view. All three datasets are money on a
+    // single yuan axis — no more percent axis (the old dual-axis view paired
+    // a percent axis with a yuan ``y1``; every curve now shares the yuan
+    // scale so the strategy-vs-benchmark gap is directly readable).
     axes: {
       y: {
-        profile: "percent",
-        position: "left",
-        value_format: "percent",
-        padding_ratio: 0.12,
-      },
-      y1: {
-        // 元 label via ``value_format: "integer"`` — keeps the right
-        // axis compact using the standard ``formatChartValue`` pipeline
-        // (renders ``12,482``). The earlier ``tick_callback`` for the
-        // 元 → 万元 transform was correctly wired into
-        // ``buildAdaptiveScaleOptionsForAxes`` but the resulting
-        // per-scale ticks array came back empty in the running chart,
-        // so the simpler unit path is the safer default. The prefix
-        // ¥ is added by the static guard; the runtime formatter stays
-        // locale-neutral.
+        // 元 label via ``value_format: "integer"`` — keeps the axis compact
+        // using the standard ``formatChartValue`` pipeline (renders
+        // ``12,482``). The prefix ¥ is added by the static guard; the
+        // runtime formatter stays locale-neutral.
         profile: "raw",
-        position: "right",
+        position: "left",
         value_format: "integer",
-        grid: false,
         padding_ratio: 0.06,
       },
     },
     annotations,
+    weeklyBars: weeklyBarsItems,
+    weeklyBarsOptions: {
+      upFill: EQUITY_COLORS.weeklyUpFill,    // 策略赢 → 青绿 (alpha 0.55)
+      downFill: EQUITY_COLORS.weeklyDownFill, // 策略输 → 暖棕 (alpha 0.55)
+      evenFill: EQUITY_COLORS.weeklyEvenFill, // 持平 → 中性灰 (alpha 0.45)
+      threshold: 0.005,                      // ±0.5% 死区
+      barWidth: 0.7,                         // 占类别宽度 70%
+    },
     data: { labels, datasets },
     options: {
       // Forward the rebalance annotations to the custom ``referenceLines``
@@ -679,42 +923,54 @@ function _renderEquityChart(data, mode) {
       // the caller also passes ``axes``, which the equity curve does not.
       plugins: {
         referenceLines: { annotations },
+        weeklyBars: {
+          items: weeklyBarsItems,
+          upFill: EQUITY_COLORS.weeklyUpFill,
+          downFill: EQUITY_COLORS.weeklyDownFill,
+          evenFill: EQUITY_COLORS.weeklyEvenFill,
+          threshold: 0.005,
+          barWidth: 0.7,
+        },
         legend: { display: true, position: "bottom" },
         tooltip: {
           callbacks: {
             label: (ctx) => {
               const label = ctx.dataset.label || "";
-              // Percentage-bearing datasets print × 100 with a % suffix
-              // so the y-axis label format matches the tooltip.
-              if (label.includes("收益率")) {
-                return `${label} ${formatNumber(ctx.parsed.y * 100, 2)}%`;
-              }
+              // Every dataset is money (元) in the present-value view.
               return `${label} ${formatNumber(ctx.parsed.y, { maximumFractionDigits: 0 })}`;
             },
             // When the hovered x lands on a rebalance month, append a
             // buy/sell breakdown to the tooltip so users see which ETFs
-            // were trimmed and which were topped up.
+            // were trimmed and which were topped up. When weekly x-axis
+            // granularity is active, also append the per-week
+            // strategy-vs-lump-sum return pcts that drive the bar colour.
             afterBody: (items) => {
               if (mode !== "simulation" || !items?.length) return "";
               const xLabel = String(items[0].label || "");
-              const info = rebalanceByDate.get(xLabel);
-              if (!info) return "";
-              const lines = [
-                "",
-                `本次调仓 ${info.sells.length} 卖 / ${info.buys.length} 买`,
-              ];
-              // Show top 3 of each side; remaining count is summarised.
-              info.sells.slice(0, 3).forEach(([code, v]) => {
-                lines.push(`  卖 ${code} ${formatNumber(v, { maximumFractionDigits: 0 })}`);
-              });
-              if (info.sells.length > 3) {
-                lines.push(`  …还有 ${info.sells.length - 3} 笔卖出`);
+              const lines = [];
+              const weekInfo = weeklyByDate.get(xLabel);
+              if (weekInfo) {
+                lines.push(
+                  "",
+                  `本周策略 ${pctSigned(weekInfo.strategy_pct)} / 一次性 ${pctSigned(weekInfo.lump_pct)} / 差 ${pctSigned(weekInfo.diff_pct)}`,
+                );
               }
-              info.buys.slice(0, 3).forEach(([code, v]) => {
-                lines.push(`  买 ${code} ${formatNumber(v, { maximumFractionDigits: 0 })}`);
-              });
-              if (info.buys.length > 3) {
-                lines.push(`  …还有 ${info.buys.length - 3} 笔买入`);
+              const info = rebalanceByDate.get(xLabel);
+              if (info) {
+                lines.push("", `本次调仓 ${info.sells.length} 卖 / ${info.buys.length} 买`);
+                // Show top 3 of each side; remaining count is summarised.
+                info.sells.slice(0, 3).forEach(([code, v]) => {
+                  lines.push(`  卖 ${code} ${formatNumber(v, { maximumFractionDigits: 0 })}`);
+                });
+                if (info.sells.length > 3) {
+                  lines.push(`  …还有 ${info.sells.length - 3} 笔卖出`);
+                }
+                info.buys.slice(0, 3).forEach(([code, v]) => {
+                  lines.push(`  买 ${code} ${formatNumber(v, { maximumFractionDigits: 0 })}`);
+                });
+                if (info.buys.length > 3) {
+                  lines.push(`  …还有 ${info.buys.length - 3} 笔买入`);
+                }
               }
               return lines;
             },
@@ -730,9 +986,15 @@ async function loadEquityCurve() {
   equityCurveController?.abort();
   equityCurveController = new AbortController();
   const isSim = equityCurveMode === "simulation";
+  // First-ever render has an EMPTY from-month input → this call is the
+  // wide discovery window; record it BEFORE fetching, because the response
+  // handler re-renders the shell which immediately fills the input with
+  // meta.halos_listing_start (making a post-hoc emptiness check useless).
+  const monthInput = document.getElementById("etf-equity-from-month");
+  const discoveryCall = Boolean(isSim && monthInput && !monthInput.value);
   if (statusRoot) {
     statusRoot.innerHTML = statusBanner(
-      isSim ? "正在模拟 HALO 滚动策略..." : "正在拉取 ETF 历史净值...",
+      isSim ? "正在模拟 ETF 资金投入策略..." : "正在拉取 ETF 历史净值...",
       "loading",
     );
   }
@@ -753,6 +1015,16 @@ async function loadEquityCurve() {
     equityCurveCache = result;
     if (statusRoot) statusRoot.innerHTML = "";
     renderEquityCurve(result, equityCurveMode);
+    // Discovery resolved: replay once from the six-all-present day (e.g.
+    // 2023-07) so the chart starts at the first complete basket month.
+    // The input is now non-empty, so the follow-up call is NOT a discovery
+    // and this never loops.
+    const halo = result?.meta?.halos_listing_start;
+    if (discoveryCall && halo) {
+      const nextInput = document.getElementById("etf-equity-from-month");
+      if (nextInput) nextInput.value = String(halo).slice(0, 7);
+      void loadEquityCurve();
+    }
   } catch (error) {
     if (error?.name === "AbortError") return;
     console.error("ashare-etf:equity-curve:error", error);
@@ -766,47 +1038,11 @@ async function loadEquityCurve() {
 }
 
 function renderOverview() {
-  const orders = latestPlan?.orders || [];
-  const summary = latestPlan?.deviation_summary || {};
-  const cash = latestPlan?.cash || {};
-  const generatedAt = latestPayload?.generated_at ? formatDateTime(latestPayload.generated_at) : "-";
+  // P5: Top bar removed — mode selector and summary are now in 持仓与执行
+  // Keep etf-cash input here for state binding
   return `
-    <section class="card etf-execution-bar">
-      <div class="etf-execution-title">
-        <div>
-          <p class="eyebrow">A-SHARE ETF</p>
-          <h2>A股ETF 定投与再平衡</h2>
-        </div>
-        <div class="etf-action-row">
-          <button type="button" class="primary-action" id="etf-refresh-button">刷新行情</button>
-        </div>
-      </div>
-      <div class="etf-control-strip">
-        <label>
-          <span>执行模式</span>
-          <button class="dropdown"
-                  data-dropdown-id="etf-mode"
-                  data-dropdown-size="compact"
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-expanded="false">
-            <span class="dropdown-icon" data-slot="icon" hidden></span>
-            <span class="dropdown-label">${escapeHtml(modeLabel())}</span>
-            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          </button>
-        </label>
-        <label>
-          <span>可投现金</span>
-          <input id="etf-cash" type="number" min="0" step="100" value="${escapeHtml(state.cashToInvest)}" />
-        </label>
-        <span><small>订单数</small><strong>${orders.length}</strong></span>
-        <span><small>剩余现金</small><strong>${money(cash.cash_left ?? state.cashToInvest)}</strong></span>
-        <span><small>执行后最大偏离</small><strong>${pct(summary.after_max_abs_deviation)}</strong></span>
-        <span><small>行情状态</small><strong>${escapeHtml(sourceStatusLabel(latestPayload))}</strong></span>
-        <span><small>更新时间</small><strong>${escapeHtml(generatedAt)}</strong></span>
-      </div>
-      <div id="etf-status"></div>
-    </section>
+    <input id="etf-cash" type="number" min="0" step="100" value="${escapeHtml(state.cashToInvest)}" hidden />
+    <div id="etf-status"></div>
   `;
 }
 
@@ -907,7 +1143,7 @@ function renderEtfMiniCard(item, { featured = false } = {}) {
       <div class="etf-mini-metrics">
         <span><small>目标</small><b>${pct(item.targetWeight)}</b></span>
         <span><small>持仓</small><b>${formatNumber(shares, 0)}</b></span>
-        <span><small>市值</small><b>${money(value)}</b></span>
+        <span><small>权益</small><b>${money(value)}</b></span>
         <span><small>成交额</small><b>${amountText(quote?.amount)}</b></span>
       </div>
     </article>
@@ -957,6 +1193,10 @@ function renderQuoteDeck() {
 }
 
 function renderWorkbench() {
+  const summary = latestPlan?.deviation_summary || {};
+  const cash = latestPlan?.cash || {};
+  const portfolio = latestPlan?.portfolio || {};
+  const warnings = latestPlan?.warnings || [];
   return `
     <section class="card etf-execution-table-card">
       <div class="section-head compact-head">
@@ -964,6 +1204,30 @@ function renderWorkbench() {
           <p class="eyebrow">EXECUTION</p>
           <h2>持仓与执行</h2>
         </div>
+        <div class="etf-mode-inline">
+          <button type="button" class="primary-button compact" id="etf-refresh-button">刷新行情</button>
+          <button class="dropdown"
+                  data-dropdown-id="etf-mode"
+                  data-dropdown-size="compact"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false">
+            <span class="dropdown-icon" data-slot="icon" hidden></span>
+            <span class="dropdown-label">${escapeHtml(modeLabel())}</span>
+            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
+        </div>
+      </div>
+      <div class="etf-plan-inline">
+        <div class="etf-summary-grid">
+          <span><small>执行前总偏离</small><strong>${pct(summary.before_total_abs_deviation)}</strong></span>
+          <span><small>执行后总偏离</small><strong>${pct(summary.after_total_abs_deviation)}</strong></span>
+          <span><small>改善幅度</small><strong>${pct(summary.improvement_total_abs_deviation)}</strong></span>
+          <span><small>现金占比</small><strong>${pct(cash.cash_weight_after)}</strong></span>
+          <span><small>换手金额</small><strong>${money(portfolio.turnover_amount)}</strong></span>
+          <span><small>交易笔数</small><strong>${formatNumber(portfolio.trade_count || 0, 0)}</strong></span>
+        </div>
+        ${warnings.length > 0 ? renderWarnings(warnings) : ""}
       </div>
       <div class="table-wrap compact-table-wrap">
         <table class="etf-dense-table etf-combined-table">
@@ -1032,7 +1296,7 @@ function renderAll(statusHtml = "") {
 function updateStateFromInput(target) {
   if (!(target instanceof HTMLInputElement || target instanceof HTMLButtonElement)) return false;
   if (target.id === "etf-mode") {
-    state.mode = target.value === "quarterly_rebalance" ? "quarterly_rebalance" : "monthly_dca";
+    state.mode = target.value === "monthly_dca_quarterly_rebalance" ? "monthly_dca_quarterly_rebalance" : "weekly_dca_monthly_rebalance";
     return true;
   }
   if (target.id === "etf-cash") {
@@ -1055,13 +1319,13 @@ function bindControls() {
   if (modeRoot) {
     mountDropdown(modeRoot, {
       items: [
-        { value: "monthly_dca", label: "月度定投" },
-        { value: "quarterly_rebalance", label: "季度再平衡" },
+        { value: "weekly_dca_monthly_rebalance", label: "周度定投+月度调仓" },
+        { value: "monthly_dca_quarterly_rebalance", label: "月度定投+季度调仓" },
       ],
       value: state.mode,
       placeholder: "选择模式",
       onChange: (v) => {
-        state.mode = v === "quarterly_rebalance" ? "quarterly_rebalance" : "monthly_dca";
+        state.mode = v === "monthly_dca_quarterly_rebalance" ? "monthly_dca_quarterly_rebalance" : "weekly_dca_monthly_rebalance";
         handleStateChange();
       },
     });
@@ -1087,8 +1351,14 @@ function handleStateChange() {
 }
 
 function buildPlanPayload() {
+  // 执行区两种策略形态(周度定投+月度调仓 / 月度定投+季度调仓)都是
+  // "定投+调仓"组合;后端 PlanMode 只区分是否允许卖出超配资产,调仓形态
+  // 统一映射 quarterly_rebalance(先卖超配→再买欠配)。定投频率是前端
+  // 现金流概念,与优化器 mode 无关(2026-08-07: 修正 mode 字面量不匹配
+  // 导致的 422)。
+  const backendMode = "quarterly_rebalance";
   return {
-    mode: state.mode,
+    mode: backendMode,
     cash_to_invest: Number(state.cashToInvest || 0),
     lot_size: 100,
     tolerance_pct: 0.02,

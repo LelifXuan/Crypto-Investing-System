@@ -3,6 +3,7 @@ let candlestickPluginRegistered = false;
 let adaptiveAxisPluginRegistered = false;
 let referenceLinePluginRegistered = false;
 let expiryAnchorsPluginRegistered = false;
+let weeklyBarsPluginRegistered = false;
 
 /* === §16.C — Token-driven chart theme ============================
    Read once from `:root` via getComputedStyle. If the document isn't
@@ -553,6 +554,105 @@ const candlestickOverlayPlugin = {
   },
 };
 
+// §Weekly overlay — one vertical bar per ISO-week x-position. Bar height
+// is clamped to live inside the strategy-market-value fill area
+// (top edge = strategy-market-value curve, bottom edge = y=0). Bar
+// colour is chosen by the strategy-vs-lump-sum return-pct delta:
+//   diffPct >= +threshold → upFill    (strategy beats lump-sum)
+//   diffPct <= -threshold → downFill  (strategy lags lump-sum)
+//   otherwise             → evenFill  (within dead-zone)
+//
+// Items shape (passed by the caller via chart.options.plugins.weeklyBars.items):
+//   { x: <label matching chart.data.labels>, strategyValue: number, diffPct: number }
+//
+// The plugin auto-derives strategyValue from chart.data.datasets[0].data
+// when not provided, so callers only need to pass { x, diffPct }.
+const weeklyBarsPlugin = {
+  id: "weeklyBars",
+  afterDatasetsDraw(chart) {
+    const cfg = chart.options.plugins?.weeklyBars || {};
+    const items = cfg.items || [];
+    if (!items.length) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    if (!xScale || !yScale) return;
+    const labels = chart.data.labels || [];
+    const strategyData = chart.data.datasets?.[0]?.data || [];
+    const threshold = Number.isFinite(cfg.threshold) ? cfg.threshold : 0.005; // ±0.5%
+    const barWidthFraction = Number.isFinite(cfg.barWidth) ? cfg.barWidth : 0.7;
+    const upFill = cfg.upFill || CHART_THEME.upFill;
+    const downFill = cfg.downFill || CHART_THEME.downFill;
+    const evenFill = cfg.evenFill || CHART_THEME.gridX;
+    // A raw-value axis may intentionally zoom above zero. In that case the
+    // pixel for y=0 sits below chartArea.bottom; using it directly lets the
+    // overlay bars paint across x-axis labels and the legend. Treat the
+    // visible chart edge as the baseline, matching Chart.js' clipped fill.
+    const rawBaseline = yScale.getPixelForValue(0);
+    const yBaseline = Math.max(
+      chartArea.top,
+      Math.min(chartArea.bottom, rawBaseline),
+    );
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(
+      chartArea.left,
+      chartArea.top,
+      chartArea.right - chartArea.left,
+      chartArea.bottom - chartArea.top,
+    );
+    ctx.clip();
+    items.forEach((item) => {
+      if (!item) return;
+      // Match by string (ISO date / ISO week label) first, fall back to numeric.
+      let idx = labels.findIndex((l) => String(l) === String(item.x));
+      if (idx < 0) idx = labels.findIndex((l) => Number(l) === Number(item.x));
+      if (idx < 0) return;
+      const xCenter = xScale.getPixelForValue(idx);
+      if (!Number.isFinite(xCenter)) return;
+      // Derive category width from neighbouring x positions so the bar
+      // width adapts to whatever x-axis granularity is in use (month /
+      // week / custom).
+      const xPrev = xScale.getPixelForValue(idx - 0.5);
+      const xNext = xScale.getPixelForValue(idx + 0.5);
+      const categoryWidth = Math.max(
+        2,
+        Number.isFinite(xNext) && Number.isFinite(xPrev) ? xNext - xPrev : 12,
+      );
+      const barWidth = Math.max(2, categoryWidth * barWidthFraction);
+
+      // Bar height: top edge follows the strategy curve at this x
+      // position, bottom edge anchors to the y=0 baseline. The bar
+      // therefore lives entirely INSIDE the strategy-market-value fill
+      // area (which is exactly the user-requested constraint).
+      const strategyValue = Number(
+        item.strategyValue ?? strategyData[idx],
+      );
+      if (!Number.isFinite(strategyValue)) return;
+      const yTop = yScale.getPixelForValue(strategyValue);
+      if (!Number.isFinite(yTop)) return;
+      const clippedYTop = Math.max(
+        chartArea.top,
+        Math.min(chartArea.bottom, yTop),
+      );
+      const top = Math.min(clippedYTop, yBaseline);
+      const height = Math.max(Math.abs(clippedYTop - yBaseline), 1.5);
+
+      const diff = Number(item.diffPct);
+      let fill = evenFill;
+      if (Number.isFinite(diff)) {
+        if (diff >= threshold) fill = upFill;
+        else if (diff <= -threshold) fill = downFill;
+      }
+
+      ctx.fillStyle = fill;
+      ctx.fillRect(xCenter - barWidth / 2, top, barWidth, height);
+    });
+    ctx.restore();
+  },
+};
+
 function baseOptions() {
   return {
     responsive: true,
@@ -662,6 +762,10 @@ export function renderChart(key, canvas, config) {
       window.Chart.register(expiryAnchors);
       expiryAnchorsPluginRegistered = true;
     }
+    if (!weeklyBarsPluginRegistered) {
+      window.Chart.register(weeklyBarsPlugin);
+      weeklyBarsPluginRegistered = true;
+    }
     const existing = chartRegistry.get(key);
     const datasets = sanitizeDatasets(config.data?.datasets);
     const data = { ...(config.data || {}), datasets };
@@ -707,6 +811,17 @@ export function renderChart(key, canvas, config) {
     if (Array.isArray(config.expiryAnchors) && config.expiryAnchors.length) {
       nextOptions.plugins = nextOptions.plugins || {};
       nextOptions.plugins.expiryAnchors = { items: config.expiryAnchors };
+    }
+    // Forward weekly-bars overlay items (one vertical bar per ISO-week
+    // x-position, coloured by strategy-vs-lump-sum return-pct delta)
+    // into chart options so the weeklyBars plugin can render them on
+    // the canvas.
+    if (Array.isArray(config.weeklyBars) && config.weeklyBars.length) {
+      nextOptions.plugins = nextOptions.plugins || {};
+      nextOptions.plugins.weeklyBars = {
+        items: config.weeklyBars,
+        ...(config.weeklyBarsOptions || {}),
+      };
     }
     destroyChart(key);
     const chart = new window.Chart(canvas, {

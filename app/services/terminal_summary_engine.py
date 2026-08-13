@@ -423,7 +423,6 @@ class TerminalSummaryEngine:
         if bearish_trend:
             headline = (
                 f"{label}仍处于下行震荡{close_text}，价格低于关键均线和 VWAP 压制区。"
-                "追空质量取决于反弹失败或前低跌破确认。"
             )
             conflict = (
                 f"趋势端为{trend.state}，动量端为{momentum.state}，波动端为{volatility.state}。"

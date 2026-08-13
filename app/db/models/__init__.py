@@ -5,6 +5,8 @@ from app.db.models.eventing import EventOutbox, EventStore, IdempotencyKeyRecord
 from app.db.models.instrument import Instrument
 from app.db.models.market import (
     ComputedDatasetCache,
+    GoldExecutionEvent,
+    GoldPolicyVersion,
     IndicatorAlertEvent,
     IndicatorAlertRule,
     IndicatorDefinition,
@@ -22,6 +24,7 @@ from app.db.models.market import (
     MarkPrice,
     PageSnapshotCache,
     SignalOutcome,
+    SupplyEventCalendarNode,
     TranslationCache,
     TranslationJob,
     TranslationTextCache,
@@ -32,6 +35,8 @@ __all__ = [
     "ComputedDatasetCache",
     "EventOutbox",
     "EventStore",
+    "GoldExecutionEvent",
+    "GoldPolicyVersion",
     "IndicatorAlertEvent",
     "IndicatorAlertRule",
     "IndicatorDefinition",
@@ -52,6 +57,7 @@ __all__ = [
     "MarkPrice",
     "SignalOutcome",
     "Strategy",
+    "SupplyEventCalendarNode",
     "Tenant",
     "User",
     "UserRole",

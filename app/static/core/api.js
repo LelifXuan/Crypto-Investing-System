@@ -273,6 +273,27 @@ export const api = {
     });
   },
 
+  // ── Gold Workbench (V5 page aggregation) ──
+
+  // The gold-allocation page (gold_v5.js) consumes one workbench payload
+  // instead of fanning out to /gold/v3/allocation + /gold/market-state +
+  // /gold/derivatives. chart_series_or_chart_token.path points to
+  // /gold/workbench/charts/{snapshot_id} for the candle series bound to
+  // this snapshot.
+  getGoldWorkbench(options = {}) {
+    return requestJson("/gold/workbench", {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 8000,
+    });
+  },
+
+  getGoldWorkbenchCharts(snapshotId, options = {}) {
+    return requestJson(`/gold/workbench/charts/${encodeURIComponent(snapshotId)}`, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 5000,
+    });
+  },
+
   getBtcDerivativesDashboard(query = {}, options = {}) {
     return requestJson("/btc-derivatives/dashboard", {
       params: {
@@ -419,8 +440,24 @@ export const api = {
       retry: 1,
     });
   },
-  getMarketEvents(limit = 60, translate = false) {
-    return requestJson("/marketevents", { params: { limit, translate }, ttl: translate ? 5 : 30, retry: 1 });
+  getMarketEvents(limit = 60, translate = false, options = {}) {
+    return requestJson("/marketevents", {
+      params: { limit, translate },
+      ttl: translate ? 5 : 30,
+      retry: 1,
+      force: options.force ?? false,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 5000,
+    });
+  },
+  getSupplyEventCalendar(options = {}) {
+    return requestJson("/market-events/supply-event-calendar", {
+      params: { limit: options.limit ?? 100 },
+      ttl: options.ttl ?? 60,
+      force: options.force ?? false,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 5000,
+    });
   },
   syncMarketEvents() {
     return requestJson("/market-events/sync", { method: "POST" });

@@ -56,9 +56,13 @@ export function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-export function setRoot(content) {
+export function setRoot(content, options = {}) {
   const root = byId("page-root");
   delete root._monitoringSections;
+  const bodyDataset = document.body?.dataset;
+  const layout = options.layout || bodyDataset?.pageLayout || "overview";
+  if (bodyDataset) bodyDataset.pageLayout = layout;
+  if (root.dataset) root.dataset.layout = layout;
   root.innerHTML = content;
   return root;
 }
@@ -72,10 +76,12 @@ export function setRoot(content) {
 // Without this, the click event handler synchronously walks
 // through the new page's setRoot (which is 50-300 ms of synchronous
 // innerHTML) before the browser can paint anything.
-export function renderNavSkeleton(title) {
-  const safeTitle = escapeHtml(title || "页面");
+export function renderNavSkeleton(pageMeta) {
+  const meta = typeof pageMeta === "string" ? { title: pageMeta } : (pageMeta || {});
+  const safeTitle = escapeHtml(meta.title || "页面");
+  const layout = escapeHtml(meta.layout || "overview");
   return `
-    <section class="card monitoring-surface nav-skeleton-card">
+    <section class="editorial-skeleton nav-skeleton-card" data-layout="${layout}">
       <div class="section-head">
         <div>
           <p class="eyebrow">正在跳转</p>
@@ -92,6 +98,14 @@ export function renderNavSkeleton(title) {
       </div>
     </section>
   `;
+}
+
+export function updatePageContext(context = {}) {
+  const target = byId("app-page-context");
+  if (!target) return;
+  const items = [context.instrument, context.timeframe, context.status, context.updatedAt]
+    .filter((item) => item !== null && item !== undefined && item !== "");
+  target.innerHTML = items.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("");
 }
 
 export function cardTitle(eyebrow, title, description = "") {
@@ -336,8 +350,24 @@ export async function hydrateKnowledgeTooltips(_root) {
 export function loadingState(message = "正在读取缓存") {
   return `
     <div class="data-state data-state-loading">
-      <span class="loading-dot" aria-hidden="true"></span>
       <strong>${escapeHtml(message)}</strong>
+      <div class="shimmer-bar" aria-hidden="true"></div>
+    </div>
+  `;
+}
+
+// 2026-08-11: chart skeleton placeholder — mimics chart axes + candles.
+export function chartSkeleton(candleCount = 24) {
+  let candles = "";
+  for (let i = 0; i < candleCount; i++) {
+    candles += `<div class="chart-skeleton-candle"></div>`;
+  }
+  return `
+    <div class="chart-skeleton" role="status" aria-label="图表加载中">
+      <div class="chart-skeleton-grid">${candles}</div>
+      <div class="chart-skeleton-axis">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
     </div>
   `;
 }
@@ -496,4 +526,3 @@ export function mountButton({
   }
   return `<button ${attrParts.join(" ")}>${left}${safeText}${right}</button>`;
 }
-

@@ -135,12 +135,14 @@ function fitPopover(root, popover, opts) {
   }
   naturalWidth = Math.max(naturalWidth, min);
 
-  // horizontal bounds
+  // Horizontal bounds. Every menu follows the trigger width so its left and
+  // right edges form one vertical column with the control across all pages.
   const maxAllowedByViewport = Math.min(max, vw - DEFAULT_VIEWPORT_PADDING * 2);
-  const width = clamp(naturalWidth, min, maxAllowedByViewport);
+  const requestedWidth = rect.width;
+  const width = clamp(requestedWidth, Math.min(min, rect.width), Math.max(maxAllowedByViewport, Math.min(rect.width, vw - DEFAULT_VIEWPORT_PADDING * 2)));
   popover.style.width = `${width}px`;
-  popover.style.minWidth = `${Math.min(rect.width, width)}px`;
-  popover.style.maxWidth = `${maxAllowedByViewport}px`;
+  popover.style.minWidth = `${width}px`;
+  popover.style.maxWidth = `${width}px`;
 
   // vertical: figure max-height from remaining viewport height.
   const spaceBelow = vh - rect.bottom - gap - DEFAULT_VIEWPORT_PADDING;
@@ -179,7 +181,9 @@ function fitPopover(root, popover, opts) {
   if (left + width > vw - DEFAULT_VIEWPORT_PADDING) {
     left = Math.max(DEFAULT_VIEWPORT_PADDING, vw - width - DEFAULT_VIEWPORT_PADDING);
   }
-  popover.style.left = `${Math.round(left)}px`;
+  // Keep the trigger's sub-pixel x coordinate. Rounding only the popover made
+  // its border visibly drift by 1px on scaled displays.
+  popover.style.left = `${left}px`;
   popover.style.zIndex = String(Z_INDEX);
 
   // === Origin-aware entrance (Emil Kowalski bar) =====================
@@ -234,7 +238,7 @@ export function mountDropdown(root, options) {
     typeAhead: true,
     onChange: () => {},
     // revision 2026-07-31: optional width / wrap params
-    sizeMode: "content",          // "content" | "trigger" | "fixed"
+    sizeMode: "trigger",          // "content" | "trigger" | "fixed"
     minTriggerWidth: DEFAULT_TRIGGER_MIN,
     maxTriggerWidth: DEFAULT_TRIGGER_MAX,
     allowTriggerWrap: false,
@@ -318,6 +322,7 @@ export function mountDropdown(root, options) {
         close();
       });
     }
+    popover.setAttribute("role", "listbox");
     // Show the popover first (hidden=false) so getBoundingClientRect works
     // for fitPopover. fitPopover sets the popover's position and the
     // --transform-origin custom property. Then we flip the entrance class
@@ -347,6 +352,10 @@ export function mountDropdown(root, options) {
     if (popover) {
       popover.classList.remove("is-entering");
       popover.hidden = true;
+      // A closed menu must not remain queryable as an active listbox. This
+      // also keeps rapid sequential dropdown interactions from picking stale
+      // option handles left by a previously opened control.
+      popover.removeAttribute("role");
     }
     // Hard cleanup of keyboard highlight (INV-2)
     clearHighlight(popover, root);

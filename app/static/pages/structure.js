@@ -1,4 +1,5 @@
 import {
+  chartSkeleton,
   escapeHtml,
   formatChartTime,
   formatDateTime,
@@ -118,13 +119,6 @@ function labelFor(map, value, fallback = "-") {
   return map[value] || value || fallback;
 }
 
-function biasTone(value) {
-  const text = String(value || "");
-  if (text.includes("bull")) return "bullish";
-  if (text.includes("bear")) return "bearish";
-  return "neutral";
-}
-
 function normalizeCandles(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.candles)) return payload.candles;
@@ -143,7 +137,7 @@ function renderShell() {
   const instrument = getInstrumentMeta(appState.selectedInstrumentId);
   return setRoot(`
     <section class="structure-page structure-page-compact">
-      <section class="hero-card structure-toolbar-card">
+      <section class="hero-card structure-toolbar-card" aria-label="形态结构筛选与数据状态">
         <div class="toolbar-grid">
           <label class="field">
             <span>交易品种</span>
@@ -211,12 +205,10 @@ function renderShell() {
             </button>
           </label>
           <div class="field action">
-            <button id="structure-refresh" class="primary-button">手动刷新快照</button>
+            <button id="structure-refresh" class="primary-button compact">手动刷新快照</button>
           </div>
         </div>
       </section>
-
-      <section id="structure-statusbar"></section>
 
       <section class="structure-overview-grid">
         <article class="card structure-main-card">
@@ -225,8 +217,9 @@ function renderShell() {
               <p class="eyebrow">形态叠加图</p>
               <h2>${escapeHtml(instrument.code)} · ${escapeHtml(appState.selectedTimeframe)}</h2>
             </div>
-            <div id="structure-chart-bias"></div>
+            <div id="structure-chart-state" class="structure-chart-state" aria-live="polite"></div>
           </div>
+          <div id="structure-statusbar" class="structure-chart-status" aria-live="polite"></div>
           <div id="structure-chart-panel" class="structure-chart-panel loading">正在加载结构快照…</div>
         </article>
 
@@ -914,26 +907,6 @@ function buildGuideMarkerMarkup(guide, scale) {
   `;
 }
 
-function combinedBiasLabel(overallBias, guide) {
-  return labelFor(BIAS_LABELS, overallBias);
-}
-
-function patternStateLabel(primary, guide) {
-  const patternLabels = {
-    falling_wedge: "下降楔形",
-    rising_wedge: "上升楔形",
-    double_bottom: "双底",
-    double_top: "双顶",
-    rectangle: "矩形",
-    channel: "通道",
-  };
-  const pattern = patternLabels[primary?.pattern_type] || "经典图形";
-  if (guide?.state === "breakdown") return `${pattern}下破`;
-  if (guide?.state === "breakout") return `${pattern}上破`;
-  if (guide?.state === "invalidated") return `${pattern}失效`;
-  return "";
-}
-
 function classicPatternsToGeometry(classicPatterns) {
   return classicPatternCandidates(classicPatterns).filter((candidate) => candidate?.renderable !== false).flatMap((candidate) => {
     const role = candidate.display_role || "candidate";
@@ -1194,7 +1167,6 @@ function buildMarketProfileMarkup(geometry, scale, priceGuide) {
 
 function renderChart(snapshot, candles) {
   const chartPanel = document.getElementById("structure-chart-panel");
-  const chartBias = document.getElementById("structure-chart-bias");
   const contractGeometry = classicPatternsToGeometry(snapshot.classic_patterns);
   const rawGeometry = contractGeometry.length
     ? (snapshot.geometry || []).filter((item) => item.system !== "classic").concat(contractGeometry)
@@ -1207,6 +1179,10 @@ function renderChart(snapshot, candles) {
     .filter((item) => item.system === "swing")
     .reduce((total, item) => total + Number(item.meta_json?.invalid_point_count ?? item.meta?.invalid_point_count ?? 0), 0);
 
+  // 2026-08-11: fade transition — briefly fade before replacing content
+  chartPanel.classList.add("chart-fading-out");
+  requestAnimationFrame(() => requestAnimationFrame(() => chartPanel.classList.remove("chart-fading-out")));
+
   if (!candles.length) {
     chartPanel.className = "structure-chart-panel empty";
     chartPanel.innerHTML = `<div class="empty-state">暂无可绘制的结构图。</div>`;
@@ -1217,10 +1193,6 @@ function renderChart(snapshot, candles) {
   const viewport = calculateViewport(candles, geometry, backendViewport);
   const visibleCandles = viewport.candles.length ? viewport.candles : candles;
   const priceGuide = currentPriceGuide(snapshot, visibleCandles);
-  const patternState = patternStateLabel(snapshot?.classic_patterns?.primary, priceGuide);
-  chartBias.innerHTML = `<span class="impact-chip impact-${biasTone(snapshot.overall?.overall_bias)}">${escapeHtml(
-    [`${appState.selectedTimeframe}局部${combinedBiasLabel(snapshot.overall?.overall_bias, priceGuide)}`, patternState].filter(Boolean).join(" · "),
-  )}</span>`;
   const rawVisibleGeometry = visibleGeometryForViewport(geometry, visibleCandles, viewport.offset);
   const visibleGeometry = rawVisibleGeometry.filter((item) => {
     if (suppressInvalidatedChannelOverlay(item, priceGuide)) return false;
@@ -1272,16 +1244,18 @@ function renderChart(snapshot, candles) {
     </svg>
     ${invalidSwingPointCount > 0 ? `<div class="structure-geometry-warning" role="status">部分摆动点与 K 线无法对齐，已隐藏 ${invalidSwingPointCount} 个异常节点。</div>` : ""}
     ${buildCurrentPriceGuideMarkup(priceGuide, snapshot.overall?.text_decision)}
-    ${buildLayerToggleMarkup()}
-    <div class="structure-chart-meta">
-      <span>快照版本：${escapeHtml(snapshot.snapshot_version || "-")}</span>
-      <span>视图：${escapeHtml(VIEWPORT_LABELS[state.viewMode] || VIEWPORT_LABELS.focus)}</span>
-      <span>可见 K 线：${visibleCandles.length}/${candles.length}</span>
-      <span>结构线：${overlayCount}</span>
-      <span>图形：${classicCount}</span>
-      <span>市场轮廓：${profileCount ? "POC/VAH/VAL" : "未绘制"}</span>
-      <span>覆盖率：${coverageLabel}</span>
-      ${viewport.autoFocused ? `<span>已自动聚焦：当前形态仅覆盖完整快照的 ${coverageLabel}</span>` : ""}
+    <div class="structure-chart-footer">
+      ${buildLayerToggleMarkup()}
+      <div class="structure-chart-meta">
+        <span>快照版本：${escapeHtml(snapshot.snapshot_version || "-")}</span>
+        <span>视图：${escapeHtml(VIEWPORT_LABELS[state.viewMode] || VIEWPORT_LABELS.focus)}</span>
+        <span>可见 K 线：${visibleCandles.length}/${candles.length}</span>
+        <span>结构线：${overlayCount}</span>
+        <span>图形：${classicCount}</span>
+        <span>市场轮廓：${profileCount ? "POC/VAH/VAL" : "未绘制"}</span>
+        <span>覆盖率：${coverageLabel}</span>
+        ${viewport.autoFocused ? `<span>自动聚焦：${coverageLabel}</span>` : ""}
+      </div>
     </div>
   `;
 }
@@ -1308,8 +1282,7 @@ function renderSummary(snapshot) {
         <div class="metric-grid metric-grid-compact structure-summary-metrics">
           <div class="metric-box"><span>综合分数</span><strong>${escapeHtml(formatNumber(overall.overall_score ?? overall.score ?? 0, 2))}</strong></div>
           <div class="metric-box"><span>综合置信度</span><strong>${escapeHtml(formatNumber(overall.overall_confidence ?? overall.confidence, 2))}</strong></div>
-          <div class="metric-box"><span>市场状态</span><strong>${escapeHtml(marketStateLabel)}</strong><small>${escapeHtml(overall.range_basis?.[0] || "")}</small></div>
-          <div class="metric-box"><span>权重模板</span><strong>${escapeHtml(overall.weight_template || "-")}</strong></div>
+          <div class="metric-box structure-market-state"><span>市场状态</span><strong>${escapeHtml(marketStateLabel)}</strong><small>${escapeHtml(overall.range_basis?.[0] || "")}</small></div>
         </div>
         ${
           overall.meaning
@@ -1444,12 +1417,22 @@ function renderFromBundle(bundle) {
       : bundle.status_message ||
       `快照时间：${formatDateTime(safeSnapshot.generated_at || safeSnapshot.overall?.last_updated_at)} ｜ 最新价格时间：${formatDateTime(lastCandleTs)} ｜ 当前范围：${scopeLabel}`,
     bundle.is_stale ? "warning" : freshnessTone,
+    { available: true },
   );
 }
 
-function renderStatus(message, tone = "neutral") {
+function renderStatus(message, tone = "neutral", { available = false } = {}) {
   const el = document.getElementById("structure-statusbar");
-  el.innerHTML = message ? `<div class="status-banner status-${tone}">${escapeHtml(message)}</div>` : "";
+  const state = document.getElementById("structure-chart-state");
+  if (state) {
+    const label = available
+      ? tone === "warning" ? "缓存可用 · 待更新" : "快照可用 · 自动维护"
+      : tone === "loading" || tone === "info" ? "快照更新中" : "快照需关注";
+    const chipTone = available && tone !== "warning" ? "chip-info" : tone === "danger" ? "chip-danger" : "chip-warning";
+    state.innerHTML = `<span class="status-chip ${chipTone}">${escapeHtml(label)}</span>`;
+  }
+  const showDetail = !available || tone === "warning" || tone === "danger";
+  el.innerHTML = showDetail && message ? `<div class="status-banner status-${tone}">${escapeHtml(message)}</div>` : "";
 }
 
 function updateChartTitle() {
@@ -1559,15 +1542,46 @@ export async function renderStructure() {
   renderShell();
   let disposed = false;
   let activeController = null;
+  // 2026-08-11: debounce rapid instrument/timeframe switching to prevent
+  // request queue buildup that leaves the chart panel blank.
+  let debounceTimer = null;
+  let lastRequestedKey = null;
   const detachEvents = attachEvents(loadData);
 
-  async function loadData({ forceRefresh = false } = {}) {
-    const requestToken = ++state.requestToken;
+  function loadData({ forceRefresh = false } = {}) {
+    // 2026-08-11: debounce — clear pending timer so rapid switching only
+    // triggers ONE final request instead of a queue that leaves the
+    // chart panel blank.
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
     const instrumentId = appState.selectedInstrumentId;
     const timeframe = appState.selectedTimeframe;
+    const requestKey = `${instrumentId}:${timeframe}`;
+    lastRequestedKey = requestKey;
+
+    return new Promise((resolve) => {
+    debounceTimer = setTimeout(async () => {
+      if (disposed || lastRequestedKey !== requestKey) { resolve(); return; }
+      await _fetchAndRender(requestKey, forceRefresh);
+      resolve();
+    }, 300);
+    });
+  }
+
+  async function _fetchAndRender(requestKey, forceRefresh) {
+    const requestToken = ++state.requestToken;
+    const [instrumentId, timeframe] = requestKey.split(":");
     const limit = timeframe === "1h" ? 220 : 180;
 
     updateChartTitle();
+    // 2026-08-11: show chart skeleton instead of plain text
+    const chartPanel = document.getElementById("structure-chart-panel");
+    if (chartPanel && requestToken === state.requestToken) {
+      chartPanel.className = "structure-chart-panel";
+      chartPanel.innerHTML = chartSkeleton(20);
+    }
     renderStatus("正在加载结构快照…", "info");
 
     try {
@@ -1602,7 +1616,7 @@ export async function renderStructure() {
         }
       }
 
-      if (disposed || requestToken !== state.requestToken) return;
+      if (disposed || requestToken !== state.requestToken || lastRequestedKey !== requestKey) return;
       renderFromBundle(bundle);
     } catch (error) {
       if (error?.name === "AbortError" || error?.name === "TimeoutError") {
@@ -1630,6 +1644,7 @@ export async function renderStructure() {
 
   return () => {
     disposed = true;
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     activeController?.abort();
     activeController = null;
     detachEvents?.();

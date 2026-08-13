@@ -25,7 +25,7 @@ const helpers = {
 // `onForce` is the user-triggered "立即重建" handler. The panel attaches
 // it to a button. We don't render the button if the caller didn't supply
 // the hook (kept for testing/SSR safety).
-function renderDegradedBanner(model, onForce) {
+function renderDegradedBanner(model) {
   const components = Array.isArray(model.degraded_components) && model.degraded_components.length
     ? model.degraded_components
     : ["strategy_unified_cache_missing"];
@@ -68,6 +68,58 @@ function renderDegradedBanner(model, onForce) {
   `;
 }
 
+function hasPublishedDetail(model) {
+  const snapshotId = String(model.market_decision_snapshot?.snapshot_id || "");
+  const hasSnapshot = Boolean(snapshotId && snapshotId !== "-" && !snapshotId.startsWith("missing:"));
+  const hasTimeframes = Array.isArray(model.timeframe_stack) && model.timeframe_stack.length > 0;
+  const hasCoverage = Array.isArray(model.signal_coverage) && model.signal_coverage.length > 0;
+  const hasCrossValidation = Array.isArray(model.cross_validation?.matrix)
+    && model.cross_validation.matrix.length > 0;
+  return hasSnapshot || hasTimeframes || hasCoverage || hasCrossValidation;
+}
+
+function renderPendingDetail(model) {
+  const components = Array.isArray(model.degraded_components) && model.degraded_components.length
+    ? model.degraded_components
+    : ["strategy_unified_cache_missing"];
+  const reasonLabel = {
+    strategy_unified_cache_missing: "统一策略快照尚未发布",
+    structure: "形态结构数据未就绪",
+    cross_horizon: "跨周期合成未就绪",
+    risk_gate: "风险门禁尚未生成",
+    trade_plan: "执行计划尚未生成",
+    evidence: "证据链尚未生成",
+    narrative: "研究摘要尚未生成",
+    price_structure: "价格结构尚未生成",
+  };
+  const reason = components.map((key) => reasonLabel[key] || key).join("、");
+  const refreshState = String(model.refresh_state || "missing").toLowerCase();
+  const prewarmStatus = String(model.prewarm_status || "enqueued").toLowerCase();
+  const queued = ["enqueued", "queued", "running", "requested"].includes(prewarmStatus)
+    || ["enqueued", "requested", "warming", "stale_revalidating"].includes(refreshState);
+  const buildLabel = queued ? "后台任务已排队" : "等待后台任务";
+  const buildTone = queued ? "is-active" : "";
+
+  return `
+    <section class="strategy-degraded-banner strategy-detail-pending card" role="status">
+      <div class="strategy-detail-pending-copy">
+        <p class="eyebrow">DETAIL NOT PUBLISHED</p>
+        <h2>策略详情尚未形成</h2>
+        <p>扫描层只负责发现候选。当前单元格还没有可审计的统一策略快照，因此暂不展示方向、风险门禁、执行计划和跨维度结论。</p>
+      </div>
+      <ol class="strategy-detail-build-flow" aria-label="策略详情生成进度">
+        <li class="is-active"><span>01</span><div><strong>候选已选定</strong><small>标的与周期已确认</small></div></li>
+        <li class="${buildTone}"><span>02</span><div><strong>${escapeHtml(buildLabel)}</strong><small>${escapeHtml(reason)}</small></div></li>
+        <li><span>03</span><div><strong>发布可审计快照</strong><small>完成后才展示完整策略详情</small></div></li>
+      </ol>
+      <div class="strategy-detail-pending-actions">
+        <button type="button" class="primary-button" data-strategy-rebuild>立即生成详情</button>
+        <p>生成期间可返回扫描页继续浏览；后台任务不会阻塞页面切换。</p>
+      </div>
+    </section>
+  `;
+}
+
 /**
  * Open the slide-in detail panel for a specific instrument+timeframe.
  * @param {string} instrumentId
@@ -96,7 +148,7 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
   panel.className = "strategy-detail-panel";
   panel.innerHTML = `
     <div class="strategy-detail-header">
-      <button class="strategy-detail-back secondary-button" id="strategy-detail-close">← 返回扫描</button>
+      <button class="strategy-detail-back secondary-button" id="strategy-detail-close">返回扫描</button>
       <div class="strategy-detail-breadcrumb">
         <span class="eyebrow">STRATEGY DETAIL</span>
         <h2 id="strategy-detail-title">加载中...</h2>
@@ -127,8 +179,24 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
 
     const instCode = model.instrument_code || instrumentId;
     const td = model.trade_decision || {};
-    const dirLabel = td.side === "LONG" ? "做多" : td.side === "SHORT" ? "做空" : "等待确认";
+    const pending = !hasPublishedDetail(model);
+    const dirLabel = pending
+      ? "数据构建中"
+      : td.side === "LONG" ? "做多" : td.side === "SHORT" ? "做空" : "等待确认";
     if (title) title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
+
+    // A cold-cache response is system availability, not a market conclusion.
+    // Do not manufacture a 0.00 price, "high risk", empty evidence tables and
+    // six placeholder market cards from an unpublished snapshot.
+    if (pending) {
+      body.innerHTML = renderPendingDetail(model);
+      const rebuildBtn = body.querySelector("[data-strategy-rebuild]");
+      if (rebuildBtn) {
+        rebuildBtn.disabled = forcePending;
+        rebuildBtn.addEventListener("click", () => triggerRebuild(), { once: true });
+      }
+      return;
+    }
 
     // 2026-07-25: bring back the full multi-horizon reasoning chain.
     // Previously the panel short-circuited on side === NONE and
@@ -199,15 +267,16 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
 
   // Close handler
   const close = () => {
+    if (!panel.isConnected && !overlay.isConnected) return;
     panel.classList.remove("is-open");
     overlay.classList.remove("is-visible");
-    // Remove after transition (300ms)
-    setTimeout(() => {
-      panel.remove();
-      overlay.remove();
-      document.removeEventListener("keydown", escHandler);
-      if (onClose) onClose();
-    }, 300);
+    // Detach immediately after the close intent. The visual exit is brief,
+    // but leaving a full-screen invisible overlay mounted blocks the next
+    // matrix click during rapid research workflows.
+    panel.remove();
+    overlay.remove();
+    document.removeEventListener("keydown", escHandler);
+    if (onClose) onClose();
   };
 
   overlay.addEventListener("click", close);
@@ -226,6 +295,9 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
       renderBody(model);
     })
     .catch((err) => {
+      // 2026-08-11: AbortError means a new panel was opened before this
+      // one finished — silently ignore, the new panel handles its own render.
+      if (err?.name === "AbortError") return;
       const body = document.getElementById("strategy-detail-body");
       if (body) body.innerHTML = errorState(`策略加载失败：${escapeHtml(err.message || String(err))}`);
     });

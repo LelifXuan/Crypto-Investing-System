@@ -1,25 +1,25 @@
 // app/static/pages/strategy/renderScanRanked.js
 import { escapeHtml, formatNumber } from "../../core/dom.js";
 
-const LEVEL_LABELS = { "1w": "战略级", "1d": "战术级", "4h": "执行级" };
+const TIMEFRAME_LABELS = { "1w": "周线", "1d": "日线", "4h": "4H" };
+
+function riskRewardText(value) {
+  const ratio = Number(value);
+  return Number.isFinite(ratio) && ratio > 0
+    ? `盈亏比 ${formatNumber(ratio, 2)}:1`
+    : "盈亏比待确认";
+}
 
 /**
  * Render the ranked opportunity list (only items with direction, sorted by score).
  * @param {Array} ranked - ScanItem[] already sorted by score desc
- * @param {Function} onSelect - callback(instrumentId, timeframe)
+ * @param {boolean} hasPending - whether any visible matrix cell is still warming
  */
-export function renderScanRanked(ranked, onSelect) {
-  // 2026-07-24 v3: callers can pass an optional second argument
-  // `hasPending` to switch between two empty-state messages:
-  //   - hasPending=true  → "数据补齐中..." (cells still computing)
-  //   - hasPending=false → "当前无明确交易机会..." (data ready, no edge)
-  // We accept either signature: ranked alone (legacy) or (ranked, hasPending).
+export function renderScanRanked(ranked, hasPending = false) {
   if (!ranked.length) {
-    const args = Array.from(arguments);
-    const hasPending = Boolean(args[1]);
     const emptyMsg = hasPending
       ? "数据补齐中，稍后将有方向出现。"
-      : "当前无明确交易机会。所有品种×级别均处于等待状态。";
+      : "当前无交易机会，市场处于震荡行情或等待确认阶段。";
     return `<div class="data-state data-state-empty">${escapeHtml(emptyMsg)}</div>`;
   }
 
@@ -27,13 +27,13 @@ export function renderScanRanked(ranked, onSelect) {
     .map((item) => {
       const tone = item.direction === "LONG" ? "bullish" : "bearish";
       const arrow = item.direction === "LONG" ? "↑" : "↓";
-      const level = LEVEL_LABELS[item.timeframe] || item.timeframe;
+      const timeframe = TIMEFRAME_LABELS[item.timeframe] || item.timeframe;
       return `
         <article class="card scan-ranked-card" data-tone="${tone}" data-instrument="${escapeHtml(item.instrument_id)}" data-timeframe="${escapeHtml(item.timeframe)}" style="cursor:pointer">
           <div class="scan-ranked-head">
             <div>
               <span class="impact-chip impact-${tone}">${escapeHtml(item.direction_label)} ${arrow}</span>
-              <span class="status-chip chip-neutral">${escapeHtml(level)}</span>
+              <span class="status-chip chip-neutral">${escapeHtml(timeframe)}</span>
             </div>
             <div class="scan-ranked-score">
               <strong>${escapeHtml(String(item.score))}</strong>
@@ -43,7 +43,7 @@ export function renderScanRanked(ranked, onSelect) {
           <p class="scan-ranked-summary">${escapeHtml(item.summary || "暂无摘要")}</p>
           <div class="scan-ranked-meta">
             <span>置信度 ${escapeHtml(String(Math.round(item.confidence)))}%</span>
-            <span>盈亏比 ${escapeHtml(formatNumber(item.risk_reward, 2))}:1</span>
+            <span>${escapeHtml(riskRewardText(item.risk_reward))}</span>
             <span>${escapeHtml(item.leverage_hint === "spot" ? "现货" : item.leverage_hint)}</span>
           </div>
         </article>

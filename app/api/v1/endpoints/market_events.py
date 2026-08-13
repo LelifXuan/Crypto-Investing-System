@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time as _time
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -12,7 +13,12 @@ from app.api.dependencies import CurrentUser, get_db_session, require_roles
 from app.core.config import settings
 from app.db.models.market import MarketEvent, MarketEventTranslationMap
 from app.repositories.market_repository import MarketRepository
-from app.schemas.market import MarketEventCreate, MarketEventQueryResponse, MarketEventRead
+from app.schemas.market import (
+    MarketEventCreate,
+    MarketEventQueryResponse,
+    MarketEventRead,
+    SupplyEventCalendarResponse,
+)
 from app.services.market import MarketService
 from app.services.translation.normalizer import looks_like_english
 
@@ -22,6 +28,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/market-events", tags=["market-events"])
 marketevents_router = APIRouter(prefix="/marketevents", tags=["marketevents"])
+
+
+# BNB's original vesting schedule ended in 2021, while 20M BNB remains marked
+# locked without a published future release date. Keep it visible as coverage,
+# not as a fabricated dated event. Source snapshot reviewed 2026-08-13.
+_BNB_UNSCHEDULED_QUANTITY = Decimal("20000000")
+_BNB_SCHEDULE_SOURCE = "Tokenomics.com"
+_BNB_SCHEDULE_SOURCE_REF = "https://app.tokenomics.com/tokenomics/binance-coin/unlocks"
+
+
+def _payload_decimal(payload: dict[str, Any], key: str) -> Decimal | None:
+    value = payload.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _display_mark(value: Decimal | None) -> Decimal | None:
+    return value.quantize(Decimal("0.00000001")) if value is not None else None
+
+
+def _display_value(quantity: Decimal | None, price: Decimal | None) -> Decimal | None:
+    if quantity is None or price is None:
+        return None
+    return (quantity * price).quantize(Decimal("0.01"))
 
 
 async def _queue_event_translations(
@@ -289,3 +323,69 @@ async def refresh_translations(
         "worker_running": worker_status.get("running", False),
         "last_error": worker_status.get("last_error"),
     }
+
+
+@router.get(
+    "/supply-event-calendar",
+    response_model=SupplyEventCalendarResponse,
+)
+async def list_supply_event_calendar(
+    limit: int = Query(default=100, ge=1, le=500),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
+) -> SupplyEventCalendarResponse:
+    """Upcoming token releases with current local mark-price valuation.
+
+    Dated nodes stay read-only and come from immutable supply snapshots. Assets
+    with a known locked balance but no verified future date are returned in
+    ``coverage`` so the UI can disclose the gap without inventing an event.
+    """
+    repo = MarketRepository(session)
+    nodes = await repo.list_supply_calendar_nodes(limit=limit)
+    instrument_ids = {node.instrument_id for node in nodes}
+    instrument_ids.add("bnb-usdt-perp")
+    marks = {instrument_id: await repo.latest_mark(instrument_id) for instrument_id in instrument_ids}
+
+    items: list[dict[str, Any]] = []
+    for node in nodes:
+        payload = node.payload_json or {}
+        quantity = _payload_decimal(payload, "nominal_unlock_qty")
+        mark = marks.get(node.instrument_id)
+        mark_price = _display_mark(mark.mark_price if mark else None)
+        items.append(
+            {
+                "node_id": node.node_id,
+                "instrument_id": node.instrument_id,
+                "asset": node.asset,
+                "node_type": node.node_type,
+                "event_at": node.event_at,
+                "snapshot_id": node.snapshot_id,
+                "allocation": payload.get("allocation"),
+                "unlock_quantity": quantity,
+                "release_pct": _payload_decimal(payload, "release_pct"),
+                "mark_price": mark_price,
+                "market_value": _display_value(quantity, mark_price),
+                "price_as_of": mark.ts_event if mark else None,
+                "source": node.source,
+            }
+        )
+
+    bnb_mark = marks.get("bnb-usdt-perp")
+    bnb_price = _display_mark(bnb_mark.mark_price if bnb_mark else None)
+    return SupplyEventCalendarResponse(
+        items=items,
+        coverage=[
+            {
+                "asset": "BNB",
+                "instrument_id": "bnb-usdt-perp",
+                "schedule_status": "no_verified_future_nodes",
+                "remaining_quantity": _BNB_UNSCHEDULED_QUANTITY,
+                "mark_price": bnb_price,
+                "market_value": _display_value(_BNB_UNSCHEDULED_QUANTITY, bnb_price),
+                "price_as_of": bnb_mark.ts_event if bnb_mark else None,
+                "source": _BNB_SCHEDULE_SOURCE,
+                "source_ref": _BNB_SCHEDULE_SOURCE_REF,
+                "note": "仍有未释放余额，但没有可核验的未来解锁日期；不生成推测节点。",
+            }
+        ],
+    )

@@ -253,7 +253,10 @@ async def get_unified_strategy(
         # refresh_limitations + the proper banner-visible prewarm_status.
         if cache is not None and cache.payload_json:
             cached_payload_status = (cache.payload_json or {}).get("status")
-            if cached_payload_status == "degraded" and status not in {"missing", "error", "warming", "stale"}:
+            if (
+                cached_payload_status == "degraded"
+                and status not in {"missing", "error", "warming", "stale"}
+            ):
                 logger.info(
                     "strategy_unified_cache_stale_degraded: instrument=%s, "
                     "row_state=%s, components=%s — falling through to cold read",
@@ -262,11 +265,35 @@ async def get_unified_strategy(
                     (cache.payload_json or {}).get("degraded_components"),
                 )
                 status = "stale"
-        if cache is not None and cache.payload_json and status not in {"missing", "error", "stale"}:
+        # A degraded payload (empty shell) is never worth serving even as
+        # LKG — it carries no operation cards / evidence, so the panel
+        # would render empty-state copies either way. LKG-serving applies
+        # only to complete snapshots whose TTL simply lapsed. A "ready"
+        # payload with partial degraded_components is still LKG-worthy
+        # (the frontend banner lists the failing components).
+        payload_is_degraded = bool(
+            cache is not None
+            and (cache.payload_json or {}).get("status") == "degraded"
+        )
+        if (
+            cache is not None
+            and cache.payload_json
+            and status in {"fresh", "stale"}
+            and not payload_is_degraded
+        ):
             payload = dict(cache.payload_json)
             payload.setdefault("instrument_id", normalized_instrument)
             payload["cache_state"] = status
-            payload["refresh_state"] = payload.get("refresh_state") or "cache_only"
+            # 2026-08-07 (AGENTS.md §九.2): an expired-but-present cache row
+            # serves its last-known-good payload with a stale_revalidating
+            # marker instead of falling through to an empty degraded shell.
+            # The old behaviour (status in {"missing","error","stale"} →
+            # cold-read) blanked the strategy detail panel every TTL period;
+            # when external data sources were slow the panel stayed stuck on
+            # "统一策略服务暂时不可用" even though a complete snapshot existed.
+            payload["refresh_state"] = payload.get("refresh_state") or (
+                "stale_revalidating" if status == "stale" else "cache_only"
+            )
             payload["prewarm_status"] = "ready" if status == "fresh" else "enqueued"
             payload, price_invalidated = await _guard_cached_strategy(
                 repository, normalized_instrument, payload
@@ -525,9 +552,18 @@ async def get_strategy_scan(
     - Wrap every operation in try/except so any unhandled error degrades
       to HTTP 200 with cache_meta.source="error" rather than a 5xx that
       the frontend flattens into the "扫描失败" banner.
+
+    Bounded warming (2026-08-07): a warming cache row is authoritative
+    only for its 10s short-circuit window. After that the endpoint treats
+    it as missing and runs one cache-only scan (returns a real matrix in
+    ~2-3 s on a warm DB) instead of returning the empty warming payload
+    forever. force=true rebuilds every cell from source data.
     """
-    from app.services.strategy_unified.opportunity_scanner import OpportunityScanner, SCAN_TIMEFRAMES
     from app.schemas.market import PrecomputeHintRequest
+    from app.services.strategy_unified.opportunity_scanner import (
+        SCAN_TIMEFRAMES,
+        OpportunityScanner,
+    )
 
     repository = MarketRepository(session)
     cache_key = strategy_scan_cache_key()
@@ -541,6 +577,19 @@ async def get_strategy_scan(
             logger.exception("strategy/scan cache lookup failed")
             cache = None
         status = cache_status(cache) if cache else "missing"
+        # A warming cache row is only authoritative while its short-circuit
+        # window is open (10s). Once it expires, treat it as missing so the
+        # cold-load branch below produces a real matrix instead of returning
+        # the warming payload forever — the pre-2026-08-07 behaviour looped
+        # the frontend's warming poll with an empty matrix indefinitely.
+        if cache is not None and (cache.cache_state or cache.status) in {
+            "warming",
+            "updating",
+            "refreshing",
+        }:
+            expires_at = getattr(cache, "expires_at", None)
+            if expires_at is not None and expires_at <= now:
+                status = "missing"
         if cache is not None and cache.payload_json and status not in {"missing", "error"}:
             payload = dict(cache.payload_json)
             payload.setdefault("cache_meta", {})
@@ -553,9 +602,12 @@ async def get_strategy_scan(
                 payload["cache_meta"]["source"] = "cache"
             return payload
 
-    # Cold-load short-circuit: kick off prewarm, return a fast warming
-    # response (HTTP 200) so the frontend can show its "warming" UI
-    # instead of holding the connection open for 60+ s.
+    # Cold-load short-circuit: kick off the background prewarm (so fresher
+    # cells arrive), then run ONE cache-only scan immediately. scan_all
+    # reads every cell from its bundle cache — on a warm DB that returns a
+    # real matrix in ~2-3 s, which is far better than an infinite warming
+    # banner. If the scan fails for any reason, fall back to the warming
+    # response so the frontend's poll loop keeps its banner up.
     if not force:
         try:
             await precompute_service.enqueue_hint(
@@ -576,6 +628,47 @@ async def get_strategy_scan(
             )
         except Exception:
             logger.exception("strategy/scan prewarm enqueue failed")
+
+        try:
+            instruments = await repository.list_instruments()
+            instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
+            instrument_codes = {}
+            for i in instruments:
+                code = (
+                    getattr(i, "base_ccy", None)
+                    or getattr(i, "symbol", None)
+                    or i.instrument_id
+                )
+                instrument_codes[i.instrument_id] = code
+
+            scanner = OpportunityScanner(repository)
+            result = await scanner.scan_all(instrument_ids, instrument_codes)
+
+            import dataclasses
+            result_dict = dataclasses.asdict(result)
+            result_dict["cache_meta"] = dict(result_dict.get("cache_meta") or {})
+            result_dict["cache_meta"]["message"] = (
+                "基于当前缓存生成；后台正在补齐最新数据，可稍后手动刷新。"
+            )
+            try:
+                await repository.upsert_page_snapshot_cache(
+                    cache_key=cache_key,
+                    page_type="strategy_scan",
+                    payload_json=result_dict,
+                    status="ready",
+                    cache_state="fresh",
+                    snapshot_at=now,
+                    data_ts=now,
+                    expires_at=expires_at_for_scan(now),
+                    source_version=CACHE_SOURCE_VERSION,
+                )
+            except Exception:
+                logger.exception("strategy/scan cold cache write failed")
+            return result_dict
+        except Exception:
+            logger.exception(
+                "strategy/scan cold scan failed; falling back to warming"
+            )
 
         warming_payload = {
             "scanned_at": now.isoformat(),
@@ -615,7 +708,11 @@ async def get_strategy_scan(
         instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
         instrument_codes = {}
         for i in instruments:
-            code = getattr(i, 'code', None) or i.instrument_id
+            code = (
+                getattr(i, "base_ccy", None)
+                or getattr(i, "symbol", None)
+                or i.instrument_id
+            )
             instrument_codes[i.instrument_id] = code
 
         scanner = OpportunityScanner(repository)

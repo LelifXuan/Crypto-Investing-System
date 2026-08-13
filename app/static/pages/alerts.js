@@ -508,7 +508,7 @@ export async function renderAlerts() {
             <p class="eyebrow">活跃及历史告警</p>
             <h2>告警列表</h2>
           </div>
-          <div class="toolbar compact-toolbar"><button id="alerts-refresh" type="button">刷新告警</button></div>
+          <div class="toolbar compact-toolbar"><button id="alerts-refresh" class="primary-button compact" type="button">刷新告警</button></div>
         </div>
         <section class="grid cols-3 alert-summary-grid" id="alerts-summary"></section>
         <div class="table-wrap">

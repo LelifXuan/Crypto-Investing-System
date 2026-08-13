@@ -1,4 +1,4 @@
-﻿export const knowledgeCatalogVersion = "v1.10-cleanup";
+export const knowledgeCatalogVersion = "v1.10-cleanup";
 
 export const knowledgePageFilters = [
   { key: "market-analysis", label: "技术指标" },
@@ -1073,18 +1073,18 @@ const macroItems = [
     display_mode: "full",
     importance: "core",
     aliases: ["iorb", "interest_on_reserve_balances", "on_rrp_rate", "reverse_repo_rate", "rate_corridor"],
-    summary: "Fed 通过 IORB（走廊上限）和 ON RRP rate（走廊下限）控制联邦基金利率。",
-    definition: "IORB = Interest on Reserve Balances，银行在 Fed 存款的利率。ON RRP rate = Overnight Reverse Repo rate，市场（货币基金）在 Fed 放钱的利率。EFFR 应在两者之间。",
-    why_it_matters: "走廊宽度（IORB - ON RRP rate）收窄 → 银行与市场套利空间消失 → 流动性紧张。2008/2020/2023 都有此信号。",
-    formula: "走廊宽度 = IORB - ON RRP rate（正常约 10-15 bp）",
-    how_to_use: "持续监测差值变化。差值 < 5 bp = 警告；IORB - EFFR > 10 bp = 银行体系压力。",
+    summary: "现代 Fed 的利率走廊是地板体系：IORB 是利率下限（floor），贴现窗口利率是上限，ON RRP 是 IORB 之下的一层额外地板。",
+    definition: "IORB = Interest on Reserve Balances，银行存放在 Fed 准备金的利率，是联邦基金利率的实际下限；ON RRP rate = Overnight Reverse Repo rate，货币基金在 Fed 逆回购中放款的利率，作为额外地板（ON RRP ≤ IORB）；贴现窗口利率（Primary Credit Rate）是走廊上限。EFFR 通常紧贴 IORB 上方运行。",
+    why_it_matters: "地板体系下，EFFR 贴近 IORB：EFFR 相对 IORB 走阔（EFFR − IORB 上升）反映银行体系准备金紧张；IORB 与 ON RRP 利差收窄且 ON RRP 使用量激增则反映流动性极度过剩（资金没处放）。两者含义相反，必须分清。",
+    formula: "走廊宽度 = 贴现窗口利率 − IORB；地板利差 = IORB − ON RRP rate（常态约 5-15 bp）",
+    how_to_use: "监测两个差值：① EFFR − IORB 走阔（> 10 bp）→ 准备金紧张，银行体系压力上升；② IORB − ON RRP 收窄（< 5 bp）且 ON RRP 使用量高位 → 流动性过剩，不代表风险。",
     useful_when: [
       "FOMC 决议日",
       "回购市场异动",
       "货币基金 YTD 收益异常",
     ],
-    thresholds: ["走廊宽度 < 5 bp → 警告", "IORB - EFFR > 10 bp → 银行压力"],
-    risk_note: "2023 年 3 月 SVB 危机时走廊从 +10 bp 收窄到 +5 bp，2 天后 Fed 紧急推出 BTFP。",
+    thresholds: ["EFFR - IORB > 10 bp → 准备金紧张/银行压力", "IORB - ON RRP < 5 bp → 流动性过剩"],
+    risk_note: "2023 年 3 月 SVB 挤兑期间，银行恐慌性涌入贴现窗口，Fed 紧急推出 BTFP 提供额外流动性。",
     page_refs: ["monitoring-overview", "ai-strategy"],
     related_terms: ["fed_balance_sheet_operations", "bank_reserves", "reverse_repo"],
     tags: ["monetary", "fed-operations", "corridor"],
@@ -1130,7 +1130,7 @@ const macroItems = [
       "FOMC 决议后",
     ],
     thresholds: ["周度 > $10B → 关注", "周度 > $50B → 危机"],
-    risk_note: "2008 年雷曼危机前一周 SRF 使用量从 $0 飙升到 $150B+。这是 Fed 资产负债表里'最后才会动'的指标。",
+    risk_note: "2023 年 3 月 SVB 挤兑期间，贴现窗口借款从平时接近 0 飙升至 $150B+ 量级，是银行体系压力的直接体现（SRF 本身 2021 年才设立，2008 年雷曼危机时对应的是贴现窗口与 TAF 等工具）。",
     page_refs: ["monitoring-overview"],
     related_terms: ["fed_balance_sheet_operations", "bank_reserves", "iorb_corridor"],
     tags: ["monetary", "fed-operations", "stress", "core"],
@@ -1161,7 +1161,7 @@ const macroItems = [
     display_mode: "full",
     importance: "useful",
     aliases: ["setup_ev", "win_probability", "posterior"],
-    summary: "P(win) = base_prior × Π(likelihoods)。V1.7.5 用 Bayesian 评估 setup 真实胜率。",
+    summary: "P(win) = base_prior × Π(likelihoods)。V1.7.5 用 Bayesian 结构整合信号质量，评估 setup 的触发价值。",
     definition: "Bayesian posterior: prior (base 0.45) × product of likelihoods (each sub-score contributes 0.5x-1.6x based on signal quality)。",
     why_it_matters: "传统 risk_reward 只看 rr 倍数。左侧 5R 交易（止损率大但回报更高）以前被封顶 90。EV = P(win) × RR 真正反映'胜率×回报'。",
     formula: "P(win) = 0.45 × Π(likelihoods) / Z; clamped [0.01, 0.99]",
@@ -1330,6 +1330,12 @@ const etfItems = [
       "不同于高股息策略：现金流 ETF 更关注现金生成能力而非当期分红率；高分红可能来自借贷或资产出售。",
       "交易注意事项：关注 A 股 ETF 的交易流动性、折溢价率、跟踪误差及规模变化，不构成确定性高收益保证。",
     ].join("\n"),
+    useful_when: [
+      "市场从成长/科技切向防御时，用现金流ETF观察资金是否在追逐现金生成能力，而不是只看当期股息率。",
+      "对比红利类资产时，用现金流ETF区分「高分红但可能借债或卖资产」和「经营现金流真覆盖分红」两类标的。",
+      "复盘 A 股 ETF 组合时，用现金流ETF判断观察对象是否有独立的行业或现金流逻辑，而不是单纯跟随大盘贝塔。",
+    ],
+    example: "例如 A 股大盘震荡而现金流 ETF 持续走强，说明防御资金更看重现金回报质量；此时可把它当作风向标观察，但不等同于任何单只 ETF 的买入信号。",
   }),
   term("halo_etf", "HALO ETF / HALO 组合", {
     category: "ashare-etf",
@@ -1347,6 +1353,12 @@ const etfItems = [
       "HALO 作为观测组合而非买入信号：用于判断资金在重资产板块与轻资产/科技板块之间的轮动节奏。",
       "风险因素包括：政策转向、融资成本上升、大宗商品价格剧烈波动、长周期资本开支周期拐点。",
     ].join("\n"),
+    useful_when: [
+      "判断资金在重资产板块（电信、能源、电力、基建、军工、有色）与轻资产/科技板块之间的轮动节奏时使用。",
+      "政策或利率环境变化后，用 HALO 组合观察长周期资本开支板块是否获得资金偏好。",
+      "复盘 A 股 ETF 组合时，用 HALO 区分观察对象是否有独立的行业轮动属性，而不是跟随大盘。",
+    ],
+    example: "例如成长风格走弱而 HALO 板块（电力、基建、军工）同步走强，说明资金转向高壁垒、低淘汰的防御方向；它描述板块轮动，不构成对任何单一板块的买入建议。",
   }),
   term("ashare_etf_quote_source", "A股 ETF 行情源", {
     aliases: ["ETF quote source", "A股ETF行情", "A-share ETF quotes"],
@@ -1359,6 +1371,12 @@ const etfItems = [
     risk_note: "A股交易时间、涨跌停和基金申赎机制与 BTC 永续合约完全不同，跨市场解释必须降权。",
     page_refs: ["ashare-etf", "monitoring-overview", "knowledge-base"],
     tags: ["quote", "source", "etf"],
+    useful_when: [
+      "ETF 页价格、成交额或折溢价显示延迟或缺失时，用行情源确认数据来自哪里、时间戳是什么，避免把陈旧行情当实时信号。",
+      "对比多只 ETF 的涨跌幅度前，先确认它们来自同一行情源，否则折溢价和排序可能失真。",
+      "跨市场（如 A 股与加密）联动观察时，用行情源标记判断哪些数据可作背景参考、哪些只是延迟快照。",
+    ],
+    example: "例如某 ETF 折溢价显示异常时，先查行情源时间戳是否已停更；若数据陈旧，应忽略该折溢价，等待有效行情更新后再作判断。",
   }),
   term("etf_vs_perp_spot", "ETF vs 永续合约/现货", {
     aliases: ["ETF vs Perp", "ETF vs Spot", "ETF和永续合约区别"],
@@ -1371,6 +1389,12 @@ const etfItems = [
     definition: "A股ETF受交易所交易时间、申赎机制、成分股表现和流动性影响；永续合约受资金费率、保证金、强平和盘口深度影响；现货则不含合约强平机制。",
     how_to_use: "ETF 页只做跨市场观察，不把 ETF 涨跌直接输入 Crypto 告警、结构或策略信号。",
     risk_note: "把 ETF 的低波动误读为低风险、把永续合约的高流动性误读为低风险，都会导致仓位判断失真。",
+    useful_when: [
+      "比较 A 股 ETF 与加密永续/现货的价格行为时，用三者的机制差异解释为什么涨跌幅和波动不可直接类比。",
+      "评估 ETF 流动性风险时，考虑交易时间、申赎机制与涨跌停限制对成交的影响。",
+      "复盘跨市场持仓时，区分 ETF、永续和现货各自的强平、费率和盘口风险来源。",
+    ],
+    example: "例如同一标的的 A 股 ETF 因涨跌停限制无法跟上涨幅，而永续合约不受此限——两者价差扩大不一定是套利机会，可能只是交易机制不同。",
   }),
   term("dividend_cashflow", "股息现金流", {
     aliases: ["Dividend Cash Flow", "分红现金流", "红利现金流"],
@@ -1383,6 +1407,12 @@ const etfItems = [
     risk_note: "高分红不等于可持续现金流。要看经营现金流 / 自由现金流是否覆盖分红；周期股在景气顶部的高分红往往不可持续；A 股 ETF 的'近 12 月股息率'还会受除权除息日影响，需要对齐会计期间才能横向比较。",
     definition: "相比只看利润，现金流更强调钱是否真的回到企业账上并具备分配空间。对 ETF 来说，它通常通过成分股筛选、分红率和现金回报质量间接体现。",
     how_to_use: "当现金流 ETF 强于高弹性成长资产时，市场可能更偏好确定性和分红；当它明显走弱，说明防御资金也可能在撤退。",
+    useful_when: [
+      "评估高股息资产的可持续性时，用股息现金流确认分红是否有经营现金流支撑，而不只看当期股息率。",
+      "对比红利 ETF 与现金流 ETF 时，用股息现金流区分「分红但现金流紧张」与「现金流能覆盖分红」的标的。",
+      "复盘防御型持仓时，用股息现金流判断其现金回报质量是否随会计期间变化。",
+    ],
+    example: "例如某红利 ETF 股息率很高，但成分股自由现金流未能覆盖分红——此时高股息可能依赖借贷或出售资产，属于不可持续的高分红。",
   }),
   term("heavy_assets_low_obsolescence", "重资产低迭代淘汰", {
     aliases: ["重资产", "低迭代淘汰", "Low Obsolescence"],
@@ -1395,6 +1425,12 @@ const etfItems = [
     definition: "电力、能源、基建、电信网络和部分资源品行业往往有重资产和长期投入特征。它们的风险更常来自价格周期、政策和负债成本，而不是产品快速过时。",
     how_to_use: "观察这些 ETF 是否同步走强，可以帮助判断市场是否偏向稳定现金流、资源约束或政策托底逻辑。",
     risk_note: "重资产不等于永远安全。利率上行、需求下行、政策调整和产能周期都可能压低估值。",
+    useful_when: [
+      "市场风格在重资产与轻资产/科技之间切换时，用该线索观察资金是否偏向高壁垒、长周期行业。",
+      "利率或政策环境变化后，判断电力、能源、基建等板块的估值风险是否来自负债成本而非产品迭代。",
+      "复盘板块轮动时，用该线索区分「行业逻辑驱动」与「单纯跟随大盘」的观察对象。",
+    ],
+    example: "例如利率上行周期中，重资产板块因负债成本上升可能承压，即使现金流稳定——此时应关注政策与利率变量，而非认为资产壁垒能免疫所有风险。",
   }),
 ];
 
@@ -1408,8 +1444,8 @@ const derivativesItems = [
     related_terms: ["put-wall", "max-pain", "open-interest"],
     tags: ["options", "open-interest", "grid-risk"],
     summary: "Call Wall 是当前到期链上 Call 持仓较集中的行权价区域。",
-    definition: "它是当前到期链上 Call 持仓较集中的行权价区域，反映到期日附近做市商卖出 Call 后需要在哪个价位对冲 Delta。",
-    why_it_matters: "Call Wall 上方积累大量 Short Call 头寸，做市商通过在现货/期货市场买入对冲 Delta，使该区域在临近到期时形成天然卖压。这是为什么 BTC 经常在期权到期日附近出现\"磁吸效应\"——价格被吸附到这些行权价附近。",
+    definition: "它是当前到期链上 Call 持仓较集中的行权价区域。做市商卖出 Call 后 Delta 为负，价格上行时需在现货/期货市场买入标的降敞口，使该区域在临近到期时形成向上磁吸。",
+    why_it_matters: "Call Wall 上方积累大量 Short Call 头寸。做市商的 Delta 对冲方向是买入（short call 的 Delta 为负，价格上行时买回标的），使该区域在临近到期时形成向上磁吸。这是为什么 BTC 经常在期权到期日附近出现\"磁吸效应\"——价格被吸附到这些行权价附近。它常被用作上方阻力参考，但按本系统口径，它只是潜在对冲敏感区，不作为确定阻力。",
     how_to_use: "把 Call Wall 当作到期日的'价格天花板'，但需要结合距离和历史迁移判断强度：① 距离现价 2% 以内属于强磁吸区；② Call Wall 单日上移 200 美元以上说明上移仓位在主动建仓；③ 多次测试同一行权价仍不破位说明卖方防御坚固。",
     useful_when: [
       "到期日 1-3 天前，判断 BTC 是否会冲到 Call Wall：现价距 Call Wall < 1.5% 时倾向于做空或卖出跨式（而非追多）。",
@@ -1418,7 +1454,7 @@ const derivativesItems = [
       "与 Put Wall 结合判断市场结构偏置：Call Wall 远高于现价 + Put Wall 紧贴现价下方 = 偏空结构；反之则偏多。",
       "在 BTC 衍生品页的 'Key Levels' 区域，对比 Call Wall 与现价的距离：距离 > 5% 时 Call Wall 是弱参考；距离 < 2% 时是强参考。",
     ],
-    example: "2024 年 1 月 BTC 现货 42500，季度期权 Call Wall 在 50000（距离 17.6%），周度期权 Call Wall 在 44000（距离 3.5%）。短期内 BTC 多次冲击 44000 未果，因为做市商在该价位持续对冲卖出。这种\"测试不破\"是 Call Wall 起作用的典型表现，但若现货突然放量突破 44000 + 持仓量快速下降，说明卖方在平仓对冲（Call Wall 失效）。",
+    example: "2024 年 1 月 BTC 现货 42500，季度期权 Call Wall 在 50000（距离 17.6%），周度期权 Call Wall 在 44000（距离 3.5%）。短期内 BTC 多次冲击 44000 未果，因为做市商在该价位持续买入标的对冲（short call 的 Delta 对冲）。这种\"测试不破\"是 Call Wall 起作用的典型表现，但若现货突然放量突破 44000 + 持仓量快速下降，说明卖方在平仓对冲（Call Wall 失效）。",
     risk_note: "Call Wall 不是'反转信号'。如果现货以高成交量突破 Call Wall + 持仓量同步下降，说明卖方在平仓（Call Wall 已被消化），这时它不再有压力作用。永远结合持仓变化和成交量一起判断。",
   }),
   term("put-wall", "Put Wall", {
@@ -1430,8 +1466,8 @@ const derivativesItems = [
     related_terms: ["call-wall", "max-pain", "open-interest"],
     tags: ["options", "open-interest", "downside-risk"],
     summary: "Put Wall 是当前到期链上 Put 持仓较集中的行权价区域。",
-    definition: "它是当前到期链上 Put 持仓较集中的行权价区域。做市商卖出 Put 后需要在现货市场卖出对冲 Delta，使该区域在临近到期时形成天然买盘（抄底盘）。",
-    why_it_matters: "Put Wall 下方积累大量 Long Put 头寸（保护性头寸），做市商通过卖出现货对冲。临近到期日时，这些对冲买盘在 Put Wall 形成天然支撑。这就是为什么 BTC 经常在到期日附近出现\"抄底磁吸\"。",
+    definition: "它是当前到期链上 Put 持仓较集中的行权价区域。做市商卖出 Put 后 Delta 为正，价格下行时需在现货/期货市场买入标的降敞口，使该区域在临近到期时形成天然买盘（支撑/抄底磁吸）。",
+    why_it_matters: "Put Wall 下方积累大量 Short Put 头寸（做市商为主要卖方）。做市商的 Delta 对冲方向是买入（short put 的 Delta 为正，价格下行时买回标的），临近到期日时这些对冲买盘在 Put Wall 形成天然支撑。这就是为什么 BTC 经常在到期日附近出现\"抄底磁吸\"。",
     how_to_use: "把 Put Wall 当作到期日的'价格地板'，但需要结合距离、迁移速度和成交量判断强度：① 距离现价 2% 以内属于强磁吸区；② Put Wall 单日下移 200 美元以上说明保护需求在快速建仓；③ 多次测试同一行权价均不破位说明买盘防御坚固。",
     useful_when: [
       "到期日 1-3 天前，判断 BTC 是否会跌到 Put Wall：现价距 Put Wall < 1.5% 时倾向于做多或买入跨式（而非追空）。",
@@ -1479,12 +1515,12 @@ const derivativesItems = [
     why_it_matters: "期权 IV（隐含波动率）随到期日临近会结构性下降（theta 衰减），导致固定到期日的 IV 序列不可比。Constant Maturity 解决了这个问题——它模拟了一个'持续 60 天到期的期权'，让历史 IV 数据可比。",
     how_to_use: "用于观察 IV 期限结构的变化（例如 30D vs 60D vs 90D IV 哪个在涨/跌），判断市场对未来波动的预期：① 远月 IV > 近月 IV → 远期不确定性高（contango）；② 近月 IV > 远月 IV → 近期事件驱动（backwardation）。",
     useful_when: [
-      "构建 IV 期限结构图（BTC 衍生品页 'IV Risk Premium History' 图表）：每个期限桶是一条独立曲线，可以横向对比。",
+      "构建 IV 期限结构图（BTC 衍生品页 '期权风险图' 图表）：每个期限桶是一条独立曲线，可以横向对比。",
       "判断市场对近期 vs 远期波动的预期：近月 IV 飙升 + 远月 IV 平稳 = 短期事件驱动；远月 IV 飙升 = 长期不确定性。",
       "做期权交易时选择最合适的到期日：若交易的是短期事件（如 ETF 决议、FOMC），选近月；若交易的是长期主题（如减半周期），选远月。",
       "历史 IV 百分位分析：把当前 IV 与过去 30/90/180 天同期限桶 IV 分布对比，判断 IV 当前是贵还是便宜。",
     ],
-    example: "BTC 衍生品页 'IV Risk Premium History' 图表显示：30D IV = 52%、60D IV = 58%、90D IV = 64%。这是典型的 contango 形状——远月 IV 更高，说明市场预期未来 3 个月内有事件（减半、ETF、监管）。如果突然 30D IV 飙到 65% 而远月不变，说明短期事件驱动（immediate catalyst），这时卖出近月跨式、买入远月跨式是经典波动率套利。",
+    example: "BTC 衍生品页 '期权风险图' 图表显示：30D IV = 52%、60D IV = 58%、90D IV = 64%。这是典型的 contango 形状——远月 IV 更高，说明市场预期未来 3 个月内有事件（减半、ETF、监管）。如果突然 30D IV 飙到 65% 而远月不变，说明短期事件驱动（immediate catalyst），这时卖出近月跨式、买入远月跨式是经典波动率套利。",
     risk_note: "实际选中到期日的 DTE 可能与目标期限桶存在差距（如 60D 桶选中 58D 或 62D 的到期日）。当来源到期日改变时系统标记 rollover，跳变要明确保留——否则换月时数据会出现虚假跳变。永远在分析 IV 期限结构时同时看 rollover 标记。",
   }),
   term("open-interest", "Open Interest / 未平仓合约量", {
@@ -1521,7 +1557,7 @@ const derivativesItems = [
     why_it_matters: "IV 是期权交易的核心维度。① IV 高 = 期权贵 = 适合卖期权（收权利金）；② IV 低 = 期权便宜 = 适合买期权；③ IV 突然飙升 = 事件驱动（新闻、监管、ETF 决议）。BTC 衍生品页 'Options Risk Premium History' 图表就是 IV 历史曲线。",
     how_to_use: "把 IV 看作'波动率价格'：① 当前 IV vs 历史 IV 百分位 > 80% = IV 贵（卖期权）；< 20% = IV 便宜（买期权）；② IV 突然从 50% 飙升到 80% = 大事件已发生或预期即将发生；③ IV 与 HV（历史波动率）差值 = 风险溢价（IV Risk Premium），用于判断市场是否过度恐慌或过度乐观。",
     useful_when: [
-      "BTC 衍生品页 'IV Risk Premium History' 图表：绘制 IV 随时间变化 + 与 HV 对比。",
+      "BTC 衍生品页 '期权风险图' 图表：绘制 IV 随时间变化 + 与 HV 对比。",
       "卖出跨式策略前必须检查 IV 百分位：< 50% 卖跨式 = 自杀（IV 便宜时卖期权等于送钱）。",
       "买入跨式策略前检查 IV 趋势：IV 持续上行时买跨式容易亏（theta 损耗大），最好等 IV 平稳后再买。",
       "对冲组合时用 IV 衡量头寸的'波动风险'：高 IV 时同样名义金额的组合波动更大，要降低杠杆。",
@@ -1564,7 +1600,7 @@ const derivativesItems = [
     why_it_matters: "Gamma 是 2021 年 GameStop 轧空事件的核心。当某行权价附近 Gamma 极正（做市商持有正 Gamma）时，做市商是'高买低卖' = 抑制波动；当 Gamma 极负（做市商持有负 Gamma）时，做市商是'高抛低吸' = 放大波动。BTC 临近大事件（FOMC、ETF）时，负 Gamma 集中容易引发 gamma squeeze。",
     how_to_use: "把 Gamma Exposure (GEX) 看作'做市商的对冲压力'：① 正 GEX 主导 = 市场稳定，做市商压制波动；② 负 GEX 主导 = 市场不稳定，做市商放大波动；③ GEX 翻转（从正变负）= 波动率结构性升高信号。",
     useful_when: [
-      "BTC 衍生品页 'IV Risk Premium History' 与 'Strike Surface' 结合判断：GEX 翻转点往往是 IV 飙升的起点。",
+      "BTC 衍生品页 '期权风险图' 与 'Strike Surface' 结合判断：GEX 翻转点往往是 IV 飙升的起点。",
       "事件交易前（FOMC / ETF 决议）必查 GEX：负 GEX 主导时事件后波动放大更剧烈，跨式/宽跨式策略更易获利。",
       "现货短线交易时关注 GEX：负 GEX 主导时突破/跌破更可能持续，正 GEX 主导时突破/跌破更可能反转。",
       "做市商对冲成本估算：高负 GEX 时做市商需要频繁对冲，期权 spread 会扩大（流动性下降）—— 这就是为什么大事件当天 BTC 现货 spread 经常拉宽。",
@@ -1603,10 +1639,10 @@ const derivativesItems = [
     tags: ["options", "greeks", "vega"],
     summary: "Vega 是期权价值对 IV 变化的敏感度。",
     definition: "Vega 是期权价值对隐含波动率（IV）的一阶导数。Vega 越大，IV 变化对期权价值的影响越大。",
-    why_it_matters: "Vega 是交易波动率（而不是方向）的核心维度。① Long volatility 策略（买入跨式、long strangle）= Long vega，IV 上升赚钱；② Short volatility 策略（卖出跨式、iron condor）= Short vega，IV 下降赚钱。BTC 衍生品页 'IV Risk Premium History' 图表的斜率就是 vega 的视觉表达。",
+    why_it_matters: "Vega 是交易波动率（而不是方向）的核心维度。① Long volatility 策略（买入跨式、long strangle）= Long vega，IV 上升赚钱；② Short volatility 策略（卖出跨式、iron condor）= Short vega，IV 下降赚钱。BTC 衍生品页 '期权风险图' 图表的斜率就是 vega 的视觉表达。",
     how_to_use: "把 Vega 看作'你对 IV 变化的押注'：① 看多 IV（预期 IV 上升）= Long vega；② 看空 IV（预期 IV 下降）= Short vega；③ Vega 中性组合（straddle + strangle 等量对冲）= 押注方向，不押注 IV。",
     useful_when: [
-      "BTC 衍生品页 'IV Risk Premium History' 图表分析时，vega 帮你估算当前 IV 变化 1% 期权价值变化多少。",
+      "BTC 衍生品页 '期权风险图' 图表分析时，vega 帮你估算当前 IV 变化 1% 期权价值变化多少。",
       "事件交易前（ETF 决议、FOMC）：long vega 押注事件后 IV 飙升（事件前 IV 通常被压制）。",
       "对冲时考虑 vega 暴露：long spot + long put 是 vega 正暴露（对 IV 上升敏感），若 IV 暴跌 put 价值缩水对冲失效。",
       "组合 Greeks 平衡：delta 中性（方向不押注）+ gamma 中性（凸性不押注）+ vega 押注 = 纯波动率交易策略。",
@@ -1644,11 +1680,11 @@ const derivativesItems = [
     related_terms: ["constant-maturity", "implied-volatility", "dte"],
     tags: ["options", "volatility", "term-structure"],
     summary: "Contango 是远月 IV 高于近月；Backwardation 是近月 IV 高于远月。",
-    definition: "Contango：远月 IV > 近月 IV（远期不确定性高，近月稳定）。Backwardation：近月 IV > 远月 IV（近期事件驱动，远期回归平静）。BTC 衍生品页 'IV Risk Premium History' 图表就是期限结构的视觉表达。",
+    definition: "Contango：远月 IV > 近月 IV（远期不确定性高，近月稳定）。Backwardation：近月 IV > 远月 IV（近期事件驱动，远期回归平静）。BTC 衍生品页 '期权风险图' 图表就是期限结构的视觉表达。",
     why_it_matters: "期限结构告诉你市场对未来的预期：① Contango 主导 = 长期不确定性（监管、减半周期）→ 远月跨式盈利；② Backwardation 主导 = 短期事件驱动（FOMC、ETF 决议）→ 近月跨式盈利。判断期限结构是选择期权到期日的核心依据。",
     how_to_use: "把期限结构看作'波动率的时间分布'：① 长期 Contango（远月 IV 持续高于近月）= 卖出远月跨式，收取时间价值；② 短期 Backwardation（近月 IV 飙升）= 买入近月跨式，押注事件；③ 结构翻转（Contango → Backwardation）= 重大事件临近信号。",
     useful_when: [
-      "BTC 衍生品页 'IV Risk Premium History' 图表：横轴是时间，纵轴是 IV，多条曲线是不同 DTE 期限桶。",
+      "BTC 衍生品页 '期权风险图' 图表：横轴是时间，纵轴是 IV，多条曲线是不同 DTE 期限桶。",
       "选择期权到期日：长期主题选远月（contango 享受时间价值），短期事件选近月（backwardation 押注事件波动）。",
       "做跨式策略：contango 卖出远月跨式（时间价值最大），backwardation 买入近月跨式（事件驱动）。",
       "判断市场情绪：若 backwardation 突然出现且持续 1-2 周，说明市场预期近 30 天有大事（ETF、监管），可能预示 BTC 波动率结构性升高。",
@@ -1690,7 +1726,7 @@ const derivativesItems = [
     why_it_matters: "IV Crush 是事件后常见亏损源。① 事件前 long 跨式（押注大波动）若方向正确但 IV Crush = 仍可能亏（方向盈利不够抵消 IV 暴跌）；② 事件后卖跨式（收 theta + IV Crush）= 经典盈利路径。BTC ETF 决议、减半事件后都有显著 IV Crush 现象。",
     how_to_use: "把 IV Crush 看作'事件后的免费午餐'（对卖方而言）：① 事件后立即卖出跨式/宽跨式 = 收取 theta + 享受 IV 暴跌；② 事件前 long 跨式时警惕：即使方向对，IV Crush 可能抹平收益。",
     useful_when: [
-      "BTC 衍生品页 'IV Risk Premium History' 图表：事件前 IV 飙升（premium），事件后 IV 暴跌（crush），形成尖峰。",
+      "BTC 衍生品页 '期权风险图' 图表：事件前 IV 飙升（premium），事件后 IV 暴跌（crush），形成尖峰。",
       "事件后 24 小时内卖跨式/宽跨式 = 经典策略，特别适合 ETF / FOMC / 减半等明确事件。",
       "事件后 1-2 周内：若 IV 跌至历史百分位 < 30%，考虑买入跨式（押注下一个事件）。",
       "判断 IV 是否'充分定价'事件：事件前 IV 百分位 > 80% = 预期大波动（卖跨式胜率低）；< 50% = 事件被低估（买跨式胜率高）。",
@@ -2032,7 +2068,7 @@ const derivativesItems = [
     related_terms: ["constant-maturity", "roll_expiry", "dte", "roll_expiry"],
     tags: ["options", "expiry", "standard"],
     summary: "BTC 期权链里'月末最后一个星期五'为标准到期日，季度月份（3/6/9/12）为季度到期日。",
-    definition: "Standard Expiry = 当月最后一个星期五的到期日（每月一次）。3/6/9/12 月份为季度到期日，OI 显著高于普通月度。B Maturity Ladder 用 'cycle' 字段（QUARTERLY / monthly）标注，expiry_context.labels 渲染 '月度交割 / 季度交割 / 四巫日窗口 / ETF调仓窗口' 等语境。",
+    definition: "Standard Expiry = 当月最后一个星期五的到期日（每月一次）。3/6/9/12 月份为季度到期日，OI 显著高于普通月度。Maturity Ladder 用 'cycle' 字段（QUARTERLY / monthly）标注，expiry_context.labels 渲染 '月度交割 / 季度交割 / 四巫日窗口 / ETF调仓窗口' 等语境。",
     why_it_matters: "标准到期日是 BTC 期权市场流动性的'主轴'。90% 的 OI 和成交量集中在 4 个最近的 standard expiry 上。判断一个 strike / DTE 是否活跃，看它是否落在 standard expiry 附近是最快的方法。",
     how_to_use: "看 Maturity Ladder 的 cycle 列：① QUARTERLY 行 = 季末交割，OI 最大、流动性最好；② monthly 行 = 月末交割，次活跃；③ 非 standard 行（如果有）= 流动性差，跳过。",
     useful_when: [
@@ -2152,7 +2188,7 @@ const derivativesItems = [
     related_terms: ["volatility-smile", "call-wall", "put-wall", "open-interest"],
     tags: ["options", "surface", "strike"],
     summary: "把当前链的 OI（柱状）和 IV（线）按行权价排开的二维图，呈现 call/put wall 与 smile 形状。",
-    definition: "Strike Surface = 行权价 × OI（call/put 柱状） + 行权价 × IV（call/put 线）的组合图。B Maturity Ladder 上方 'strike_surface' 图渲染此图，含 Call Wall / Put Wall / Max Pain / Spot 竖线 annotation。",
+    definition: "Strike Surface = 行权价 × OI（call/put 柱状） + 行权价 × IV（call/put 线）的组合图。Maturity Ladder 上方 'strike_surface' 图渲染此图，含 Call Wall / Put Wall / Max Pain / Spot 竖线 annotation。",
     why_it_matters: "Strike Surface 是'一图看全链'的最高密度工具。OI 柱状直接看'钱在哪个 strike'，IV 曲线看'市场对每个 strike 预期多大波动'。Call Wall + IV 曲线对照可以一眼区分'真磁吸'与'假磁吸'。",
     how_to_use: "看 strike_surface 图的 4 个维度：① Call OI 柱（上方红/绿）找 Call Wall ② Put OI 柱（下方）找 Put Wall ③ Call/Put IV 曲线对照看 smile 形状 ④ Spot 竖线位置判断距 Wall 距离。",
     useful_when: [
@@ -2328,8 +2364,8 @@ function defaultUsefulWhen(item) {
   const pages = new Set(item.page_refs || []);
   if (category === "ashare-etf" || pages.has("ashare-etf")) {
     return [
-      `用 ${name} 判断 A 股 ETF 观察对象是否只是跟随大盘，还是有独立现金流、行业或工具属性。`,
-      `BTC 风险偏好和 A 股 ETF 资金轮动背离时，用 ${name} 避免把跨市场信号误读成直接交易触发。`,
+      `用 ${name} 判断 A 股 ETF 观察对象是否只是跟随大盘，还是有独立的现金流、行业或工具属性。`,
+      `市场风格或板块轮动变化时，用 ${name} 观察资金是在追逐防御性、资源约束还是行业逻辑。`,
       `做组合风险复盘时，用 ${name} 区分 ETF、现货和永续合约的流动性、交易时间和尾部风险。`,
     ];
   }
@@ -2409,7 +2445,7 @@ function defaultExample(item) {
   const category = String(item.category || "").toLowerCase();
   const pages = new Set(item.page_refs || []);
   if (category === "ashare-etf" || pages.has("ashare-etf")) {
-    return `例如 BTC 日线仍在震荡，但 A 股现金流和 HALO 观察对象同步走强。此时 ${name} 可以作为跨市场风险偏好的旁证，但不能直接替代 BTC 自身的结构突破和止损设置。`;
+    return `例如 A 股大盘震荡而 ${name} 走强，说明资金正在偏好更具现金流、行业或防御属性的方向；它描述 A 股内部的资金结构，不构成任何单只 ETF 的买卖信号。`;
   }
   if (family.includes("macro") || family.includes("liquidity") || pages.has("macro-calendar")) {
     return `例如 BTC 4h 突破前高，但 ${name} 显示美元或利率压力正在上升。策略上可以保留多头假设，但降低仓位，等待收盘确认和波动率回落后再执行。`;

@@ -55,6 +55,71 @@ class MarketCandle(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class GoldPolicyVersion(Base):
+    """Versioned gold allocation policy (tenant+user scoped).
+
+    Maps the existing ``gold_policy_versions`` table (migration 0012,
+    applied on 2026-07-28). The workbench read path consumes the latest
+    version to derive base-DCA / dip-add decisions.
+    """
+
+    __tablename__ = "gold_policy_versions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "version", name="uq_gold_policy_version"),
+    )
+
+    policy_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    base_currency: Mapped[str] = mapped_column(String(16), nullable=False)
+    portfolio_total: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    gold_current_value: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    available_cash: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    target_min: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    target_max: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    base_dca_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    fixed_dip_add_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    cooldown_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    quote_max_age_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    confirmations_required: Mapped[int] = mapped_column(Integer, nullable=False)
+    drawdown_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    pause_base_when_overweight: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class GoldExecutionEvent(Base):
+    """Append-only record of executed gold base-DCA / dip-add actions.
+
+    Maps the existing ``gold_execution_events`` table. Used by the
+    workbench to derive ``executed_today`` / ``last_dip_add_date`` so
+    decisions respect the cooldown and daily-execution idempotency.
+    """
+
+    __tablename__ = "gold_execution_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "user_id", "idempotency_key", name="uq_gold_execution_idempotency"
+        ),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class IndicatorValue(Base):
     __tablename__ = "indicator_values"
     __table_args__ = (
@@ -811,3 +876,26 @@ class StrategySignalOutcome(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SupplyEventCalendarNode(Base):
+    """A scheduled supply-event node (planned unlock / claim / sellable etc.).
+
+    Read-only for the calendar view: the table is populated by the supply
+    event pipeline (whitepaper / exchange / on-chain scrapers), and the
+    market-events page renders it as the "未来事件日历".
+    """
+
+    __tablename__ = "supply_event_calendar_nodes"
+
+    node_id: Mapped[str] = mapped_column(String, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    instrument_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    asset: Mapped[str] = mapped_column(String, nullable=False)
+    node_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    source_event_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

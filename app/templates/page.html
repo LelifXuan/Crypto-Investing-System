@@ -5,44 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} | Market Research Terminal</title>
   <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/editorial.css?v={{ asset_version }}">
 </head>
 <body data-page="{{ page_id }}" data-page-title="{{ title }}">
-  <header class="shell-header">
-    <div class="shell-brand">
-      {% if page_id == "gold-allocation" %}
-      <p class="eyebrow">Gold Allocation / 黄金配置</p>
-      {% else %}
-      <p class="eyebrow">Market Research Terminal / 市场研究终端</p>
-      {% endif %}
-      <h1>{{ title }}</h1>
-    </div>
-  </header>
+  <a class="skip-link" href="#page-root">跳到主要内容</a>
+  <div class="app-shell">
+    <aside class="app-sidebar" id="app-sidebar" aria-label="主导航">
+      <div class="app-sidebar-brand">
+        <span class="app-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 4.5h14v15H5zM9 4.5v15M9 9h10M9 14h10"/></svg>
+        </span>
+        <div>
+          <strong>Research Terminal</strong>
+          <span>市场研究终端</span>
+        </div>
+        <button class="icon-button sidebar-close" type="button" data-shell-action="toggle-sidebar" aria-label="收起导航" aria-expanded="true">
+          <svg viewBox="0 0 24 24"><path d="m14 7-5 5 5 5"/></svg>
+        </button>
+      </div>
 
-  <nav class="main-nav main-nav-grouped" aria-label="主导航">
-    <div class="nav-section" data-nav-scope="shared">
-      <span class="nav-section-label">共享</span>
-      <a data-page-link="macro-calendar" href="/macro-calendar-page">宏观日历</a>
-      <a data-page-link="knowledge-base" href="/knowledge-page">知识百科</a>
-    </div>
-    <div class="nav-section" data-nav-scope="crypto">
-      <span class="nav-section-label">Crypto</span>
-      <a data-page-link="market-events" href="/market-events-page">市场事件</a>
-      <a data-page-link="monitoring-overview" href="/monitoring-page">监控总览</a>
-      <a data-page-link="market-structure" href="/structure-page">形态结构</a>
-      <a data-page-link="market-analysis" href="/indicators-page">技术指标</a>
-      <a data-page-link="btc-derivatives" href="/btc-derivatives-page">BTC 衍生品</a>
-      <a data-page-link="ai-strategy" href="/strategy-page">AI策略</a>
-    </div>
-    <div class="nav-section" data-nav-scope="ashare">
-      <span class="nav-section-label">A股</span>
-      <a data-page-link="ashare-etf" href="/ashare-etf-page">A股ETF</a>
-      <a data-page-link="gold-allocation" href="/gold-allocation-page">黄金配置</a>
-    </div>
-  </nav>
+      <nav class="editorial-nav">
+        <section class="editorial-nav-group" aria-labelledby="nav-research">
+          <h2 id="nav-research">研究</h2>
+          <a data-page-link="monitoring-overview" href="/monitoring-page"><span data-nav-icon="overview"></span><span>监控总览</span></a>
+          <a data-page-link="market-events" href="/market-events-page"><span data-nav-icon="events"></span><span>市场事件</span></a>
+          <a data-page-link="macro-calendar" href="/macro-calendar-page"><span data-nav-icon="calendar"></span><span>宏观日历</span></a>
+        </section>
+        <section class="editorial-nav-group" aria-labelledby="nav-crypto">
+          <h2 id="nav-crypto">Crypto</h2>
+          <a data-page-link="market-analysis" href="/indicators-page"><span data-nav-icon="analysis"></span><span>技术指标</span></a>
+          <a data-page-link="market-structure" href="/structure-page"><span data-nav-icon="structure"></span><span>形态结构</span></a>
+          <a data-page-link="btc-derivatives" href="/btc-derivatives-page"><span data-nav-icon="derivatives"></span><span>BTC 衍生品</span></a>
+          <a data-page-link="ai-strategy" href="/strategy-page"><span data-nav-icon="strategy"></span><span>AI 策略</span></a>
+        </section>
+        <section class="editorial-nav-group" aria-labelledby="nav-allocation">
+          <h2 id="nav-allocation">配置</h2>
+          <a data-page-link="ashare-etf" href="/ashare-etf-page"><span data-nav-icon="etf"></span><span>A股 ETF</span></a>
+          <a data-page-link="gold-allocation" href="/gold-allocation-page"><span data-nav-icon="gold"></span><span>黄金配置</span></a>
+        </section>
+        <section class="editorial-nav-group" aria-labelledby="nav-reference">
+          <h2 id="nav-reference">参考</h2>
+          <a data-page-link="knowledge-base" href="/knowledge-page"><span data-nav-icon="knowledge"></span><span>知识百科</span></a>
+        </section>
+      </nav>
 
-  <main id="page-root">
-    {# gold-allocation dedicated shell removed in v5 — JS-rendered hero is now the only first-paint hero #}
-  </main>
+      <div class="app-sidebar-guide" id="app-sidebar-guide" aria-live="polite"></div>
+      <div class="app-sidebar-foot">
+        <span class="health-dot" aria-hidden="true"></span>
+        <span>系统在线</span>
+      </div>
+    </aside>
+
+    <div class="shell-scrim" data-shell-action="close-nav" aria-hidden="true"></div>
+
+    <div class="app-main">
+      <header class="app-topbar">
+        <button class="icon-button nav-toggle" type="button" data-shell-action="open-nav" aria-label="打开导航" aria-controls="app-sidebar" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div class="app-page-identity">
+          <span class="app-breadcrumb" id="app-breadcrumb">研究</span>
+          <h1 id="app-page-title">{{ title }}</h1>
+        </div>
+        <div class="app-page-context" id="app-page-context" aria-live="polite"></div>
+        <div class="app-topbar-actions">
+          <span class="global-quality"><span class="health-dot" aria-hidden="true"></span><span>数据连接正常</span></span>
+        </div>
+      </header>
+
+      <div class="app-workspace">
+        <main id="page-root" tabindex="-1"></main>
+      </div>
+      <button class="app-back-top" type="button" data-shell-action="back-to-top" aria-label="返回页面顶部">
+        返回顶部
+      </button>
+    </div>
+  </div>
 
   <script>window.__ASSET_VERSION__ = "{{ asset_version }}";</script>
   <script type="module" src="/static/main.js?v={{ asset_version }}"></script>

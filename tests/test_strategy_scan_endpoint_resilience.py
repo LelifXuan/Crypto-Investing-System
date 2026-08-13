@@ -18,7 +18,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_db_session
@@ -93,24 +92,25 @@ def test_scan_returns_degraded_result_when_scanner_raises(monkeypatch):
     assert body["cache_meta"]["opportunities_found"] == 0
 
 
-def test_scan_returns_warming_when_cache_empty(monkeypatch):
-    """Cold load (no cache, force=false) must return a warming response
-    quickly and enqueue prewarm, instead of blocking 60+ seconds.
+def test_scan_cold_cache_returns_live_matrix_from_cache_only_scan(monkeypatch):
+    """Cold load (no cache, force=false) must run one cache-only scan and
+    return the real matrix instead of blocking 60+ seconds — and must
+    enqueue a prewarm so fresher cells land in the background.
     """
     import time
 
     async def no_cache(self, cache_key):  # noqa: ARG001
         return None
 
-    async def no_instruments(self):
-        return []
+    async def fake_instruments(self):
+        return [SimpleNamespace(instrument_id="btc-usdt-perp", code="btc-usdt-perp")]
 
     async def no_upsert(self, **kwargs):  # noqa: ARG001
         return None
 
     prewarm_calls: list[dict] = []
 
-    async def fake_enqueue(self, payload):  # noqa: ARG001
+    async def fake_enqueue(payload):  # noqa: ANN001
         prewarm_calls.append({"current_page": payload.current_page})
         from app.schemas.market import PrecomputeHintResponse
         return PrecomputeHintResponse(
@@ -121,16 +121,60 @@ def test_scan_returns_warming_when_cache_empty(monkeypatch):
             queued_keys=["strategy_unified:btc-usdt-perp:1d"],
         )
 
+    # Patch the same instance path used by other strategy tests
+    # (app.api.v1.endpoints.strategy.precompute_service.enqueue_hint).
+    # Patching the CLASS instead (PrecomputeService.enqueue_hint) can be
+    # shadowed by a leftover instance attribute when another test file in
+    # the same pytest run patched the instance path first.
     monkeypatch.setattr(
-        "app.services.precompute.PrecomputeService.enqueue_hint",
+        "app.api.v1.endpoints.strategy.precompute_service.enqueue_hint",
         fake_enqueue,
     )
+
+    from app.services.strategy_unified.opportunity_scanner import ScanItem, ScanResult
+
+    async def fake_scan_all(self, instrument_ids, instrument_codes, *, force=False):  # noqa: ARG001
+        assert force is False, "cold-load branch must call scan_all with force=False"
+        return ScanResult(
+            scanned_at=datetime.now(UTC).isoformat(),
+            instruments=list(instrument_ids),
+            timeframes=["1w", "1d", "4h"],
+            matrix=[
+                ScanItem(
+                    instrument_id="btc-usdt-perp",
+                    instrument_code="btc-usdt-perp",
+                    timeframe="1d",
+                    direction="WAIT",
+                    direction_label="等待",
+                    confidence=74.0,
+                    score=0.0,
+                    summary="",
+                    risk_reward=0.0,
+                    leverage_hint="spot",
+                    position_cap="standard",
+                    primary_driver="",
+                    conflicts=[],
+                    cache_state="fresh",
+                    data_quality=70.0,
+                )
+            ],
+            ranked=[],
+            cache_meta={
+                "fresh_until": datetime.now(UTC).isoformat(),
+                "source": "live",
+                "instruments_scanned": len(instrument_ids),
+                "opportunities_found": 0,
+                "cells_ready": 1,
+                "cells_pending": 0,
+            },
+        )
 
     app = _build_app(
         monkeypatch,
         cache_lookup=no_cache,
-        list_instruments=no_instruments,
+        list_instruments=fake_instruments,
         upsert_cache=no_upsert,
+        scan_all=fake_scan_all,
     )
 
     with TestClient(app, raise_server_exceptions=False) as client:
@@ -141,10 +185,99 @@ def test_scan_returns_warming_when_cache_empty(monkeypatch):
     assert response.status_code == 200
     assert elapsed < 5.0, f"cold load returned in {elapsed:.2f}s — expected < 5s"
     body = response.json()
-    assert body["cache_meta"]["source"] == "warming", (
-        f"expected warming source, got {body['cache_meta'].get('source')!r}"
+    assert body["cache_meta"]["source"] == "live", (
+        f"cold-load scan must return a real matrix, got {body['cache_meta'].get('source')!r}"
     )
+    assert body["instruments"] == ["btc-usdt-perp"]
+    assert len(body["matrix"]) == 1
     assert len(prewarm_calls) >= 1, "expected prewarm to be enqueued"
+
+
+def test_scan_falls_back_to_warming_when_cold_scan_fails(monkeypatch):
+    """If the cache-only scan itself fails on a cold cache, the endpoint
+    must fall back to the warming short-circuit (fast HTTP 200), not 5xx.
+    """
+    import time
+
+    async def no_cache(self, cache_key):  # noqa: ARG001
+        return None
+
+    async def fake_instruments(self):
+        return [SimpleNamespace(instrument_id="btc-usdt-perp", code="btc-usdt-perp")]
+
+    async def no_upsert(self, **kwargs):  # noqa: ARG001
+        return None
+
+    async def boom_scan(self, instrument_ids, instrument_codes, *, force=False):  # noqa: ARG001
+        raise RuntimeError("cache-only scan failed")
+
+    app = _build_app(
+        monkeypatch,
+        cache_lookup=no_cache,
+        list_instruments=fake_instruments,
+        upsert_cache=no_upsert,
+        scan_all=boom_scan,
+    )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        start = time.monotonic()
+        response = client.get("/api/v1/strategy/scan")
+        elapsed = time.monotonic() - start
+
+    assert response.status_code == 200
+    assert elapsed < 5.0
+    body = response.json()
+    assert body["cache_meta"]["source"] == "warming", (
+        f"expected warming fallback, got {body['cache_meta'].get('source')!r}"
+    )
+
+
+def test_scan_force_passes_force_flag_to_scanner(monkeypatch):
+    """?force=true must reach OpportunityScanner.scan_all as force=True —
+    the pre-2026-08-07 endpoint passed force=force to a signature that
+    did not accept it, which TypeError'd into cache_meta.source='error'."""
+
+    async def no_cache(self, cache_key):  # noqa: ARG001
+        return None
+
+    async def fake_instruments(self):
+        return [SimpleNamespace(instrument_id="btc-usdt-perp", code="btc-usdt-perp")]
+
+    async def no_upsert(self, **kwargs):  # noqa: ARG001
+        return None
+
+    seen_force: list[bool] = []
+
+    from app.services.strategy_unified.opportunity_scanner import ScanResult
+
+    async def fake_scan_all(self, instrument_ids, instrument_codes, *, force=False):  # noqa: ARG001
+        seen_force.append(force)
+        return ScanResult(
+            scanned_at=datetime.now(UTC).isoformat(),
+            instruments=list(instrument_ids),
+            timeframes=["1d"],
+            matrix=[],
+            ranked=[],
+            cache_meta={"fresh_until": datetime.now(UTC).isoformat(), "source": "live"},
+        )
+
+    app = _build_app(
+        monkeypatch,
+        cache_lookup=no_cache,
+        list_instruments=fake_instruments,
+        upsert_cache=no_upsert,
+        scan_all=fake_scan_all,
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/strategy/scan?force=true")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cache_meta"]["source"] == "live", (
+        f"force scan must succeed; got source={body['cache_meta'].get('source')!r} "
+        f"message={body['cache_meta'].get('message')!r}"
+    )
+    assert seen_force == [True], f"expected scan_all(force=True), got {seen_force}"
 
 
 def test_scan_does_not_fail_on_cache_write_error(monkeypatch):
@@ -167,7 +300,7 @@ def test_scan_does_not_fail_on_cache_write_error(monkeypatch):
 
     from app.services.strategy_unified.opportunity_scanner import ScanResult
 
-    async def fake_scan_all(self, instrument_ids, instrument_codes):  # noqa: ARG001
+    async def fake_scan_all(self, instrument_ids, instrument_codes, *, force=False):  # noqa: ARG001
         return ScanResult(
             scanned_at=datetime.now(UTC).isoformat(),
             instruments=instrument_ids,
@@ -331,3 +464,103 @@ def test_scan_real_cache_hit_overwrites_source_to_cache(monkeypatch):
     assert body["cache_meta"]["source"] == "cache", (
         f"real cache hit must overwrite to 'cache'; got {body['cache_meta']['source']!r}"
     )
+
+
+def test_scan_expired_warming_cache_falls_through_to_scan(monkeypatch):
+    """Bounded warming (2026-08-07): a warming cache row is only
+    authoritative inside its short-circuit window. Once expires_at has
+    passed, the endpoint must NOT keep returning the empty warming
+    payload forever — it must fall through and produce a real matrix.
+
+    Pre-fix behaviour: cache_status() deliberately maps any warming row
+    to 'warming' forever, so the scan endpoint kept serving the empty
+    warming payload and the frontend polled an empty matrix indefinitely.
+    """
+
+    from datetime import timedelta, timezone
+
+    warming_payload = {
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "instruments": [],
+        "timeframes": ["1w", "1d", "4h"],
+        "matrix": [],
+        "ranked": [],
+        "cache_meta": {
+            "fresh_until": datetime.now(timezone.utc).isoformat(),
+            "source": "warming",
+            "instruments_scanned": 0,
+            "opportunities_found": 0,
+            "message": "首次访问，正在后台预热数据缓存，预计 5-10 秒后自动出结果。",
+        },
+    }
+
+    async def expired_warming_cache(self, cache_key):  # noqa: ARG001
+        return SimpleNamespace(
+            cache_key=cache_key,
+            payload_json=warming_payload,
+            cache_state="warming",
+            status="warming",
+            expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),  # window closed
+        )
+
+    async def fake_instruments(self):
+        return [SimpleNamespace(instrument_id="btc-usdt-perp", code="btc-usdt-perp")]
+
+    async def no_upsert(self, **kwargs):  # noqa: ARG001
+        return None
+
+    from app.services.strategy_unified.opportunity_scanner import ScanItem, ScanResult
+
+    async def fake_scan_all(self, instrument_ids, instrument_codes, *, force=False):  # noqa: ARG001
+        assert force is False
+        return ScanResult(
+            scanned_at=datetime.now(UTC).isoformat(),
+            instruments=list(instrument_ids),
+            timeframes=["1d"],
+            matrix=[
+                ScanItem(
+                    instrument_id="btc-usdt-perp",
+                    instrument_code="btc-usdt-perp",
+                    timeframe="1d",
+                    direction="LONG",
+                    direction_label="做多",
+                    confidence=80.0,
+                    score=82.0,
+                    summary="趋势确认",
+                    risk_reward=3.0,
+                    leverage_hint="3x",
+                    position_cap="standard",
+                    primary_driver="price_structure",
+                    conflicts=[],
+                    cache_state="fresh",
+                    data_quality=75.0,
+                )
+            ],
+            ranked=[],
+            cache_meta={
+                "fresh_until": datetime.now(UTC).isoformat(),
+                "source": "live",
+                "instruments_scanned": 1,
+                "opportunities_found": 1,
+                "cells_ready": 1,
+                "cells_pending": 0,
+            },
+        )
+
+    app = _build_app(
+        monkeypatch,
+        cache_lookup=expired_warming_cache,
+        list_instruments=fake_instruments,
+        upsert_cache=no_upsert,
+        scan_all=fake_scan_all,
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/strategy/scan")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cache_meta"]["source"] == "live", (
+        f"expired warming cache must fall through to a real scan; "
+        f"got source={body['cache_meta'].get('source')!r}"
+    )
+    assert len(body["matrix"]) == 1
+    assert body["matrix"][0]["direction"] == "LONG"

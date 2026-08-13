@@ -714,3 +714,120 @@ async def test_eastmoney_treats_empty_payload_as_failure(
     result = await em.fetch_history("561560")
     assert em.last_success_source == "sina_kline"
     assert len(result.points) == 1
+
+# --- read-only (database) history + strict tail append -------------------
+
+
+def _seed_cache(tmp_path: Path, monkeypatch, points: list[EtfKlinePoint]) -> EtfHistorySnapshot:
+    """Write a cached snapshot for 563010 into a temp cache dir."""
+    import app.services.ashare_etf_history as history_module
+
+    def _tmp_cache_dir() -> Path:
+        target = tmp_path / "fund_history"
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    monkeypatch.setattr(history_module, "cache_dir", _tmp_cache_dir)
+    seed = EtfHistorySnapshot(
+        code="563010",
+        market="SH",
+        secid="1.563010",
+        name="电信ETF",
+        source="eastmoney_kline",
+        coverage_start=points[0].trade_date,
+        coverage_end=points[-1].trade_date,
+        last_updated=datetime(2026, 8, 4, tzinfo=UTC),
+        points=points,
+    )
+    cache_path_for_code("563010").write_text(
+        json.dumps(
+            {
+                "code": seed.code,
+                "market": seed.market,
+                "secid": seed.secid,
+                "name": seed.name,
+                "source": seed.source,
+                "coverage_start": seed.coverage_start.isoformat(),
+                "coverage_end": seed.coverage_end.isoformat(),
+                "last_updated": seed.last_updated.isoformat(),
+                "points": [p.to_dict() for p in seed.points],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return seed
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_fetch_false_never_calls_upstream(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """fetch=False reads ONLY the cached history — a window extending past
+    coverage_end must not trigger an upstream pull (the caller computes
+    purely from the database; new bars arrive via explicit import)."""
+    _seed_cache(
+        tmp_path,
+        monkeypatch,
+        [
+            _make_point(date(2026, 8, 1), 1.00),
+            _make_point(date(2026, 8, 4), 1.03),
+        ],
+    )
+    stub = _StubClient(responses={})  # would raise if called
+    service = EtfHistoryService(client=stub)
+
+    snap = await service.get_snapshot(
+        "563010",
+        from_date=date(2026, 8, 1),
+        to_date=date(2026, 8, 10),  # extends past coverage_end (08-04)
+        fetch=False,
+    )
+    assert stub.calls == []  # database-only: no upstream call
+    # Window is narrowed to what the cache holds (08-04 is the tail).
+    assert [p.trade_date for p in snap.points] == [date(2026, 8, 1), date(2026, 8, 4)]
+    assert snap.coverage_end == date(2026, 8, 4)
+
+
+@pytest.mark.asyncio
+async def test_incremental_fetch_appends_strict_tail_only(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """With cached history, an incremental fetch starts at coverage_end+1 —
+    never at an earlier from_date — so upstream can't re-introduce or
+    overwrite already-stored bars (e.g. a CSV-imported close)."""
+    _seed_cache(
+        tmp_path,
+        monkeypatch,
+        [_make_point(date(2026, 8, 1), 1.00), _make_point(date(2026, 8, 4), 1.03)],
+    )
+    stub = _StubClient(
+        {
+            "563010": EtfHistoryFetchResult(
+                code="563010",
+                market="SH",
+                secid="1.563010",
+                name="电信ETF",
+                total_bars=1,
+                points=[_make_point(date(2026, 8, 5), 1.05)],
+                fetched_at=datetime(2026, 8, 5, tzinfo=UTC),
+            )
+        }
+    )
+    service = EtfHistoryService(client=stub)
+
+    snap = await service.get_snapshot(
+        "563010",
+        from_date=date(2020, 1, 1),  # far earlier than cached coverage
+        to_date=date(2026, 8, 5),
+    )
+    # The upstream call asked for the STRICT tail (08-05), not 2020-01-01.
+    assert stub.calls, "expected one upstream call"
+    _code, beg, end = stub.calls[0]
+    assert beg == date(2026, 8, 5), f"tail append must start at coverage_end+1, got {beg}"
+    assert end == date(2026, 8, 5)
+    # Cache now holds both the seeded bars and the appended tail bar.
+    assert [p.trade_date for p in snap.points] == [
+        date(2026, 8, 1),
+        date(2026, 8, 4),
+        date(2026, 8, 5),
+    ]

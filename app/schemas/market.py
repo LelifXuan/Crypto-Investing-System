@@ -183,6 +183,44 @@ class MarketEventQueryResponse(BaseModel):
     items: list[MarketEventRead]
 
 
+class SupplyEventCalendarItem(BaseModel):
+    """A dated token release node with a current-price valuation."""
+
+    node_id: str
+    instrument_id: str
+    asset: str
+    node_type: str
+    event_at: datetime
+    snapshot_id: str | None = None
+    allocation: str | None = None
+    unlock_quantity: Decimal | None = None
+    release_pct: Decimal | None = None
+    mark_price: Decimal | None = None
+    market_value: Decimal | None = None
+    price_as_of: datetime | None = None
+    source: str | None = None
+
+
+class SupplyEventAssetCoverage(BaseModel):
+    """Supply coverage that has no verified future release date."""
+
+    asset: str
+    instrument_id: str
+    schedule_status: str
+    remaining_quantity: Decimal | None = None
+    mark_price: Decimal | None = None
+    market_value: Decimal | None = None
+    price_as_of: datetime | None = None
+    source: str
+    source_ref: str | None = None
+    note: str
+
+
+class SupplyEventCalendarResponse(BaseModel):
+    items: list[SupplyEventCalendarItem] = Field(default_factory=list)
+    coverage: list[SupplyEventAssetCoverage] = Field(default_factory=list)
+
+
 class IndicatorDefinitionRead(ORMModel):
     indicator_key: str
     display_name: str

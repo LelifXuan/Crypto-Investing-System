@@ -71,7 +71,10 @@ def test_structure_overlay_stops_extending_after_pattern_break():
     assert "firstCrossIndex(candles," in text
     # The overlay renderer trims mapped points past the break x.
     assert "breakX" in text
-    assert "const trimmed = mapped.filter((point) => point.x <= breakX)" in text
+    # 2026-08-13: the trim switched from `mapped.filter` to an explicit
+    # `clipped` loop with linear interpolation at the break candle.
+    assert "clipped" in text
+    assert "point.x <= breakX" in text
     # And clips the region polygon's right edge.
     assert "clippedPoly" in text
     assert "polyBreakX" in text

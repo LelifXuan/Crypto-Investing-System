@@ -13,8 +13,11 @@ import { mountPageGuide } from "../../ui/pageGuideFab.js";
 
 let mounted = false;
 let activeController = null;
+let detailLoadController = null; // 2026-08-11: abort previous detail panel requests
 let scanData = null; // cached ScanResult for resume
 let prewarmed = false; // 2026-07-24: only fire prewarm once per page module load
+// 2026-08-11: debounce matrix cell clicks to prevent rapid-fire panel opens
+let strategyDebounceTimer = null;
 
 function renderScanShell() {
   setRoot(`
@@ -26,7 +29,7 @@ function renderScanShell() {
           <p>自动扫描全部品种 · 周线/日线/4H · 综合评分排序</p>
         </div>
         <div class="strategy-v2-actions">
-          <button type="button" class="primary-button" id="strategy-scan-refresh">刷新扫描</button>
+          <button type="button" class="primary-button compact" id="strategy-scan-refresh">刷新扫描</button>
         </div>
       </section>
       <div id="strategy-scan-status"></div>
@@ -60,13 +63,24 @@ function renderScanResults(data) {
   scanData = data;
 
   const status = document.getElementById("strategy-scan-status");
-  const oppCount = data.ranked?.length || 0;
-  const totalCells = (data.instruments?.length || 0) * (data.timeframes?.length || 0);
+  // Matrix is the canonical scan result. Deriving the ranked list and banner
+  // from the same cells prevents stale cached `ranked` data from contradicting
+  // the matrix shown beside it.
+  const matrix = Array.isArray(data.matrix) ? data.matrix : [];
+  const visibleInstrumentIds = new Set(appState.instruments.map((item) => item.id));
+  const visibleMatrix = matrix.filter((item) => visibleInstrumentIds.has(item?.instrument_id));
+  const ranked = visibleMatrix
+    .filter((item) => ["LONG", "SHORT"].includes(item?.direction))
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  const oppCount = ranked.length;
+  const totalCells = appState.instruments.length * (data.timeframes?.length || 0);
   const sourceLabel = data.cache_meta?.source === "cache" ? "（缓存）" : "";
   // 2026-07-24 v3: per-cell readiness from backend.
   const meta = data.cache_meta || {};
-  const cellsReady = Number.isFinite(meta.cells_ready) ? meta.cells_ready : totalCells;
-  const cellsPending = Number.isFinite(meta.cells_pending) ? meta.cells_pending : 0;
+  const cellsReady = visibleMatrix.filter((item) => item.cache_state === "fresh").length;
+  const cellsPending = visibleMatrix.filter((item) =>
+    ["missing", "warming", "error"].includes(item?.cache_state)
+  ).length;
 
   // 2026-07-24 v3: three-way banner. The previous "当前无明确交易机会"
   // copy was misleading when data was still pending — users thought
@@ -74,7 +88,7 @@ function renderScanResults(data) {
   let bannerText;
   let bannerTone;
   if (oppCount > 0) {
-    bannerText = `发现 ${oppCount} 个交易机会 / 共扫描 ${totalCells} 个级别组合 ${sourceLabel}`;
+    bannerText = `发现 ${oppCount} 个方向信号 / 共扫描 ${totalCells} 个周期组合 ${sourceLabel}`;
     bannerTone = "success";
   } else if (cellsPending > 0) {
     bannerText = `数据补齐中（${cellsReady}/${totalCells} 已就绪），尚无明确交易机会 ${sourceLabel}`;
@@ -91,7 +105,7 @@ function renderScanResults(data) {
 
   const matrixEl = document.getElementById("strategy-scan-matrix");
   if (matrixEl) {
-    matrixEl.innerHTML = renderScanMatrix(data.matrix || [], appState.instruments, onSelectOpportunity);
+    matrixEl.innerHTML = renderScanMatrix(visibleMatrix, appState.instruments, onSelectOpportunity);
     bindScanMatrix(onSelectOpportunity);
   }
 
@@ -99,11 +113,7 @@ function renderScanResults(data) {
   if (rankedEl) {
     // 2026-07-24 v3: pass hasPending to renderScanRanked so the
     // empty-state copy matches the banner.
-    rankedEl.innerHTML = renderScanRanked(
-      data.ranked || [],
-      onSelectOpportunity,
-      cellsPending > 0,
-    );
+    rankedEl.innerHTML = renderScanRanked(ranked, cellsPending > 0);
     bindScanRanked(onSelectOpportunity);
   }
 }
@@ -132,32 +142,61 @@ function renderWarmingStatus(message) {
 
 // 2026-07-24: fire-and-forget prewarm so cold cache isn't blocking the
 // first scan for 60+ s. Module-level guard via `prewarmed` flag.
+// 2026-08-11: prewarm ALL instruments (not just BTC) so the matrix
+// doesn't show "无明确方向" for every cell on cold start.
 async function tryPrewarm() {
   if (prewarmed) return;
   prewarmed = true;
-  try {
-    await api.prewarmStrategy("btc-usdt-perp", { timeoutMs: 3000 });
-  } catch (err) {
-    // Prewarm is best-effort; if it fails, loadScan still proceeds.
-    console.warn("strategy:prewarm:noop", err?.message || err);
+  const instruments = appState.instruments || [];
+  // Prewarm first 3 instruments in parallel (fire-and-forget)
+  const prewarmTargets = instruments.slice(0, 3);
+  if (prewarmTargets.length === 0) {
+    prewarmTargets.push({ id: "btc-usdt-perp" });
+  }
+  for (const inst of prewarmTargets) {
+    const instId = inst.id || inst.code || "btc-usdt-perp";
+    api.prewarmStrategy(instId, { timeoutMs: 5000 }).catch((err) => {
+      console.warn("strategy:prewarm:noop", instId, err?.message || err);
+    });
   }
 }
 
 function onSelectOpportunity(instrumentId, timeframe) {
+  // 2026-08-11: debounce rapid cell clicks — only open panel for the
+  // final selection, not every intermediate click.
+  if (strategyDebounceTimer) {
+    clearTimeout(strategyDebounceTimer);
+    strategyDebounceTimer = null;
+  }
+  strategyDebounceTimer = setTimeout(() => {
+    strategyDebounceTimer = null;
+    _openStrategyDetail(instrumentId, timeframe);
+  }, 250);
+}
+
+function _openStrategyDetail(instrumentId, timeframe) {
   // 2026-07-25: loadStrategy now accepts an options bag so the detail
   // panel's "立即重建" button can pass { force: true, timeoutMs: 60000 }.
   // We forward force to all four backend calls so the panel-level
   // rebuild avoids serving the cached stale-degraded payload that
   // triggered the rebuild in the first place.
+  // 2026-08-11: AbortController cancels previous detail panel requests
+  // when a new cell is clicked before the old one finishes.
   const loadStrategy = async (iid, tf, loadOpts = {}) => {
+    // Abort any in-flight detail request from a previous cell click
+    detailLoadController?.abort();
+    detailLoadController = new AbortController();
+    const signal = detailLoadController.signal;
+
     const force = loadOpts.force ?? false;
-    const unifiedTimeoutMs = loadOpts.timeoutMs ?? (force ? 60000 : 20000);
+    const unifiedTimeoutMs = loadOpts.timeoutMs ?? (force ? 60000 : 15000);
+    const otherTimeoutMs = loadOpts.timeoutMs ?? 8000;
     const [unifiedResult, monitoringResult, derivativesResult, macroResult] =
       await Promise.allSettled([
-        api.getUnifiedStrategy(iid, { force, timeoutMs: unifiedTimeoutMs }),
-        api.getMonitoringDashboard(iid, tf, { force, timeoutMs: loadOpts.timeoutMs ?? 10000 }),
-        api.getBtcDerivativesDashboard({}, { force, timeoutMs: loadOpts.timeoutMs ?? 10000 }),
-        api.getMacroOverview({ force, timeoutMs: loadOpts.timeoutMs ?? 10000 }),
+        api.getUnifiedStrategy(iid, { force, timeoutMs: unifiedTimeoutMs, signal }),
+        api.getMonitoringDashboard(iid, tf, { force, timeoutMs: otherTimeoutMs, signal }),
+        api.getBtcDerivativesDashboard({}, { force, timeoutMs: otherTimeoutMs, signal }),
+        api.getMacroOverview({ force, timeoutMs: otherTimeoutMs, signal }),
       ]);
 
     const code = appState.instruments.find((i) => i.id === iid)?.code || iid;
@@ -292,13 +331,25 @@ export async function renderStrategy() {
   return {
     mount: async () => {
       if (scanData) renderScanResults(scanData);
-      else await scanPromise;
+      else {
+        // The SPA considers mount() part of the navigation critical path.
+        // Waiting for a cold strategy scan here keeps main.js in its
+        // `spaNavigationInFlight` state for up to 120 seconds, so every nav
+        // click is merely queued and the user appears trapped on this page.
+        // The stable warming shell is already mounted above; let the scan
+        // continue in the background and let unmount() abort it immediately
+        // when the user leaves.
+        void scanPromise;
+      }
     },
     unmount: async () => {
       guideFab.unmount();
       mounted = false;
+      if (strategyDebounceTimer) { clearTimeout(strategyDebounceTimer); strategyDebounceTimer = null; }
       activeController?.abort();
       activeController = null;
+      detailLoadController?.abort();
+      detailLoadController = null;
     },
     pause: async () => {},
     resume: async () => {

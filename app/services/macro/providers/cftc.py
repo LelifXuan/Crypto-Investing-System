@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,9 +34,20 @@ _COL_MM_SHORT = 12  # Managed Money Short
 
 # Percentile cache file (stores historical net positions for percentile calc).
 # Persisted to disk so percentile history survives across process restarts.
+#
+# 2026-08-13: cache root moved from runtime/ (gitignored) to a git-tracked
+# ``data/cftc/`` directory so the CFTC weekly report (a public, ~weekly
+# dataset) ships with the repo. A cloned checkout gets the same COT baseline
+# on first run instead of blocking on a live download; refreshes update the
+# file in place (commit the update to share the newer baseline).
 _CACHE_MAX_POINTS = 156  # ~3 years of weekly data
 _HISTORY_FILE = "gold_history.json"
-_HISTORY_ROOT = app_paths.cache_dir / "cftc"
+_RAW_COT_FILE = "cot_raw.txt"
+_REPO_ROOT = Path(__file__).resolve().parents[4]  # app/services/macro/providers/ -> repo root
+_COT_DATA_ROOT = _REPO_ROOT / "data" / "cftc"
+# The COT report is weekly — re-download at most once per 7 days. Env var
+# override keeps tests/operators in control without code edits.
+_COT_TTL_SECONDS = float(__import__("os").environ.get("CFTC_COT_TTL_SECONDS", str(7 * 24 * 3600)))
 
 
 @dataclass(slots=True)
@@ -177,20 +189,57 @@ class CftcCotProvider:
 
     provider_key = "cftc"
 
-    def __init__(self, history_cache: Optional[CftcHistoryCache] = None):
+    def __init__(
+        self,
+        history_cache: Optional[CftcHistoryCache] = None,
+        *,
+        raw_cache_dir: Optional[Path] = None,
+    ):
         # Default disk-backed cache so percentile history survives across
         # process restarts. Tests can inject a tmpdir-backed cache.
         self._history_cache = history_cache or CftcHistoryCache(
-            path=_HISTORY_ROOT / _HISTORY_FILE,
+            path=_COT_DATA_ROOT / _HISTORY_FILE,
         )
+        # Raw COT report cache lives in the git-tracked data/ dir so a cloned
+        # checkout starts from the shipped baseline (weekly TTL) instead of a
+        # 10-20s live download on first request. Tests inject a tmpdir.
+        self._raw_cache_dir = raw_cache_dir or _COT_DATA_ROOT
+        self._raw_cache_path = self._raw_cache_dir / _RAW_COT_FILE
 
     def supports(self, source_provider: str, source_kind: str) -> bool:
         return source_provider == self.provider_key and source_kind == "raw_series"
 
+    def _read_raw_cached(self) -> Optional[str]:
+        """Return the disk-cached COT text if fresh, else None."""
+        if not self._raw_cache_path.exists():
+            return None
+        try:
+            mtime = self._raw_cache_path.stat().st_mtime
+            if (time.time() - mtime) >= _COT_TTL_SECONDS:
+                return None
+            return self._raw_cache_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+
+    def _write_raw_cache(self, text: str) -> None:
+        """Persist fresh COT text to the git-tracked data dir (tmp+replace)."""
+        try:
+            self._raw_cache_dir.mkdir(parents=True, exist_ok=True)
+            tmp = self._raw_cache_path.with_suffix(".txt.tmp")
+            tmp.write_text(text, encoding="utf-8")
+            tmp.replace(self._raw_cache_path)
+        except OSError:
+            # Cache is an optimization — a failed write must not fail the fetch.
+            pass
+
     async def _fetch_cot_text(self) -> str:
+        cached = self._read_raw_cached()
+        if cached is not None:
+            return cached
         async with client_for_source("cftc", timeout=20) as client:
             resp = await client.get(_COT_URL)
         resp.raise_for_status()
+        self._write_raw_cache(resp.text)
         return resp.text
 
     async def fetch_latest(self, source_key: str) -> MacroFetchResult:

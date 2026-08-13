@@ -17,22 +17,23 @@
   --ink: #1f2a3a;
   --muted: #7b8693;
   --muted-strong: #5e6a78;
-  --accent: #5b8a83;
-  --accent-strong: #466f6a;
-  --accent-soft: #dde9e2;
-  --accent-ghost: rgba(91, 138, 131, 0.12);
-  --bullish: #5b8a83;
-  --bullish-soft: rgba(91, 138, 131, 0.18);
-  --bearish: #b07558;
-  --bearish-soft: rgba(176, 117, 88, 0.18);
+  /* 2026-08-11: accent shifted from teal-green → indigo/blue-purple (方案 A demo) */
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
+  --accent-soft: #e0e7ff;
+  --accent-ghost: rgba(99, 102, 241, 0.12);
+  --bullish: #6366f1;
+  --bullish-soft: rgba(99, 102, 241, 0.18);
+  --bearish: #8b5cf6;
+  --bearish-soft: rgba(139, 92, 246, 0.18);
   --neutral: #7d8893;
   --neutral-soft: rgba(125, 136, 147, 0.14);
-  --warning: #b8924a;
-  --warning-soft: rgba(184, 146, 74, 0.16);
-  --warm: #b8924a;
-  --warm-soft: rgba(184, 146, 74, 0.14);
-  --info: #6b86a8;
-  --info-soft: rgba(107, 134, 168, 0.16);
+  --warning: #f97316;
+  --warning-soft: rgba(249, 115, 22, 0.16);
+  --warm: #f97316;
+  --warm-soft: rgba(249, 115, 22, 0.14);
+  --info: #3b82f6;
+  --info-soft: rgba(59, 130, 246, 0.16);
   --danger: #a46850;
   --danger-soft: rgba(164, 104, 80, 0.16);
   --border: rgba(160, 140, 108, 0.22);
@@ -56,15 +57,15 @@
   --surface-glass-soft: rgba(238, 241, 236, 0.58);
   --border-glass: rgba(160, 140, 108, 0.22);
   --border-glass-soft: rgba(160, 140, 108, 0.14);
-  --shadow-button: 0 6px 14px rgba(91, 138, 131, 0.10);
-  --shadow-button-hover: 0 10px 22px rgba(91, 138, 131, 0.18);
+  --shadow-button: 0 6px 14px rgba(99, 102, 241, 0.10);
+  --shadow-button-hover: 0 10px 22px rgba(99, 102, 241, 0.18);
   --shadow-card-hover: 0 18px 36px rgba(31, 42, 58, 0.12);
   --radius-card: 18px;
   --radius-pill: 999px;
   --blur-soft: blur(10px);
   --blur-card: blur(16px);
-  --hover-tint: rgba(91, 138, 131, 0.10);
-  --hover-tint-strong: rgba(91, 138, 131, 0.18);
+  --hover-tint: rgba(99, 102, 241, 0.10);
+  --hover-tint-strong: rgba(99, 102, 241, 0.18);
   --transition-hover: 180ms ease;
 
   /* === Motion tokens (Emil Kowalski bar) =============================
@@ -98,13 +99,14 @@
   --line: var(--border);
   --text: var(--ink);
   --bg-surface: var(--panel-strong);
-  --bg-hover: rgba(91, 138, 131, 0.10);
+  --bg-hover: rgba(99, 102, 241, 0.10);
   --danger-strong: #7a4630;
-  --info-strong: #4a6f95;
+  --info-strong: #1d4ed8;
   --border-light: rgba(160, 140, 108, 0.14);
   --line-soft: rgba(160, 140, 108, 0.10);
   --card-bg: var(--surface-elevated);
   --ink-muted: #5e6a78;
+  --white: #ffffff;
 
   /* === §16.C — Chart-only tokens ===========================
      Read by app/static/ui/charts.js via `getComputedStyle(:root)`.
@@ -168,8 +170,6 @@ body::before {
   opacity: 0.45;
 }
 
-.shell-header,
-.main-nav,
 main {
   width: var(--shell-width);
   max-width: var(--shell-width);
@@ -178,21 +178,9 @@ main {
   z-index: 1;
 }
 
-.shell-header {
-  display: grid;
-  grid-template-columns: 1.85fr 1fr;
-  gap: 30px;
-  padding: 28px 0 12px;
-  align-items: start;
-}
-
-.shell-brand {
-  padding: 8px 0 2px;
-}
-
 .eyebrow {
   margin: 0 0 10px;
-  color: var(--accent);
+  color: var(--accent-strong);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -244,23 +232,30 @@ h2 {
 .card {
   padding: var(--card-padding);
   transition:
-    transform var(--motion-hover),
-    box-shadow var(--motion-hover),
-    border-color var(--motion-hover),
-    background var(--motion-hover);
+    transform var(--dur-hover) var(--ease-out),
+    box-shadow var(--dur-hover) var(--ease-out),
+    border-color var(--dur-hover) var(--ease-in-out),
+    background var(--dur-hover) var(--ease-in-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
-    border-color: rgba(15, 118, 110, 0.2);
+    border-color: var(--border-strong);
   }
 }
 
 .card,
 .grid > * {
   min-width: 0;
+}
+
+/* Card surfaces use semi-transparent white over the warm cream page bg.
+   --muted (#7b8693) on this surface falls to ~3.6:1 (fails WCAG AA 4.5:1).
+   Bump card/article body text to --text-secondary for readable contrast (>5:1). */
+:where(.card, article[class]) :where(p, span, li, h3, h4, h5, h6):not(.chip):not(.btn):not(.status-chip):not(.status-chip *) {
+  color: var(--text-secondary);
 }
 
 .metric {
@@ -290,103 +285,12 @@ h2 {
   display: block;
   margin-top: 14px;
   font-size: clamp(30px, 2vw, 38px);
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -0.05em;
-}
-
-.main-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  padding: 10px 16px;
-  margin-top: -2px;
-  position: sticky;
-  top: 4px;
-  z-index: 5;
-  border: 1px solid rgba(170, 151, 124, 0.12);
-  border-radius: 26px;
-  background: rgba(255, 251, 245, 0.52);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-}
-
-.main-nav-grouped {
-  align-items: center;
-  gap: 14px;
-  row-gap: 10px;
-}
-
-.nav-section {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 4px;
-  margin-right: 2px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.28);
-}
-
-.nav-section-label {
-  padding: 0 6px 0 8px;
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--muted);
-  letter-spacing: 0.12em;
-}
-
-.main-nav a {
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  color: var(--muted-strong);
-  text-decoration: none;
-  border: 1px solid rgba(170, 151, 124, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-  transition:
-    background 160ms var(--ease-out),
-    color 160ms var(--ease-out),
-    transform 160ms var(--ease-out),
-    border-color 160ms var(--ease-out);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .main-nav a:hover {
-    transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.84);
-    color: var(--accent-strong);
-    border-color: rgba(15, 118, 110, 0.18);
-  }
-}
-
-body[data-page="market-events"] .main-nav a[href="/market-events-page"],
-body[data-page="market-analysis"] .main-nav a[href="/indicators-page"],
-body[data-page="monitoring-overview"] .main-nav a[href="/monitoring-page"],
-body[data-page="market-structure"] .main-nav a[href="/structure-page"],
-body[data-page="macro-calendar"] .main-nav a[href="/macro-calendar-page"],
-body[data-page="knowledge-base"] .main-nav a[href="/knowledge-page"],
-body[data-page="ashare-etf"] .main-nav a[href="/ashare-etf-page"],
-body[data-page="ai-strategy"] .main-nav a[href="/strategy-page"] {
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: var(--surface);
-  border-color: transparent;
-  box-shadow: var(--shadow-button);
-}
-
-body[data-page] .main-nav a[data-page-link].is-active,
-body[data-page="market-events"] .main-nav a[data-page-link="market-events"],
-body[data-page="market-analysis"] .main-nav a[data-page-link="market-analysis"],
-body[data-page="monitoring-overview"] .main-nav a[data-page-link="monitoring-overview"],
-body[data-page="market-structure"] .main-nav a[data-page-link="market-structure"],
-body[data-page="macro-calendar"] .main-nav a[data-page-link="macro-calendar"],
-body[data-page="knowledge-base"] .main-nav a[data-page-link="knowledge-base"],
-body[data-page="ashare-etf"] .main-nav a[data-page-link="ashare-etf"],
-body[data-page="ai-strategy"] .main-nav a[data-page-link="ai-strategy"] {
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: var(--surface);
-  border-color: transparent;
-  box-shadow: var(--shadow-button);
+  /* 大数字等宽 + 轻字重：贴近金融终端的“数据感”，
+     Mercury 的大数字为 380-480 字重 + tabular-nums */
+  font-variant-numeric: tabular-nums;
 }
 
 main {
@@ -686,9 +590,9 @@ textarea {
   border: 1px solid var(--border);
   padding: 12px 14px;
   transition:
-    border-color 160ms var(--ease-out),
-    box-shadow 160ms var(--ease-out),
-    background 160ms var(--ease-out);
+    border-color var(--dur-hover) var(--ease-out),
+    box-shadow var(--dur-hover) var(--ease-out),
+    background var(--dur-hover) var(--ease-out);
 }
 
 button {
@@ -704,19 +608,8 @@ button {
    Subtle (0.97) — enough to feel responsive, not enough to feel jumpy.
    Touch-gated hover (below) prevents stuck-lift after tap. */
 button,
-.main-nav a,
-.ghost-button,
-.alert-action-button,
-.chip-button,
-.cta-button,
-.tab-button,
-[data-pressable] {
-  transition:
-    transform var(--motion-hover),
-    background var(--motion-hover),
-    border-color var(--motion-hover),
-    box-shadow var(--motion-hover),
-    color var(--motion-hover);
+.ghost-button {
+  transition: transform var(--dur-press) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -727,14 +620,8 @@ button,
 }
 
 button:active,
-.main-nav a:active,
-.ghost-button:active,
-.alert-action-button:active,
-.chip-button:active,
-.cta-button:active,
-.tab-button:active,
-[data-pressable]:active {
-  transform: scale(0.97);
+.ghost-button:active {
+  transform: scale(0.96);
 }
 
 button.secondary {
@@ -996,10 +883,13 @@ th {
 
 td {
   color: var(--ink);
+  /* 数字等宽对齐（Mercury-style）：金额/数量/比率纵向对齐，
+     避免小数位数不同导致列内数字左右摆动 */
+  font-variant-numeric: tabular-nums;
 }
 
 tbody tr:hover {
-  background: rgba(15, 118, 110, 0.05);
+  background: var(--accent-ghost);
 }
 
 /* ============================================================
@@ -1400,8 +1290,10 @@ table thead th {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
+  border: 1px solid transparent;
   border-radius: 999px;
   font-size: 12px;
+  line-height: 1.25;
   font-weight: 700;
   background: var(--accent-ghost);
   color: var(--accent-strong);
@@ -1519,7 +1411,7 @@ main:has(.tooltip-anchor:focus-within) {
   opacity: 0;
   visibility: hidden;
   pointer-events: auto;
-  transition: opacity 140ms ease, transform 140ms ease;
+  transition: opacity var(--dur-hover) ease, transform var(--dur-hover) ease;
   z-index: 1200;
   cursor: default;
 }
@@ -1588,15 +1480,6 @@ main:has(.tooltip-anchor:focus-within) {
   gap: 8px;
 }
 
-.main-nav a.is-active {
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.18), rgba(15, 118, 110, 0.1));
-  color: var(--accent-strong);
-  border-color: rgba(15, 118, 110, 0.28);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 10px 24px rgba(15, 118, 110, 0.12);
-}
-
 .metric.metric-accent {
   background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(235, 248, 243, 0.94));
 }
@@ -1619,12 +1502,6 @@ main:has(.tooltip-anchor:focus-within) {
   background:
     radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 26%),
     linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(243, 249, 247, 0.92));
-}
-
-.alert-hero {
-  background:
-    radial-gradient(circle at top right, rgba(180, 83, 9, 0.12), transparent 26%),
-    linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(250, 244, 238, 0.94));
 }
 
 .macro-hero {
@@ -1650,20 +1527,8 @@ main:has(.tooltip-anchor:focus-within) {
 
 .grid.monitoring-summary-grid,
 .grid.monitoring-summary-grid.macro-hero,
-.grid.monitoring-summary-grid.alert-hero,
-.grid.monitoring-summary-grid.monitoring-hero {
-  background: transparent;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
-}
 
 .monitoring-hero,
-.alert-hero,
-.macro-hero {
-  padding: 30px;
-  margin-bottom: var(--content-gap);
-}
 
 .monitoring-category-grid {
   display: grid;
@@ -2175,7 +2040,6 @@ body[data-page="macro-calendar"] .monitoring-side-card {
 }
 
 @media (max-width: 1100px) {
-  .shell-header,
   .cols-2,
   .cols-3,
   .cols-4 {
@@ -2221,11 +2085,6 @@ body[data-page="macro-calendar"] .monitoring-side-card {
     grid-template-columns: 1fr;
   }
 
-  .main-nav {
-    position: static;
-    margin-top: 0;
-    padding-top: 0;
-  }
 }
 
 .cols-1 {
@@ -2451,10 +2310,14 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
+  min-height: 30px;
+  padding: 5px 11px;
   border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
   text-decoration: none;
   color: inherit;
 }
@@ -2473,66 +2336,86 @@ a.status-chip:hover {
 }
 
 a.status-chip:focus-visible {
-  outline: 2px solid rgba(94, 234, 212, 0.7);
+  outline: 2px solid rgba(99, 102, 241, 0.7);
   outline-offset: 2px;
-}
-
-.alert-pill {
-  min-width: 74px;
-  justify-content: center;
-  padding: 8px 14px;
-  font-size: 14px;
-  letter-spacing: 0.01em;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 .impact-bullish,
 .chip-bullish {
-  background: var(--bullish-soft);
-  color: var(--bullish);
+  background: var(--bullish-chip-surface, #e5eeea);
+  color: var(--bullish-chip-ink, #285e4d);
+  border-color: var(--bullish-chip-border, #c6d9d1);
 }
 
 .chip-success {
-  background: var(--bullish-soft);
-  color: var(--bullish);
+  background: #e0e7ff;
+  color: #3730a3;
 }
 
 .chip-bullish-soft {
-  background: rgba(91, 138, 131, 0.12);
-  color: #466f6a;
+  background: var(--bullish-chip-surface-soft, #eef3f1);
+  color: var(--bullish-chip-ink, #285e4d);
+  border-color: var(--bullish-chip-border, #c6d9d1);
 }
 
 .impact-neutral,
 .chip-neutral {
-  background: var(--neutral-soft);
-  color: var(--neutral);
+  background: var(--neutral-chip-surface, #ece9e4);
+  color: var(--neutral-chip-ink, #59535f);
+  border-color: var(--neutral-chip-border, #d9d3ca);
 }
 
 .impact-bearish,
 .chip-bearish {
-  background: var(--bearish-soft);
-  color: var(--bearish);
+  background: var(--bearish-chip-surface, #f2e6e9);
+  color: var(--bearish-chip-ink, #843e4c);
+  border-color: var(--bearish-chip-border, #e2cbd0);
 }
 
 .chip-danger {
-  background: var(--bearish-soft);
-  color: var(--bearish);
+  background: #ede9fe;
+  color: #5b21b6;
 }
 
 .chip-bearish-soft {
-  background: rgba(176, 117, 88, 0.14);
-  color: #8c5d40;
+  background: var(--bearish-chip-surface-soft, #f6eff1);
+  color: var(--bearish-chip-ink, #843e4c);
+  border-color: var(--bearish-chip-border, #e2cbd0);
 }
 
 .impact-event,
 .chip-event {
-  background: var(--warning-soft);
-  color: var(--warning);
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.status-chip[data-event-category="macro"] {
+  background: var(--info-soft);
+  color: var(--info-strong);
+  border-color: color-mix(in srgb, var(--info) 26%, transparent);
+}
+
+.status-chip[data-event-category="regulatory"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.status-chip[data-event-category="exchange"] {
+  background: var(--bullish-chip-surface-soft, #eef3f1);
+  color: var(--bullish-chip-ink, #285e4d);
+  border-color: var(--bullish-chip-border, #c6d9d1);
+}
+
+.status-chip[data-event-category="other"] {
+  background: var(--neutral-chip-surface, #ece9e4);
+  color: var(--neutral-chip-ink, #59535f);
+  border-color: var(--neutral-chip-border, #d9d3ca);
 }
 
 .chip-warning {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: #c2410c;
 }
 
 /* ============================================================
@@ -2552,31 +2435,43 @@ a.status-chip:focus-visible {
 /* Tones — semantic colors. Visibility relies on the existing
  * --bullish / --bearish / --neutral / --warning / --danger / --info
  * / --accent-strong tokens defined in :root. */
-.chip-bull,
-.chip-success {
-  background: var(--bullish-soft);
-  color: var(--bullish);
+/* Solid chip backgrounds — semi-transparent variants failed WCAG AA
+   (text-on-tint measured ~2:1). Blended with --bg cream to preserve
+   the tint look while meeting 4.5:1. */
+.chip-bull {
+  background: var(--bullish-chip-surface, #e5eeea);
+  color: var(--bullish-chip-ink, #285e4d);
+  border-color: var(--bullish-chip-border, #c6d9d1);
 }
-.chip-bear,
+.chip-bear {
+  background: var(--bearish-chip-surface, #f2e6e9);
+  color: var(--bearish-chip-ink, #843e4c);
+  border-color: var(--bearish-chip-border, #e2cbd0);
+}
+.chip-success {
+  background: var(--info-soft);
+  color: var(--info-strong);
+}
 .chip-danger {
-  background: var(--bearish-soft);
-  color: var(--bearish);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .chip-warning {
-  background: var(--warning-soft);
-  color: var(--warning);
+  background: #fff7ed;
+  color: #c2410c;
 }
 .chip-info {
-  background: var(--info-soft);
-  color: var(--info);
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 .chip-event {
-  background: var(--warning-soft);
-  color: var(--warning);
+  background: #fff7ed;
+  color: #c2410c;
 }
 .chip-neutral {
-  background: var(--neutral-soft);
-  color: var(--neutral);
+  background: var(--neutral-chip-surface, #ece9e4);
+  color: var(--neutral-chip-ink, #59535f);
+  border-color: var(--neutral-chip-border, #d9d3ca);
 }
 
 /* Variants override fill / stroke on top of the tone. */
@@ -2588,13 +2483,13 @@ a.status-chip:focus-visible {
   padding: 6px 12px;
 }
 .chip-solid.chip-bull,
-.chip-solid.chip-success { background: var(--bullish); color: #fff; }
+.chip-solid.chip-success { background: var(--bullish); color: var(--white); }
 .chip-solid.chip-bear,
-.chip-solid.chip-danger { background: var(--bearish); color: #fff; }
+.chip-solid.chip-danger { background: var(--bearish); color: var(--white); }
 .chip-solid.chip-warning,
-.chip-solid.chip-event   { background: var(--warning); color: #fff; }
-.chip-solid.chip-info    { background: var(--info); color: #fff; }
-.chip-solid.chip-neutral { background: var(--neutral); color: #fff; }
+.chip-solid.chip-event   { background: var(--warning); color: var(--white); }
+.chip-solid.chip-info    { background: var(--info); color: var(--white); }
+.chip-solid.chip-neutral { background: var(--neutral); color: var(--white); }
 
 .chip-outline {
   background: transparent;
@@ -2891,6 +2786,89 @@ a.status-chip:focus-visible {
   box-shadow: none;
 }
 
+.calendar-head {
+  align-items: center;
+}
+
+.calendar-current-month {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-head .calendar-month-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 104px;
+  min-height: 38px;
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  transition: color var(--motion-hover), background-color var(--motion-hover), border-color var(--motion-hover), transform var(--motion-fast);
+}
+
+.calendar-head .calendar-month-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.calendar-head .calendar-month-button:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  box-shadow: none;
+  transform: none;
+}
+
+.calendar-head .calendar-month-button:active {
+  transform: scale(0.96);
+}
+
+.calendar-head .calendar-month-button:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .calendar-head .calendar-month-button {
+    min-width: 40px;
+    width: 40px;
+    padding-inline: 0;
+  }
+
+  .calendar-head .calendar-month-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .calendar-current-month {
+    font-size: 16px;
+  }
+}
+
 .calendar-weekdays,
 .calendar-grid {
   display: grid;
@@ -2972,50 +2950,6 @@ tr.is-supply-event td {
 
 .tooltip-wrap {
   display: inline-flex;
-}
-
-.alert-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  justify-content: flex-start;
-}
-
-.alert-action-button {
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-pill);
-  padding: 6px 9px;
-  color: var(--accent-strong);
-  background: var(--surface-glass);
-  backdrop-filter: var(--blur-soft);
-  -webkit-backdrop-filter: var(--blur-soft);
-  font: inherit;
-  font-size: 11px;
-  line-height: 1.2;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: var(--shadow-button);
-  transition: background var(--transition-hover), border-color var(--transition-hover),
-              transform var(--transition-hover), box-shadow var(--transition-hover);
-}
-
-.alert-action-button:hover {
-  background: var(--hover-tint);
-  border-color: var(--accent);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-button-hover);
-}
-
-.alert-action-button:active {
-  transform: translateY(0);
-  box-shadow: var(--shadow-button);
-}
-
-.alert-action-button:disabled {
-  cursor: progress;
-  opacity: 0.65;
-  transform: none;
 }
 
 /* Canonical ghost button — system-wide reusable frosted button style */
@@ -3137,8 +3071,8 @@ tr.is-supply-event td {
   padding: 11px 18px;
   font: inherit;
   font-weight: 700;
-  color: var(--surface);
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-strong), #3730a3);
   cursor: pointer;
   box-shadow: var(--shadow-button);
 }
@@ -3579,29 +3513,172 @@ tr.is-supply-event td {
   background: rgba(255, 247, 237, 0.86);
 }
 
-.loading-dot {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  border-radius: 50%;
-  background: var(--accent-strong);
-  box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.35);
-  animation: loadingPulse 1.2s ease-in-out infinite;
+/* ============================================================
+   2026-08-11 Visual polish — skeleton, shimmer, fade, lift
+   ============================================================ */
+
+/* ---- 1. Chart skeleton screen ----
+   Shown while chart data loads. Mimics the shape of a real chart:
+   Y-axis stubs, X-axis line, candle placeholders. */
+.chart-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  min-height: 380px;
+  padding: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 
-@keyframes loadingPulse {
-  0% {
-    box-shadow: 0 0 0 0 var(--accent-ghost);
-    opacity: 0.68;
-  }
-  70% {
-    box-shadow: 0 0 0 9px transparent;
-    opacity: 1;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    opacity: 0.68;
-  }
+.chart-skeleton-grid {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.chart-skeleton-candle {
+  flex: 1;
+  max-width: 18px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+}
+
+.chart-skeleton-candle:nth-child(odd) { opacity: 0.7; }
+.chart-skeleton-candle:nth-child(3n) { animation-delay: 0.2s; }
+.chart-skeleton-candle:nth-child(5n) { animation-delay: 0.4s; }
+.chart-skeleton-candle:nth-child(6n + 1) { height: 28%; }
+.chart-skeleton-candle:nth-child(6n + 2) { height: 46%; }
+.chart-skeleton-candle:nth-child(6n + 3) { height: 72%; }
+.chart-skeleton-candle:nth-child(6n + 4) { height: 58%; }
+.chart-skeleton-candle:nth-child(6n + 5) { height: 84%; }
+.chart-skeleton-candle:nth-child(6n) { height: 64%; }
+
+.chart-skeleton-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chart-skeleton-axis span {
+  height: 8px;
+  width: 48px;
+  border-radius: 4px;
+  background: var(--border);
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+
+/* ---- 2. Chart fade transition ----
+   When chart innerHTML is replaced, fade out → fade in. */
+.structure-chart-panel {
+  transition: opacity var(--dur-hover) var(--ease-out);
+}
+
+.chart-fading-out {
+  opacity: 0.15;
+}
+
+/* ---- 3. Shimmer loading bar ----
+   Replaces the simple dot with a warm cream shimmer. */
+.shimmer-bar {
+  position: relative;
+  overflow: hidden;
+  height: 4px;
+  width: 100%;
+  max-width: 240px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.shimmer-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent 0%, var(--accent-soft) 40%, var(--accent) 50%, var(--accent-soft) 60%, transparent 100%);
+  animation: shimmerSlide 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmerSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Enhanced loading state with shimmer */
+.data-state-loading {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.data-state-loading .shimmer-bar {
+  margin-top: 4px;
+}
+
+/* ---- 4. Card hover lift ----
+   Subtle translateY + shadow deepening on hover. */
+.card,
+article.card,
+.structure-main-card,
+.structure-summary-card,
+.gold-workbench-card,
+.gold-chart-card,
+.strategy-v2-card {
+  transition:
+    transform var(--dur-hover) var(--ease-out),
+    box-shadow var(--dur-hover) var(--ease-out),
+    border-color var(--dur-hover) var(--ease-in-out),
+    background var(--dur-hover) var(--ease-in-out);
+}
+
+.card:hover,
+article.card:hover,
+.structure-main-card:hover,
+.structure-summary-card:hover,
+.gold-workbench-card:hover,
+.gold-chart-card:hover,
+.strategy-v2-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* ---- 5. Number count-up transition ----
+   Smooth color flash when metric values change. */
+#analysis-mark-price,
+.structure-price-guide strong {
+  transition: color var(--dur-elevate) var(--ease-out);
+}
+
+/* ---- 6. Page transition enhancement ----
+   Subtle scale + fade for smoother SPA page switches. */
+.page-transition {
+  animation: pageEnter var(--dur-elevate) var(--ease-out);
+}
+
+.page-transition-out {
+  animation: pageFadeOut var(--dur-press) var(--ease-in-out) forwards;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0.08; transform: scale(0.997) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes pageFadeOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0.08; transform: scale(0.997); }
 }
 
 .structure-layout {
@@ -3901,6 +3978,7 @@ tr.is-supply-event td {
 .metric-box strong {
   font-size: 18px;
   letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .structure-copy {
@@ -4353,7 +4431,7 @@ tr.is-supply-event td {
 }
 
 .eyebrow {
-  color: var(--accent);
+  color: var(--accent-strong);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -4361,10 +4439,10 @@ tr.is-supply-event td {
 
 .impact-chip,
 .status-chip {
-  padding: 8px 12px;
   border: 1px solid var(--border-glass-soft);
-  backdrop-filter: var(--blur-soft);
-  -webkit-backdrop-filter: var(--blur-soft);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
   transition: background var(--transition-hover), transform var(--transition-hover),
               border-color var(--transition-hover);
 }
@@ -4432,13 +4510,6 @@ button:hover,
 .monitoring-pane.technical,
 .monitoring-pane.macro,
 .monitoring-pane.onchain,
-.alert-hero,
-.macro-hero,
-.monitoring-hero {
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.18), transparent 24%),
-    linear-gradient(180deg, rgba(255, 253, 249, 0.95), rgba(244, 240, 232, 0.8));
-}
 
 .monitoring-pane {
   gap: 18px;
@@ -4472,99 +4543,18 @@ button:hover,
   gap: 14px;
 }
 
-.divergence-overall,
-.divergence-alert-item {
-  padding: 14px 16px;
-}
-
-.table-wrap table {
-  table-layout: auto;
-}
-
-.table-wrap td,
-.table-wrap th {
-  vertical-align: top;
-}
-
-.table-wrap td {
-  padding-top: 10px;
-  padding-bottom: 10px;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.table-wrap th {
-  padding-top: 12px;
-  padding-bottom: 12px;
-  font-size: 11px;
-}
-
-.alert-col-time {
-  width: 116px;
-  white-space: nowrap;
-}
-
-.alert-col-severity {
-  width: 90px;
-}
-
-.alert-col-indicator {
-  width: 190px;
-}
-
-.alert-col-asset {
-  width: 150px;
-}
-
-.alert-col-message {
-  width: 320px;
-}
-
-.alert-col-state {
-  width: 112px;
-}
-
-.alert-col-actions {
-  width: 178px;
-}
-
-.alert-cell-stack {
-  display: inline-flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-  line-height: 1.45;
-}
-
-.alert-cell-stack strong,
-.alert-cell-stack span {
-  min-width: 0;
-  word-break: break-word;
-}
-
-.alert-col-indicator .alert-cell-stack strong {
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.alert-col-message .alert-cell-stack,
-.alert-col-asset .alert-cell-stack {
-  max-width: 100%;
-}
-
-.alert-inline-help {
-  display: inline-flex;
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-
+/* ── alert-chip layout (restored 2026-08-13) ─────────────────────────────
+   The indigo re-theme removed these selectors while app/static/pages/alerts.js
+   still renders the alert-chip-* classes (alert centre cards). Restored with
+   colours aligned to the indigo accent (#6366f1); layout is unchanged.
+   Keep in sync with alerts.js — do not delete selectors the JS still emits. */
 .alert-chip-hero {
   display: grid;
   gap: 14px;
   margin-bottom: 16px;
   padding: 20px 22px;
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 28%),
     linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(243, 239, 231, 0.84));
 }
 
@@ -4590,10 +4580,10 @@ button:hover,
   display: grid;
   gap: 10px;
   padding: 18px;
-  border: 1px solid rgba(20, 129, 119, 0.26);
+  border: 1px solid rgba(99, 102, 241, 0.30);
   border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(224, 246, 240, 0.72), rgba(255, 255, 255, 0.92)),
+    linear-gradient(135deg, rgba(224, 231, 254, 0.72), rgba(255, 255, 255, 0.92)),
     var(--card-bg);
   box-shadow: var(--shadow-card);
 }
@@ -4757,45 +4747,31 @@ button:hover,
   line-height: 1.3;
 }
 
-.alert-chip-metrics .metric-box {
-  padding: 12px 14px;
-  border-radius: 16px;
+.divergence-overall,
+.divergence-alert-item {
+  padding: 14px 16px;
 }
 
-.alert-chip-metrics .metric-box strong {
-  font-size: 16px;
+.table-wrap table {
+  table-layout: auto;
 }
 
-.alert-chip-metrics .metric-box span {
+.table-wrap td,
+.table-wrap th {
+  vertical-align: top;
+}
+
+.table-wrap td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.table-wrap th {
+  padding-top: 12px;
+  padding-bottom: 12px;
   font-size: 11px;
-}
-
-.alert-chip-components {
-  display: grid;
-  gap: 8px;
-}
-
-.alert-chip-component-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(170, 151, 124, 0.14);
-}
-
-.alert-chip-component-row:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.alert-chip-component-row span {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.alert-chip-component-row strong {
-  font-size: 14px;
 }
 
 .structure-overview-grid {
@@ -5090,31 +5066,6 @@ button:hover,
   line-height: 1.65;
 }
 
-.alert-block {
-  margin-bottom: var(--content-gap);
-}
-
-.alert-list-card {
-  display: grid;
-  gap: 16px;
-}
-
-.alert-summary-grid {
-  margin: 0;
-  gap: 12px;
-}
-
-.alert-summary-grid .metric {
-  min-height: 0;
-  margin-bottom: 0;
-  padding: 18px 20px;
-}
-
-.alert-summary-grid .metric strong {
-  margin-top: 10px;
-  font-size: 26px;
-}
-
 .knowledge-hero,
 .knowledge-section-card {
   margin-bottom: var(--content-gap);
@@ -5196,18 +5147,6 @@ button:hover,
     min-height: 0;
   }
 
-  .alert-chip-timeframes {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .alert-chip-evidence {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .alert-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .structure-chart-panel {
     min-height: 500px;
   }
@@ -5228,28 +5167,6 @@ button:hover,
   .analysis-overview-grid,
   .analysis-signal-grid {
     grid-template-columns: 1fr;
-  }
-
-  .alert-chip-headline,
-  .alert-chip-metrics,
-  .alert-chip-support-grid,
-  .alert-chip-position-grid,
-  .alert-chip-status-grid,
-  .alert-chip-timeframes,
-  .alert-chip-bottom-grid,
-  .alert-chip-evidence,
-  .alert-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .alert-chip-score-strip,
-  .alert-chip-allocation-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .alert-chip-action,
-  .alert-chip-hero-tags {
-    justify-content: flex-start;
   }
 
   .event-feed {
@@ -5590,6 +5507,8 @@ body[data-page="ai-strategy"] main {
 
 .knowledge-item-card {
   scroll-margin-top: 110px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
 }
 
 .knowledge-item-card.knowledge-highlight {
@@ -5635,7 +5554,7 @@ body[data-page="ai-strategy"] main {
   opacity: 0.75;
   cursor: help;
   border-radius: 6px;
-  transition: opacity 120ms ease, background 120ms ease;
+  transition: opacity var(--dur-press) ease, background var(--dur-press) ease;
 }
 
 .knowledge-page-refs-trigger:hover,
@@ -5672,17 +5591,17 @@ body[data-page="ai-strategy"] main {
   min-width: 220px;
   max-width: 280px;
   padding: 10px 12px;
-  background: var(--surface-elevated, #ffffff);
+  background: var(--surface-elevated, var(--white));
   border: 1px solid rgba(15, 118, 110, 0.15);
   border-radius: 10px;
   box-shadow: var(--shadow-soft);
   font-size: 12px;
   line-height: 1.55;
-  color: var(--text-primary, #1f2a3a);
+  color: var(--text-primary, var(--ink));
   pointer-events: none;
   visibility: hidden;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur-press) ease;
 }
 
 .knowledge-page-refs-trigger:hover + .knowledge-page-refs-popover,
@@ -5694,7 +5613,7 @@ body[data-page="ai-strategy"] main {
 .knowledge-page-refs-popover-title {
   margin: 0 0 6px;
   font-weight: 600;
-  color: var(--text-primary, #1f2a3a);
+  color: var(--text-primary, var(--ink));
 }
 
 .knowledge-page-refs-popover-list {
@@ -5723,11 +5642,11 @@ body[data-page="ai-strategy"] main {
   border: 1px solid rgba(15, 118, 110, 0.25);
   background: rgba(15, 118, 110, 0.06);
   color: var(--accent-strong);
-  transition: background 150ms ease, border-color 150ms ease;
+  transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease;
 }
 .knowledge-toggle-button:hover {
-  background: rgba(15, 118, 110, 0.12);
-  border-color: rgba(15, 118, 110, 0.40);
+  background: var(--accent-soft);
+  border-color: rgba(102, 84, 142, 0.28);
 }
 
 .knowledge-body p {
@@ -5751,17 +5670,6 @@ body[data-page="ai-strategy"] main {
 
 .knowledge-top-anchor {
   scroll-margin-top: 120px;
-}
-
-.knowledge-back-top {
-  position: fixed;
-  right: max(20px, env(safe-area-inset-right));
-  bottom: max(22px, env(safe-area-inset-bottom));
-  z-index: 8;
-  padding: 11px 15px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 800;
 }
 
 .etf-page-grid {
@@ -6145,9 +6053,15 @@ body[data-page="ai-strategy"] main {
 
 .etf-summary-grid {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin: 12px 0;
+}
+
+@media (max-width: 768px) {
+  .etf-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .compact-table-wrap {
@@ -6166,7 +6080,7 @@ body[data-page="ai-strategy"] main {
 .etf-dense-table td {
   border-bottom: 1px solid rgba(26, 47, 55, 0.08);
   padding: 0 10px;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -6761,12 +6675,20 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  /* Decorative dot: suppress inherited text color so a11y scanners don't
+     flag fg/bg contrast on an 8px element with no text content. */
+  color: transparent;
+  font-size: 0;
 }
 
 .source-dot-chip-bullish { background: var(--bullish); }
 .source-dot-chip-warning { background: var(--warning); }
 .source-dot-chip-bearish { background: var(--danger); }
 .source-dot-chip-neutral { background: var(--neutral); }
+.source-dot[data-source-state="live"] { background: var(--info); }
+.source-dot[data-source-state="stale"] { background: var(--warning); }
+.source-dot[data-source-state="offline"] { background: var(--danger); }
+.source-dot[data-source-state="unavailable"] { background: var(--neutral); }
 
 .monitoring-snapshot-grid {
   display: grid;
@@ -6927,6 +6849,10 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   overflow: hidden;
   border-radius: 999px;
   background: rgba(33, 48, 54, 0.08);
+  /* Decorative bar: suppress inherited text color so a11y scanners don't
+     flag fg/bg contrast on a 5px element with no text content. */
+  color: transparent !important;
+  font-size: 0;
 }
 
 .macro-layer-bar i {
@@ -7142,113 +7068,125 @@ ul.terminal-summary-watch li {
   max-width: 1040px;
 }
 
-.terminal-summary-brief {
-  display: grid;
-  gap: 14px;
-  margin-top: 4px;
-}
-
-.terminal-brief-row {
-  display: grid;
-  gap: 10px;
-  padding: 16px 18px;
-  border: 1px solid rgba(219, 209, 194, 0.72);
-  border-radius: 14px;
-  background: linear-gradient(145deg, rgba(255, 252, 246, 0.96), rgba(245, 250, 247, 0.86));
-  border-left-width: 3px;
-}
-
-.terminal-brief-row-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-}
-
-.terminal-brief-row h3 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--ink);
-}
-
-.terminal-brief-row p {
-  margin: 0;
-  color: var(--ink);
-  line-height: 1.65;
-}
-
-.terminal-brief-bullets {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--ink);
-  line-height: 1.7;
-}
-
-.terminal-brief-bullets li {
-  margin-bottom: 4px;
-}
-
-.terminal-brief-sources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.terminal-brief-tone-bullish {
-  border-left-color: var(--bullish, #2f9e44);
-}
-
-.terminal-brief-tone-bearish {
-  border-left-color: var(--bearish, #c92a2a);
-}
-
-.terminal-brief-tone-neutral {
-  border-left-color: var(--neutral, #6b7280);
-}
-
-.terminal-brief-tone-warning {
-  border-left-color: var(--warning, #d97706);
-}
-
 .monitoring-source-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
+  border-top: 1px solid var(--border);
 }
 
 .monitoring-source-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: start;
-  min-height: 60px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background:
-    linear-gradient(145deg, rgba(255, 251, 244, 0.98), rgba(242, 250, 246, 0.88));
+  min-width: 0;
+  min-height: 116px;
+  padding: 18px 20px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
 }
 
-.monitoring-source-row div {
+.monitoring-source-copy {
   display: grid;
-  gap: 2px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.monitoring-source-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.monitoring-source-heading strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
 .monitoring-source-row p {
-  margin: 2px 0 0;
-  font-size: 0.88rem;
-  line-height: 1.4;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  text-wrap: pretty;
 }
 
-.monitoring-source-row small {
-  line-height: 1.2;
+.monitoring-source-time {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitoring-source-time span {
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+}
+
+.monitoring-source-time time {
+  white-space: nowrap;
 }
 
 .monitoring-source-status {
-  align-self: start;
-  justify-self: end;
+  flex: 0 0 auto;
+}
+
+.monitoring-source-status .status-chip {
+  min-height: 26px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.monitoring-source-status .status-chip {
+  border: 1px solid transparent;
+}
+
+.monitoring-source-status [data-source-state="live"] {
+  color: var(--info-strong);
+  background: var(--info-soft);
+  border-color: color-mix(in srgb, var(--info) 24%, transparent);
+}
+
+.monitoring-source-status [data-source-state="stale"] {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 24%, transparent);
+}
+
+.monitoring-source-status [data-source-state="offline"] {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 24%, transparent);
+}
+
+.monitoring-source-status [data-source-state="unavailable"] {
+  color: var(--neutral-chip-ink, var(--muted-strong));
+  background: var(--neutral-chip-surface, var(--neutral-soft));
+  border-color: var(--neutral-chip-border, var(--border));
+}
+
+.monitoring-source-panel {
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+@container (max-width: 620px) {
+  .monitoring-source-list {
+    grid-template-columns: 1fr;
+  }
+
+  .monitoring-source-row {
+    min-height: 0;
+    border-right: 0;
+  }
 }
 
 .monitoring-detail-panel .section-heading-row {
@@ -7456,7 +7394,7 @@ ul.terminal-summary-watch li {
 }
 
 .page-transition {
-  animation: pageFadeIn 200ms var(--ease-out);
+  animation: pageFadeIn var(--dur-elevate) var(--ease-out);
 }
 .page-transition-out {
   /* Exit is a system response — snap. ease-in on UI is a block. */
@@ -7469,6 +7407,34 @@ ul.terminal-summary-watch li {
 @keyframes pageFadeOut {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+/* === Card stagger entrance (animation.md §3.3) =====================
+   Container: [data-stagger]. Children fade up with sequential delay.
+   - delay capped at 8 children (avoids "queue" feel)
+   - backwards fill prevents first-frame flash
+   - reduced-motion already handled by the global reduce block above */
+[data-stagger] > * {
+  animation: cardFadeUp var(--dur-elevate) var(--ease-out) backwards;
+}
+[data-stagger] > *:nth-child(1) { animation-delay: 0ms; }
+[data-stagger] > *:nth-child(2) { animation-delay: 35ms; }
+[data-stagger] > *:nth-child(3) { animation-delay: 70ms; }
+[data-stagger] > *:nth-child(4) { animation-delay: 105ms; }
+[data-stagger] > *:nth-child(5) { animation-delay: 140ms; }
+[data-stagger] > *:nth-child(6) { animation-delay: 175ms; }
+[data-stagger] > *:nth-child(7) { animation-delay: 210ms; }
+[data-stagger] > *:nth-child(8) { animation-delay: 245ms; }
+[data-stagger] > *:nth-child(n+9) { animation-delay: 280ms; }
+@keyframes cardFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* === Number count-up pulse (animation.md §3.2) ===================== */
+@keyframes countUp {
+  from { opacity: 0.4; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* Strategy Trigger Board */
@@ -7659,8 +7625,8 @@ ul.terminal-summary-watch li {
   padding: 16px 18px 18px 22px;
   background: linear-gradient(
     180deg,
-    rgba(91, 138, 131, 0.08),
-    rgba(91, 138, 131, 0.03)
+    rgba(99, 102, 241, 0.08),
+    rgba(99, 102, 241, 0.03)
   );
   box-shadow: inset 4px 0 0 0 var(--accent-strong),
     inset 0 0 0 1px rgba(15, 118, 110, 0.16);
@@ -7819,10 +7785,10 @@ ul.terminal-summary-watch li {
   color: var(--accent-strong);
   cursor: pointer;
   box-shadow: var(--shadow-soft);
-  transition: background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+  transition: background var(--dur-hover) ease, transform var(--dur-hover) ease, box-shadow var(--dur-hover) ease;
 }
 .strategy-collapse-control:hover {
-  background: rgba(15, 118, 110, 0.22);
+  background: var(--accent-soft);
   transform: translateY(-1px);
   box-shadow: var(--shadow-button);
 }
@@ -7838,7 +7804,7 @@ ul.terminal-summary-watch li {
   border-bottom: 2px solid currentColor;
   transform: rotate(45deg) translate(-1px, -1px);
   transition-property: transform;
-  transition-duration: 180ms;
+  transition-duration: var(--dur-hover);
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 .strategy-collapsible[open] .strategy-collapse-control::before {
@@ -7848,7 +7814,7 @@ ul.terminal-summary-watch li {
 .strategy-collapsible[open] > .strategy-v2-grid,
 .strategy-collapsible[open] > .strategy-degraded-grid {
   margin-top: 16px;
-  animation: strategyDetailsIn 180ms cubic-bezier(0.2, 0, 0, 1);
+  animation: strategyDetailsIn var(--dur-hover) cubic-bezier(0.2, 0, 0, 1);
 }
 @keyframes strategyDetailsIn {
   from { opacity: 0; transform: translateY(-4px); }
@@ -8096,39 +8062,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
-}
-
-.btc-chart-mode {
-  display: inline-flex;
-  padding: 3px;
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-pill);
-  background: var(--surface-glass);
-  backdrop-filter: var(--blur-soft);
-  -webkit-backdrop-filter: var(--blur-soft);
-}
-
-.btc-chart-mode button {
-  padding: 5px 10px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--muted-strong);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  transition: background var(--transition-hover), color var(--transition-hover);
-}
-.btc-chart-mode button:hover {
-  background: var(--hover-tint);
-  color: var(--accent-strong);
-}
-
-.btc-chart-mode button.is-active {
-  background: var(--accent);
-  color: var(--surface);
-  box-shadow: var(--shadow-button);
 }
 
 .btc-safety-strip {
@@ -8498,21 +8431,21 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-confidence-chip[data-tone="bullish"] {
-  background: rgba(15, 118, 110, 0.10);
-  border-color: rgba(15, 118, 110, 0.30);
-  color: var(--accent-strong);
+  background: var(--bullish-chip-surface, #e5eeea);
+  border-color: var(--bullish-chip-border, #c6d9d1);
+  color: var(--bullish-chip-ink, #285e4d);
 }
 
 .btc-confidence-chip[data-tone="bearish"] {
-  background: var(--danger-soft);
-  border-color: var(--danger-soft);
-  color: var(--danger-strong);
+  background: var(--bearish-chip-surface, #f2e6e9);
+  border-color: var(--bearish-chip-border, #e2cbd0);
+  color: var(--bearish-chip-ink, #843e4c);
 }
 
 .btc-confidence-chip[data-tone="neutral"] {
-  background: var(--neutral-soft);
-  border-color: var(--neutral-soft);
-  color: var(--muted-strong);
+  background: var(--neutral-chip-surface, #ece9e4);
+  border-color: var(--neutral-chip-border, #d9d3ca);
+  color: var(--neutral-chip-ink, #59535f);
 }
 
 .btc-tone-chip {
@@ -8521,29 +8454,29 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  background: rgba(15, 118, 110, 0.08);
-  color: var(--accent-strong);
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  background: var(--neutral-chip-surface, #ece9e4);
+  color: var(--neutral-chip-ink, #59535f);
+  border: 1px solid var(--neutral-chip-border, #d9d3ca);
 }
 
 .btc-tone-chip[data-tone="bullish"] {
-  background: rgba(15, 118, 110, 0.10);
-  border-color: rgba(15, 118, 110, 0.30);
-  color: var(--accent-strong);
+  background: var(--bullish-chip-surface, #e5eeea);
+  border-color: var(--bullish-chip-border, #c6d9d1);
+  color: var(--bullish-chip-ink, #285e4d);
 }
 
 .btc-tone-chip[data-tone="bearish"] {
-  background: var(--danger-soft);
-  border-color: var(--danger-soft);
-  color: var(--danger-strong);
+  background: var(--bearish-chip-surface, #f2e6e9);
+  border-color: var(--bearish-chip-border, #e2cbd0);
+  color: var(--bearish-chip-ink, #843e4c);
 }
 
 .btc-tone-chip[data-tone="neutral"] {
-  background: var(--neutral-soft);
-  border-color: var(--neutral-soft);
-  color: var(--muted-strong);
+  background: var(--neutral-chip-surface, #ece9e4);
+  border-color: var(--neutral-chip-border, #d9d3ca);
+  color: var(--neutral-chip-ink, #59535f);
 }
 
 .btc-card-kicker span,
@@ -8811,7 +8744,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .btc-table-wrap.btc-maturity-table-wrap {
   max-height: none;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
 }
 
 .btc-table {
@@ -9143,7 +9076,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background: rgba(255, 255, 255, 0.85);
   color: var(--ink);
   font: inherit;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--dur-press) ease, box-shadow var(--dur-press) ease;
 }
 
 .btc-hedge-form input:focus,
@@ -9554,11 +9487,11 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 0 0 1px rgba(18, 35, 42, 0.075);
   gap: 6px;
-  transition: background 160ms ease, box-shadow 160ms ease;
+  transition: background var(--dur-hover) ease, box-shadow var(--dur-hover) ease;
 }
 .strategy-v2-metric:hover {
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.18), 0 4px 12px rgba(15, 118, 110, 0.08);
+  background: var(--surface-elevated);
+  box-shadow: inset 0 0 0 1px rgba(102, 84, 142, 0.16);
 }
 .strategy-v2-metric strong {
   font-size: 1.05rem;
@@ -9702,7 +9635,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
-  transition: box-shadow 160ms ease, transform 160ms ease;
+  transition: box-shadow var(--dur-hover) ease, transform var(--dur-hover) ease;
 }
 .strategy-operation-card:hover { box-shadow: var(--shadow-card-hover); }
 .strategy-operation-card[open] { box-shadow: var(--shadow-card); }
@@ -9767,7 +9700,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   opacity: 0.55;
-  transition: transform 160ms ease;
+  transition: transform var(--dur-hover) ease;
 }
 .strategy-operation-card[open] .op-chevron {
   transform: rotate(90deg);
@@ -9781,7 +9714,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   letter-spacing: 0;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(91, 138, 131, 0.10);
+  background: rgba(99, 102, 241, 0.10);
   color: var(--accent-strong);
   white-space: nowrap;
   text-transform: none;
@@ -10513,7 +10446,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition: background var(--dur-press) ease, color var(--dur-press) ease, border-color var(--dur-press) ease, transform var(--dur-press) ease;
 }
 
 .status-mode-badge .regime-action:hover {
@@ -10529,7 +10462,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .status-mode-badge .regime-action svg {
   width: 14px;
   height: 14px;
-  transition: transform 120ms ease;
+  transition: transform var(--dur-press) ease;
 }
 
 /* Transition mode (V1.7.5) — keeps the same skeleton, only a few accents shift. */
@@ -10705,7 +10638,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .gold-formula-var { font-size: 20px; font-weight: 700; font-family: monospace; color: var(--accent); }
 .gold-formula-dip { color: var(--warning); }
 .gold-formula-op { color: var(--text-tertiary); font-size: 18px; }
-.gold-formula-total { text-align: center; background: var(--accent); color: #fff; padding: 6px 14px; border-radius: 8px; }
+.gold-formula-total { text-align: center; background: var(--accent); color: var(--white); padding: 6px 14px; border-radius: 8px; }
 .gold-formula-total strong { font-size: 20px; font-weight: 800; }
 
 .gold-gate-row {
@@ -10857,7 +10790,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.82rem;
-  transition: background 0.15s;
+  transition: background var(--dur-hover);
 }
 
 .scan-cell-btn:hover {
@@ -10866,12 +10799,12 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .scan-cell[data-tone="bullish"] .scan-cell-btn {
   background: var(--bullish-soft);
-  color: var(--accent-strong);
+  color: var(--bullish-chip-ink, #285e4d);
 }
 
 .scan-cell[data-tone="bearish"] .scan-cell-btn {
   background: var(--bearish-soft);
-  color: var(--bearish);
+  color: var(--bearish-chip-ink, #843e4c);
 }
 
 .scan-cell-wait .scan-cell-btn {
@@ -10880,14 +10813,18 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .scan-cell-btn strong {
   display: block;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .scan-cell-btn small {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
   color: inherit;
-  opacity: 0.8;
+  opacity: 0.92;
 }
 
 .scan-matrix-hint {
@@ -10907,7 +10844,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .scan-ranked-card {
   padding: 14px 16px;
-  transition: box-shadow 0.15s, transform 0.1s;
+  transition: box-shadow var(--dur-hover), transform var(--dur-press);
 }
 
 .scan-ranked-card:hover {
@@ -10957,7 +10894,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   z-index: 100;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 200ms var(--ease-out);
+  transition: opacity var(--dur-elevate) var(--ease-out);
 }
 
 .strategy-detail-overlay.is-visible {
@@ -11105,6 +11042,124 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   cursor: progress;
 }
 
+.strategy-detail-pending {
+  min-height: min(560px, calc(100vh - 164px));
+  border: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface);
+  padding: clamp(28px, 4vw, 64px);
+  justify-content: center;
+  gap: 32px;
+}
+
+.strategy-detail-pending-copy {
+  max-width: 720px;
+}
+
+.strategy-detail-pending-copy .eyebrow {
+  color: var(--accent);
+}
+
+.strategy-detail-pending-copy h2 {
+  margin: 8px 0 12px;
+  font-size: clamp(1.65rem, 2vw, 2.25rem);
+  line-height: 1.2;
+}
+
+.strategy-detail-pending-copy p:last-child {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.strategy-detail-build-flow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-block: 1px solid var(--border);
+}
+
+.strategy-detail-build-flow li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 14px;
+  min-height: 112px;
+  padding: 20px 24px;
+}
+
+.strategy-detail-build-flow li + li {
+  border-left: 1px solid var(--border);
+}
+
+.strategy-detail-build-flow li > span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.strategy-detail-build-flow li.is-active > span,
+.strategy-detail-build-flow li.is-active strong {
+  color: var(--accent);
+}
+
+.strategy-detail-build-flow strong,
+.strategy-detail-build-flow small {
+  display: block;
+}
+
+.strategy-detail-build-flow strong {
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+}
+
+.strategy-detail-build-flow small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.strategy-detail-pending-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.strategy-detail-pending-actions p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.scan-cell-btn:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  box-shadow: none;
+}
+
+.scan-cell-btn:disabled:hover {
+  transform: none;
+}
+
+@media (max-width: 767px) {
+  .strategy-detail-build-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-detail-build-flow li + li {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .strategy-detail-pending-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 @media (max-width: 900px) {
   .strategy-detail-panel {
     width: 100%;
@@ -11119,7 +11174,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .page-guide-fab {
   position: fixed;
   bottom: 24px;
-  left: 24px;
+  left: calc(var(--sidebar-width, 216px) + 24px);
   z-index: 90;
   width: 44px;
   height: 44px;
@@ -11135,7 +11190,23 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-card);
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform var(--dur-hover), box-shadow var(--dur-hover);
+}
+
+.page-guide-fab svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-guide-title {
+  margin: 4px 0 12px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .page-guide-fab:hover {
@@ -11154,7 +11225,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .page-guide-panel {
   position: fixed;
   bottom: 80px;          /* above the FAB */
-  left: 24px;
+  left: calc(var(--sidebar-width, 216px) + 24px);
   z-index: 91;
   width: 380px;
   max-width: calc(100vw - 48px);
@@ -11170,7 +11241,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
-  transition: opacity 0.2s, transform 0.2s;
+  transition: opacity var(--dur-elevate), transform var(--dur-elevate);
 }
 
 .page-guide-panel:not([hidden]) {
@@ -11191,22 +11262,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-}
-
-.page-guide-close {
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  line-height: 1;
-}
-
-.page-guide-close:hover {
-  color: var(--text);
-  background: var(--bg-hover);
 }
 
 .page-guide-panel h3 {
@@ -11360,7 +11415,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 .supply-node-dot.is-unstaking_started { background: #cb7a45; border-color: #cb7a45; }
 .supply-node-dot.is-unstaking_maturity,
 .supply-node-dot.is-sellable_or_exchange_inflow { background: #b85d55; border-color: #b85d55; }
-.supply-node-dot.is-restaked_or_absorbed { background: #5b8a83; border-color: #5b8a83; }
+.supply-node-dot.is-restaked_or_absorbed { background: var(--accent); border-color: var(--accent); }
 
 @media (max-width: 900px) {
   .supply-calendar-list {
@@ -11386,7 +11441,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-size: 14px;
   text-align: left;
   cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--dur-press) ease, box-shadow var(--dur-press) ease;
 }
 
 .dropdown[data-dropdown-size="compact"] {
@@ -11465,7 +11520,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   /* Rotate around the tail (slightly below center) so the flip reads
      as "opening", not "spinning in place". */
   transform-origin: 50% 60%;
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--dur-hover) var(--ease-out);
   flex: 0 0 auto;
 }
 
@@ -11584,9 +11639,9 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   text-align: left;
   cursor: pointer;
   transition:
-    background var(--motion-fast, 120ms ease),
-    border-color var(--motion-fast, 120ms ease),
-    color var(--motion-fast, 120ms ease);
+    background var(--motion-fast, var(--dur-press) ease),
+    border-color var(--motion-fast, var(--dur-press) ease),
+    color var(--motion-fast, var(--dur-press) ease);
 }
 
 .dropdown-item-label {
@@ -11598,14 +11653,14 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 /* Hover — neutral ghost on the un-selected option only. */
 .dropdown-item:not([disabled]):not([aria-selected="true"]):hover {
-  background: rgba(91, 138, 131, 0.06);
+  background: rgba(99, 102, 241, 0.06);
   border-color: transparent;
 }
 
 /* Keyboard highlight — 1px border + 0.10 accent-soft background. */
 .dropdown-item.is-active {
-  background: rgba(91, 138, 131, 0.10);
-  border-color: rgba(91, 138, 131, 0.55);
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.55);
   outline: none;
 }
 
@@ -11615,10 +11670,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background:
     linear-gradient(
       180deg,
-      rgba(91, 138, 131, 0.16),
-      rgba(91, 138, 131, 0.10)
+      rgba(99, 102, 241, 0.16),
+      rgba(99, 102, 241, 0.10)
     );
-  border-color: rgba(91, 138, 131, 0.22);
+  border-color: rgba(99, 102, 241, 0.22);
   color: var(--accent-strong);
   font-weight: 600;
 }
@@ -11630,8 +11685,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   background:
     linear-gradient(
       180deg,
-      rgba(91, 138, 131, 0.22),
-      rgba(91, 138, 131, 0.14)
+      rgba(99, 102, 241, 0.22),
+      rgba(99, 102, 241, 0.14)
     );
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset;
@@ -11755,10 +11810,6 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   padding: 18px 18px 14px;
   border-top: 1px solid rgba(196, 188, 168, 0.32);
 }
-.gold-chart-card.is-wide {
-  grid-column: span 2;
-}
-
 .gold-workbench-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -11781,14 +11832,14 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   flex: 1;
   height: 8px;
   border-radius: 999px;
-  background: rgba(91, 138, 131, 0.18);
+  background: rgba(99, 102, 241, 0.18);
   overflow: hidden;
 }
 .gold-weight-fill {
   height: 100%;
-  background: var(--accent, #5b8a83);
+  background: var(--accent, var(--accent));
   width: var(--gold-weight-pct, 0%);
-  transition: width 0.3s ease;
+  transition: width var(--dur-drawer) ease;
 }
 .gold-formula-box {
   display: flex;
@@ -11820,7 +11871,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 .gold-gate-row .gold-gate-num {
   font-weight: 700;
-  color: var(--accent, #5b8a83);
+  color: var(--accent, var(--accent));
   margin-right: 10px;
 }
 .gold-recommend-row {
@@ -11842,8 +11893,8 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   justify-content: space-between;
   padding: 14px 18px;
   border-radius: 14px;
-  background: rgba(91, 138, 131, 0.08);
-  border: 1px solid rgba(91, 138, 131, 0.18);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.18);
 }
 .gold-price-value {
   font-size: 28px;
@@ -11868,7 +11919,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font-size: 16px;
   font-weight: 700;
   color: var(--ink, #1f1b16);
-  border-top: 2px solid var(--accent, #5b8a83);
+  border-top: 2px solid var(--accent, var(--accent));
   padding-top: 4px;
 }
 .gold-mini-card.is-insufficient {
@@ -11888,7 +11939,19 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .gold-governance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gold-chart-grid {
+    grid-template-columns: 1fr;
+  }
+  .gold-workbench-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .gold-chart-card.is-empty,
@@ -11938,30 +12001,49 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .etf-equity-head {
-  align-items: flex-end;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 10px;
   margin-bottom: 12px;
+}
+
+.etf-equity-head > div:first-child {
+  min-width: 0;
 }
 
 .etf-equity-head h2 {
   margin: 4px 0 0;
+  /* Override the global clamp(24, 1.5vw, 30) — the full strategy title
+   * is descriptive prose ("完整策略 · HALO 六只周定投+季末调仓 + 现金流ETF
+   * 周定投(6:1)") rather than a display heading, so a smaller,
+   * tighter form sits comfortably next to the toolbar. */
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  color: var(--ink);
 }
 
 .etf-equity-controls {
   align-items: end;
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 0;
+  /* §Toolbar — single shared shell wraps the mode toggle + 5 form
+   * fields. Previously each label was its own bordered card, which
+   * produced a row of ~6 visually noisy mini-boxes. Now the entire
+   * toolbar reads as one panel with subtle internal separators. */
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(26, 47, 55, 0.08);
+  border-radius: 10px;
+  padding: 6px 8px;
 }
 
 .etf-equity-mode {
   align-items: center;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(26, 47, 55, 0.08);
-  border-radius: 8px;
   display: inline-flex;
-  padding: 4px;
+  gap: 2px;
+  padding: 4px 10px 4px 4px;
 }
 
 .etf-equity-mode-btn {
@@ -11973,7 +12055,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   font: inherit;
   font-size: 13px;
   padding: 6px 14px;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--dur-press) ease, color var(--dur-press) ease;
 }
 
 .etf-equity-mode-btn.is-active {
@@ -11982,43 +12064,126 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .etf-equity-mode-btn:hover:not(.is-active) {
-  background: rgba(110, 155, 148, 0.18);
+  background: var(--accent-soft);
   color: var(--ink);
 }
 
 .etf-equity-from {
   align-items: stretch;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(26, 47, 55, 0.08);
-  border-radius: 8px;
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
-  padding: 6px 10px;
+  padding: 4px 10px;
+  /* Subtle vertical separator between fields inside the toolbar —
+   * ties the row together without screaming for attention. */
+  border-left: 1px solid rgba(26, 47, 55, 0.07);
+}
+
+.etf-equity-from:first-of-type {
+  border-left: 0;
+}
+
+/* .etf-equity-offset is structurally identical to .etf-equity-from
+ * (label > span + input). Inherit the toolbar-field styling so the
+ * 调仓延后 field visually matches the other 5 fields.
+ */
+.etf-equity-offset {
+  align-items: stretch;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 10px;
+  border-left: 1px solid rgba(26, 47, 55, 0.07);
+}
+
+.etf-equity-offset > span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.etf-equity-offset input {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  height: 28px;
+  min-width: 0;
+  padding: 2px 4px;
+  transition: background var(--dur-press) ease;
+}
+
+.etf-equity-offset input:hover {
+  background: var(--accent-ghost);
+}
+
+.etf-equity-offset input:focus {
+  background: var(--accent-soft);
+  outline: none;
 }
 
 .etf-equity-from > span {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .etf-equity-from input {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
-  height: 32px;
+  font-size: 13.5px;
+  font-weight: 600;
+  height: 28px;
   min-width: 0;
-  padding: 4px 8px;
+  padding: 2px 4px;
+  transition: background var(--dur-press) ease;
+}
+
+.etf-equity-from input:hover {
+  background: var(--accent-ghost);
+}
+
+.etf-equity-from input:focus {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.etf-equity-from .etf-equity-freq-btn {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  height: 28px;
+  min-width: 0;
+  padding: 2px 4px;
+  text-align: left;
+  transition: background var(--dur-press) ease;
+}
+
+.etf-equity-from .etf-equity-freq-btn:hover {
+  background: var(--accent-ghost);
 }
 
 .etf-equity-stats {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 2026-08-07: five columns — 策略市值 / 策略累计投入 / 现金流ETF 市值 /
+   * 一次性投入 市值 / 策略 vs 一次性 — all on one row at desktop width.
+   * Narrows down to 3 / 2 / 1 columns via the responsive overrides below. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 12px;
 }
 
@@ -12034,13 +12199,21 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .etf-equity-stat small {
+  /* §Eyebrow lock — match the form-field labels and the rest of the
+   * site's uppercase eyebrow pattern (10.5px / 600 / letter-spacing
+   * 0.06em). The legacy 11px / 800 form read as a chunky tag rather
+   * than a quiet category label. */
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .etf-equity-stat strong {
   font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .etf-equity-stat em {
@@ -12054,6 +12227,19 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   border: 1px solid rgba(26, 47, 55, 0.06);
   border-radius: 8px;
   padding: 8px 10px;
+  /* §Chart-height lock — align with --chart-height (clamp 430-560px) so
+   * the equity curve is on the same visual scale as the rest of the
+   * site's charts. The HTML <canvas height="300"> attribute is kept
+   * as a no-CSS fallback; Chart.js's responsive: true + maintainAspectRatio:
+   * false (see ui/charts.js baseOptions) honours the CSS height instead.
+   */
+  height: var(--chart-height, 460px);
+}
+
+.etf-equity-canvas-wrap > canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .etf-equity-caption {
@@ -12068,6 +12254,14 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
     flex-direction: column;
   }
 
+  .etf-equity-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  /* 5 columns get crowded below 980px — collapse to 2-up so each card
+   * keeps readable typography. (1180–980 stays at 3-up.) */
   .etf-equity-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -6,10 +6,6 @@ REPO = Path(__file__).resolve().parents[1]
 MONITORING_JS = REPO / "app" / "static" / "pages" / "monitoring.js"
 STYLES_CSS = REPO / "app" / "static" / "styles.css"
 
-REQUIRED_DECISION_LABELS = (
-    "市场观察",
-)
-
 OLD_PRIMARY_LABELS = (
     "交易指引",
     "风险点 / 失效条件",
@@ -20,19 +16,12 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_monitoring_js_exposes_decision_rows_helpers() -> None:
+def test_monitoring_js_omits_duplicate_decision_rows_from_main_canvas() -> None:
     content = _read(MONITORING_JS)
-    assert "function getTerminalDecisionRows" in content
-    assert "function renderTerminalDecisionRow" in content
-    assert "decision_brief" in content
-    assert "terminal-summary-brief" in content
     assert "renderTerminalSummary" in content
-
-
-def test_monitoring_js_primary_labels_are_new_three_rows() -> None:
-    content = _read(MONITORING_JS)
-    for label in REQUIRED_DECISION_LABELS:
-        assert label in content, f"Missing primary label: {label}"
+    assert "function getTerminalDecisionRows" not in content
+    assert "function renderTerminalDecisionRow" not in content
+    assert "terminal-summary-brief" not in content
 
 
 def test_monitoring_js_old_card_titles_not_used_as_primary() -> None:
@@ -55,7 +44,7 @@ def test_monitoring_js_old_card_titles_not_used_as_primary() -> None:
         )
 
 
-def test_monitoring_css_has_terminal_brief_classes() -> None:
+def test_monitoring_css_removes_terminal_brief_classes() -> None:
     content = _read(STYLES_CSS)
     for cls in (
         ".terminal-summary-brief",
@@ -68,7 +57,7 @@ def test_monitoring_css_has_terminal_brief_classes() -> None:
         ".terminal-brief-tone-neutral",
         ".terminal-brief-tone-warning",
     ):
-        assert cls in content, f"Missing CSS class: {cls}"
+        assert cls not in content, f"Obsolete CSS class remains: {cls}"
 
 
 def test_monitoring_surfaces_have_clear_vertical_separation() -> None:
@@ -81,7 +70,7 @@ def test_monitoring_surfaces_have_clear_vertical_separation() -> None:
     assert "margin-top: 28px;" in content
 
 
-def test_monitoring_js_handles_decision_brief_only() -> None:
+def test_monitoring_js_does_not_render_decision_brief_in_main_canvas() -> None:
     """V1.5.2 row set is sourced exclusively from the backend
     decision_brief.rows payload; no synthetic fallback rows are
     rendered for missing fields. The function only normalises the
@@ -90,30 +79,23 @@ def test_monitoring_js_handles_decision_brief_only() -> None:
 
     content = _read(MONITORING_JS)
     fn_idx = content.find("function getTerminalDecisionRows")
-    assert fn_idx > 0
-    end = content.find("\nfunction ", fn_idx + 1)
-    block = content[fn_idx:end] if end > 0 else content[fn_idx:]
-    assert "decision_brief" in block
-    assert "trading_guidance" not in block
-    assert "risk_invalidation" not in block
-    assert "summary.headline" not in block
-    assert "summary.bias" not in block
+    assert fn_idx == -1
 
 
-def test_monitoring_js_renders_three_rows_via_terminal_brief_wrapper() -> None:
+def test_monitoring_summary_keeps_votes_without_duplicate_brief_wrapper() -> None:
     content = _read(MONITORING_JS)
     start = content.find("function renderTerminalSummary")
     end = content.find("\nfunction ", start + 1)
     block = content[start:end]
-    assert "terminal-summary-brief" in block
-    assert "getTerminalDecisionRows" in block
-    assert "renderTerminalDecisionRow" in block
+    assert "terminal-summary-votes" in block
+    assert "terminal-summary-brief" not in block
+    assert "renderTerminalDecisionRow" not in block
 
 
 def test_monitoring_terminal_summary_localizes_module_vote_chips() -> None:
     content = _read(MONITORING_JS)
     start = content.find("function renderTerminalSummary")
-    end = content.find("\nfunction getTerminalDecisionRows", start)
+    end = content.find("\nfunction renderMacroIndicatorCard", start)
     block = content[start:end]
 
     assert "impactLabel(" in block
@@ -124,16 +106,12 @@ def test_monitoring_terminal_summary_localizes_module_vote_chips() -> None:
     assert ">pending<" not in block
 
 
-def test_monitoring_source_refs_use_page_routes_not_hash_links() -> None:
+def test_monitoring_source_ref_renderer_is_removed_with_duplicate_rows() -> None:
     content = _read(MONITORING_JS)
     start = content.find("function renderTerminalDecisionRow")
-    end = content.find("\nfunction renderMacroIndicatorCard", start)
-    block = content[start:end]
 
-    assert "sourcePageHref(" in block
-    assert 'href="#${escapeHtml(targetPage)}"' not in block
-    assert "item.is_missing" in block
-    assert "return \"\"" in block
+    assert start == -1
+    assert "sourcePageHref(" not in content
 
 
 def test_monitoring_load_dashboard_renders_dashboard_before_macro_enhancement() -> None:

@@ -202,7 +202,10 @@ def test_ashare_etf_page_is_compact_execution_workbench() -> None:
     source = (ROOT / "app/static/pages/ashare_etf.js").read_text(encoding="utf-8")
     assert "ashare.etf.dca.rebalance.v1" in source
     assert "planEtfRebalance" in source
-    assert "etf-execution-bar" in source
+    # 2026-08-13: the standalone `etf-execution-bar` was folded into the
+    # `持仓与执行` card (etf-execution-table-card) by the compact redesign.
+    assert "etf-execution-table-card" in source
+    assert "etf-plan-inline" in source
     assert "etf-quote-deck" in source
     assert "etf-top-deck" in source
     assert "etf-mini-card" in source

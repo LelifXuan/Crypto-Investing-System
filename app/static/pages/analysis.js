@@ -15,6 +15,7 @@ let loadingState;
 let setRoot;
 let statusBanner;
 let statusChip;
+let updatePageContext;
 let barDataset;
 let candleDataset;
 let destroyChartsForPage;
@@ -56,6 +57,7 @@ async function ensureDeps() {
     setRoot,
     statusBanner,
     statusChip,
+    updatePageContext,
   } = domModule);
   ({
     barDataset,
@@ -92,6 +94,13 @@ function finiteInputNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function themeColor(token, fallback) {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(token)
+    .trim();
+  return value || fallback;
 }
 
 function ema(values, period) {
@@ -760,7 +769,7 @@ function heroTemplate() {
         <div class="analysis-hero-top">
           <div>
             <p class="eyebrow">MARKET ANALYSIS</p>
-            <h2>行情与指标一体视图 ${knowledgeTooltip("Market Analysis Workspace / 技术指标页", "tone-neutral")}</h2>
+            <h2>行情与指标一体视图</h2>
             <p class="section-summary" id="analysis-summary"></p>
           </div>
           <div class="toolbar compact-toolbar">
@@ -792,7 +801,7 @@ function heroTemplate() {
                 </svg>
               </span>
             </button>
-            <button id="analysis-refresh">刷新分析</button>
+            <button id="analysis-refresh" class="primary-button compact">刷新分析</button>
           </div>
         </div>
         <div class="instrument-switcher">
@@ -830,42 +839,42 @@ function heroTemplate() {
     <section id="analysis-statusbar"></section>
     <section class="grid cols-3" id="analysis-signal-cards"></section>
     <section class="analysis-chart-grid">
-      <article class="card">
+      <article class="card analysis-chart-card analysis-chart-ema">
         <div class="section-head">
           <div><p class="eyebrow">TREND</p><h2>价格与 EMA</h2></div>
           <p class="section-summary" id="analysis-window-copy"></p>
         </div>
         <div class="chart-wrap"><canvas id="analysis-price-chart"></canvas></div>
       </article>
-      <article class="card">
+      <article class="card analysis-chart-card analysis-chart-vegas">
         <div class="section-head">
           <div><p class="eyebrow">STRUCTURE</p><h2>Vegas 通道</h2></div>
           <p class="section-summary" id="analysis-vegas-copy"></p>
         </div>
         <div class="chart-wrap"><canvas id="analysis-vegas-chart"></canvas></div>
       </article>
-      <article class="card">
+      <article class="card analysis-chart-card analysis-chart-boll">
         <div class="section-head">
           <div><p class="eyebrow">VOLATILITY</p><h2>BOLL</h2></div>
           <p class="section-summary" id="analysis-boll-copy"></p>
         </div>
         <div class="chart-wrap"><canvas id="analysis-boll-chart"></canvas></div>
       </article>
-      <article class="card">
+      <article class="card analysis-chart-card analysis-chart-rsi">
         <div class="section-head">
           <div><p class="eyebrow">MOMENTUM</p><h2>RSI</h2></div>
           <p class="section-summary" id="analysis-rsi-copy"></p>
         </div>
         <div class="chart-wrap"><canvas id="analysis-rsi-chart"></canvas></div>
       </article>
-      <article class="card">
+      <article class="card analysis-chart-card analysis-chart-volume">
         <div class="section-head">
           <div><p class="eyebrow">VOLUME</p><h2>成交量</h2></div>
           <p class="section-summary" id="analysis-volume-copy"></p>
         </div>
         <div class="chart-wrap"><canvas id="analysis-volume-chart"></canvas></div>
       </article>
-      <article class="card">
+      <article class="card analysis-chart-card analysis-chart-macd">
         <div class="section-head">
           <div><p class="eyebrow">MOMENTUM</p><h2>MACD</h2></div>
           <p class="section-summary" id="analysis-macd-copy"></p>
@@ -881,9 +890,14 @@ let markTimer = null;
 let bundleRetryTimer = null;
 let bundleRetryCount = 0;
 let abortController = null;
+let analysisRequestPending = false;
 let timeframeDropdown = null;
 let windowDropdown = null;
 let activeRenderToken = 0;
+// 2026-08-11: debounce rapid symbol/timeframe switching to prevent
+// loading state getting stuck (request chain blocking).
+let analysisDebounceTimer = null;
+let lastAnalysisKey = null;
 
 const analysisCache = new Map();
 const MAX_ANALYSIS_CACHE = 8;
@@ -1235,7 +1249,7 @@ function renderModeBadge(mode, secondarySeries = null, directionalBias = activeD
 function setRefreshBusy(isBusy, label = "刷新分析") {
   const button = document.getElementById("analysis-refresh");
   if (!button) return;
-  button.disabled = isBusy;
+  button.setAttribute("aria-busy", isBusy ? "true" : "false");
   button.textContent = isBusy ? label : "刷新分析";
 }
 
@@ -1270,6 +1284,7 @@ async function loadAll(force = false, token = activeRenderToken) {
   activeDirectionalBias = null;
   renderAnalysisStatus("正在读取缓存", "loading", bundleMode, bundleSecondary);
   setRefreshBusy(true, force ? "计算中" : "读取中");
+  analysisRequestPending = true;
   if (force) {
     invalidateCache("/marketdata/candles");
     invalidateCache("/market-prices/marks/latest");
@@ -1484,6 +1499,13 @@ async function loadAll(force = false, token = activeRenderToken) {
       </article>
     `).join("");
 
+    const instrument = appState.instruments.find((item) => item.id === appState.selectedInstrumentId);
+    updatePageContext({
+      instrument: instrument?.code || appState.selectedInstrumentId,
+      timeframe: appState.selectedTimeframe,
+      status: activeDirectionalBias?.label || "等待方向",
+      updatedAt: markPayload?.ts_event ? formatDateTime(markPayload.ts_event) : "",
+    });
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     renderChartBatch([
       ["analysis-price", document.getElementById("analysis-price-chart"), {
@@ -1528,10 +1550,33 @@ async function loadAll(force = false, token = activeRenderToken) {
         data: {
           labels,
           datasets: [
-            candleDataset("K 线", candles, { order: 0 }),
-            lineDataset("上轨", analysis.boll.upper, "#a896c8", { order: 1, borderDash: [2, 4], borderWidth: 1.4 }),
-            lineDataset("中轨", analysis.boll.middle, "#5a6a7c", { order: 1, borderDash: [6, 4], borderWidth: 2.4 }),
-            lineDataset("下轨", analysis.boll.lower, "#a896c8", { order: 1, borderDash: [2, 4], borderWidth: 1.4 }),
+            candleDataset("K 线", candles, {
+              order: 0,
+              // BOLL is a volatility view, not an order-entry view. Keep its
+              // candles inside the editorial blue/plum family: rising bodies
+              // are pale/outlined while falling bodies are denser/filled, so
+              // direction remains legible without relying on red versus green.
+              upStrokeColor: themeColor("--info", "#3e6f9f"),
+              upColor: "rgba(230, 238, 246, 0.38)",
+              downStrokeColor: themeColor("--accent", "#66548e"),
+              downColor: "rgba(102, 84, 142, 0.42)",
+            }),
+            lineDataset("上轨", analysis.boll.upper, themeColor("--info", "#3e6f9f"), {
+              order: 2,
+              borderDash: [5, 5],
+              borderWidth: 1.5,
+              fill: 2,
+              backgroundColor: "rgba(102, 84, 142, 0.07)",
+            }),
+            lineDataset("下轨", analysis.boll.lower, themeColor("--info", "#3e6f9f"), {
+              order: 2,
+              borderDash: [5, 5],
+              borderWidth: 1.5,
+            }),
+            lineDataset("中轨", analysis.boll.middle, themeColor("--accent-strong", "#4d3b73"), {
+              order: 1,
+              borderWidth: 2.3,
+            }),
           ],
         },
         options: {
@@ -1539,6 +1584,8 @@ async function loadAll(force = false, token = activeRenderToken) {
             legend: {
               labels: {
                 filter: (item) => ["K 线", "上轨", "中轨", "下轨"].includes(item.text),
+                sort: (a, b) => ["K 线", "上轨", "中轨", "下轨"].indexOf(a.text)
+                  - ["K 线", "上轨", "中轨", "下轨"].indexOf(b.text),
               },
             },
             tooltip: {
@@ -1628,6 +1675,7 @@ async function loadAll(force = false, token = activeRenderToken) {
     renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode, bundleSecondary);
     return { status: "error", data: null, refreshed: liveFetched, error };
   } finally {
+    analysisRequestPending = false;
     if (isRunActive(token)) setRefreshBusy(false);
   }
 }
@@ -1670,13 +1718,30 @@ function syncToolbarState() {
   });
 }
 
+// 2026-08-11: debounce helper — rapid clicks/dropdown changes only trigger
+// ONE final loadAll() after 300ms of quiet, preventing request chain
+// blocking that leaves loading state stuck.
+function debouncedLoadAll() {
+  if (analysisDebounceTimer) {
+    clearTimeout(analysisDebounceTimer);
+    analysisDebounceTimer = null;
+  }
+  const key = `${appState.selectedInstrumentId}:${appState.selectedTimeframe}:${appState.selectedViewWindow}`;
+  lastAnalysisKey = key;
+  analysisDebounceTimer = window.setTimeout(() => {
+    analysisDebounceTimer = null;
+    if (lastAnalysisKey !== key) return;
+    loadAll();
+  }, 300);
+}
+
 function bindEventHandlers() {
   document.querySelectorAll("[data-instrument-id]").forEach((button) => {
     button.addEventListener("click", async () => {
       appState.selectedInstrumentId = button.dataset.instrumentId;
       persistState();
       syncToolbarState();
-      await loadAll();
+      debouncedLoadAll();
     });
   });
 
@@ -1689,7 +1754,7 @@ function bindEventHandlers() {
       onChange: async (v) => {
         appState.selectedTimeframe = v;
         persistState();
-        await loadAll();
+        debouncedLoadAll();
       },
     });
   }
@@ -1706,19 +1771,27 @@ function bindEventHandlers() {
       onChange: async (v) => {
         appState.selectedViewWindow = v;
         persistState();
-        await loadAll();
+        debouncedLoadAll();
       },
     });
   }
 
   document.getElementById("analysis-refresh").addEventListener("click", async () => {
+    if (analysisRequestPending) {
+      debouncedLoadAll();
+      return;
+    }
     setRefreshBusy(true, "刷新中");
-    await api.refreshAnalysisBundle(
-      appState.selectedInstrumentId,
-      appState.selectedTimeframe,
-      appState.selectedViewWindow,
-    );
-    await loadAll(true);
+    try {
+      await api.refreshAnalysisBundle(
+        appState.selectedInstrumentId,
+        appState.selectedTimeframe,
+        appState.selectedViewWindow,
+      );
+      await loadAll(true);
+    } finally {
+      setRefreshBusy(false);
+    }
   });
 }
 
@@ -1743,6 +1816,7 @@ export async function renderAnalysis() {
   return {
     async unmount() {
       activeRenderToken += 1;
+      if (analysisDebounceTimer) { window.clearTimeout(analysisDebounceTimer); analysisDebounceTimer = null; }
       abortController?.abort();
       abortController = null;
       if (markTimer) {

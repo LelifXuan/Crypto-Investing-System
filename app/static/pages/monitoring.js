@@ -6,6 +6,7 @@ import {
   formatNumber,
   setRoot,
   statusBanner,
+  updatePageContext,
 } from "../core/dom.js";
 import { scheduleIdlePrecompute } from "../core/precompute.js";
 import { judgementMeta } from "../core/judgement.js";
@@ -58,19 +59,19 @@ const SOURCE_DEFAULT_MESSAGES = {
 };
 
 const SOURCE_STATUS_META = {
-  online: ["在线", "chip-bullish"],
-  ready: ["在线", "chip-bullish"],
-  fresh: ["在线", "chip-bullish"],
-  stale: ["使用缓存", "chip-warning"],
-  stale_cache: ["使用缓存", "chip-warning"],
-  cached: ["使用缓存", "chip-warning"],
-  no_data: ["无数据", "chip-neutral"],
-  missing: ["后台准备中", "chip-neutral"],
-  not_configured: ["未配置", "chip-neutral"],
-  auth_missing: ["未配置", "chip-neutral"],
-  offline: ["离线", "chip-bearish"],
-  source_error: ["离线", "chip-bearish"],
-  unavailable: ["无数据", "chip-neutral"],
+  online: ["在线", "live"],
+  ready: ["在线", "live"],
+  fresh: ["在线", "live"],
+  stale: ["使用缓存", "stale"],
+  stale_cache: ["使用缓存", "stale"],
+  cached: ["使用缓存", "stale"],
+  no_data: ["无数据", "unavailable"],
+  missing: ["后台准备中", "unavailable"],
+  not_configured: ["未配置", "unavailable"],
+  auth_missing: ["未配置", "unavailable"],
+  offline: ["离线", "offline"],
+  source_error: ["离线", "offline"],
+  unavailable: ["无数据", "unavailable"],
 };
 
 const LAYER_LABELS = {
@@ -209,7 +210,7 @@ function signalMeta(raw) {
     return unifiedSignalMeta("bullish");
   }
   if (
-    ["soft_bullish", "neutral_bullish", "positive_hist", "developing_trend", "strengthening", "strong", "偏强", "中性偏多"].includes(key)
+    ["soft_bullish", "mild_bullish", "weak_bullish", "neutral_bullish", "positive_hist", "developing_trend", "strengthening", "strong", "偏强", "中性偏多"].includes(key)
   ) {
     return unifiedSignalMeta("soft_bullish");
   }
@@ -219,10 +220,10 @@ function signalMeta(raw) {
   if (["bearish", "negative", "short", "downside", "看空", "偏空"].includes(key)) {
     return unifiedSignalMeta("bearish");
   }
-  if (["soft_bearish", "neutral_bearish", "negative_hist", "weakening", "weak", "偏弱", "中性偏空"].includes(key)) {
+  if (["soft_bearish", "mild_bearish", "weak_bearish", "neutral_bearish", "negative_hist", "weakening", "weak", "偏弱", "中性偏空"].includes(key)) {
     return unifiedSignalMeta("soft_bearish");
   }
-  if (["volatile", "high_volatility", "risk", "compressed", "event", "波动", "波动环境"].includes(key)) {
+  if (["volatile", "high_volatility", "risk", "compressed", "event", "execution_risk", "波动", "波动环境"].includes(key)) {
     return unifiedSignalMeta("volatility");
   }
   return unifiedSignalMeta("neutral");
@@ -269,8 +270,8 @@ function macroBiasMeta(raw) {
 }
 
 function sourceMeta(status) {
-  const [label, className] = SOURCE_STATUS_META[normalizeKey(status)] || ["后台准备中", "chip-neutral"];
-  return { label, className };
+  const [label, tone] = SOURCE_STATUS_META[normalizeKey(status)] || ["后台准备中", "unavailable"];
+  return { label, tone };
 }
 
 function normalizeUnit(unit) {
@@ -502,19 +503,6 @@ function getSourceStatus(data) {
   });
 }
 
-const SOURCE_PAGE_HREFS = {
-  "monitoring-overview": "/monitoring-page",
-  "market-analysis": "/indicators-page",
-  "market-structure": "/structure-page",
-  "macro-calendar": "/macro-calendar-page",
-  "market-events": "/market-events-page",
-  "ai-strategy": "/strategy-page",
-};
-
-function sourcePageHref(pageId) {
-  return SOURCE_PAGE_HREFS[pageId] || `/${pageId}-page`;
-}
-
 function missingReason(item) {
   const raw =
     item?.missing_reason ||
@@ -571,71 +559,45 @@ function renderTopbar(data, macro) {
       : readableText(data?.status_message, "数据已就绪");
   return `
     <section class="monitoring-surface monitoring-topbar">
-      <div class="monitoring-top-status">
-        ${statusBanner(statusMessage, data?.status === "error" ? "warning" : "success")}
-      </div>
       <div class="monitoring-topbar-grid">
-        <article class="monitoring-topbar-item wide">
-          <span>监控总览</span>
+        <article class="monitoring-topbar-item monitoring-topbar-context wide">
+          <span class="monitoring-context-status" data-status-tone="${data?.status === "error" ? "warning" : "ready"}">
+            ${escapeHtml(statusMessage)}
+          </span>
+          <small>监控总览</small>
           <strong>${escapeHtml(data?.status === "missing" ? "后台准备中" : "监控快照可用")}</strong>
         </article>
-        <article class="monitoring-topbar-item score">
-          <span>宏观总分</span>
-          <strong>${escapeHtml(formatNumber(macroScore(macro), 0))}</strong>
-        </article>
-        <article class="monitoring-topbar-item">
-          <span>置信度</span>
-          <strong>${escapeHtml(macroConfidence(macro))}</strong>
-        </article>
-        <article class="monitoring-topbar-item">
-          <span>宏观覆盖</span>
-          <strong>${escapeHtml(formatNumber(macroCoverage, 0))}%</strong>
-        </article>
-        <article class="monitoring-topbar-item">
-          <span>技术指标</span>
-          <strong>${technicalCount} 项</strong>
-        </article>
-        <article class="monitoring-topbar-item">
-          <span>宏观待补</span>
-          <strong>${missing} 项</strong>
-        </article>
+        <div class="monitoring-metric-rail" aria-label="监控摘要指标">
+          <article class="monitoring-topbar-item score">
+            <span>宏观总分</span>
+            <strong>${escapeHtml(formatNumber(macroScore(macro), 0))}</strong>
+          </article>
+          <article class="monitoring-topbar-item">
+            <span>置信度</span>
+            <strong>${escapeHtml(macroConfidence(macro))}</strong>
+          </article>
+          <article class="monitoring-topbar-item">
+            <span>宏观覆盖</span>
+            <strong>${escapeHtml(formatNumber(macroCoverage, 0))}%</strong>
+          </article>
+          <article class="monitoring-topbar-item">
+            <span>技术指标</span>
+            <strong>${technicalCount} 项</strong>
+          </article>
+          <article class="monitoring-topbar-item">
+            <span>宏观待补</span>
+            <strong>${missing} 项</strong>
+          </article>
+        </div>
         <button class="primary-button monitoring-refresh button compact" type="button">刷新监控</button>
       </div>
       <div class="monitoring-source-pills">
+        <span class="monitoring-source-rail-label">信源</span>
         ${getSourceStatus(data).map((source) => {
           const meta = sourceMeta(source.status);
-          return `<span class="monitoring-source-pill"><span class="source-dot source-dot-${meta.className}"></span>${escapeHtml(source.label)}</span>`;
+          return `<span class="monitoring-source-pill"><span class="source-dot" data-source-state="${meta.tone}"></span>${escapeHtml(source.label)}</span>`;
         }).join("")}
       </div>
-    </section>
-  `;
-}
-
-function renderSourceRow(source) {
-  const meta = sourceMeta(source.status);
-  return `
-    <article class="monitoring-source-row">
-      <div>
-        <strong>${escapeHtml(source.label)}</strong>
-        <p>${escapeHtml(source.message)}</p>
-        ${source.updatedAt ? `<small>${escapeHtml(formatDateTime(source.updatedAt))}</small>` : ""}
-      </div>
-      <div class="monitoring-source-status">${chip(meta.label, meta.className)}</div>
-    </article>
-  `;
-}
-
-function renderSourcePanel(data) {
-  const rows = getSourceStatus(data).map(renderSourceRow).join("");
-  return `
-    <section class="monitoring-source-panel">
-      <div class="monitoring-panel-head compact">
-        <div>
-          <p class="eyebrow">SOURCES</p>
-          <h3>信源状态</h3>
-        </div>
-      </div>
-      <div class="monitoring-source-list">${rows}</div>
     </section>
   `;
 }
@@ -746,9 +708,11 @@ function renderTerminalSummary(data) {
       const evidence = moduleEvidence[key];
       return `
         <article class="terminal-summary-vote">
-          <span>${escapeHtml(moduleLabels[key] || key)}</span>
+          <div class="terminal-summary-vote-head">
+            <span>${escapeHtml(moduleLabels[key] || key)}</span>
+            <small class="terminal-summary-vote-score">${escapeHtml(score)}</small>
+          </div>
           <strong>${escapeHtml(readableText(item.state, "待确认"))}</strong>
-          <small>${escapeHtml(score)}</small>
           ${chip(impactLabel(item.impact || item.state), meta.className)}
           ${evidence ? `<small class="terminal-summary-evidence">证据：${escapeHtml(evidence)}</small>` : ""}
         </article>
@@ -770,7 +734,12 @@ function renderTerminalSummary(data) {
     ? "bearish"
     : "neutral";
   const regimeMeta = signalMeta(regimeTone);
-  const decisionRows = getTerminalDecisionRows(summary);
+  // Older LKG snapshots can retain the superseded execution caveat even after
+  // the summary engine copy is updated. Remove it at presentation time so a
+  // stale-but-valid snapshot does not bring the redundant sentence back.
+  const headline = readableText(summary.headline, "全局摘要正在等待关键输入。")
+    .replace("追空质量取决于反弹失败或前低跌破确认。", "")
+    .trim();
   return `
     <article class="terminal-summary-card">
       <div class="terminal-summary-head">
@@ -783,104 +752,8 @@ function renderTerminalSummary(data) {
           <span class="terminal-summary-confidence" title="置信度">${escapeHtml(confidence)}</span>
         </div>
       </div>
-      <p class="terminal-summary-headline">${escapeHtml(readableText(summary.headline, "全局摘要正在等待关键输入。"))}</p>
+      <p class="terminal-summary-headline">${escapeHtml(headline)}</p>
       <div class="terminal-summary-votes">${moduleVotes}</div>
-      <div class="terminal-summary-brief">
-        ${decisionRows.map((row) => renderTerminalDecisionRow(row)).join("")}
-      </div>
-    </article>
-  `;
-}
-
-function getTerminalDecisionRows(summary) {
-  if (!summary || typeof summary !== "object") return [];
-  const brief = summary.decision_brief || {};
-  const rows = Array.isArray(brief.rows) ? brief.rows : [];
-  return rows
-    .map((row) => ({
-      key: String(row.key || ""),
-      title: String(row.title || "市场观察"),
-      tone: String(row.tone || "neutral"),
-      summary: humanizeBriefText(String(row.summary || "")),
-      bullets: Array.isArray(row.bullets) ? row.bullets.map(humanizeBriefText).filter(Boolean) : [],
-      source_refs: Array.isArray(row.source_refs) ? row.source_refs : [],
-      // V1.5.5 ⑤: source_refs_meta carries the Chinese label and
-      // target page so the chip can be a clickable link instead of
-      // a raw English key. Older cached bundles that pre-date this
-      // field still have just the raw `source_refs` strings, so the
-      // renderer falls back gracefully below.
-      source_refs_meta: Array.isArray(row.source_refs_meta) ? row.source_refs_meta : [],
-    }))
-    .filter(isVisibleDecisionRow);
-}
-
-function humanizeBriefText(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  if (text.includes("筹码结构=") || text.includes("low_confidence")) {
-    const direction = text.includes("偏空") || text.includes("bearish") ? "偏空" : text.includes("偏多") || text.includes("bullish") ? "偏多" : "待确认";
-    return `筹码结构${direction}但置信度不足，压力区仍需价格确认。`;
-  }
-  if (text.includes("底背离观察") || text.includes("divergence")) {
-    return "底背离风险处于观察期，低位追空需要防反抽。";
-  }
-  if (text.includes("数据缺口") || text.includes("bundle") || text.includes("gates")) {
-    return "";
-  }
-  return text.replaceAll("pending", "待确认").replaceAll("neutral", "中性").replaceAll("low_confidence", "低置信度");
-}
-
-function isVisibleDecisionRow(row) {
-  if (!row?.summary && !(row?.bullets || []).length) return false;
-  if (row.key !== "key_risk") return true;
-  const text = `${row.summary || ""} ${(row.bullets || []).join(" ")}`;
-  if (!text || text.includes("数据缺口") || text.includes("bundle") || text.includes("gates")) return false;
-  return /(\d|EMA|VWAP|前高|前低|支撑|压力|止损|清算|爆仓)/i.test(text);
-}
-
-function renderTerminalDecisionRow(row) {
-  if (!row || typeof row !== "object") return "";
-  const tone = normalizeKey(row.tone || "neutral");
-  const toneClass = `terminal-brief-tone-${["bullish", "bearish", "warning", "neutral"].includes(tone) ? tone : "neutral"}`;
-  const meta = signalMeta(row.tone || "neutral");
-  const bullets = Array.isArray(row.bullets) ? row.bullets.filter(Boolean) : [];
-  // V1.5.5 ⑤: render source_refs as <a> chips. The backend now
-  // supplies source_refs_meta with {label, page, is_missing} for
-  // each ref; the click handler delegates to the V1.5.4 D1 SPA
-  // router so the navigation stays in-process. Refs without a
-  // page (legacy or unknown keys) fall back to a non-clickable
-  // chip so the user still sees the provenance.
-  const refsMeta = Array.isArray(row.source_refs_meta) ? row.source_refs_meta : [];
-  const sourceChips = refsMeta.length
-    ? refsMeta
-        .map((item) => {
-          if (item.is_missing === "true") return "";
-          const label = escapeHtml(String(item.label || item.key || ""));
-          const chipClass = "chip-neutral";
-          const targetPage = item.page;
-          if (!targetPage) {
-            return `<span class="status-chip ${chipClass}" data-source-ref="${escapeHtml(String(item.key || ""))}">${label}</span>`;
-          }
-          return `<a class="status-chip ${chipClass}" data-page-link="${escapeHtml(targetPage)}" data-source-ref="${escapeHtml(String(item.key || ""))}" href="${escapeHtml(sourcePageHref(targetPage))}">${label}</a>`;
-        })
-        .filter(Boolean)
-        .join("")
-    : "";
-  return `
-    <article class="terminal-brief-row ${toneClass}">
-      <div class="terminal-brief-row-head">
-        <h3>${escapeHtml(String(row.title || "市场观察"))}</h3>
-        ${chip(impactLabel(row.tone || "neutral"), meta.className)}
-      </div>
-      <p>${escapeHtml(String(row.summary || "等待关键输入。"))}</p>
-      ${
-        bullets.length
-          ? `<ul class="terminal-brief-bullets">${bullets
-              .map((item) => `<li>${escapeHtml(String(item))}</li>`)
-              .join("")}</ul>`
-          : ""
-      }
-      ${sourceChips ? `<div class="terminal-brief-sources">${sourceChips}</div>` : ""}
     </article>
   `;
 }
@@ -951,6 +824,33 @@ function renderMacroIndicatorGrid(macro) {
   `;
 }
 
+function renderSourceRow(source) {
+  const meta = sourceMeta(source.status);
+  return `
+    <article class="monitoring-source-row">
+      <div class="monitoring-source-copy">
+        <div class="monitoring-source-heading">
+        <strong>${escapeHtml(source.label)}</strong>
+          <div class="monitoring-source-status"><span class="status-chip" data-source-state="${meta.tone}">${escapeHtml(meta.label)}</span></div>
+        </div>
+        <p>${escapeHtml(source.message)}</p>
+        ${source.updatedAt ? `<small class="monitoring-source-time"><span>更新</span><time datetime="${escapeHtml(source.updatedAt)}">${escapeHtml(formatDateTime(source.updatedAt))}</time></small>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderSourcePanel(data) {
+  return `
+    <section class="monitoring-surface monitoring-detail-panel monitoring-source-panel">
+      <div class="section-heading-row">
+        <div><p class="eyebrow">SOURCES</p><h2>信源状态</h2></div>
+      </div>
+      <div class="monitoring-source-list">${getSourceStatus(data).map(renderSourceRow).join("")}</div>
+    </section>
+  `;
+}
+
 function renderDashboard(data) {
   const macro = getMacroPayload(data);
   return `
@@ -962,6 +862,7 @@ function renderDashboard(data) {
       </div>
     </section>
     ${renderMacroIndicatorGrid(macro)}
+    ${renderSourcePanel(data)}
   `;
 }
 
@@ -978,6 +879,7 @@ const MONITORING_SECTION_IDS = [
   "monitoring-macro-panel",
   "monitoring-terminal-summary",
   "monitoring-macro-grid",
+  "monitoring-source-panel",
 ];
 
 function applyMonitoringDiff(data, options = {}) {
@@ -996,12 +898,14 @@ function applyMonitoringDiff(data, options = {}) {
         </div>
       </section>
       <div id="monitoring-macro-grid"></div>
+      <div id="monitoring-source-panel"></div>
     `;
     root._monitoringSections = {
       topbar: root.querySelector("#monitoring-topbar"),
       "monitoring-macro-panel": root.querySelector("#monitoring-macro-panel"),
       "monitoring-terminal-summary": root.querySelector("#monitoring-terminal-summary"),
       "monitoring-macro-grid": root.querySelector("#monitoring-macro-grid"),
+      "monitoring-source-panel": root.querySelector("#monitoring-source-panel"),
     };
   }
   const macro = getMacroPayload(data);
@@ -1010,6 +914,12 @@ function applyMonitoringDiff(data, options = {}) {
   sections["monitoring-macro-panel"].innerHTML = renderMacroPanel(data, macro);
   sections["monitoring-terminal-summary"].innerHTML = renderTerminalSummary(data);
   sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro);
+  sections["monitoring-source-panel"].innerHTML = renderSourcePanel(data);
+  updatePageContext({
+    instrument: "BTC · 1d",
+    status: data?.status === "error" ? "数据降级" : "快照可用",
+    updatedAt: data?.updated_at ? formatDateTime(data.updated_at) : "",
+  });
   if (options.skeleton) {
     // noop: skeleton handled by the caller
   }

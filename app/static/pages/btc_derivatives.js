@@ -96,7 +96,20 @@ let dashboard = null;
 let autoRefreshAttempted = false;
 let pageGuideFab = null;
 let hedgePlan = null;
-let riskChartMode = "sentiment";
+const RISK_CHART_VIEWS = Object.freeze({
+  sentiment: {
+    title: "期权情绪",
+    insight: "方向需求",
+    labels: new Set(["25D Skew", "Put/Call OI", "Put/Call Volume"]),
+    axes: new Set(["y_ratio", "y_skew"]),
+  },
+  hedge_cost: {
+    title: "保护成本",
+    insight: "对冲定价",
+    labels: new Set(["Call 保护成本", "Put 保护成本", "借记价差成本"]),
+    axes: new Set(["y_cost"]),
+  },
+});
 // 2026-07-25: the wall-migration chart (and the rest of the
 // dashboard) age every minute, but the page had no auto-refresh —
 // users would leave the tab open across a session and see stale
@@ -178,12 +191,20 @@ function allCharts() {
 
 function syncFiltersFromDashboard() {
   const selection = dashboard?.selection || {};
-  const expiryMode = selection.expiry_mode || "constant_maturity";
+  const expiries = dashboard?.options?.standard_expiries || dashboard?.options?.expiries || [];
+  // The page exposes one supported mode, so it is a locked context value
+  // rather than a one-item dropdown. Keep the request state aligned with the
+  // visible control and derive the selected expiry from the effective snapshot.
+  const expiryMode = "fixed";
   filters = {
     window: selection.window || "",
     expiryMode,
     maturityBucket: selection.maturity_bucket || "60D",
-    selectedExpiry: expiryMode === "fixed" ? (selection.selected_expiry || "") : "",
+    selectedExpiry: selection.selected_expiry
+      || selection.effective_expiry
+      || dashboard?.maturity_selection?.expiry
+      || expiries[0]
+      || "",
     strikeRangePct: selection.strike_range_pct || "30",
   };
 }
@@ -229,7 +250,7 @@ function renderHero({ banner = "", freshness = "" } = {}) {
       <div class="btc-hero-actions">
         <span>${escapeHtml(displayState(dashboard?.snapshot_state || dashboard?.data_quality?.mode))}</span>
         <div class="btc-refresh-stack">
-          <button class="button compact" id="btc-refresh" type="button">刷新衍生品快照</button>
+          <button class="primary-button compact" id="btc-refresh" type="button">刷新衍生品快照</button>
           ${freshness ? `<small class="btc-refresh-freshness">${escapeHtml(freshness)}</small>` : ""}
         </div>
       </div>
@@ -270,18 +291,11 @@ return `
       </label>
       <label>
         <span>到期模式</span>
-        <button class="dropdown"
-                data-dropdown-id="btc-expiry-mode"
-                data-dropdown-size="compact"
-                data-btc-field="expiry_mode"
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded="false">
-          <span class="dropdown-icon" data-slot="icon" hidden></span>
-          <span class="dropdown-label">${escapeHtml(filters.expiryMode === "fixed" ? "固定到期日" : "恒定期限")}</span>
-          <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        </button>
-        <input type="hidden" name="expiry_mode" value="${escapeHtml(filters.expiryMode)}" data-btc-hidden="expiry_mode" />
+        <div class="dropdown btc-locked-control" aria-label="到期模式：固定到期日">
+          <span class="dropdown-label">固定到期日</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.25 7V5.5a2.75 2.75 0 0 1 5.5 0V7m-6.5 0h7.5v6h-7.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <input type="hidden" name="expiry_mode" value="fixed" data-btc-hidden="expiry_mode" />
       </label>
       <label>
         <span>期限桶</span>
@@ -341,32 +355,37 @@ function mountBtcChartDropdowns() {
     {
       id: "btc-window",
       field: "window",
+      filterKey: "window",
       values: ["", "30D", "90D", "180D", "365D"],
       label: (v) => WINDOW_LABELS[v] || "各图默认窗口",
-    },
-    {
-      id: "btc-expiry-mode",
-      field: "expiry_mode",
-      values: ["fixed"],
-      label: () => "固定到期日",
+      placeholder: "各图默认窗口",
     },
     {
       id: "btc-maturity-bucket",
       field: "maturity_bucket",
+      filterKey: "maturityBucket",
       values: ["30D", "60D", "90D"],
       label: (v) => v,
+      placeholder: "60D",
     },
     {
       id: "btc-selected-expiry",
       field: "selected_expiry",
-      values: (dashboard?.options?.standard_expiries || dashboard?.options?.expiries || []).slice(),
+      filterKey: "selectedExpiry",
+      values: Array.from(new Set([
+        filters.selectedExpiry,
+        ...(dashboard?.options?.standard_expiries || dashboard?.options?.expiries || []),
+      ].filter(Boolean))),
       label: (v) => v,
+      placeholder: "暂无可用到期日",
     },
     {
       id: "btc-strike-range",
       field: "strike_range_pct",
+      filterKey: "strikeRangePct",
       values: ["10", "20", "30", "50", "all"],
       label: (v) => (v === "all" ? "全部" : `±${v}%`),
+      placeholder: "±30%",
     },
   ];
   fieldConfigs.forEach((cfg) => {
@@ -374,8 +393,8 @@ function mountBtcChartDropdowns() {
     if (!root) return;
     mountDropdown(root, {
       items: cfg.values.map((v) => ({ value: String(v), label: cfg.label(v) })),
-      value: String(filters[cfg.field] ?? ""),
-      placeholder: "请选择",
+      value: String(filters[cfg.filterKey] ?? ""),
+      placeholder: cfg.placeholder,
       onChange: (v) => {
         const hidden = document.querySelector(`input[data-btc-hidden="${cfg.field}"]`);
         if (hidden) hidden.value = v;
@@ -518,19 +537,22 @@ function inferenceBlock(id) {
   return (dashboard?.joint_analysis?.inference_blocks || []).find((block) => block.id === id) || {};
 }
 
-function chartInsight(chartId) {
+function chartInsight(chartId, riskView = null) {
   const map = {
     leverage_pressure_timeline: "杠杆方向",
     strike_surface: "行权价分布",
     key_levels_history: "墙位迁移",
-    options_risk_premium_history: riskChartMode === "hedge_cost"
-      ? "保护成本"
-      : "期权情绪",
+    options_risk_premium_history: RISK_CHART_VIEWS[riskView]?.insight || "期权风险",
   };
   return map[chartId] || "图表结论";
 }
 
-function chartCard(chartId, layout = {}) {
+function chartCard(chartId, layout = {}, riskView = null) {
+  if (chartId === "options_risk_premium_history" && !riskView) {
+    return Object.keys(RISK_CHART_VIEWS)
+      .map((view) => chartCard(chartId, { ...layout, span: 6 }, view))
+      .join("");
+  }
   const chart = allCharts()[chartId] || {};
   const hasData = chart.status === "ok" && Number(chart.metadata?.data_points || 0) > 0;
   const span = Number(layout.span) || 12;
@@ -540,29 +562,23 @@ function chartCard(chartId, layout = {}) {
   const windowLabel = metadata.actual_window === "current"
     ? "当前横截面"
     : metadata.actual_window || "";
-  const riskModeControls = chartId === "options_risk_premium_history"
-    ? `
-      <div class="btc-chart-mode" role="group" aria-label="期权风险图显示模式">
-        <button type="button" data-risk-chart-mode="sentiment" class="${riskChartMode === "sentiment" ? "is-active" : ""}">情绪</button>
-        <button type="button" data-risk-chart-mode="hedge_cost" class="${riskChartMode === "hedge_cost" ? "is-active" : ""}">保护成本</button>
-      </div>
-    `
-    : "";
+  const riskConfig = RISK_CHART_VIEWS[riskView];
+  const title = riskConfig?.title || chart.title || chartId;
+  const canvasSuffix = riskView ? `-${riskView}` : "";
   return `
-    <article class="card btc-chart-card btc-card-span-${span} btc-chart-density-${escapeHtml(density)}${hasData ? "" : " is-empty"}">
+    <article class="card btc-chart-card btc-card-span-${span} btc-chart-density-${escapeHtml(density)}${riskView ? " btc-risk-chart-card" : ""}${hasData ? "" : " is-empty"}" data-chart-id="${escapeHtml(chartId)}"${riskView ? ` data-risk-chart-view="${escapeHtml(riskView)}"` : ""}>
       <div class="btc-chart-head">
         <div>
           <p class="eyebrow">图表</p>
-          <h2>${escapeHtml(chart.title || chartId)}</h2>
+          <h2>${escapeHtml(title)}</h2>
           ${windowLabel ? `<small>${escapeHtml(windowLabel)} · ${number(metadata.data_points, 0)} 个数据点${sourceLabel ? ` · 来源 ${escapeHtml(sourceLabel)}` : ""}</small>` : ""}
         </div>
         <div class="btc-chart-head-actions">
-          ${riskModeControls}
-          <p class="btc-chart-insight">${escapeHtml(hasData ? chartInsight(chartId) : "数据不足")}</p>
+          <p class="btc-chart-insight">${escapeHtml(hasData ? chartInsight(chartId, riskView) : "数据不足")}</p>
         </div>
       </div>
       <div class="chart-wrap btc-chart-wrap">
-        ${hasData ? `<canvas id="btc-chart-${escapeHtml(chartId)}" aria-label="${escapeHtml(chart.title || chartId)}"></canvas>` : `<div class="btc-chart-empty">${escapeHtml(chart.empty_reason || "暂无数据")}</div>`}
+        ${hasData ? `<canvas id="btc-chart-${escapeHtml(chartId)}${escapeHtml(canvasSuffix)}" aria-label="${escapeHtml(title)}"></canvas>` : `<div class="btc-chart-empty">${escapeHtml(chart.empty_reason || "暂无数据")}</div>`}
       </div>
     </article>
   `;
@@ -667,9 +683,16 @@ function renderChartSections() {
       if (key === "aggregate_oi_90d") return renderAggregateOiChart(dashboard);
       return "";
     }).join("");
-    const chartParts = (section.charts || [])
+    const chartOrder = section.id === "options"
+      ? ["key_levels_history", "strike_surface", "options_risk_premium_history"]
+      : (section.charts || []);
+    const chartParts = chartOrder
       .filter((chartId) => knownCharts.has(chartId) && allCharts()[chartId])
-      .map((chartId) => chartCard(chartId, cards[chartId]))
+      .map((chartId) => {
+        const layout = cards[chartId] || {};
+        const pairedOptionsChart = chartId === "key_levels_history" || chartId === "strike_surface";
+        return chartCard(chartId, pairedOptionsChart ? { ...layout, span: 6, density: "surface" } : layout);
+      })
       .join("");
     if (!auxParts && !chartParts) return "";
     return `
@@ -868,7 +891,7 @@ function renderMaturityLadder() {
       ${(direction.term_conflicts || []).length
         ? `<div class="btc-term-conflicts">${direction.term_conflicts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`
         : ""}
-      <div class="btc-table-wrap" tabindex="0" aria-label="标准到期日期限矩阵，可横向滚动">
+      <div class="btc-table-wrap btc-maturity-table-wrap" tabindex="0" aria-label="标准到期日期限矩阵，可横向滚动">
         <table class="btc-table btc-maturity-table">
           <thead><tr>
             <th>期限</th><th>到期日</th><th>DTE</th><th>方向需求</th>
@@ -1218,11 +1241,25 @@ function renderPageShell(banner = "", freshness = "") {
   `;
 }
 
-function datasetVisibleInRiskMode(label) {
-  const hedgeCostLabels = new Set(["Call 保护成本", "Put 保护成本", "借记价差成本"]);
-  return riskChartMode === "hedge_cost"
-    ? hedgeCostLabels.has(label)
-    : !hedgeCostLabels.has(label);
+function datasetVisibleInRiskView(label, riskView) {
+  return !riskView || Boolean(RISK_CHART_VIEWS[riskView]?.labels.has(label));
+}
+
+function axesForRiskView(axes, riskView) {
+  const allowed = RISK_CHART_VIEWS[riskView]?.axes;
+  if (!allowed) return axes || {};
+  return Object.fromEntries(
+    Object.entries(axes || {}).filter(([axisId]) => allowed.has(axisId)),
+  );
+}
+
+function annotationsForRiskView(annotations, riskView) {
+  if (!riskView) return annotations || [];
+  // Method/source transitions are audit evidence. Do not repeat dozens of
+  // long labels over the analytical plot; keep only meaningful baselines.
+  return riskView === "sentiment"
+    ? (annotations || []).filter((item) => item.type === "horizontalLine")
+    : [];
 }
 
 function interpolateChartLabel(start, end, ratio) {
@@ -1384,12 +1421,15 @@ function labelsAreIsoToUtc(text) {
   return `${y}-${m}-${d}T00:00:00Z`;
 }
 
-function renderSingleChart(chartId) {
+function renderSingleChart(chartId, riskView = null) {
   const chart = allCharts()[chartId];
   if (!chart || chart.status !== "ok" || Number(chart.metadata?.data_points || 0) <= 0) return;
-  const canvas = document.getElementById(`btc-chart-${chartId}`);
+  const canvas = document.getElementById(`btc-chart-${chartId}${riskView ? `-${riskView}` : ""}`);
+  if (!canvas) return;
   const expanded = expandFundingZeroCrossings(chart.labels || [], chart.datasets || []);
-  const datasets = expanded.datasets.flatMap((dataset, index) => {
+  const datasets = expanded.datasets
+    .filter((dataset) => datasetVisibleInRiskView(dataset.label, riskView))
+    .flatMap((dataset, index) => {
     const color = CHART_COLORS[dataset.label] ?? FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
     const extra = {
       yAxisID: dataset.y_axis_id || "y",
@@ -1405,10 +1445,6 @@ function renderSingleChart(chartId) {
     const rendered = dataset.chart_type === "bar"
       ? barDataset(dataset.label, dataset.data, color, extra)
       : lineDataset(dataset.label, dataset.data, color, extra);
-    if (chartId === "options_risk_premium_history") {
-      rendered.hidden = !datasetVisibleInRiskMode(dataset.label);
-      rendered.modeHidden = rendered.hidden;
-    }
     if (dataset.label !== "Funding Z") return [rendered];
     const split = splitFundingZSeries(dataset.data);
     const positive = lineDataset(dataset.label, split.positive, color, {
@@ -1427,19 +1463,19 @@ function renderSingleChart(chartId) {
     positive._fundingZSiblingRef = positive;
     negative._fundingZSiblingRef = negative;
     return [positive, negative];
-  });
+    });
   // Resolve the actual datasetIndex assigned by flatMap → Chart.js so the
   // legend.onClick hook can flip both Funding Z siblings together.
   datasets.forEach((entry, datasetIndex) => {
     entry.__index = datasetIndex;
   });
   const legendFilter = (item, data) =>
-    !data.datasets[item.datasetIndex]?.modeHidden
-    && !data.datasets[item.datasetIndex]?.fundingZLegendDuplicate;
-  renderChart(`btc-derivatives-${chartId}`, canvas, {
+    !data.datasets[item.datasetIndex]?.fundingZLegendDuplicate;
+  const annotations = annotationsForRiskView(chart.annotations, riskView);
+  renderChart(`btc-derivatives-${chartId}${riskView ? `-${riskView}` : ""}`, canvas, {
     type: chart.type === "mixed" ? "line" : chart.type,
-    axes: chart.axes || {},
-    annotations: chart.annotations || [],
+    axes: axesForRiskView(chart.axes, riskView),
+    annotations,
     data: { labels: expanded.labels, datasets },
     expiryAnchors: chartId === "key_levels_history" ? buildMaturityExpiryAnchors(expanded.labels) : [],
     options: {
@@ -1491,23 +1527,19 @@ function renderSingleChart(chartId) {
 }
 
 function renderCharts() {
-  Object.keys(allCharts()).forEach(renderSingleChart);
+  Object.keys(allCharts()).forEach((chartId) => {
+    if (chartId === "options_risk_premium_history") {
+      Object.keys(RISK_CHART_VIEWS).forEach((view) => renderSingleChart(chartId, view));
+      return;
+    }
+    renderSingleChart(chartId);
+  });
   // 2026-07-23: the new aggregate_oi_90d chart is derived from
   // leverage_pressure_timeline (single dataset) and not in allCharts();
   // render it explicitly so it picks up the canvas we emitted in
   // renderAggregateOiChart().
   if (document.getElementById("btc-chart-aggregate_oi_90d")) {
     renderAggregateOiSingleChart();
-  }
-}
-
-function updateRiskChartHeaderInsight() {
-  const card = document
-    .querySelector('[data-risk-chart-mode="hedge_cost"]')
-    ?.closest(".btc-chart-card");
-  const insight = card?.querySelector(".btc-chart-insight");
-  if (insight) {
-    insight.textContent = chartInsight("options_risk_premium_history");
   }
 }
 
@@ -1567,19 +1599,6 @@ function bindEvents() {
     loadDashboard().catch(handleLoadError);
   });
   mountBtcChartDropdowns();
-  document.querySelectorAll("[data-risk-chart-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      riskChartMode = button.dataset.riskChartMode || "sentiment";
-      document.querySelectorAll("[data-risk-chart-mode]").forEach((item) => {
-        item.classList.toggle(
-          "is-active",
-          item.dataset.riskChartMode === riskChartMode,
-        );
-      });
-      updateRiskChartHeaderInsight();
-      renderSingleChart("options_risk_premium_history");
-    });
-  });
   document.getElementById("btc-hedge-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);

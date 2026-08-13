@@ -130,6 +130,11 @@ def test_page_renders_standard_expiry_matrix_and_disables_fixed_selector_in_cons
     assert 'filters.expiryMode === "fixed" ? "" : "disabled"' in source
     assert "optionDirectionLabel" in source
     assert ".btc-maturity-table" in styles
+    assert 'class="btc-table-wrap btc-maturity-table-wrap"' in source
+    maturity_wrap_rule = styles[styles.index(".btc-table-wrap.btc-maturity-table-wrap") :]
+    maturity_wrap_rule = maturity_wrap_rule[: maturity_wrap_rule.index("}")]
+    assert "max-height: none" in maturity_wrap_rule
+    assert "overflow-y: hidden" in maturity_wrap_rule
     assert "非标准到期日" not in source
 
 
@@ -166,22 +171,20 @@ def test_filter_request_abort_is_not_reported_as_page_error() -> None:
     assert ".catch(handleLoadError)" in source
 
 
-def test_chart_styles_and_risk_mode_are_rendered_without_api_reload() -> None:
+def test_chart_styles_and_risk_series_are_split_into_two_charts() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
     assert "...(dataset.style || {})" in source
-    assert 'riskChartMode = "sentiment"' in source
-    assert 'data-risk-chart-mode="sentiment"' in source
-    assert 'data-risk-chart-mode="hedge_cost"' in source
-    mode_handler = source[
-        source.index('document.querySelectorAll("[data-risk-chart-mode]"') :
-        source.index('document.getElementById("btc-hedge-form")')
-    ]
-    assert "loadDashboard(" not in mode_handler
-    assert 'renderSingleChart("options_risk_premium_history")' in mode_handler
-    assert "rendered.modeHidden = rendered.hidden" in source
-    assert "!data.datasets[item.datasetIndex]?.modeHidden" in source
-    assert "updateRiskChartHeaderInsight" in source
+    assert "const RISK_CHART_VIEWS" in source
+    assert 'title: "期权情绪"' in source
+    assert 'title: "保护成本"' in source
+    assert 'data-risk-chart-view="${escapeHtml(riskView)}"' in source
+    assert "datasetVisibleInRiskView" in source
+    assert "axesForRiskView" in source
+    assert "annotationsForRiskView" in source
+    assert 'item.type === "horizontalLine"' in source
+    assert "data-risk-chart-mode" not in source
+    assert "riskChartMode" not in source
 
 
 def test_funding_z_uses_solid_positive_and_dashed_negative_segments() -> None:
@@ -192,7 +195,8 @@ def test_funding_z_uses_solid_positive_and_dashed_negative_segments() -> None:
     assert 'dataset.label === "Funding Z"' in source
     assert "borderDash: [6, 4]" in source
     assert "fundingZLegendDuplicate" in source
-    assert "expanded.datasets.flatMap((dataset, index)" in source
+    assert ".filter((dataset) => datasetVisibleInRiskView(dataset.label, riskView))" in source
+    assert ".flatMap((dataset, index)" in source
     assert "fundingZSegmentBorderDash" not in source
 
 
@@ -236,7 +240,7 @@ def test_empty_charts_are_compact_and_do_not_claim_a_direction() -> None:
     styles = Path("app/static/styles.css").read_text(encoding="utf-8")
     judgement = Path("app/static/core/judgement.js").read_text(encoding="utf-8")
 
-    assert 'hasData ? chartInsight(chartId) : "数据不足"' in source
+    assert 'hasData ? chartInsight(chartId, riskView) : "数据不足"' in source
     assert '${hasData ? "" : " is-empty"}' in source
     assert ".btc-chart-card.is-empty .btc-chart-wrap" in styles
     assert "height: 120px" in styles
@@ -266,7 +270,8 @@ def test_chart_header_uses_short_labels_not_evidence_layer_sentences() -> None:
     assert "implication" not in chart_insight
     assert "关键价位迁移与现价存在分歧" not in chart_insight
     assert "墙位迁移" in chart_insight
-    assert "保护成本" in chart_insight
+    assert 'RISK_CHART_VIEWS[riskView]?.insight' in chart_insight
+    assert 'title: "保护成本"' in source
 
 
 def test_hero_uses_market_verdict_not_generic_page_description() -> None:
@@ -420,30 +425,17 @@ def test_funding_z_legend_hide_toggles_both_positive_and_negative_datasets() -> 
     )
 
 
-def test_btc_derivatives_expiry_mode_dropdown_only_shows_fixed_expiry() -> None:
-    # 2026-07-25 user feedback: the 到期模式 dropdown offered two modes
-    # ("固定到期日" / "恒定期限") but the user only cares about picking
-    # a concrete expiry date. Hide the "恒定期限" entry from the UI;
-    # the backend still accepts both Literal values for backward
-    # compatibility with stored links / dashboards.
+def test_btc_derivatives_expiry_mode_is_a_locked_context_value() -> None:
+    # Only one supported UI value must not masquerade as an interactive dropdown.
+    # The backend still accepts both Literal values for backward compatibility.
     source = PAGE.read_text(encoding="utf-8")
 
-    select_block_start = source.index('name="expiry_mode"')
-    # 2026-07-30: dropdown migration replaced <select> with <button class="dropdown">;
-    # the data dropdown config is now in mountBtcChartDropdowns() and includes
-    # the visible labels for expiry_mode items. Locate the expiry_mode config block.
-    items_block_start = source.index('field: "expiry_mode"', select_block_start)
-    # Scan until next config entry to capture the label lambda too.
-    next_id = source.find("\n    {", items_block_start + 1)
-    items_block_end = next_id if next_id > 0 else len(source)
-    items_block = source[items_block_start:items_block_end]
-    assert "恒定期限" not in items_block, (
-        "到期模式 dropdown must not surface the 恒定期限 entry "
-        "(users only pick a fixed expiry date now)"
-    )
-    assert "固定到期日" in items_block, (
-        "到期模式 dropdown must keep the 固定到期日 entry"
-    )
+    assert 'class="dropdown btc-locked-control"' in source
+    assert 'aria-label="到期模式：固定到期日"' in source
+    assert '<input type="hidden" name="expiry_mode" value="fixed"' in source
+    assert 'id: "btc-expiry-mode"' not in source
+    assert 'field: "expiry_mode"' not in source
+    assert "const expiryMode = \"fixed\"" in source
     import re
     api = Path("app/api/v1/endpoints/btc_derivatives.py").read_text(encoding="utf-8")
     assert re.search(
@@ -452,6 +444,16 @@ def test_btc_derivatives_expiry_mode_dropdown_only_shows_fixed_expiry() -> None:
     ), (
         "backend should still accept both expiry_mode values for backward compat"
     )
+
+
+def test_btc_chart_dropdowns_bind_to_camel_case_filter_state() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    for key in ("window", "maturityBucket", "selectedExpiry", "strikeRangePct"):
+        assert f'filterKey: "{key}"' in source
+    assert "filters[cfg.filterKey]" in source
+    assert "filters[cfg.field]" not in source
+    assert 'placeholder: "请选择"' not in source[source.index("function mountBtcChartDropdowns"):source.index("function mountBtcHedgeDropdowns")]
+    assert "filters.selectedExpiry" in source
 
 
 def test_option_wall_table_distinguishes_effective_wall_from_raw_max_oi() -> None:

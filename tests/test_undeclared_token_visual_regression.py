@@ -30,13 +30,16 @@ STYLES = ROOT / "app" / "static" / "styles.css"
 # The audit also lists `--surface-muted`, but that one was already declared
 # in the original :root block (styles.css:10), so it is checked separately
 # to lock the alias was not removed by mistake.
+#
+# 2026-08-13: values aligned with the indigo accent re-theme (`--accent` now
+# `#6366f1`); `--card-bg` is consumed again by the restored alert-chip styles.
 EXPECTED_ALIASES = {
     "--line": "var(--border)",
     "--text": "var(--ink)",
     "--bg-surface": "var(--panel-strong)",
-    "--bg-hover": "rgba(91, 138, 131, 0.10)",
+    "--bg-hover": "rgba(99, 102, 241, 0.10)",
     "--danger-strong": "#7a4630",
-    "--info-strong": "#4a6f95",
+    "--info-strong": "#1d4ed8",
     "--border-light": "rgba(160, 140, 108, 0.14)",
     "--line-soft": "rgba(160, 140, 108, 0.10)",
     "--card-bg": "var(--surface-elevated)",

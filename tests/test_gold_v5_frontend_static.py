@@ -6,6 +6,7 @@ JS_PATH = REPO_ROOT / "app" / "static" / "pages" / "gold_v5.js"
 TEMPLATE_PATH = REPO_ROOT / "app" / "templates" / "page.html"
 CSS_PATH = REPO_ROOT / "app" / "static" / "styles.css"
 MAIN_PATH = REPO_ROOT / "app" / "static" / "main.js"
+API_PATH = REPO_ROOT / "app" / "static" / "core" / "api.js"
 
 
 def _read(path: Path) -> str:
@@ -39,7 +40,7 @@ class TestGoldV5Exports:
 
 
 class TestGoldV5ChartIds:
-    """The 5 chart cards must keep stable IDs for Chart.js subscription."""
+    """The six chart cards keep stable IDs for Chart.js subscription."""
     def test_price_id(self):
         assert "gold-chart-price" in _read(JS_PATH)
     def test_rsi_id(self):
@@ -48,8 +49,27 @@ class TestGoldV5ChartIds:
         assert "gold-chart-bollinger" in _read(JS_PATH)
     def test_volume_id(self):
         assert "gold-chart-volume" in _read(JS_PATH)
-    def test_drawdown_id(self):
-        assert "gold-chart-drawdown" in _read(JS_PATH)
+    def test_vegas_id(self):
+        assert "gold-chart-vegas" in _read(JS_PATH)
+    def test_macd_id(self):
+        assert "gold-chart-macd" in _read(JS_PATH)
+    def test_drawdown_chart_is_removed(self):
+        src = _read(JS_PATH)
+        assert "gold-chart-drawdown" not in src
+        assert 'renderInto("drawdown"' not in src
+
+    def test_chart_order_matches_analysis_workspace(self):
+        src = _read(JS_PATH)
+        expected = [
+            "gold-chart-price",
+            "gold-chart-vegas",
+            "gold-chart-macd",
+            "gold-chart-volume",
+            "gold-chart-bollinger",
+            "gold-chart-rsi",
+        ]
+        positions = [src.index(f'renderChartCard("{chart_id}"') for chart_id in expected]
+        assert positions == sorted(positions)
 
 
 class TestGoldV5Governance:
@@ -68,6 +88,17 @@ class TestGoldV5Governance:
             "(see spec §4.1 and gold.py:403-460)"
         )
 
+    def test_governance_is_a_compact_source_ledger(self):
+        src = _read(JS_PATH)
+        css = _read(REPO_ROOT / "app" / "static" / "editorial.css")
+        assert 'class="card gold-governance"' in src
+        assert 'class="gold-governance-item"' in src
+        assert 'class="gold-governance-dot"' in src
+        assert "formatSourceAge" in src
+        assert "governanceMiniCard" not in src
+        assert 'body[data-page="gold-allocation"] .gold-governance {' in css
+        assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
+
     def test_no_v4_chip_warning_fallback(self):
         """V4 default was 'chip-warning' for any non-fresh governance row;
         V5 routes tone through statusTone() map. Negative + positive: a no-op
@@ -80,6 +111,23 @@ class TestGoldV5Governance:
         assert "statusTone" in src, (
             "V5 must route chip tone through a statusTone() map (see spec §3.2)"
         )
+
+
+class TestGoldV5DecisionSummary:
+    def test_decision_cards_render_before_chart_grid(self):
+        src = _read(JS_PATH)
+        workbench = src.index('<section class="gold-workbench-grid">')
+        chart = src.index('${hasChartSeries ? renderChartGrid() : renderChartGridEmptyState(data)}')
+        assert workbench < chart
+
+    def test_decision_cards_use_compact_summary_structure(self):
+        src = _read(JS_PATH)
+        css = _read(REPO_ROOT / "app" / "static" / "editorial.css")
+        assert 'class="gold-dca-overview"' in src
+        assert 'class="gold-dca-detail-grid"' in src
+        assert src.count('<div class="gold-mini-grid">') == 1
+        assert 'body[data-page="gold-allocation"] .gold-mini-grid {' in css
+        assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
 
 
 class TestGoldV5VisualLanguage:
@@ -162,6 +210,53 @@ class TestGoldV5Routing:
         assert "module.renderGoldV4 ||" not in src
 
 
+class TestGoldV5ApiWiring:
+    """The page must not call a non-existent API client method (P0: before
+    this fix, api.getGoldWorkbench was undefined and every load hit a
+    TypeError → only the error hero rendered)."""
+
+    def test_api_exports_getGoldWorkbench(self):
+        src = _read(API_PATH)
+        assert "getGoldWorkbench(options = {})" in src
+        assert '"/gold/workbench"' in src
+
+    def test_api_exports_getGoldWorkbenchCharts(self):
+        src = _read(API_PATH)
+        assert "getGoldWorkbenchCharts(snapshotId, options = {})" in src
+        # URL is built as a template literal with the snapshot_id encoded.
+        assert "`/gold/workbench/charts/${encodeURIComponent(snapshotId)}`" in src
+
+    def test_page_uses_api_gold_workbench_not_v3_adapter(self):
+        src = _read(JS_PATH)
+        assert "api.getGoldWorkbench()" in src, (
+            "loadData() must call the workbench endpoint (rich V5 shape)"
+        )
+        assert "api.getGoldWorkbenchCharts(" in src
+
+    def test_chart_grid_gated_on_chart_token(self):
+        """Charts must only render when chart_series_or_chart_token carries a
+        path AND count > 0 — otherwise 5 dead <canvas> elements appear on
+        every error/cold load with no user-visible message."""
+        src = _read(JS_PATH)
+        assert "hasChartSeries" in src
+        assert "renderChartGridEmptyState" in src
+        assert "chartToken.count" in src
+
+    def test_render_gold_v5_returns_controller(self):
+        """renderGoldV5 must return a controller object so the SPA router
+        (main.js normalizeController) calls unmount() on navigation."""
+        src = _read(JS_PATH)
+        assert "return { unmount };" in src
+
+    def test_hero_subtitle_distinguishes_neutral_from_degraded(self):
+        """A healthy snapshot with no active macro scenario must show the
+        neutral label, not the degraded one — the V5 hero used to fall back
+        to DATA_DEGRADED for every empty scenario list."""
+        src = _read(JS_PATH)
+        assert "MACRO_NEUTRAL" in src
+        assert "snapshotOk" in src
+
+
 class TestGoldV5Css:
     def test_css_block_appended(self):
         css = _read(CSS_PATH)
@@ -177,13 +272,11 @@ class TestGoldV5Css:
         block = css[start:]
         assert "grid-template-columns: repeat(2," in block
 
-    def test_css_has_is_wide_modifier(self):
-        """Spec §2.2: price card uses .is-wide to span 2 columns."""
+    def test_chart_grid_has_no_wide_modifier(self):
         css = _read(CSS_PATH)
         start = css.index("=== gold-allocation v5")
         block = css[start:]
-        assert ".gold-chart-card.is-wide" in block
-        assert "grid-column: span 2" in block
+        assert ".gold-chart-card.is-wide" not in block
 
     def test_css_has_governance_repeat_4(self):
         """Spec §2.5: governance grid is repeat(4, 1fr)."""

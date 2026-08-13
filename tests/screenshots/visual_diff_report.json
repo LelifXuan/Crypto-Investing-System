@@ -1,0 +1,91 @@
+{
+  "results": [
+    {
+      "page_id": "market-analysis",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "monitoring-overview",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "market-structure",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "market-events",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "macro-calendar",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "knowledge-base",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "ashare-etf",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "btc-derivatives",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "ai-strategy",
+      "baseline_exists": false,
+      "ssim": null,
+      "pixel_diff_rate": null,
+      "verdict": "captured-no-baseline",
+      "diff_image": null
+    },
+    {
+      "page_id": "gold-allocation",
+      "baseline_exists": true,
+      "ssim": 1.0,
+      "pixel_diff_rate": 0.0,
+      "verdict": "PASS",
+      "diff_image": "tests\\screenshots\\diff\\gold-allocation_diff.png"
+    }
+  ],
+  "summary": {
+    "total": 10,
+    "pass": 1,
+    "warn": 0,
+    "fail": 0,
+    "no_baseline": 9
+  }
+}

@@ -2,10 +2,9 @@ import {
   findKnowledgeTerm,
   knowledgeCatalogVersion,
   knowledgeLevelFilters,
-  knowledgePageFilters,
   knowledgeSections,
 } from "../core/knowledge.js";
-import { escapeHtml, knowledgeTooltip, metricCard, setRoot } from "../core/dom.js";
+import { escapeHtml, knowledgeTooltip, setRoot } from "../core/dom.js";
 import { mountDropdown } from "../ui/dropdown.js";
 
 const HIDDEN_KNOWLEDGE_TAGS = new Set([
@@ -22,35 +21,35 @@ const HIDDEN_KNOWLEDGE_TAGS = new Set([
 let isMounted = false;
 let hashListenerInstalled = false;
 let searchTimer = null;
+// 挂载时保存的渲染上下文:unmount 时用于拆除。
+let activeRoot = null;
 
 function visibleKnowledgeTags(item) {
   const tags = [item.family, ...(item.tags || [])].filter(Boolean);
-  return tags
+  return [...new Set(tags.map((tag) => String(tag).trim()).filter(Boolean))]
     .filter((tag) => !HIDDEN_KNOWLEDGE_TAGS.has(String(tag).toLowerCase()))
-    .slice(0, 5);
+    .slice(0, 3);
 }
 
 const state = {
   query: "",
-  page: "all",
   section: "all",
-  family: "all",
   level: "all",
 };
+
+// Catalog 是静态 import 的：摊平一次，后续筛选与术语索引直接复用，
+// 避免每次渲染都重新 flatMap 146 项。
+const ALL_ITEMS = knowledgeSections.flatMap((section) =>
+  section.items.map((item) => ({ ...item, section_id: section.id, section_title: section.title })),
+);
+const ITEM_BY_ID = new Map(ALL_ITEMS.map((item) => [String(item.id), item]));
 
 function normalize(value) {
   return String(value || "").trim().toLowerCase();
 }
 
 function allItems() {
-  return knowledgeSections.flatMap((section) =>
-    section.items.map((item) => ({ ...item, section_id: section.id, section_title: section.title })),
-  );
-}
-
-function familyOptions() {
-  const families = [...new Set(allItems().map((item) => item.family).filter(Boolean))].sort();
-  return [{ key: "all", label: "全部家族" }, ...families.map((value) => ({ key: value, label: value }))];
+  return ALL_ITEMS;
 }
 
 function matchesQuery(item, query) {
@@ -71,8 +70,6 @@ function matchesQuery(item, query) {
 }
 
 function matchesFilter(item) {
-  if (state.page !== "all" && !(item.page_refs || []).includes(state.page)) return false;
-  if (state.family !== "all" && item.family !== state.family) return false;
   if (state.level !== "all" && item.level !== state.level) return false;
   return item.display_mode !== "hidden";
 }
@@ -90,63 +87,88 @@ function filteredSections() {
     .filter((section) => section.items.length);
 }
 
+// 单一渲染源:首次挂载与筛选更新共用,避免两处几乎相同的 HTML 生成逻辑漂移。
+function renderSectionsHtml(sections) {
+  if (!sections.length) {
+    return '<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽分区、等级过滤。</p></section>';
+  }
+  return sections
+    .map((section) => `
+      <section class="knowledge-section-card" id="section-${escapeHtml(section.id)}">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(section.id.toUpperCase())}</p>
+            <h2>${escapeHtml(section.title)}</h2>
+            <p class="section-summary">${escapeHtml(section.summary)}</p>
+          </div>
+          <div class="knowledge-section-count"><strong>${section.items.length}</strong><span>条目</span></div>
+        </div>
+        <div class="knowledge-entry-list knowledge-card-grid">
+          ${section.items.map((item) => (item.type === "guide" ? renderGuideCard(item) : renderTermCard(item))).join("")}
+        </div>
+      </section>
+    `)
+    .join("");
+}
+
+// 事件委托:整个 .knowledge-sections 容器只挂一个 click 监听器,innerHTML
+// 重建卡片后监听器依然有效,无需每次重绑 146 个按钮。防御性:渲染 HTML 是
+// 主职责,监听器只在真实 DOM 元素上挂载(stub/测试环境无 addEventListener
+// 或 dataset 时静默跳过,不影响 HTML 输出)。
+function bindKnowledgeDelegates(root) {
+  if (!root || typeof root.querySelector !== "function") return;
+  const sectionsEl = root.querySelector(".knowledge-sections");
+  if (!sectionsEl || typeof sectionsEl.addEventListener !== "function") return;
+  if (sectionsEl.dataset && sectionsEl.dataset.knowledgeDelegates === "1") return;
+  sectionsEl.addEventListener("click", (event) => {
+    const button = event.target?.closest?.("[data-toggle-knowledge]");
+    if (!button || !sectionsEl.contains(button)) return;
+    const id = String(button.dataset.toggleKnowledge || "").replace(/^#/, "");
+    const card = document.getElementById(id);
+    if (!card) return;
+    if (!card.querySelector(".knowledge-body")) {
+      const item = ITEM_BY_ID.get(id);
+      if (item) card.insertAdjacentHTML("beforeend", renderTermBody(item));
+    }
+    const isOpen = card.classList.toggle("is-open");
+    button.setAttribute("aria-expanded", String(isOpen));
+    const label = button.querySelector("[data-toggle-label]");
+    if (label) label.textContent = isOpen ? "收起" : "阅读";
+  });
+  if (sectionsEl.dataset) sectionsEl.dataset.knowledgeDelegates = "1";
+}
+
+function updateMetrics() {
+  const metricsEl = document.querySelector(".knowledge-catalog-stats")
+    || document.querySelector(".knowledge-metrics");
+  if (!metricsEl) return;
+  const sections = filteredSections();
+  const visibleTerms = sections.reduce((sum, s) => sum + s.items.length, 0);
+  // 快照去重:数值/查询没变就不重建 metrics。
+  const key = [knowledgeCatalogVersion, ALL_ITEMS.length, visibleTerms, state.query].join("|");
+  if (metricsEl.dataset.metricsKey === key) return;
+  metricsEl.dataset.metricsKey = key;
+  metricsEl.innerHTML = `
+    <span><small>目录版本</small><strong>${escapeHtml(knowledgeCatalogVersion)}</strong></span>
+    <span><small>全部条目</small><strong>${ALL_ITEMS.filter((item) => item.display_mode !== "hidden").length}</strong></span>
+    <span><small>当前匹配</small><strong>${visibleTerms}</strong></span>
+  `;
+}
+
 function updateKnowledgeContent() {
   const sections = filteredSections();
-  const totalTerms = allItems().filter((item) => item.display_mode !== "hidden").length;
-  const visibleTerms = sections.reduce((sum, s) => sum + s.items.length, 0);
-  const familyFilterOptions = familyOptions();
-
-  const metricsEl = document.querySelector(".knowledge-metrics");
-  if (metricsEl) {
-    metricsEl.innerHTML = [
-      metricCard("目录版本", knowledgeCatalogVersion, "当前知识目录版本"),
-      metricCard("术语总数", totalTerms, "可见术语数量"),
-      metricCard("当前匹配", visibleTerms, state.query ? `搜索：${state.query}` : "当前过滤条件下的术语数量"),
-    ].join("");
-  }
+  updateMetrics();
 
   const contentEl = document.querySelector(".knowledge-sections");
   if (contentEl) {
-    // V1.5.x: requestAnimationFrame so a synchronous 80+ term
-    // re-render does not block the input/change event that
-    // triggered it. The user can keep typing or changing
-    // filters without feeling the page freeze.
-    const html = sections.length
-      ? sections.map((section) => `
-        <article class="card knowledge-section-card" id="section-${escapeHtml(section.id)}">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">${escapeHtml(section.id.toUpperCase())}</p>
-              <h2>${escapeHtml(section.title)}</h2>
-              <p class="section-summary">${escapeHtml(section.summary)}</p>
-            </div>
-            <div class="knowledge-section-count">${section.items.length} 项</div>
-          </div>
-          <div class="knowledge-card-grid">
-            ${section.items.map((item) => (item.type === "guide" ? renderGuideCard(item) : renderTermCard(item))).join("")}
-          </div>
-        </article>
-      `).join("")
-      : '<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽分区、家族、等级过滤。</p></section>';
+    // rAF:同步 146 卡重渲染不阻塞触发的 input/change 事件。
+    const html = renderSectionsHtml(sections);
     if (typeof window.requestAnimationFrame === "function") {
       window.requestAnimationFrame(() => {
         contentEl.innerHTML = html;
-        bindToggleButtons();
       });
     } else {
       contentEl.innerHTML = html;
-      bindToggleButtons();
-    }
-  }
-
-  const familyEl = document.getElementById("knowledge-family-filter");
-  if (familyEl && familyEl.options.length !== familyFilterOptions.length) {
-    const currentValue = familyEl.value;
-    familyEl.innerHTML = familyFilterOptions.map((item) =>
-      `<option value="${item.key}" ${state.family === item.key ? "selected" : ""}>${escapeHtml(item.label)}</option>`
-    ).join("");
-    if (familyFilterOptions.some((item) => item.key === currentValue)) {
-      familyEl.value = currentValue;
     }
   }
 }
@@ -168,7 +190,7 @@ function renderField(label, value) {
 
 function renderGuideCard(item) {
   const { escapeHtml: esc } = helpers;
-  const guideBadge = `<span class="knowledge-guide-tag">📘 使用指南</span>`;
+  const guideBadge = `<span class="knowledge-guide-tag">使用指南</span>`;
   const purposeBlock = item.purpose
     ? `<section class="knowledge-guide-purpose">
          <h4>何时用</h4>
@@ -271,7 +293,7 @@ function renderPageRefsBadge(item) {
   `;
 }
 
-function renderTermCard(item) {
+function renderTermBody(item) {
   const related = (item.related_terms || [])
     .slice(0, 5)
     .map((term) => {
@@ -282,24 +304,7 @@ function renderTermCard(item) {
     })
     .filter(Boolean)
     .join("");
-  const tags = visibleKnowledgeTags(item);
-  const isCompact = item.display_mode === "compact";
-  return `
-    <article class="knowledge-item-card ${isCompact ? "is-compact" : ""}" id="${escapeHtml(item.id)}">
-      <div class="list-card-head">
-        <div>
-          <strong>${escapeHtml(item.term)}</strong>
-          ${item.summary ? `<p class="knowledge-card-summary">${escapeHtml(item.summary)}</p>` : ""}
-          <div class="knowledge-meta-row">
-            ${renderTags(tags)}
-          </div>
-        </div>
-        <div class="knowledge-card-actions">
-          ${renderPageRefsBadge(item)}
-          ${isCompact ? "" : `<button class="ghost-button knowledge-toggle-button" data-toggle-knowledge="#${escapeHtml(item.id)}">展开详情</button>`}
-        </div>
-      </div>
-      ${isCompact ? "" : `<div class="knowledge-body">
+  return `<div class="knowledge-body">
         ${renderField("定义", item.definition)}
         ${renderField("为什么重要", item.why_it_matters)}
         ${renderField("公式 / 口径", item.formula)}
@@ -309,28 +314,47 @@ function renderTermCard(item) {
         ${renderField("风险提示", item.risk_note)}
         ${renderField("示例", item.example)}
         ${related ? `<div class="knowledge-field"><strong>相关术语</strong><div class="knowledge-chip-row">${related}</div></div>` : ""}
-      </div>`}
+      </div>`;
+}
+
+function renderTermCard(item) {
+  const tags = visibleKnowledgeTags(item);
+  const isCompact = item.display_mode === "compact";
+  return `
+    <article class="knowledge-item-card ${isCompact ? "is-compact" : ""}" id="${escapeHtml(item.id)}">
+      <div class="list-card-head">
+        <div class="knowledge-entry-copy">
+          <strong>${escapeHtml(item.term)}</strong>
+          ${item.summary ? `<p class="knowledge-card-summary">${escapeHtml(item.summary)}</p>` : ""}
+          <div class="knowledge-meta-row">
+            ${renderTags(tags)}
+          </div>
+        </div>
+        <div class="knowledge-card-actions">
+          ${renderPageRefsBadge(item)}
+          ${isCompact ? "" : `<button class="ghost-button knowledge-toggle-button" data-toggle-knowledge="#${escapeHtml(item.id)}" aria-expanded="false">
+            <span data-toggle-label>阅读</span>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg>
+          </button>`}
+        </div>
+      </div>
     </article>
   `;
 }
 
-
-function bindToggleButtons() {
-  document.querySelectorAll("[data-toggle-knowledge]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const card = document.querySelector(button.dataset.toggleKnowledge);
-      if (!card) return;
-      const isOpen = card.classList.toggle("is-open");
-      button.textContent = isOpen ? "收起详情" : "展开详情";
-    });
-  });
-}
-
 function openTermCard(card) {
   if (!card || card.classList.contains("is-compact")) return;
+  if (!card.querySelector(".knowledge-body")) {
+    const item = ITEM_BY_ID.get(String(card.id || ""));
+    if (item) card.insertAdjacentHTML("beforeend", renderTermBody(item));
+  }
   card.classList.add("is-open");
   const button = card.querySelector("[data-toggle-knowledge]");
-  if (button) button.textContent = "收起详情";
+  if (button) {
+    button.setAttribute("aria-expanded", "true");
+    const label = button.querySelector("[data-toggle-label]");
+    if (label) label.textContent = "收起";
+  }
 }
 
 function focusHashTarget() {
@@ -352,7 +376,7 @@ function focusHashTarget() {
 }
 
 // V1.5.x: ensure the URL hash resolves to a visible card. If the
-// active filter (page / section / family / level / search) hides
+// active filter (section / level / search) hides
 // the target term, reset all filters so the term becomes visible
 // again. Without this, navigating from a filtered view to a
 // related-term anchor silently does nothing because the card is
@@ -362,9 +386,7 @@ function ensureTargetVisible(hashId) {
   if (document.getElementById(hashId)) return true;
   let mutated = false;
   if (state.query) { state.query = ""; mutated = true; }
-  if (state.page !== "all") { state.page = "all"; mutated = true; }
   if (state.section !== "all") { state.section = "all"; mutated = true; }
-  if (state.family !== "all") { state.family = "all"; mutated = true; }
   if (state.level !== "all") { state.level = "all"; mutated = true; }
   if (mutated) {
     updateKnowledgeContent();
@@ -376,57 +398,49 @@ function ensureTargetVisible(hashId) {
 function syncFilterControls() {
   const search = document.getElementById("knowledge-search");
   if (search) search.value = state.query;
-  const page = document.getElementById("knowledge-page-filter");
-  if (page) page.value = state.page;
   const section = document.getElementById("knowledge-section-filter");
   if (section) section.value = state.section;
-  const family = document.getElementById("knowledge-family-filter");
-  if (family) family.value = state.family;
   const level = document.getElementById("knowledge-level-filter");
   if (level) level.value = state.level;
 }
 
+function resetState() {
+  state.query = "";
+  state.section = "all";
+  state.level = "all";
+}
+
 function renderKnowledgeLayout() {
   const sections = filteredSections();
-  const items = allItems().filter((item) => item.display_mode !== "hidden");
-  const totalTerms = items.length;
+  const totalTerms = ALL_ITEMS.filter((item) => item.display_mode !== "hidden").length;
   const visibleTerms = sections.reduce((sum, section) => sum + section.items.length, 0);
-  const familyFilterOptions = familyOptions();
   setRoot(`
     <div id="knowledge-top" class="knowledge-top-anchor"></div>
-    <section class="card knowledge-hero">
+    <section class="knowledge-hero">
       <div class="section-head">
         <div>
           <p class="eyebrow">KNOWLEDGE BASE</p>
-          <h2>知识百科 ${knowledgeTooltip("Knowledge Base / 知识百科", "tone-neutral")}</h2>
-          <p class="section-summary">只保留对判断、执行或排障有帮助的说明；页面筛选、标签和相关页面作为索引元数据使用。</p>
+          <h1>研究参考手册 ${knowledgeTooltip("Knowledge Base / 知识百科", "tone-neutral")}</h1>
+          <p class="section-summary">从概念、计算口径到执行边界，集中查阅交易系统中真正影响判断的术语与方法。</p>
         </div>
       </div>
-      <section class="grid cols-3 knowledge-metrics">
-        ${[
-          metricCard("目录版本", knowledgeCatalogVersion, "当前知识目录版本"),
-          metricCard("术语总数", totalTerms, "可见术语数量"),
-          metricCard("当前匹配", visibleTerms, state.query ? `搜索：${state.query}` : "当前过滤条件下的术语数量"),
-        ].join("")}
-      </section>
-      <div class="knowledge-toolbar knowledge-toolbar-extended">
+      <div class="knowledge-catalog-stats knowledge-metrics">
+        <span><small>目录版本</small><strong>${escapeHtml(knowledgeCatalogVersion)}</strong></span>
+        <span><small>全部条目</small><strong>${totalTerms}</strong></span>
+        <span><small>当前匹配</small><strong>${visibleTerms}</strong></span>
+      </div>
+    </section>
+    <div class="knowledge-workspace">
+      <aside class="knowledge-index-rail" aria-label="知识百科目录与筛选">
         <label class="field">
           <span>搜索</span>
-          <input id="knowledge-search" type="search" placeholder="搜索指标、别名、缓存机制或风险标签" value="${escapeHtml(state.query)}" />
+          <input id="knowledge-search" type="search" placeholder="搜索术语或口径" value="${escapeHtml(state.query)}" />
         </label>
-        <label class="field">
-          <span>页面</span>
-          <button class="dropdown"
-                  data-dropdown-id="knowledge-page-filter"
-                  data-dropdown-size="default"
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-expanded="false">
-            <span class="dropdown-icon" data-slot="icon" hidden></span>
-            <span class="dropdown-label">${escapeHtml(((knowledgePageFilters.find(i => i.key === state.page)) || {}).label || "全部页面")}</span>
-            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          </button>
-        </label>
+        <nav class="knowledge-section-nav" aria-label="章节目录">
+          <span class="knowledge-rail-label">章节</span>
+          ${knowledgeSections.map((section) => `<a href="#section-${escapeHtml(section.id)}"><span>${escapeHtml(section.title)}</span><small>${section.items.length}</small></a>`).join("")}
+        </nav>
+        <div class="knowledge-toolbar knowledge-toolbar-extended">
         <label class="field">
           <span>分区</span>
           <button class="dropdown"
@@ -437,19 +451,6 @@ function renderKnowledgeLayout() {
                   aria-expanded="false">
             <span class="dropdown-icon" data-slot="icon" hidden></span>
             <span class="dropdown-label">${escapeHtml(((knowledgeSections.find(i => i.id === state.section)) || {}).title || "全部分区")}</span>
-            <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          </button>
-        </label>
-        <label class="field">
-          <span>家族</span>
-          <button class="dropdown"
-                  data-dropdown-id="knowledge-family-filter"
-                  data-dropdown-size="default"
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-expanded="false">
-            <span class="dropdown-icon" data-slot="icon" hidden></span>
-            <span class="dropdown-label">${escapeHtml(((familyFilterOptions.find(i => i.key === state.family)) || {}).label || "")}</span>
             <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           </button>
         </label>
@@ -466,48 +467,38 @@ function renderKnowledgeLayout() {
             <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           </button>
         </label>
-      </div>
-      <div class="knowledge-section-chips">
-        ${knowledgeSections.map((section) => `<a class="status-chip chip-neutral" href="#section-${escapeHtml(section.id)}">${escapeHtml(section.title)}</a>`).join("")}
-      </div>
-    </section>
-    <div class="knowledge-sections">
-        ${sections.length ? sections.map((section) => `
-          <article class="card knowledge-section-card" id="section-${escapeHtml(section.id)}">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">${escapeHtml(section.id.toUpperCase())}</p>
-                <h2>${escapeHtml(section.title)}</h2>
-                <p class="section-summary">${escapeHtml(section.summary)}</p>
-              </div>
-              <div class="knowledge-section-count">${section.items.length} 项</div>
-            </div>
-            <div class="knowledge-card-grid">
-              ${section.items.map((item) => (item.type === "guide" ? renderGuideCard(item) : renderTermCard(item))).join("")}
-            </div>
-          </article>
-        `).join("") : `<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽页面、分区、家族、等级过滤。</p></section>`}
-      </div>
-    <button type="button" class="knowledge-back-top" aria-label="返回知识百科顶部">返回顶部</button>
+        </div>
+      </aside>
+      <main class="knowledge-content-column">
+        <div class="knowledge-sections">
+        ${renderSectionsHtml(sections)}
+        </div>
+      </main>
+      <aside class="knowledge-reference-rail" aria-label="阅读说明">
+        <section>
+          <p class="eyebrow">READING GUIDE</p>
+          <h2>如何使用</h2>
+          <ol>
+            <li><span>01</span><p><strong>先查定义</strong><small>确认术语及计算口径。</small></p></li>
+            <li><span>02</span><p><strong>再看用途</strong><small>理解它回答什么问题。</small></p></li>
+            <li><span>03</span><p><strong>最后核对风险</strong><small>避免把指标当成单独结论。</small></p></li>
+          </ol>
+        </section>
+        <section class="knowledge-reference-note">
+          <p class="eyebrow">EDITORIAL NOTE</p>
+          <p>标签只用于索引；页面引用说明术语出现在哪里，不代表该页面采用它作为唯一判断依据。</p>
+        </section>
+      </aside>
+    </div>
   `);
+  activeRoot = document;
+  bindKnowledgeDelegates(document);
 
   document.getElementById("knowledge-search")?.addEventListener("input", (event) => {
     state.query = event.target.value || "";
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => renderKnowledge(), 300);
   });
-  const pageRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-page-filter"]');
-  if (pageRoot) {
-    mountDropdown(pageRoot, {
-      items: [{ value: "all", label: "全部页面" }, ...knowledgePageFilters.map((i) => ({ value: i.key, label: i.label }))],
-      value: state.page,
-      placeholder: "选择页面",
-      onChange: (v) => {
-        state.page = v || "all";
-        renderKnowledge();
-      },
-    });
-  }
   const sectionRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-section-filter"]');
   if (sectionRoot) {
     mountDropdown(sectionRoot, {
@@ -516,18 +507,6 @@ function renderKnowledgeLayout() {
       placeholder: "选择分区",
       onChange: (v) => {
         state.section = v || "all";
-        renderKnowledge();
-      },
-    });
-  }
-  const familyRoot = document.querySelector('.dropdown[data-dropdown-id="knowledge-family-filter"]');
-  if (familyRoot) {
-    mountDropdown(familyRoot, {
-      items: familyFilterOptions.map((i) => ({ value: i.key, label: i.label })),
-      value: state.family,
-      placeholder: "选择家族",
-      onChange: (v) => {
-        state.family = v || "all";
         renderKnowledge();
       },
     });
@@ -545,10 +524,6 @@ function renderKnowledgeLayout() {
     });
   }
 
-  bindToggleButtons();
-  document.querySelector(".knowledge-back-top")?.addEventListener("click", () => {
-    document.getElementById("knowledge-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
   focusHashTarget();
 }
 
@@ -564,12 +539,37 @@ export async function renderKnowledge() {
   } else {
     updateKnowledgeContent();
   }
-  // Honor the URL hash on every render (both first mount and
-  // subsequent update renders). Previously only the first mount
-  // path called focusHashTarget, so navigating back to the
-  // knowledge page from another SPA tab with a #term hash in
-  // the URL silently did nothing.
-  if (window.location.hash) {
-    window.requestAnimationFrame(() => focusHashTarget());
-  }
+  return {
+    async unmount() {
+      // 拆除:移除 hashchange 监听、清防抖 timer、重置状态与挂载标记,
+      // 避免 SPA 切走后监听器泄漏 / 悬空 timer 触发脏渲染。
+      if (hashListenerInstalled) {
+        const remove = window.removeEventListener?.bind(window);
+        if (typeof remove === "function") {
+          remove("hashchange", focusHashTarget);
+        }
+        hashListenerInstalled = false;
+      }
+      if (searchTimer) {
+        window.clearTimeout(searchTimer);
+        searchTimer = null;
+      }
+      isMounted = false;
+      activeRoot = null;
+      resetState();
+    },
+    async pause() {
+      // 页面隐藏:不触发防抖渲染。
+      if (searchTimer) {
+        window.clearTimeout(searchTimer);
+        searchTimer = null;
+      }
+    },
+    async resume() {
+      // 知识百科无轮询;回到前台时若有 hash 需重新定位(挂载状态保留)。
+      if (window.location.hash) {
+        window.requestAnimationFrame(() => focusHashTarget());
+      }
+    },
+  };
 }

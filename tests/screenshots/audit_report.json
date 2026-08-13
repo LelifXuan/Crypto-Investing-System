@@ -1,0 +1,50 @@
+[
+  {
+    "page_id": "ashare-etf",
+    "ok": true,
+    "dur_ms": 4573.0,
+    "console_errors": [],
+    "pageerrors": [],
+    "failed_responses": [],
+    "marker_hits": [],
+    "evidence": {
+      "#etf-equity-curve": 1,
+      ".etf-equity-stat": 5,
+      ".etf-plan-summary": 1,
+      ".etf-execution-table-card": 1
+    },
+    "chart_empty": [],
+    "charts": {
+      "etf-equity-canvas": [
+        {
+          "n": 154,
+          "nonNull": 154
+        },
+        {
+          "n": 154,
+          "nonNull": 154
+        },
+        {
+          "n": 154,
+          "nonNull": 154
+        }
+      ]
+    },
+    "samples": {
+      ".etf-equity-stat": [
+        "策略权益 | 199,583.01 | 现金 5,157.27 · 0 次调仓 · 12 次季末加码",
+        "策略累计投入 | 169,000 | 月均 1,024.24 · 165 个月",
+        "现金流ETF 权益 | 10,521 | 份额 9000 · 池内现金 154.44",
+        "一次性投入 权益 | 218,563.01 | 区间 165 个月",
+        "策略 VS 一次性 | -18,980 | DCA 相对 -8.68%"
+      ],
+      ".etf-plan-summary": [
+        "PLAN · HALO |  | 周度定投+月度调仓 | 6 笔 |  | 现金流ETF按固定月投执行，不纳入本计划。 |  | 执行前总偏离 | 100% | 执行后总偏离 | 4.6% | 改善幅度 | 95.4% | 现金占比 | 2.06% | 换手金额 | 4,896.9 | 交易笔数 |"
+      ],
+      ".etf-execution-table-card": [
+        "EXECUTION |  | 持仓与执行 | 刷新行情 执行模式 | 周度定投+月度调仓 | 执行前总偏离 | 100% | 执行后总偏离 | 4.6% | 改善幅度 | 95.4% | 现金占比 | 2.06% | 换手金额 | 4,896.9 | 交易笔数 | 6 | ETF\t份额\t成本价\t现价"
+      ]
+    },
+    "screenshot": "tests\\screenshots\\audit\\ashare-etf.png"
+  }
+]

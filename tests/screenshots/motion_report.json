@@ -1,0 +1,37 @@
+{
+  "motion_token_coverage": {
+    "used": 9,
+    "total": 9,
+    "ratio": 1.0,
+    "details": {
+      "--dur-press": true,
+      "--dur-hover": true,
+      "--dur-elevate": true,
+      "--dur-drawer": true,
+      "--ease-out": true,
+      "--ease-in-out": true,
+      "--ease-drawer": true,
+      "--motion-fast": true,
+      "--motion-hover": true
+    }
+  },
+  "duration_ladder": {
+    "--dur-press": 120,
+    "--dur-hover": 180,
+    "--dur-elevate": 220,
+    "--dur-drawer": 240
+  },
+  "reduced_motion_block_exists": true,
+  "infinite_animation_count": 0,
+  "hardcoded_duration_count": 7,
+  "findings": [
+    {
+      "check": "hardcoded-duration",
+      "severity": "WARN",
+      "detail": "7 transitions use hardcoded timing"
+    }
+  ],
+  "fail_count": 0,
+  "warn_count": 1,
+  "verdict": "WARN"
+}

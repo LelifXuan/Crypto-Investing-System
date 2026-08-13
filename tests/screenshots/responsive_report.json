@@ -1,0 +1,843 @@
+{
+  "viewports_tested": [
+    "mobile-s",
+    "mobile-l",
+    "tablet",
+    "laptop",
+    "desktop",
+    "desktop-2k"
+  ],
+  "per_page": [
+    {
+      "page_id": "market-analysis",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-analysis_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-analysis_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-analysis_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-analysis_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-analysis_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-analysis_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "monitoring-overview",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "market-structure",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 795,
+          "client_width": 375,
+          "has_overflow": true,
+          "content_visible": true,
+          "findings": [
+            {
+              "check": "horizontal-overflow",
+              "severity": "FAIL",
+              "detail": "scrollWidth=795px > viewport=375px"
+            }
+          ],
+          "verdict": "FAIL",
+          "screenshot": "tests\\screenshots\\responsive\\market-structure_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 795,
+          "client_width": 414,
+          "has_overflow": true,
+          "content_visible": true,
+          "findings": [
+            {
+              "check": "horizontal-overflow",
+              "severity": "FAIL",
+              "detail": "scrollWidth=795px > viewport=414px"
+            }
+          ],
+          "verdict": "FAIL",
+          "screenshot": "tests\\screenshots\\responsive\\market-structure_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 799,
+          "client_width": 768,
+          "has_overflow": true,
+          "content_visible": true,
+          "findings": [
+            {
+              "check": "horizontal-overflow",
+              "severity": "FAIL",
+              "detail": "scrollWidth=799px > viewport=768px"
+            }
+          ],
+          "verdict": "FAIL",
+          "screenshot": "tests\\screenshots\\responsive\\market-structure_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-structure_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-structure_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-structure_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [
+        "mobile-s",
+        "mobile-l",
+        "tablet"
+      ],
+      "fail_viewports": [
+        "mobile-s",
+        "mobile-l",
+        "tablet"
+      ],
+      "verdict": "FAIL"
+    },
+    {
+      "page_id": "market-events",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-events_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-events_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-events_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-events_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-events_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\market-events_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "macro-calendar",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "knowledge-base",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "ashare-etf",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "btc-derivatives",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "ai-strategy",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    },
+    {
+      "page_id": "gold-allocation",
+      "viewports": [
+        {
+          "viewport": "mobile-s",
+          "width": 375,
+          "height": 667,
+          "scroll_width": 375,
+          "client_width": 375,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_375x667.png"
+        },
+        {
+          "viewport": "mobile-l",
+          "width": 414,
+          "height": 896,
+          "scroll_width": 414,
+          "client_width": 414,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_414x896.png"
+        },
+        {
+          "viewport": "tablet",
+          "width": 768,
+          "height": 1024,
+          "scroll_width": 768,
+          "client_width": 768,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_768x1024.png"
+        },
+        {
+          "viewport": "laptop",
+          "width": 1366,
+          "height": 900,
+          "scroll_width": 1366,
+          "client_width": 1366,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_1366x900.png"
+        },
+        {
+          "viewport": "desktop",
+          "width": 1920,
+          "height": 1080,
+          "scroll_width": 1920,
+          "client_width": 1920,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_1920x1080.png"
+        },
+        {
+          "viewport": "desktop-2k",
+          "width": 2560,
+          "height": 1440,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_2560x1440.png"
+        }
+      ],
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
+    }
+  ],
+  "summary": {
+    "total_pages": 10,
+    "pages_with_fails": 1,
+    "total_overflow_viewports": 3
+  }
+}

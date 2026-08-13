@@ -28,10 +28,11 @@ from app.db.models.market import (
     MarketEventTranslationMap,
     MarkPrice,
     PageSnapshotCache,
-    SignalOutcome,
     StrategyDecision,
     StrategyDecisionOutcome,
     StrategyIterationProposal,
+    SupplyEventCalendarNode,
+    SignalOutcome,
     TranslationCache,
     TranslationJob,
     TranslationTextCache,
@@ -1399,6 +1400,66 @@ class MarketRepository:
         await self.session.flush()
         return proposal
 
+    async def add_signal_outcome(self, outcome: SignalOutcome) -> SignalOutcome:
+        """Upsert a signal outcome on (signal_type, signal_ref, timeframe, signal_ts).
+
+        Re-signaling the same signal (same ref + ts) overwrites the recorded
+        outcome instead of inserting a duplicate row — the model enforces the
+        unique constraint ``uq_signal_outcome_signal``, so this matches both
+        the round-trip and the upsert test expectations.
+        """
+        result = await self.session.execute(
+            select(SignalOutcome).where(
+                SignalOutcome.signal_type == outcome.signal_type,
+                SignalOutcome.signal_ref == outcome.signal_ref,
+                SignalOutcome.timeframe == outcome.timeframe,
+                SignalOutcome.signal_ts == outcome.signal_ts,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.instrument_id = outcome.instrument_id
+            existing.entry_ref_price = outcome.entry_ref_price
+            existing.bars_1 = outcome.bars_1
+            existing.bars_3 = outcome.bars_3
+            existing.bars_6 = outcome.bars_6
+            existing.bars_12 = outcome.bars_12
+            existing.bars_24 = outcome.bars_24
+            existing.return_1 = outcome.return_1
+            existing.return_3 = outcome.return_3
+            existing.return_6 = outcome.return_6
+            existing.return_12 = outcome.return_12
+            existing.return_24 = outcome.return_24
+            existing.mfe = outcome.mfe
+            existing.mae = outcome.mae
+            existing.stop_hit_first = outcome.stop_hit_first
+            existing.take_profit_hit_first = outcome.take_profit_hit_first
+            existing.payload_json = outcome.payload_json
+            await self.session.flush()
+            return existing
+        self.session.add(outcome)
+        await self.session.flush()
+        return outcome
+
+    async def list_signal_outcomes(
+        self,
+        *,
+        instrument_id: str | None = None,
+        timeframe: str | None = None,
+        signal_type: str | None = None,
+        limit: int = 200,
+    ) -> list[SignalOutcome]:
+        stmt = select(SignalOutcome)
+        if instrument_id is not None:
+            stmt = stmt.where(SignalOutcome.instrument_id == instrument_id)
+        if timeframe is not None:
+            stmt = stmt.where(SignalOutcome.timeframe == timeframe)
+        if signal_type is not None:
+            stmt = stmt.where(SignalOutcome.signal_type == signal_type)
+        stmt = stmt.order_by(desc(SignalOutcome.signal_ts)).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_strategy_iteration_proposals(
         self,
         *,
@@ -1425,5 +1486,19 @@ class MarketRepository:
         if status is not None:
             stmt = stmt.where(StrategyIterationProposal.status == status)
         stmt = stmt.order_by(desc(StrategyIterationProposal.created_at)).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_supply_calendar_nodes(self, limit: int = 100) -> list[SupplyEventCalendarNode]:
+        """Upcoming supply-event nodes ordered by event time (ascending).
+
+        Read-only for the calendar view; the table is populated by the
+        supply-event pipeline.
+        """
+        stmt = (
+            select(SupplyEventCalendarNode)
+            .order_by(SupplyEventCalendarNode.event_at.asc())
+            .limit(limit)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
