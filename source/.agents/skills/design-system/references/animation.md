@@ -39,10 +39,8 @@
 - **当前未接线**（诊断①）——main.js 需要：`navigateToPage` 时对旧容器加 out class，`boot` 完成 mount 后对新容器加 `.page-transition`。
 
 ### 3.2 数字滚动
-```css
-@keyframes countUp { from { opacity: 0.4; transform: translateY(3px); } to { opacity: 1; transform: none; } }
-```
-- 数字更新时给数字元素重触发该 keyframe（`el.animate()` 或 re-add class），与 tabular-nums 搭配。
+
+**保留 token，未接入。** V2.1 时期定义的 `@keyframes countUp`（`from { opacity: 0.4; transform: translateY(3px); } to { opacity: 1; transform: none; }`）于 V2.2 polish 删除——无 selector 调用、el.animate() 也未接入。recipe 文字暂留作为将来 V2.2+ "数字 countUp 滚动" 配方落地时的目标：数字元素重触发该 keyframe（`el.animate()` 或 re-add class），与 tabular-nums 搭配。
 
 ### 3.3 卡片 stagger 入场
 ```css
@@ -61,6 +59,7 @@
 
 ### 3.5 滚动与切页复位
 - `navigateToPage` 内加 `window.scrollTo({ top: 0, behavior: 'smooth' })`（配合已存在的 `scroll-behavior: smooth`）。
+- **reduced-motion 缺口（2026-08-15 修复）**：CSS `*` 选择器不匹配 `<html>` 根元素，所以全局 `prefers-reduced-motion` 块里 `*, *::before, *::after { scroll-behavior: auto !important; }` 对文档根无效。V2.2 polish 在该块顶部加 `html { scroll-behavior: auto !important; }` explicit override（见 styles.css:11983）。
 
 ### 3.6 全站统一骨架闪烁动画 (2026-08-14)
 

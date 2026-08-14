@@ -64,15 +64,27 @@ def parse_motion_tokens(css_text: str) -> dict:
         r'(?:transition|animation)\s*:\s*([^;]+);', css_text
     )
 
-    # Find @media prefers-reduced-motion block
+    # Find @media prefers-reduced-motion block (bracket-balanced so
+    # nested { } inside (e.g. the `html { ... }` explicit override
+    # added in V2.2 polish) don't truncate capture).
     reduced_motion_block = ""
-    rm_match = re.search(
-        r'@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}',
-        css_text,
-        re.DOTALL,
-    )
-    if rm_match:
-        reduced_motion_block = rm_match.group(1)
+    rm_start = css_text.find("@media (prefers-reduced-motion")
+    if rm_start >= 0:
+        open_brace = css_text.find("{", rm_start)
+        if open_brace > 0:
+            depth = 0
+            body_start = open_brace + 1
+            body_end = body_start
+            for i in range(body_start, len(css_text)):
+                ch = css_text[i]
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    if depth == 0:
+                        body_end = i
+                        break
+                    depth -= 1
+            reduced_motion_block = css_text[body_start:body_end]
 
     return {
         "token_defs": token_defs,
@@ -163,15 +175,21 @@ def verify_motion_system(css_text: str) -> dict:
 
     # 4. Infinite animations check
     infinite_selectors = []
-    # Find animation declarations with infinite
-    for m in re.finditer(
-        r'([^{}]*)\{[^}]*animation[^}]*iteration-count\s*:\s*infinite[^}]*\}',
-        css_text,
-    ):
-        selector = m.group(1).strip()
-        # Skip if it's inside the reduced-motion block
-        if "prefers-reduced-motion" not in selector:
-            infinite_selectors.append(selector[:60])
+    # Catch BOTH longhand animation-iteration-count: infinite AND
+    # shorthand `animation: ...infinite;`. The old regex only matched
+    # the longhand form, missing 5 actual shorthand occurrences in
+    # styles.css (e.g. `.loading-pulse`, `.nav-skeleton-row`,
+    # `.vol-compression-spin`, `.dropdown-spin`).
+    patterns = [
+        r'([^{}]*)\{[^{}]*animation-iteration-count\s*:\s*infinite[^{}]*\}',
+        r'([^{}]*)\{[^{}]*animation\s*:[^;]*\binfinite\b[^;]*;[^{}]*\}',
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, css_text):
+            selector = m.group(1).strip()
+            # Skip if it's inside the reduced-motion block
+            if "prefers-reduced-motion" not in selector:
+                infinite_selectors.append(selector[:60])
 
     if infinite_selectors:
         # Check if reduced-motion block disables them

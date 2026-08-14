@@ -24,7 +24,7 @@
 | 门禁 | 当前状态 | 说明 |
 |---|---|---|
 | `css_audit.py` | **增量 PASS（2026-08-11 改造）**：dead 472 存量债务 / 0 新增；token 覆盖 68.9%、硬编码色 340 为 WARN | 检测器已排查为**准确**（DOM 抽样验证非误报）。472 个死类是历次重构遗留的旧类名（JS 已改名但 CSS 未删）。已改为**增量门禁**：基线存 `tests/css_audit_baseline.json`，只对新增死类 FAIL；灵敏度测试验证过（注入假死类 → FAIL，恢复 → PASS）。**新增死类必须清理，存量债务分批清理后 `--rebase` 下调基线** |
-| `motion_verify.py` | WARN：9/9 token 100% 覆盖、6 处硬编码时长（无限循环动画） | 2026-08-11 已修复 token 覆盖；2026-08-14 增加 `.loading-pulse` 全站统一后基数从 5 涨到 6（skeletonShimmer 1.6s × 多 carrier） |
+| `motion_verify.py` | WARN：9/9 token 100% 覆盖、6 处硬编码时长（spinner/shimmer 等 infinite 循环，自然未走 token）、infinite_animation_count 5（2026-08-15 修正则后真实状态；reduced-motion 块显式 `animation: none` 已 disable spin 类） | 2026-08-11 已修复 token 覆盖；2026-08-14 增加 `.loading-pulse` 全站统一后基数从 5 涨到 6（skeletonShimmer 1.6s × 多 carrier）；2026-08-15 polish 修正则 + bracket-balance reduced-motion 块提取，infinite_animation_count 由 0 修正为 5（shorthand `animation: ...infinite`），reduced-motion 块显式 `animation: none` disable spin 类后无新 WARN |
 | 前端静态测试 | 26 passed | 绿 |
 | 运行截图 | `tests/screenshots/batch1-*.png` | Batch 1 版式对比 |
 | `test_skeleton_shimmer_consistency.py` | PASS：11 项断言（4 carrier selector 接入 + 2 dead keyframe 清理 + reduced-motion 沿用 + chartSkeleton DOM） | 2026-08-14 新增 |

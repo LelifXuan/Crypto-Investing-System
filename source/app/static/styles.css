@@ -3675,26 +3675,6 @@ article.card:hover,
   transition: color var(--dur-elevate) var(--ease-out);
 }
 
-/* ---- 6. Page transition enhancement ----
-   Subtle scale + fade for smoother SPA page switches. */
-.page-transition {
-  animation: pageEnter var(--dur-elevate) var(--ease-out);
-}
-
-.page-transition-out {
-  animation: pageFadeOut var(--dur-press) var(--ease-in-out) forwards;
-}
-
-@keyframes pageEnter {
-  from { opacity: 0.08; transform: scale(0.997) translateY(4px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-@keyframes pageFadeOut {
-  from { opacity: 1; transform: scale(1); }
-  to { opacity: 0.08; transform: scale(0.997); }
-}
-
 .structure-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(340px, 0.82fr);
@@ -7436,12 +7416,6 @@ ul.terminal-summary-watch li {
 @keyframes cardFadeUp {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* === Number count-up pulse (animation.md §3.2) ===================== */
-@keyframes countUp {
-  from { opacity: 0.4; transform: translateY(3px); }
-  to { opacity: 1; transform: none; }
 }
 
 /* Strategy Trigger Board */
@@ -11980,6 +11954,13 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
    transforms/animations/loops are reduced to 0.01ms.
    Per Standard 8: gentler, not zero. */
 @media (prefers-reduced-motion: reduce) {
+  /* 2026-08-15: explicit html override — `*` does not match the
+     <html> root (CSS spec quirk), so without this rule the
+     document-level `html { scroll-behavior: smooth }` (styles.css:146)
+     leaks through to vestibular users despite OS preference. */
+  html {
+    scroll-behavior: auto !important;
+  }
   *,
   *::before,
   *::after {
@@ -11989,9 +11970,10 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
     scroll-behavior: auto !important;
   }
   /* Drop infinite-loop spinners/pulses entirely — they re-traumatize.
-     Note: skeletonShimmer / shimmerSlide / nav-skeleton-shimmer rely
-     on the global duration clamp above (0.01ms) rather than this
-     explicit list — see styles.css:11975. */
+     Note: skeletonShimmer relies on the global duration clamp above
+     (0.01ms) rather than this explicit list. shimmerSlide and
+     nav-skeleton-shimmer were removed in the V2.1 skeleton-shimmer
+     consolidation. */
   .vol-compression-spin,
   .dropdown-spin {
     animation: none !important;
