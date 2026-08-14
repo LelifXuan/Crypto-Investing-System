@@ -1,0 +1,27 @@
+{
+  "results": [
+    {
+      "page_id": "monitoring-overview",
+      "baseline_exists": true,
+      "ssim": 0.7618,
+      "pixel_diff_rate": 0.0699,
+      "verdict": "FAIL",
+      "diff_image": "tests\\screenshots\\diff\\monitoring-overview_diff.png"
+    },
+    {
+      "page_id": "ashare-etf",
+      "baseline_exists": true,
+      "ssim": 0.8182,
+      "pixel_diff_rate": 0.0755,
+      "verdict": "FAIL",
+      "diff_image": "tests\\screenshots\\diff\\ashare-etf_diff.png"
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "pass": 0,
+    "warn": 0,
+    "fail": 2,
+    "no_baseline": 0
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "per_page": [
+    {
+      "page_id": "market-structure",
+      "url": "http://127.0.0.1:8002/structure-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 147.5,
+      "state": "found:.structure-page",
+      "data_integrity_ok": null,
+      "data_integrity_state": "not-applicable",
+      "screenshot": "tests\\screenshots\\market-structure.png",
+      "long_task_max_ms": 79.0,
+      "failed_responses": [],
+      "perf_gate": "PASS"
+    },
+    {
+      "page_id": "market-events",
+      "url": "http://127.0.0.1:8002/market-events-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 56.1,
+      "state": "found:.events-feed-shell",
+      "data_integrity_ok": null,
+      "data_integrity_state": "not-applicable",
+      "screenshot": "tests\\screenshots\\market-events.png",
+      "long_task_max_ms": 119.0,
+      "failed_responses": [],
+      "perf_gate": "PASS"
+    },
+    {
+      "page_id": "monitoring-overview",
+      "url": "http://127.0.0.1:8002/monitoring-page",
+      "console_errors": [],
+      "pageerrors": [],
+      "content_ok": true,
+      "duration_ms": 156.9,
+      "state": "found:#monitoring-topbar",
+      "data_integrity_ok": null,
+      "data_integrity_state": "not-applicable",
+      "screenshot": "tests\\screenshots\\monitoring-overview.png",
+      "long_task_max_ms": 76.0,
+      "failed_responses": [],
+      "perf_gate": "PASS"
+    }
+  ],
+  "spa_switches": [
+    {
+      "page_id": "market-structure",
+      "ok": true,
+      "duration_ms": 10.8,
+      "state": "found:.structure-page",
+      "long_task_max_ms": 0.0
+    },
+    {
+      "page_id": "market-events",
+      "ok": true,
+      "duration_ms": 145.5,
+      "state": "found:.events-feed-shell",
+      "long_task_max_ms": 0.0
+    },
+    {
+      "page_id": "monitoring-overview",
+      "ok": true,
+      "duration_ms": 248.6,
+      "state": "found:#monitoring-topbar",
+      "long_task_max_ms": 0.0
+    }
+  ],
+  "summary": {
+    "per_page_total": 3,
+    "per_page_fail": 0,
+    "spa_total": 3,
+    "spa_fail": 0,
+    "spa_slow": 0
+  },
+  "options": {
+    "viewport": {
+      "width": 2560,
+      "height": 1440
+    },
+    "diff": false,
+    "a11y": false,
+    "perf": true
+  }
+}
