@@ -3154,6 +3154,8 @@ tr.is-supply-event td {
 .structure-page {
   display: grid;
   gap: calc(var(--content-gap) + 8px);
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .structure-page-compact {
@@ -3869,6 +3871,8 @@ article.card:hover,
 .structure-main-head {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: flex-start;
   gap: 16px;
 }
