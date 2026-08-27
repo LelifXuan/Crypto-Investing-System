@@ -3,7 +3,7 @@
 //
 // Public API: mountDropdown(root, options) -> { setValue, destroy, refresh }
 //
-// Spec: docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
+// Spec: source/docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
 //
 // Revision highlights (2026-07-31):
 //  - State machine: aria-selected is the single committed value source.

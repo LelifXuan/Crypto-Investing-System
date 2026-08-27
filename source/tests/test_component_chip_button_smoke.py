@@ -4,7 +4,7 @@ We can't import ES modules with vanilla pytest, so we re-implement the
 contract expectations here as plain string assertions against the JS source.
 If the API shape drifts, this test fires *before* any caller churns.
 
-Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.B
+Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.B
 """
 from __future__ import annotations
 

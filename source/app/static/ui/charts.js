@@ -8,7 +8,7 @@ let weeklyBarsPluginRegistered = false;
 /* === §16.C — Token-driven chart theme ============================
    Read once from `:root` via getComputedStyle. If the document isn't
    ready (e.g. SSR / unit test bootstrap), fall back to the existing
-   hardcoded values. Auditors: see docs/UI_UX_AUDIT_2026-07-31.md §16.C
+   hardcoded values. Auditors: see source/docs/UI_UX_AUDIT_2026-07-31.md §16.C
    for the audit trail and the original line-by-line palette review. */
 const CHART_THEME_FALLBACK = Object.freeze({
   legend: "#4b5961",

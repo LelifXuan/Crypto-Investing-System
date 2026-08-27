@@ -9,7 +9,7 @@ Asserts:
   6. Trigger root tag remains BUTTON (per spec / invariant).
   7. destroy() removes event listeners + popover DOM cleanly.
 
-Audit reference: docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
+Audit reference: source/docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
 """
 from __future__ import annotations
 

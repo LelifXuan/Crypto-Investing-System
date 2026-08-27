@@ -10,7 +10,7 @@ Asserts:
   7. dropdown.js sets aria-controls / aria-haspopup / aria-expanded.
   8. committing a value clears keyboard highlight and pointer picks close.
 
-Audit reference: docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
+Audit reference: source/docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
 """
 from __future__ import annotations
 

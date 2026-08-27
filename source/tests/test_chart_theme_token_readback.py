@@ -5,7 +5,7 @@ the `app/static/ui/charts.js` THEME read path. The audit specifies the
 fallback dict must remain so SSR / unit-test bootstrap can still produce
 non-empty colors.
 
-Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.C
+Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.C
 """
 from __future__ import annotations
 

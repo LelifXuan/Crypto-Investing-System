@@ -19,7 +19,7 @@
 | [`pbakaus/impeccable/README.md`](https://github.com/pbakaus/impeccable) | `frontend-design` 续作 + 23 命令 + 59 静态规则 | §12 上线前自检清单 |
 | [`emilkowalski/skills/skills/emil-design-eng/SKILL.md`](https://github.com/emilkowalski/skills) | Design Engineering 哲学 + 微交互细节 | §6 动效时长 / §13 按钮 / §14 弹层 |
 
-本仓库已有 `docs/UI_UX_AUDIT_2026-07-31.md` 记录 token 补齐历史；本文件不重复 token 列表，只引用其约束。
+本仓库已有 `source/docs/UI_UX_AUDIT_2026-07-31.md` 记录 token 补齐历史；本文件不重复 token 列表，只引用其约束。
 
 ## 2. 优先级（1→10 决定设计冲突时谁赢）
 

@@ -525,7 +525,7 @@ export function dataFreshnessHint(updatedAt, status, cacheStatus) {
  * chip/button variant. Existing callers (`impactChip`, `statusChip`,
  * `<button class="primary-button">` etc.) keep working unchanged.
  *
- * Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.B
+ * Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.B
  * ============================================================ */
 
 const CHIP_TONE_CLASS = {

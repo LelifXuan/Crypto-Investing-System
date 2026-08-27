@@ -1,7 +1,7 @@
 """Static guard for the 10 undeclared-but-consumed CSS tokens.
 
 Background:
-    The 2026-07-31 UI/UX audit (docs/UI_UX_AUDIT_2026-07-31.md §6.1) found
+    The 2026-07-31 UI/UX audit (source/docs/UI_UX_AUDIT_2026-07-31.md §6.1) found
     that 10 CSS variables were referenced inside app/static/styles.css but
     not declared in the :root block. CSS `var()` of an undefined token
     invalidates the entire declaration at consumption sites (e.g. an entire

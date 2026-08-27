@@ -775,7 +775,7 @@ tbody tr:hover {
 /* ============================================================
  * §16.D — Sticky thead
  * ------------------------------------------------------------
- * Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.D
+ * Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.D
  * Default behaviour: keep base table layout unchanged when the
  * wrapper lacks a constrained height. When a `.table-wrap`-class
  * wrapper has `overflow-y: auto` (see rules below for .table-wrap,
@@ -2396,7 +2396,7 @@ a.status-chip:focus-visible {
  * are NOT renamed or removed. New `mountChip()` in
  * core/dom.js emits these.
  *
- * Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.B
+ * Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.B
  *
  * Note: base .chip class is declared at styles.css:1264 and is
  * intentionally not repeated here to avoid cascade ambiguity.
@@ -12001,7 +12001,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 /* ============================================================
  * §16/§17 Dropdown revision — visual rules
- * Audit: docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
+ * Audit: source/docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
  *
  * Notes:
  *  - All rules below are *replacing* the previous set; no inline

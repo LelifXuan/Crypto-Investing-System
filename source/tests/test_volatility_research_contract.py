@@ -20,7 +20,7 @@ def test_research_registry_is_frozen_and_forbids_first_round_composite() -> None
 
 
 def test_all_ordered_first_round_reports_exist() -> None:
-    report_dir = ROOT / "docs/research/btc_volatility"
+    report_dir = ROOT / "source/docs/research/btc_volatility"
     expected = {
         "BTC_REALIZED_VOLATILITY_BASELINE.md",
         "BTC_IMPLIED_VOLATILITY_INDEX_RESEARCH.md",
@@ -52,7 +52,7 @@ def test_shadow_service_is_not_imported_by_canonical_strategy_modules() -> None:
 def test_legacy_ratio_is_not_described_as_true_percentile_in_new_contract() -> None:
     service = (ROOT / "app/services/volatility_research/service.py").read_text(encoding="utf-8")
     audit = (
-        ROOT / "docs/research/btc_volatility/CURRENT_VOLATILITY_BASELINE_AUDIT.md"
+        ROOT / "source/docs/research/btc_volatility/CURRENT_VOLATILITY_BASELINE_AUDIT.md"
     ).read_text(encoding="utf-8")
     assert "bollinger_bandwidth_empirical_percentile" in service
     assert "incorrectly described as percentile rank" in audit
