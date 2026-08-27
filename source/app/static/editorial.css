@@ -222,6 +222,33 @@
   --pattern-fill-bearish:   rgba(231, 76, 60, 0.12);   /* 空头形态填充 */
   --pattern-fill-neutral:   rgba(99, 102, 241, 0.12);  /* 中性形态填充 */
   --pattern-fill-mixed:     rgba(230, 126, 34, 0.12);  /* 混合形态填充 */
+
+  /* === Local component tints (indigo, hue preserved) =================
+     2026-08-27 §13.2 #6: every rgba(99,102,241,α) site-level color used
+     across pages must declare its value through one of these tokens. The
+     goal is consolidation, NOT re-painting — hue stays indigo. --info-*
+     is a SEPARATE family from --info (steel blue) and from --accent
+     (lavender); do not conflate them. See docs/design-guidelines.md
+     §3.2 / §7.* for the semantic family. */
+  --info-ghost:        rgba(99, 102, 241, 0.06);  /* whisper surface (event-frozen / dropdown hover) */
+  --info-ghost-soft:   rgba(99, 102, 241, 0.07);  /* skeleton / evidence chip bg */
+  --info-ghost-strong: rgba(99, 102, 241, 0.08);  /* minimal card border (groups / mini-card / structure detail) */
+  --info-tint:         rgba(99, 102, 241, 0.10);  /* hover tint / low-key surface */
+  --info-tint-em:      rgba(99, 102, 241, 0.12);  /* tooltip / primary card badge bg */
+  --info-tint-strong:  rgba(99, 102, 241, 0.14);  /* dominant card border (analysis / btc / strategy) */
+  --info-tint-max:     rgba(99, 102, 241, 0.18);  /* visible border (button / hero / input) */
+  --info-edge:         rgba(99, 102, 241, 0.20);  /* primary-card hover border */
+  --info-edge-strong:  rgba(99, 102, 241, 0.26);  /* active pill border */
+  --info-edge-max:     rgba(99, 102, 241, 0.34);  /* "today" / dot border / active chip */
+  --info-glow:         rgba(99, 102, 241, 0.55);  /* selected dropdown border / btc-wall effective / dot emphasis */
+  --info-key:          rgba(99, 102, 241, 0.42);  /* knowledge-highlight */
+  --info-focus:        rgba(99, 102, 241, 0.50);  /* :focus-visible outline (controls) */
+  --info-focus-em:     rgba(99, 102, 241, 0.70);  /* :focus-visible outline (links/chips) */
+  --info-halo-soft:    rgba(99, 102, 241, 0.12);  /* structure-toolbar hero */
+  --info-halo:         rgba(99, 102, 241, 0.14);  /* alert-chip-hero, metric::after */
+  --info-halo-mid:     rgba(99, 102, 241, 0.16);  /* body hero top-left */
+  --info-halo-strong:  rgba(99, 102, 241, 0.18);  /* analysis-hero, monitoring-hero */
+  --info-halo-em:      rgba(99, 102, 241, 0.20);  /* indicator-hero, live-card-strong */
 }
 
 html {
