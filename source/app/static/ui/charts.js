@@ -164,6 +164,9 @@ const SERIES_FALLBACK = Object.freeze({
   support:             "#27ae60",
   pattern_zone:        "#6366f1",
   // Pattern fill base alphas (alpha 由 fill_alpha 控制)
+  // CSS source of truth lives in editorial.css :root (--pattern-fill-*);
+  // these literals are SSR/legacy fallbacks. See docs/design-guidelines.md
+  // §7.9 for the chart palette contract.
   pattern_bullish_base:   "rgba(39, 174, 96, 0.12)",
   pattern_bearish_base:   "rgba(231, 76, 60, 0.12)",
   pattern_neutral_base:   "rgba(99, 102, 241, 0.12)",
