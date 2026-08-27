@@ -145,16 +145,28 @@ def test_option_chain_and_raw_tables_are_in_closed_details_panel() -> None:
 
 
 def test_data_source_footer_matches_gold_governance_ledger() -> None:
+    """2026-08-27 §13.2 #3: btc-derivatives no longer inlines the
+    governance section template — it delegates to renderGovernanceLedger(
+    {variant: "btc"}). The label set (期权行情 / 永续合约 / 接口覆盖 / 快照时间)
+    still comes from the page, so we assert those plus the renderer
+    delegation."""
     source = PAGE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
+    editorial = Path("app/static/editorial.css").read_text(encoding="utf-8")
 
-    assert 'class="card governance-ledger btc-governance"' in source
-    assert 'id="btc-governance-title">数据就绪与快照</h2>' in source
+    # Page must import + delegate to the shared renderer.
+    assert "renderGovernanceLedger" in source
+    assert 'variant: "btc"' in source
+    # The 4-item label set is still authored by the page.
     for label in ("期权行情", "永续合约", "接口覆盖", "快照时间"):
         assert label in source
-    assert 'class="governance-ledger__grid btc-governance-grid"' in source
-    assert 'body[data-page="btc-derivatives"] .governance-ledger' in styles
-    assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in styles
+    # Legacy inline section template must NOT be reintroduced.
+    assert 'class="card governance-ledger btc-governance"' not in source
+    assert 'class="governance-ledger__grid btc-governance-grid"' not in source
+    # styles.css no longer carries the body[data-page="btc-derivatives"] legacy block.
+    assert 'body[data-page="btc-derivatives"] .governance-ledger' not in styles
+    # The variant now lives in editorial.css as .governance-ledger--btc.
+    assert ".governance-ledger--btc" in editorial
     assert '<details class="btc-source-details">' not in source
     assert '<details class="btc-quality-details">' not in source
     assert "btc-provider-card" not in source
@@ -308,15 +320,22 @@ def test_page_renders_options_wall_signal_card_from_dashboard_metrics() -> None:
 def test_bottom_sections_are_grouped_into_parent_containers() -> None:
     source = PAGE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
+    editorial = Path("app/static/editorial.css").read_text(encoding="utf-8")
+    shared = Path("app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
 
     assert "btc-bottom-group" in source
     assert "btc-protection-group" in source
     assert "btc-audit-group" in source
-    assert "btc-governance" in source
+    # The .btc-governance class hook moved into the shared
+    # governanceLedger.js (GOVERNANCE_VARIANTS.btc.extraClass) — the
+    # btc_derivatives.js page no longer carries that literal.
+    assert "btc-governance" in shared
     assert ".btc-bottom-group" in styles
     assert ".btc-bottom-group-body" in styles
-    assert ".governance-ledger__head" in styles
-    assert ".governance-ledger__item" in styles
+    # The .governance-ledger__* classes moved to editorial.css during
+    # the §13.2 #3 cleanup (the shared base lives there now).
+    assert ".governance-ledger__head" in editorial
+    assert ".governance-ledger__item" in editorial
 
 
 def test_protection_planner_is_collapsed_by_default_and_toggle_hides_its_body() -> None:

@@ -92,17 +92,31 @@ def test_charts_reads_each_css_var():
 
 
 def test_no_consumer_side_hardcoded_palette_outside_fallback():
-    """Lines 12-32 of charts.js hold the fallback dict. After §16.C, all
-    site-level color references must use CHART_THEME.<key>. We assert no
-    bare chart palette literal appears in 'release' code (lines 33+)."""
+    """Lines 12-32 of charts.js hold the CHART_THEME_FALLBACK dict. After
+    §16.C, all site-level color references must use CHART_THEME.<key>.
+    2026-08-27 §13.2 #4: SERIES_FALLBACK is now a second legal home for
+    the same palette values — series colors are documented there too so
+    SSR / unit tests can resolve without :root. We strip BOTH the
+    CHART_THEME_FALLBACK block and the SERIES_FALLBACK block before
+    scanning for leaks. The intent of the original guard is preserved:
+    no bare literal may appear in *consumer-side* code (charts.js code
+    that picks colors from the token tree, e.g. lineDataset / barDataset /
+    dataset rendering)."""
     source = _read(CHARTS_JS)
-    # fallback section
-    fallback_start = source.find("const CHART_THEME_FALLBACK = Object.freeze({")
-    fallback_end = source.find("});", fallback_start)
-    assert fallback_start != -1 and fallback_end != -1
-    head = source[:fallback_start]
-    tail = source[fallback_end:]
-    rest = head + tail
+
+    def slice_out(text: str, needle: str) -> str:
+        start = text.find(needle)
+        assert start != -1, f"block anchor not found: {needle}"
+        end = text.find("});", start)
+        assert end != -1
+        return text[:start] + text[end:]
+
+    # Strip both fallback blocks (frame theme + series palette) plus the
+    # SERIES_FALLBACK_COLOR constant that lives outside SERIES_FALLBACK but
+    # is still a documented fallback (matches --series-max-pain).
+    rest = slice_out(source, "const CHART_THEME_FALLBACK = Object.freeze({")
+    rest = slice_out(rest, "const SERIES_FALLBACK = Object.freeze({")
+    rest = slice_out(rest, 'const SERIES_FALLBACK_COLOR = "#5a6a7c"')
     palette_fragments = [
         '"#4b5961"', '"#f8fafc"', '"#e2e8f0"', '"#627078"',
         '"rgba(21, 35, 42, 0.92)"', '"rgba(23, 34, 39, 0.042)"',

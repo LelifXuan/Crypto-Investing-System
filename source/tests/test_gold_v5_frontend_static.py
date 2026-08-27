@@ -1,4 +1,5 @@
 """Static assertions for gold V5 frontend module — analysis-page visual alignment."""
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -89,15 +90,35 @@ class TestGoldV5Governance:
         )
 
     def test_governance_is_a_compact_source_ledger(self):
+        """2026-08-27 §13.2 #3: gold-allocation now routes through the
+        shared ui/governanceLedger.js renderer. The legacy inline section
+        template + body[data-page="gold-allocation"] .gold-governance CSS
+        block were both retired; the rendering contract is the
+        .governance-ledger--gold variant in editorial.css + the
+        renderGovernanceLedger() call."""
         src = _read(JS_PATH)
         css = _read(REPO_ROOT / "app" / "static" / "editorial.css")
-        assert 'class="card governance-ledger gold-governance"' in src
-        assert 'class="governance-ledger__item gold-governance-item"' in src
-        assert 'class="governance-ledger__dot gold-governance-dot"' in src
+        # gold_v5 imports the shared renderer and delegates to it.
+        assert "renderGovernanceLedger" in src
+        assert 'variant: "gold"' in src
+        # Legacy inline templates and class hooks must NOT be reintroduced.
+        assert 'class="card governance-ledger gold-governance"' not in src, (
+            "gold_v5 must not inline a legacy governance section template; "
+            "the renderer lives in ui/governanceLedger.js"
+        )
+        assert 'class="governance-ledger__item gold-governance-item"' not in src
+        # The .gold-governance JS hook (gold_v5.js:566 querySelector) is
+        # preserved as a class on the rendered section, not a CSS target.
         assert "formatSourceAge" in src
         assert "governanceMiniCard" not in src
-        assert 'body[data-page="gold-allocation"] .gold-governance {' in css
-        assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
+        # The shared base + gold variant now lives in editorial.css.
+        assert ".governance-ledger {" in css
+        # The gold variant appears in editorial.css as either a standalone
+        # block or one-or-more descendant selectors; the contract is that
+        # at least one .governance-ledger--gold rule exists.
+        assert ".governance-ledger--gold" in css, (
+            "editorial.css must define at least one .governance-ledger--gold rule"
+        )
 
     def test_no_v4_chip_warning_fallback(self):
         """V4 default was 'chip-warning' for any non-fresh governance row;
@@ -294,8 +315,25 @@ class TestGoldV5Css:
         assert ".gold-chart-card.is-wide" not in block
 
     def test_css_has_governance_repeat_4(self):
-        """Spec §2.5: governance grid is repeat(4, 1fr)."""
-        css = _read(CSS_PATH)
-        start = css.index("=== gold-allocation v5")
-        block = css[start:]
-        assert "repeat(4, minmax(0, 1fr))" in block
+        """Spec §2.5: governance grid is repeat(4, 1fr). 2026-08-27
+        §13.2 #3 cleanup moved the shared governance ledger base +
+        .governance-ledger--gold variant into editorial.css; the legacy
+        body[data-page="gold-allocation"] .gold-governance CSS block
+        in styles.css is gone. We assert the contract via editorial.css
+        now."""
+        css = _read(REPO_ROOT / "app" / "static" / "editorial.css")
+        assert ".governance-ledger--gold .governance-ledger__grid" in css, (
+            "editorial.css must own the .governance-ledger--gold variant grid"
+        )
+        # The base class locks repeat(4, minmax(0, 1fr)) as the default
+        # for variants that don't override gridCols.
+        assert ".governance-ledger__grid {" in css
+        base_match = re.search(
+            r"\.governance-ledger__grid\s*\{[^}]*repeat\(4,\s*minmax\(0,\s*1fr\)\)",
+            css,
+            re.DOTALL,
+        )
+        assert base_match, (
+            ".governance-ledger__grid base class must default to "
+            "repeat(4, minmax(0, 1fr)) per spec §2.5"
+        )

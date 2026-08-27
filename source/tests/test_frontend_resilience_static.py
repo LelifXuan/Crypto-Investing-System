@@ -166,15 +166,25 @@ def test_analysis_uses_canonical_latest_mark_independent_of_timeframe() -> None:
 
 
 def test_price_chart_uses_distinct_ema_colors_and_vwap_line_hierarchy() -> None:
+    """2026-08-27 §13.2 #4: chart series colors must route through
+    getSeriesColor(label) → --series-* tokens in editorial.css, not
+    inline hex literals. The short-EMA-bright + long-EMA-deep visual
+    hierarchy (active vs stable anchor) is preserved by the fallback
+    palette in ui/charts.js SERIES_FALLBACK."""
     source = (ROOT / "app/static/pages/analysis.js").read_text(encoding="utf-8")
 
-    # Short EMA = bright + thin; long EMA = deep + thick (active vs stable anchor).
-    assert 'lineDataset("EMA30", analysis.ema30, "#dcbe88", { borderWidth: 1.6 })' in source
-    assert 'lineDataset("EMA60", analysis.ema60, "#a89569", { borderWidth: 2.0 })' in source
-    assert 'lineDataset("EMA120", analysis.ema120, "#5a7d8e", { borderWidth: 2.6 })' in source
-    # Short VWAP = brighter + dotted thin; long VWAP = deeper + dashed thick.
-    assert '"VWAP50", analysis.vwapValues.vwap50, "#a594c2", { borderDash: [2, 4], borderWidth: 1.5 }' in source
-    assert '"VWAP100", analysis.vwapValues.vwap100, "#5d4e7e", { borderDash: [10, 5], borderWidth: 2.4 }' in source
+    # Each line must resolve through getSeriesColor, not a hex literal.
+    assert 'lineDataset("EMA30", analysis.ema30, getSeriesColor("EMA30")' in source
+    assert 'lineDataset("EMA60", analysis.ema60, getSeriesColor("EMA60")' in source
+    assert 'lineDataset("EMA120", analysis.ema120, getSeriesColor("EMA120")' in source
+    assert 'lineDataset("VWAP50", analysis.vwapValues.vwap50, getSeriesColor("VWAP50")' in source
+    assert 'lineDataset("VWAP100", analysis.vwapValues.vwap100, getSeriesColor("VWAP100")' in source
+    # Border hierarchy (active vs stable anchor) is preserved as metadata.
+    assert "borderWidth: 1.6" in source   # EMA30 bright + thin
+    assert "borderWidth: 2.0" in source   # EMA60 mid
+    assert "borderWidth: 2.6" in source   # EMA120 deep + thick
+    assert "borderDash: [2, 4]" in source    # VWAP50 short-period dotted
+    assert "borderDash: [10, 5]" in source   # VWAP100 long-period dashed
 
 
 def test_monitoring_translates_legacy_technical_state_tags() -> None:

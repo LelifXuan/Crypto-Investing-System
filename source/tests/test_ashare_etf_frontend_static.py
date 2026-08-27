@@ -224,15 +224,28 @@ class TestQuarterlyTopupStat:
 
 class TestGovernanceFooter:
     def test_footer_uses_shared_gold_ledger_contract(self):
+        """2026-08-27 §13.2 #3: ashare-etf no longer inlines the
+        governance section template — it delegates to
+        renderGovernanceLedger({variant: "ashare_etf"}) from
+        ui/governanceLedger.js. The #etf-governance container id is
+        preserved as a JS hook (ashare_etf.js:1407 getElementById)."""
         src = _read()
-        css = (REPO_ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+        css_styles = (REPO_ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+        css_editorial = (REPO_ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
 
-        assert 'class="card governance-ledger etf-governance"' in src
-        assert 'id="etf-governance-title">数据就绪与快照</h2>' in src
-        assert 'class="governance-ledger__grid etf-governance-grid"' in src
-        assert 'body[data-page="ashare-etf"] .governance-ledger' in css
-        assert "background: var(--surface-muted);" in css
-        assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
+        # Page must import + delegate to the shared renderer.
+        assert "renderGovernanceLedger" in src
+        assert 'variant: "ashare_etf"' in src
+        # The #etf-governance container id is preserved as a JS hook.
+        assert 'id="etf-governance"' in src
+        # Legacy inline section template must NOT be reintroduced.
+        assert 'class="card governance-ledger etf-governance"' not in src
+        assert 'class="governance-ledger__grid etf-governance-grid"' not in src
+        # The shared module owns the canonical structure; styles.css no
+        # longer carries the body[data-page="ashare-etf"] legacy block.
+        assert 'body[data-page="ashare-etf"] .governance-ledger' not in css_styles
+        # The variant now lives in editorial.css as .governance-ledger--ashare_etf.
+        assert ".governance-ledger--ashare_etf" in css_editorial
 
     def test_initial_quote_request_does_not_block_spa_mount(self):
         src = _read()

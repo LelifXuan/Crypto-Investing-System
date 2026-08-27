@@ -115,10 +115,19 @@ def test_monitoring_source_status_is_structured_and_has_no_glassnode() -> None:
 def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
     source = Path("app/static/pages/monitoring.js")
     content = source.read_text(encoding="utf-8")
+    shared = Path("app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
 
     assert "monitoring-surface" in content
-    assert "数据源状态</h2>" in content  # 数据源状态作为底栏标题（governance bar）
-    assert "monitoring-governance" in content
+    # 2026-08-27 §13.2 #3: the "数据源状态" h2 now lives in
+    # ui/governanceLedger.js (GOVERNANCE_VARIANTS.monitoring.title).
+    # monitoring.js delegates via renderGovernanceLedger({ variant: "monitoring" }).
+    assert "renderGovernanceLedger" in content
+    assert 'variant: "monitoring"' in content
+    assert "数据源状态" in shared
+    # The .monitoring-governance JS/CSS hook (extraClass in the shared
+    # contract) is now owned by ui/governanceLedger.js GOVERNANCE_VARIANTS
+    # instead of the page JS.
+    assert "monitoring-governance" in shared
     assert "monitoring-topbar" in content
     assert "monitoring-snapshot-grid" in content
     assert "renderTerminalSummary(data)" in content

@@ -55,14 +55,25 @@ def test_knowledge_section_cards_use_editorial_tokens() -> None:
 
 
 def test_gold_governance_uses_the_shared_ledger_contract() -> None:
+    """2026-08-27 §13.2 #3: gold-allocation no longer inlines the
+    governance section template — it delegates to renderGovernanceLedger()
+    from ui/governanceLedger.js. The legacy inline `class="card governance-ledger gold-governance"`
+    assertion must NOT pass; we assert the contract via the new
+    imports + delegate call."""
     source = (PAGES / "gold_v5.js").read_text(encoding="utf-8")
+    shared = (Path(__file__).resolve().parents[1] / "app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
 
-    assert 'class="card governance-ledger gold-governance"' in source
-    assert "governance-ledger__head" in source
-    assert "governance-ledger__grid" in source
-    assert "governance-ledger__item" in source
-    assert "governance-ledger__label" in source
-    assert "governance-ledger__dot" in source
+    # Page must import + delegate to the shared renderer.
+    assert "renderGovernanceLedger" in source
+    assert 'variant: "gold"' in source
+    # Legacy inline section template must NOT be reintroduced.
+    assert 'class="card governance-ledger gold-governance"' not in source
+    # The shared module owns the canonical structure / class names.
+    assert "governance-ledger__head" in shared
+    assert "governance-ledger__grid" in shared
+    assert "governance-ledger__item" in shared
+    assert "governance-ledger__label" in shared
+    assert "governance-ledger__dot" in shared
 
 
 def test_monitoring_warming_shell_keeps_stable_page_structure() -> None:
