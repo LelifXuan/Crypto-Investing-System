@@ -27,7 +27,7 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 25%),
+    radial-gradient(circle at top left, var(--info-tint-max), transparent 25%),
     radial-gradient(circle at top right, rgba(183, 121, 31, 0.12), transparent 24%),
     linear-gradient(180deg, #f7f1e7 0%, #efe5d6 44%, #ebe2d6 100%);
   line-height: 1.55;
@@ -147,7 +147,7 @@ h2 {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.14), transparent 70%);
+  background: radial-gradient(circle, var(--info-tint-strong), transparent 70%);
 }
 
 .metric span {
@@ -503,7 +503,7 @@ button:active,
 button.secondary {
   background: linear-gradient(180deg, rgba(255, 251, 245, 0.96), rgba(239, 248, 244, 0.92));
   color: var(--accent-strong);
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   box-shadow: none;
 }
 
@@ -653,8 +653,8 @@ textarea {
 }
 
 .macro-month-day.is-today {
-  border-color: rgba(99, 102, 241, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.18);
+  border-color: var(--info-edge-max);
+  box-shadow: inset 0 0 0 1px var(--info-tint-max);
 }
 
 .macro-month-day.has-events {
@@ -689,8 +689,8 @@ textarea {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.18);
-  border: 1px solid rgba(99, 102, 241, 0.34);
+  background: var(--info-tint-max);
+  border: 1px solid var(--info-edge-max);
 }
 
 .macro-event-dot.more {
@@ -856,7 +856,7 @@ table thead th {
 
 .indicator-hero {
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.2), transparent 30%),
+    radial-gradient(circle at top right, var(--info-edge), transparent 30%),
     linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(237, 249, 245, 0.94));
   margin-bottom: var(--content-gap);
 }
@@ -882,7 +882,7 @@ table thead th {
   gap: 8px;
   padding: 18px;
   border-radius: 18px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -922,7 +922,7 @@ table thead th {
   min-height: 0;
   padding: 24px;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 28%),
+    radial-gradient(circle at top left, var(--info-tint-max), transparent 28%),
     radial-gradient(circle at bottom right, rgba(183, 121, 31, 0.12), transparent 24%),
     linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(237, 249, 245, 0.94));
 }
@@ -968,7 +968,7 @@ table thead th {
 
 .analysis-live-card-strong {
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.2), transparent 30%),
+    radial-gradient(circle at top right, var(--info-edge), transparent 30%),
     linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(234, 248, 244, 0.94));
 }
 
@@ -1063,16 +1063,16 @@ table thead th {
 
 .analysis-tab.is-active {
   color: var(--accent-strong);
-  border-color: rgba(99, 102, 241, 0.32);
+  border-color: var(--info-edge-max);
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.16), transparent 28%),
+    radial-gradient(circle at top right, var(--info-tint-max), transparent 28%),
     linear-gradient(180deg, rgba(236, 248, 245, 0.98), rgba(244, 251, 248, 0.92));
   box-shadow: var(--shadow-card);
 }
 
 .analysis-live-card {
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 30%),
+    radial-gradient(circle at top right, var(--info-tint-strong), transparent 30%),
     linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(244, 249, 247, 0.92));
 }
 
@@ -1242,7 +1242,7 @@ main:has(.tooltip-anchor:focus-within) {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--info-tint-em);
   color: var(--accent-strong);
   font-size: 11px;
   font-weight: 800;
@@ -1382,7 +1382,7 @@ main:has(.tooltip-anchor:focus-within) {
   display: grid;
   gap: 18px;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.18), transparent 26%),
+    radial-gradient(circle at top right, var(--info-tint-max), transparent 26%),
     linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(243, 249, 247, 0.92));
 }
 
@@ -2093,7 +2093,7 @@ select {
 
 .instrument-pill.is-active {
   background: linear-gradient(180deg, rgba(240, 249, 246, 0.96), rgba(214, 239, 232, 0.88));
-  border-color: rgba(99, 102, 241, 0.26);
+  border-color: var(--info-edge-strong);
   color: var(--accent-strong);
 }
 
@@ -2251,7 +2251,7 @@ a.status-chip:hover {
 }
 
 a.status-chip:focus-visible {
-  outline: 2px solid rgba(99, 102, 241, 0.7);
+  outline: 2px solid var(--info-focus-em);
   outline-offset: 2px;
 }
 
@@ -2525,7 +2525,7 @@ a.status-chip:focus-visible {
 .btn-secondary {
   background: rgba(255, 251, 245, 0.92);
   color: var(--accent-strong);
-  border-color: rgba(99, 102, 241, 0.14);
+  border-color: var(--info-tint-strong);
 }
 .btn-secondary:hover { background: rgba(255, 251, 245, 0.98); box-shadow: var(--shadow-button); }
 
@@ -2643,7 +2643,7 @@ a.status-chip:focus-visible {
 /* 2026-08-11: 冻结事件视觉 + 冻结按钮 */
 .event-card.is-frozen {
   border-color: var(--accent-ghost);
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--info-ghost);
 }
 .event-card.is-frozen:hover {
   border-color: var(--accent);
@@ -2906,7 +2906,7 @@ a.status-chip:focus-visible {
   min-height: 92px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   background: rgba(255, 255, 255, 0.92);
 }
 
@@ -2930,7 +2930,7 @@ a.status-chip:focus-visible {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.28);
+  background: var(--info-edge-max);
 }
 
 .calendar-dot.is-supply {
@@ -3035,7 +3035,7 @@ tr.is-supply-event td {
 
 .divergence-overall {
   padding: 16px 18px;
-  border-color: rgba(99, 102, 241, 0.2);
+  border-color: var(--info-edge);
   background: linear-gradient(180deg, rgba(255, 253, 248, 0.92), rgba(237, 249, 245, 0.78));
 }
 
@@ -3064,7 +3064,7 @@ tr.is-supply-event td {
 }
 
 .divergence-bullish {
-  border-color: rgba(99, 102, 241, 0.2);
+  border-color: var(--info-edge);
   background: rgba(235, 249, 245, 0.64);
 }
 
@@ -3424,7 +3424,7 @@ tr.is-supply-event td {
   gap: 14px;
   grid-column: 1 / -1;
   padding: clamp(18px, 1.2vw, 24px);
-  border: 1px solid rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--info-ghost-strong);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.32);
   box-shadow: var(--shadow-soft);
@@ -3490,7 +3490,7 @@ tr.is-supply-event td {
   font-size: 12.5px;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 8px;
-  border: 1px solid rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--info-ghost-strong);
 }
 
 .monitoring-missing-layer {
@@ -3499,7 +3499,7 @@ tr.is-supply-event td {
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-  background: var(--neutral-soft, rgba(99, 102, 241, 0.06));
+  background: var(--neutral-soft, var(--info-ghost));
   border-radius: 999px;
 }
 
@@ -3765,7 +3765,7 @@ tr.is-supply-event td {
 .skeleton-cell {
   position: relative;
   overflow: hidden;
-  background: rgba(99, 102, 241, 0.07);
+  background: var(--info-ghost-soft);
   border-radius: 6px;
 }
 
@@ -3773,7 +3773,7 @@ tr.is-supply-event td {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.12) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--info-tint-em) 50%, transparent 100%);
   animation: skeletonShimmer var(--dur-shimmer, 1.6s) ease-in-out infinite;
 }
 
@@ -3978,7 +3978,7 @@ article.card:hover,
   display: grid;
   gap: 14px;
   padding: 16px 18px;
-  border-color: rgba(99, 102, 241, 0.08);
+  border-color: var(--info-ghost-strong);
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.72), rgba(246, 249, 246, 0.62));
   box-shadow: var(--shadow-soft);
@@ -4000,7 +4000,7 @@ article.card:hover,
   min-height: 0;
   padding: var(--card-padding);
   border-radius: var(--radius-card);
-  border: 1px solid rgba(99, 102, 241, 0.1);
+  border: 1px solid var(--info-tint);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(244, 249, 246, 0.72));
   box-shadow:
@@ -4021,7 +4021,7 @@ article.card:hover,
   gap: 8px;
   padding: 14px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--info-ghost-strong);
   background: rgba(255, 255, 255, 0.8);
 }
 
@@ -4703,7 +4703,7 @@ button:hover,
   margin-bottom: 16px;
   padding: 20px 22px;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 28%),
+    radial-gradient(circle at top right, var(--info-tint-strong), transparent 28%),
     linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(243, 239, 231, 0.84));
 }
 
@@ -4729,7 +4729,7 @@ button:hover,
   display: grid;
   gap: 10px;
   padding: 18px;
-  border: 1px solid rgba(99, 102, 241, 0.30);
+  border: 1px solid var(--info-edge-max);
   border-radius: 18px;
   background:
     linear-gradient(135deg, rgba(224, 231, 254, 0.72), rgba(255, 255, 255, 0.92)),
@@ -4931,7 +4931,7 @@ button:hover,
 .structure-toolbar-card {
   padding: 24px 28px;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.12), transparent 22%),
+    radial-gradient(circle at top left, var(--info-tint-em), transparent 22%),
     linear-gradient(180deg, rgba(255, 252, 247, 0.88), rgba(245, 240, 232, 0.76));
 }
 
@@ -5241,7 +5241,7 @@ button:hover,
   gap: 10px;
   padding: 16px 18px;
   border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid var(--info-tint-em);
   background: rgba(255, 255, 255, 0.55);
   box-shadow: none;
   transition: border-color var(--transition-hover), box-shadow var(--transition-hover), background var(--transition-hover);
@@ -5427,7 +5427,7 @@ body[data-page="ai-strategy"] main {
   background:
     radial-gradient(circle at 88% 12%, rgba(20, 184, 166, 0.18), transparent 32%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(246, 251, 249, 0.88));
-  border-color: rgba(99, 102, 241, 0.24);
+  border-color: var(--info-edge-strong);
   box-shadow: var(--shadow-card);
   padding: 24px;
 }
@@ -5519,7 +5519,7 @@ body[data-page="ai-strategy"] main {
 .strategy-plan-compact,
 .strategy-compact-card {
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 34%),
+    radial-gradient(circle at top right, var(--info-ghost-strong), transparent 34%),
     rgba(255, 255, 255, 0.78);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -5660,7 +5660,7 @@ body[data-page="ai-strategy"] main {
 }
 
 .knowledge-item-card.knowledge-highlight {
-  border-color: rgba(99, 102, 241, 0.42);
+  border-color: var(--info-key);
   background: rgba(233, 252, 248, 0.92);
   box-shadow: 0 0 0 4px var(--accent-ghost), var(--shadow-card);
 }
@@ -5740,7 +5740,7 @@ body[data-page="ai-strategy"] main {
   max-width: 280px;
   padding: 10px 12px;
   background: var(--surface-elevated, var(--white));
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 10px;
   box-shadow: var(--shadow-soft);
   font-size: 12px;
@@ -5787,8 +5787,8 @@ body[data-page="ai-strategy"] main {
   font-size: 13px;
   padding: 8px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid var(--info-edge-strong);
+  background: var(--info-ghost);
   color: var(--accent-strong);
   transition: background var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
 }
@@ -6694,7 +6694,7 @@ body[data-page="ai-strategy"] main {
 /* Monitoring overview final layout */
 .monitoring-surface {
   padding: clamp(18px, 2.4vw, 28px);
-  border: 1px solid rgba(99, 102, 241, 0.16);
+  border: 1px solid var(--info-tint-max);
   border-radius: 24px;
   background:
     linear-gradient(135deg, rgba(250, 253, 250, 0.94), rgba(255, 248, 237, 0.8)),
@@ -6873,7 +6873,7 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   align-items: center;
   min-height: 96px;
   padding: clamp(16px, 2vw, 22px);
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  border: 1px solid var(--info-tint-max);
   border-radius: 14px;
   background:
     linear-gradient(135deg, rgba(206, 239, 231, 0.62), rgba(255, 249, 239, 0.78));
@@ -7730,8 +7730,8 @@ ul.terminal-summary-watch li {
   min-height: 74px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: rgba(99, 102, 241, 0.055);
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.12);
+  background: var(--info-ghost-faint);
+  box-shadow: inset 0 0 0 1px var(--info-tint-em);
 }
 .strategy-decision-strip > div.wide strong { font-size: 0.96rem; }
 .strategy-decision-strip span,
@@ -7757,11 +7757,13 @@ ul.terminal-summary-watch li {
   padding: 16px 18px 18px 22px;
   background: linear-gradient(
     180deg,
-    rgba(99, 102, 241, 0.08),
+    var(--info-ghost-strong),
+    /* second alpha stop stays literal — paired 0.08 → 0.03 gradient on
+       .strategy-primary-plan-card; no single token expresses both ends. */
     rgba(99, 102, 241, 0.03)
   );
   box-shadow: inset 4px 0 0 0 var(--accent-strong),
-    inset 0 0 0 1px rgba(99, 102, 241, 0.16);
+    inset 0 0 0 1px var(--info-tint-max);
   display: grid;
   gap: 12px;
 }
@@ -7825,7 +7827,7 @@ ul.terminal-summary-watch li {
 .strategy-timeframe-table td:first-child { display: grid; gap: 3px; }
 .strategy-plan-table td:first-child small,
 .strategy-timeframe-table td:first-child small { color: var(--muted); font-size: 0.75rem; }
-.strategy-plan-table tr.is-primary td { background: rgba(99, 102, 241, 0.045); }
+.strategy-plan-table tr.is-primary td { background: var(--info-surface-soft); }
 .strategy-evidence-lead { display: grid; gap: 6px; max-width: 1000px; }
 .strategy-evidence-lead strong { color: var(--ink); font-size: 1.08rem; line-height: 1.5; }
 .strategy-evidence-lead p { margin: 0; color: var(--muted); line-height: 1.55; }
@@ -7913,7 +7915,7 @@ ul.terminal-summary-watch li {
   padding: 0;
   border: 0;
   border-radius: 12px;
-  background: rgba(99, 102, 241, 0.10);
+  background: var(--info-tint);
   color: var(--accent-strong);
   cursor: pointer;
   box-shadow: var(--shadow-soft);
@@ -7925,7 +7927,7 @@ ul.terminal-summary-watch li {
   box-shadow: var(--shadow-button);
 }
 .strategy-collapse-control:focus-visible {
-  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline: 2px solid var(--info-focus);
   outline-offset: 2px;
 }
 .strategy-collapse-control::before {
@@ -8259,9 +8261,9 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   flex-direction: column;
   gap: 10px;
   padding: 16px 18px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 14px;
-  background: rgba(99, 102, 241, 0.05);
+  background: var(--info-ghost-faint);
   min-height: 0;
 }
 
@@ -8433,7 +8435,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-wall-cell.is-effective {
-  border-top-color: rgba(99, 102, 241, 0.55);
+  border-top-color: var(--info-glow);
 }
 
 .btc-wall-cell.is-effective b {
@@ -8445,7 +8447,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 }
 
 .btc-wall-cell.is-insufficient {
-  border-top: 4px dashed rgba(99, 102, 241, 0.3);
+ 8448:  border-top: 4px dashed var(--info-edge-max);
   opacity: 0.86;
 }
 
@@ -8516,7 +8518,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   padding: 0 12px;
   border: 1px solid rgba(31, 42, 58, 0.1);
   border-radius: 14px;
-  background: var(--accent-ghost, rgba(99, 102, 241, 0.12));
+  background: var(--accent-ghost, var(--info-tint-em));
   color: var(--ink);
   font-size: 13px;
   font-weight: 700;
@@ -8651,9 +8653,9 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-evidence-chips span {
   padding: 6px 9px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.07);
+  background: var(--info-ghost-soft);
   color: var(--accent-strong);
   font-size: 12px;
   font-weight: 700;
@@ -8800,9 +8802,9 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   width: fit-content;
   max-width: 100%;
   padding: 5px 9px;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid var(--info-tint-em);
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.055);
+  background: var(--info-ghost-faint);
   color: var(--accent-strong);
   font-size: 11px;
   font-weight: 800;
@@ -8886,7 +8888,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-bottom-group {
   padding: 16px;
-  border: 1px solid rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--info-ghost-strong);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.32);
   box-shadow: var(--shadow-soft);
@@ -8985,7 +8987,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .btc-option-chain th:nth-child(4),
 .btc-option-chain td:nth-child(4) {
   text-align: center;
-  background: rgba(99, 102, 241, 0.05);
+  background: var(--info-ghost-faint);
 }
 
 .btc-expiry-tabs {
@@ -9079,7 +9081,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-wall-signal-context span {
   padding: 9px 11px;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid var(--info-tint-em);
   border-radius: 9px;
   background: rgba(236, 253, 245, 0.42);
   color: var(--muted-strong);
@@ -9090,7 +9092,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-wall-signal-grid article {
   padding: 14px 16px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.55);
 }
@@ -9134,7 +9136,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.52);
 }
@@ -9194,9 +9196,9 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-evidence-explanations article {
   padding: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 10px;
-  background: rgba(99, 102, 241, 0.055);
+  background: var(--info-ghost-faint);
 }
 
 .btc-evidence-explanations strong {
@@ -9250,7 +9252,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   gap: 10px;
   margin: 0;
   padding: 10px 12px;
-  border: 1px dashed rgba(99, 102, 241, 0.18);
+  border: 1px dashed var(--info-tint-max);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.45);
 }
@@ -9282,7 +9284,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .btc-hedge-form select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  border: 1px solid var(--info-tint-max);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.85);
   color: var(--ink);
@@ -9367,7 +9369,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   gap: 5px;
   padding: 10px;
   border-radius: 9px;
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--info-ghost);
   color: var(--muted);
   font-size: 12px;
 }
@@ -9465,8 +9467,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 
 .btc-source-state[data-state="live"] {
-  border-color: rgba(99, 102, 241, 0.45);
-  background: rgba(99, 102, 241, 0.10);
+  border-color: var(--info-key);
+  background: var(--info-tint);
   color: var(--accent-strong);
 }
 
@@ -9511,8 +9513,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 
 .btc-source-chip[data-status="ok"] {
-  border-color: rgba(99, 102, 241, 0.45);
-  background: rgba(99, 102, 241, 0.08);
+  border-color: var(--info-key);
+  background: var(--info-ghost-strong);
   color: var(--accent-strong);
 }
 
@@ -9942,7 +9944,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .strategy-evidence-item {
   min-height: 150px;
   padding: 20px;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.55);
   box-shadow: none;
@@ -9967,7 +9969,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   min-height: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid var(--info-tint-strong);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.55);
   box-shadow: none;
@@ -10051,7 +10053,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   letter-spacing: 0;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.10);
+  background: var(--info-tint);
   color: var(--accent-strong);
   white-space: nowrap;
   text-transform: none;
@@ -10365,7 +10367,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(99, 102, 241, 0.055);
+  background: var(--info-ghost-faint);
 }
 
 .strategy-narrative-watch strong,
@@ -10679,7 +10681,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .knowledge-guide-toggle:hover .knowledge-guide-chevron {
   color: var(--accent-strong);
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--info-ghost-strong);
 }
 
 .knowledge-guide-toggle[aria-expanded="true"] .knowledge-guide-chevron svg {
@@ -12101,14 +12103,14 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 /* Hover — neutral ghost on the un-selected option only. */
 .dropdown-item:not([disabled]):not([aria-selected="true"]):hover {
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--info-ghost);
   border-color: transparent;
 }
 
 /* Keyboard highlight — 1px border + 0.10 accent-soft background. */
 .dropdown-item.is-active {
-  background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.55);
+  background: var(--info-tint);
+  border-color: var(--info-glow);
   outline: none;
 }
 
@@ -12118,10 +12120,10 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   background:
     linear-gradient(
       180deg,
-      rgba(99, 102, 241, 0.16),
-      rgba(99, 102, 241, 0.10)
+      var(--info-tint-max),
+ 12122:      var(--info-tint)
     );
-  border-color: rgba(99, 102, 241, 0.22);
+  border-color: var(--info-edge-strong);
   color: var(--accent-strong);
   font-weight: 600;
 }
@@ -12133,8 +12135,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   background:
     linear-gradient(
       180deg,
-      rgba(99, 102, 241, 0.22),
-      rgba(99, 102, 241, 0.14)
+      var(--info-edge-strong),
+      var(--info-tint-strong)
     );
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset;
@@ -12280,7 +12282,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   flex: 1;
   height: 8px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.18);
+  background: var(--info-tint-max);
   overflow: hidden;
 }
 .gold-weight-fill {
@@ -12341,8 +12343,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   justify-content: space-between;
   padding: 14px 18px;
   border-radius: 14px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: var(--info-ghost-strong);
+  border: 1px solid var(--info-tint-max);
 }
 .gold-price-value {
   font-size: 28px;
