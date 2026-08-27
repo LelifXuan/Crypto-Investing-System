@@ -225,7 +225,7 @@
           "viewport": "mobile-s",
           "width": 375,
           "height": 667,
-          "scroll_width": 795,
+          "scroll_width": 387,
           "client_width": 375,
           "has_overflow": true,
           "content_visible": true,
@@ -233,7 +233,7 @@
             {
               "check": "horizontal-overflow",
               "severity": "FAIL",
-              "detail": "scrollWidth=795px > viewport=375px"
+              "detail": "scrollWidth=387px > viewport=375px"
             }
           ],
           "verdict": "FAIL",
@@ -243,36 +243,24 @@
           "viewport": "mobile-l",
           "width": 414,
           "height": 896,
-          "scroll_width": 795,
+          "scroll_width": 414,
           "client_width": 414,
-          "has_overflow": true,
+          "has_overflow": false,
           "content_visible": true,
-          "findings": [
-            {
-              "check": "horizontal-overflow",
-              "severity": "FAIL",
-              "detail": "scrollWidth=795px > viewport=414px"
-            }
-          ],
-          "verdict": "FAIL",
+          "findings": [],
+          "verdict": "PASS",
           "screenshot": "tests\\screenshots\\responsive\\market-structure_414x896.png"
         },
         {
           "viewport": "tablet",
           "width": 768,
           "height": 1024,
-          "scroll_width": 799,
+          "scroll_width": 768,
           "client_width": 768,
-          "has_overflow": true,
+          "has_overflow": false,
           "content_visible": true,
-          "findings": [
-            {
-              "check": "horizontal-overflow",
-              "severity": "FAIL",
-              "detail": "scrollWidth=799px > viewport=768px"
-            }
-          ],
-          "verdict": "FAIL",
+          "findings": [],
+          "verdict": "PASS",
           "screenshot": "tests\\screenshots\\responsive\\market-structure_768x1024.png"
         },
         {
@@ -337,14 +325,10 @@
         }
       ],
       "overflow_viewports": [
-        "mobile-s",
-        "mobile-l",
-        "tablet"
+        "mobile-s"
       ],
       "fail_viewports": [
-        "mobile-s",
-        "mobile-l",
-        "tablet"
+        "mobile-s"
       ],
       "verdict": "FAIL"
     },
@@ -1080,6 +1064,6 @@
   "summary": {
     "total_pages": 10,
     "pages_with_fails": 1,
-    "total_overflow_viewports": 3
+    "total_overflow_viewports": 1
   }
 }
