@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from app.core.paths import app_paths
 from app.services.network.http_client_factory import client_for_source
@@ -41,6 +43,8 @@ EASTMONEY_BACKUP_BASE_URLS = (
     "https://push2.eastmoney.com",
     "https://push2his.eastmoney.com",
 )
+SINA_QUOTE_URL = "https://hq.sinajs.cn/list="
+SINA_QUOTE_PATTERN = re.compile(r'var hq_str_(?P<symbol>[a-z]{2}\d+)="(?P<body>.*)";?')
 
 
 def utc_now() -> datetime:
@@ -249,13 +253,134 @@ class EastmoneyDirectETFClient:
         )
 
 
+class SinaETFQuoteClient:
+    """Public real-time quote fallback for A-share ETFs.
+
+    Sina returns a compact GB18030 text payload. Keeping this as a separate
+    provider lets source health and cache metadata state exactly which feed
+    supplied the quote instead of presenting a daily close as live data.
+    """
+
+    provider_id = "sina_quote"
+
+    def __init__(self, *, timeout_seconds: int) -> None:
+        self.timeout_seconds = timeout_seconds
+        self.last_success_at: datetime | None = None
+        self.last_error: str | None = None
+
+    async def fetch_quotes(
+        self, requested_items: list[dict[str, Any]]
+    ) -> list[AShareETFQuote]:
+        by_symbol = {
+            f"{market_for_code(str(item['code'])).lower()}{item['code']}": item
+            for item in requested_items
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://finance.sina.com.cn/",
+            "Accept": "*/*",
+        }
+        try:
+            async with client_for_source(
+                "sina_quote",
+                timeout=self.timeout_seconds,
+                headers=headers,
+            ) as client:
+                response = await client.get(
+                    f"{SINA_QUOTE_URL}{','.join(by_symbol)}"
+                )
+                response.raise_for_status()
+            text = response.content.decode("gb18030", errors="replace")
+            quotes = self._parse_payload(text, by_symbol)
+            if not any(item.status == "ok" for item in quotes):
+                raise RuntimeError("empty_sina_quotes")
+            self.last_success_at = utc_now()
+            self.last_error = None
+            return quotes
+        except Exception as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            logger.warning("Sina ETF quote fetch failed: %s", self.last_error)
+            raise RuntimeError(self.last_error) from exc
+
+    @staticmethod
+    def _parse_payload(
+        text: str,
+        by_symbol: dict[str, dict[str, Any]],
+    ) -> list[AShareETFQuote]:
+        rows: dict[str, list[str]] = {}
+        for line in text.splitlines():
+            match = SINA_QUOTE_PATTERN.fullmatch(line.strip())
+            if match:
+                rows[match.group("symbol")] = match.group("body").split(",")
+
+        output: list[AShareETFQuote] = []
+        shanghai = ZoneInfo("Asia/Shanghai")
+        for symbol, item in by_symbol.items():
+            fields = rows.get(symbol) or []
+            if len(fields) < 32 or not fields[0].strip():
+                output.append(
+                    EastmoneyDirectETFClient._unavailable_quote(
+                        item, "sina_missing_symbol", status="missing"
+                    )
+                )
+                continue
+            code = str(item["code"])
+            open_price = to_float_or_none(fields[1])
+            prev_close = to_float_or_none(fields[2])
+            last_price = to_float_or_none(fields[3])
+            change_amount = (
+                last_price - prev_close
+                if last_price is not None and prev_close is not None
+                else None
+            )
+            change_pct = (
+                change_amount / prev_close * 100
+                if change_amount is not None and prev_close
+                else None
+            )
+            quote_time = None
+            try:
+                quote_time = datetime.strptime(
+                    f"{fields[30]} {fields[31]}", "%Y-%m-%d %H:%M:%S"
+                ).replace(tzinfo=shanghai).astimezone(UTC)
+            except (ValueError, IndexError):
+                pass
+            output.append(
+                AShareETFQuote(
+                    code=code,
+                    name=str(item.get("name") or code),
+                    source_name=fields[0].strip(),
+                    group=str(item.get("group") or ""),
+                    group_label=str(item.get("group_label") or ""),
+                    market=market_for_code(code),
+                    secid=secid_for_code(code),
+                    last_price=last_price,
+                    change_pct=change_pct,
+                    change_amount=change_amount,
+                    volume=to_float_or_none(fields[8]),
+                    amount=to_float_or_none(fields[9]),
+                    high=to_float_or_none(fields[4]),
+                    low=to_float_or_none(fields[5]),
+                    open=open_price,
+                    prev_close=prev_close,
+                    turnover_rate=None,
+                    volume_ratio=None,
+                    quote_time=quote_time,
+                    source=SinaETFQuoteClient.provider_id,
+                    status="ok" if last_price is not None else "missing",
+                    error_message=None if last_price is not None else "sina_missing_price",
+                )
+            )
+        return output
+
+
 class AShareETFQuoteService:
     cache_filename = "ashare_etf_quotes.json"
 
     def __init__(
         self,
         *,
-        providers: list[EastmoneyDirectETFClient],
+        providers: list[Any],
         ttl_seconds: int,
         stale_cache_seconds: int,
         cache_path: Path | None = None,
@@ -415,6 +540,23 @@ class AShareETFQuoteService:
             self._cache_written_monotonic = time.monotonic()
             return stale
 
+        history_quotes = self._history_fallback_quotes(requested_items)
+        if any(quote.status == "ok" for quote in history_quotes):
+            payload = self._format_response(
+                quotes=history_quotes,
+                source="daily_history_fallback",
+                source_status="stale",
+                cache_status="history_fallback",
+                warnings=[
+                    *errors,
+                    "live_quote_unavailable_using_verified_daily_history",
+                ],
+            )
+            payload["freshness_state"] = "usable_stale"
+            payload["refresh_enqueued"] = False
+            self._store_cache(cache_key, payload)
+            return payload
+
         unavailable = [
             EastmoneyDirectETFClient._unavailable_quote(
                 item,
@@ -432,6 +574,72 @@ class AShareETFQuoteService:
         payload["freshness_state"] = "missing"
         payload["refresh_enqueued"] = False
         return payload
+
+    def _history_fallback_quotes(
+        self,
+        requested_items: list[dict[str, Any]],
+    ) -> list[AShareETFQuote]:
+        """Use verified daily history when the intraday quote CDN is unavailable."""
+
+        output: list[AShareETFQuote] = []
+        # Keep the fallback in the same cache namespace as the quote cache. This
+        # prevents an isolated/test service from accidentally consuming the
+        # process-wide runtime history while preserving the production layout.
+        history_root = self.cache_path.parent / "fund_history"
+        for item in requested_items:
+            code = str(item["code"])
+            path = history_root / f"{code}.json"
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                points = payload.get("points") or []
+                latest = points[-1]
+                previous = points[-2] if len(points) > 1 else {}
+                close = to_float_or_none(latest.get("close"))
+                previous_close = to_float_or_none(previous.get("close"))
+                if close is None:
+                    raise ValueError("daily history has no close")
+                change_amount = close - previous_close if previous_close is not None else None
+                change_pct = (
+                    change_amount / previous_close * 100
+                    if change_amount is not None and previous_close
+                    else None
+                )
+                trade_date = datetime.fromisoformat(str(latest["date"]))
+                quote_time = trade_date.replace(tzinfo=UTC)
+                output.append(
+                    AShareETFQuote(
+                        code=code,
+                        name=str(item.get("name") or payload.get("name") or code),
+                        source_name=payload.get("name"),
+                        group=str(item.get("group") or ""),
+                        group_label=str(item.get("group_label") or ""),
+                        market=market_for_code(code),
+                        secid=secid_for_code(code),
+                        last_price=close,
+                        change_pct=change_pct,
+                        change_amount=change_amount,
+                        volume=to_float_or_none(latest.get("volume")),
+                        amount=to_float_or_none(latest.get("amount")),
+                        high=to_float_or_none(latest.get("high")),
+                        low=to_float_or_none(latest.get("low")),
+                        open=to_float_or_none(latest.get("open")),
+                        prev_close=previous_close,
+                        turnover_rate=None,
+                        volume_ratio=None,
+                        quote_time=quote_time,
+                        source=str(payload.get("source") or "daily_history"),
+                        status="ok",
+                        error_message="实时行情不可用，展示已核验日线收盘价",
+                    )
+                )
+            except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError):
+                output.append(
+                    EastmoneyDirectETFClient._unavailable_quote(
+                        item,
+                        "实时行情与日线历史均不可用",
+                    )
+                )
+        return output
 
     def sources_health(self) -> dict[str, Any]:
         return {

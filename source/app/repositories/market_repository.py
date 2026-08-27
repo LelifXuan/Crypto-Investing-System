@@ -28,14 +28,16 @@ from app.db.models.market import (
     MarketEventTranslationMap,
     MarkPrice,
     PageSnapshotCache,
+    SignalOutcome,
     StrategyDecision,
     StrategyDecisionOutcome,
     StrategyIterationProposal,
     SupplyEventCalendarNode,
-    SignalOutcome,
     TranslationCache,
     TranslationJob,
     TranslationTextCache,
+    VolatilityFeatureObservation,
+    VolatilityResearchSnapshot,
 )
 
 UTC = timezone.utc
@@ -75,6 +77,49 @@ class MarketRepository:
 
     async def list_instruments(self) -> list[Instrument]:
         result = await self.session.execute(select(Instrument).order_by(Instrument.instrument_id))
+        return list(result.scalars().all())
+
+    async def append_volatility_research_snapshot(
+        self,
+        snapshot: VolatilityResearchSnapshot,
+        observations: list[VolatilityFeatureObservation],
+    ) -> VolatilityResearchSnapshot:
+        """Append one immutable shadow snapshot and its feature observations."""
+
+        existing = await self.session.get(VolatilityResearchSnapshot, snapshot.snapshot_id)
+        if existing is not None:
+            return existing
+        self.session.add(snapshot)
+        # Flush the parent first.  The models intentionally expose no mutable
+        # ORM relationship, so SQLAlchemy cannot infer object-level insertion
+        # order from ``add_all`` alone on every backend/insertmany path.
+        await self.session.flush()
+        self.session.add_all(observations)
+        await self.session.flush()
+        return snapshot
+
+    async def latest_volatility_research_snapshot(
+        self, instrument_id: str, timeframe: str
+    ) -> VolatilityResearchSnapshot | None:
+        result = await self.session.execute(
+            select(VolatilityResearchSnapshot)
+            .where(
+                VolatilityResearchSnapshot.instrument_id == instrument_id,
+                VolatilityResearchSnapshot.timeframe == timeframe,
+            )
+            .order_by(desc(VolatilityResearchSnapshot.calculated_at))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def list_volatility_feature_observations(
+        self, snapshot_id: str
+    ) -> list[VolatilityFeatureObservation]:
+        result = await self.session.execute(
+            select(VolatilityFeatureObservation)
+            .where(VolatilityFeatureObservation.snapshot_id == snapshot_id)
+            .order_by(VolatilityFeatureObservation.feature_key)
+        )
         return list(result.scalars().all())
 
     async def list_gateio_stream_instruments(self) -> list[Instrument]:
@@ -287,45 +332,50 @@ class MarketRepository:
         last_error: str | None = None,
         meta_json: dict | None = None,
     ) -> PageSnapshotCache:
-        existing = await self.get_page_snapshot_cache(cache_key)
         normalized_state = cache_state or status
-        if existing is None:
-            model = PageSnapshotCache(
-                cache_key=cache_key,
-                page_type=page_type,
-                instrument_id=instrument_id,
-                timeframe=timeframe,
-                payload_json=jsonable_encoder(payload_json),
-                status=status,
-                cache_state=normalized_state,
-                snapshot_at=snapshot_at,
-                data_ts=data_ts,
-                expires_at=expires_at,
-                source_updated_at=source_updated_at,
-                source_version=source_version,
-                cost_ms=cost_ms,
-                last_error=last_error,
-                meta_json=jsonable_encoder(meta_json or {}),
+        values = {
+            "cache_key": cache_key,
+            "page_type": page_type,
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "payload_json": jsonable_encoder(payload_json),
+            "status": status,
+            "cache_state": normalized_state,
+            "snapshot_at": snapshot_at,
+            "data_ts": data_ts,
+            "expires_at": expires_at,
+            "source_updated_at": source_updated_at,
+            "source_version": source_version,
+            "cost_ms": cost_ms,
+            "last_error": last_error,
+            "meta_json": jsonable_encoder(meta_json or {}),
+        }
+        dialect_name = self.session.bind.dialect.name if self.session.bind else "sqlite"
+        insert_stmt = (
+            postgresql_insert(PageSnapshotCache)
+            if dialect_name == "postgresql"
+            else sqlite_insert(PageSnapshotCache)
+        ).values(**values)
+        update_cols = {
+            column: getattr(insert_stmt.excluded, column)
+            for column in values
+            if column != "cache_key"
+        }
+        # A SELECT followed by INSERT is unsafe during cold-start fan-out:
+        # multiple sessions can observe a miss before the writer gate commits.
+        # Let the database resolve that race atomically on the stable cache key.
+        update_cols["updated_at"] = func.now()
+        await self.session.execute(
+            insert_stmt.on_conflict_do_update(
+                index_elements=["cache_key"],
+                set_=update_cols,
             )
-            self.session.add(model)
-            await self.session.flush()
-            return model
-        existing.page_type = page_type
-        existing.instrument_id = instrument_id
-        existing.timeframe = timeframe
-        existing.payload_json = jsonable_encoder(payload_json)
-        existing.status = status
-        existing.cache_state = normalized_state
-        existing.snapshot_at = snapshot_at
-        existing.data_ts = data_ts
-        existing.expires_at = expires_at
-        existing.source_updated_at = source_updated_at
-        existing.source_version = source_version
-        existing.cost_ms = cost_ms
-        existing.last_error = last_error
-        existing.meta_json = jsonable_encoder(meta_json or {})
+        )
         await self.session.flush()
-        return existing
+        model = await self.get_page_snapshot_cache(cache_key)
+        if model is None:  # pragma: no cover - defensive database contract
+            raise RuntimeError(f"page snapshot upsert missing after flush: {cache_key}")
+        return model
 
     async def delete_expired_page_snapshot_cache(
         self, now: datetime | None = None, limit: int = 500
@@ -541,6 +591,10 @@ class MarketRepository:
         matched = await self._find_matching_market_event(event)
         if matched is not None and matched.event_id != event.event_id:
             event.event_id = matched.event_id
+        # 2026-08-11: 冻结事件不会被管道覆盖
+        existing = await self.session.get(MarketEvent, event.event_id)
+        if existing is not None and existing.is_frozen:
+            return existing
         dialect_name = self.session.get_bind().dialect.name
         if dialect_name in {"sqlite", "postgresql"}:
             row = {
@@ -573,7 +627,6 @@ class MarketRepository:
             await self.session.execute(upsert_stmt)
             await self.session.flush()
             return await self.session.get(MarketEvent, event.event_id)
-        existing = await self.session.get(MarketEvent, event.event_id)
         if existing is not None:
             existing.category = event.category
             existing.title = event.title
@@ -1328,9 +1381,38 @@ class MarketRepository:
         await self.session.flush()
 
     async def add_strategy_decision(self, decision: StrategyDecision) -> StrategyDecision:
-        self.session.add(decision)
+        values = {
+            column.name: getattr(decision, column.name)
+            for column in StrategyDecision.__table__.columns
+            if column.name not in {"id", "created_at"}
+        }
+        for json_column in (
+            "evidence_json",
+            "conflict_json",
+            "action_plan_json",
+            "payload_json",
+        ):
+            values[json_column] = jsonable_encoder(values[json_column])
+        dialect_name = self.session.bind.dialect.name if self.session.bind else "sqlite"
+        insert_stmt = (
+            postgresql_insert(StrategyDecision)
+            if dialect_name == "postgresql"
+            else sqlite_insert(StrategyDecision)
+        ).values(**values)
+        # Decision facts are append-only and their deterministic decision_id is
+        # the idempotency key. Concurrent snapshot builders may publish the same
+        # fact, so duplicates must be ignored atomically rather than poisoning
+        # the session with a uniqueness failure.
+        await self.session.execute(
+            insert_stmt.on_conflict_do_nothing(index_elements=["decision_id"])
+        )
         await self.session.flush()
-        return decision
+        persisted = await self.get_strategy_decision(decision.decision_id)
+        if persisted is None:  # pragma: no cover - defensive database contract
+            raise RuntimeError(
+                f"strategy decision missing after idempotent insert: {decision.decision_id}"
+            )
+        return persisted
 
     async def get_strategy_decision(self, decision_id: str) -> StrategyDecision | None:
         result = await self.session.execute(
@@ -1502,3 +1584,87 @@ class MarketRepository:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def upsert_supply_calendar_node(
+        self, node: SupplyEventCalendarNode
+    ) -> SupplyEventCalendarNode:
+        """Idempotent upsert keyed by ``node_id`` (SQLite + PostgreSQL).
+
+        Used by the bootstrap seeder and the (future) supply-event pipeline
+        so the same node can be re-ingested without creating duplicates.
+        """
+        row = {
+            "node_id": node.node_id,
+            "event_id": node.event_id,
+            "instrument_id": node.instrument_id,
+            "asset": node.asset,
+            "node_type": node.node_type,
+            "event_at": node.event_at,
+            "source": node.source,
+            "source_event_id": node.source_event_id,
+            "snapshot_id": node.snapshot_id,
+            "payload_json": node.payload_json,
+        }
+        dialect_name = self.session.get_bind().dialect.name
+        if dialect_name == "sqlite":
+            insert_stmt = sqlite_insert(SupplyEventCalendarNode).values(row)
+        elif dialect_name == "postgresql":
+            insert_stmt = postgresql_insert(SupplyEventCalendarNode).values(row)
+        else:
+            # Fallback: manual get-then-merge for unknown dialects.
+            existing = await self.session.get(SupplyEventCalendarNode, node.node_id)
+            if existing is not None:
+                for k, v in row.items():
+                    setattr(existing, k, v)
+                await self.session.flush()
+                return existing
+            self.session.add(node)
+            await self.session.flush()
+            return node
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["node_id"],
+            set_={
+                "event_id": insert_stmt.excluded.event_id,
+                "instrument_id": insert_stmt.excluded.instrument_id,
+                "asset": insert_stmt.excluded.asset,
+                "node_type": insert_stmt.excluded.node_type,
+                "event_at": insert_stmt.excluded.event_at,
+                "source": insert_stmt.excluded.source,
+                "source_event_id": insert_stmt.excluded.source_event_id,
+                "snapshot_id": insert_stmt.excluded.snapshot_id,
+                "payload_json": insert_stmt.excluded.payload_json,
+            },
+        )
+        await self.session.execute(upsert_stmt)
+        await self.session.flush()
+        existing = await self.session.get(SupplyEventCalendarNode, node.node_id)
+        return existing if existing is not None else node
+
+    # 2026-08-11: 冻结/解冻市场事件（防止管道覆盖手动修正）
+    async def freeze_market_event(self, event_id: str) -> bool:
+        """冻结事件：is_frozen=True，管道抓取不会覆盖。返回是否成功。"""
+        stmt = (
+            select(MarketEvent)
+            .where(MarketEvent.event_id == event_id)
+        )
+        result = await self.session.execute(stmt)
+        event = result.scalar_one_or_none()
+        if event is None:
+            return False
+        event.is_frozen = True
+        await self.session.flush()
+        return True
+
+    async def unfreeze_market_event(self, event_id: str) -> bool:
+        """解冻事件：is_frozen=False，恢复管道正常更新。返回是否成功。"""
+        stmt = (
+            select(MarketEvent)
+            .where(MarketEvent.event_id == event_id)
+        )
+        result = await self.session.execute(stmt)
+        event = result.scalar_one_or_none()
+        if event is None:
+            return False
+        event.is_frozen = False
+        await self.session.flush()
+        return True

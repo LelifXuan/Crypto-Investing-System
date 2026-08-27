@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from time import monotonic
 from typing import Any
 
 import httpx
@@ -15,6 +16,8 @@ from app.services.network.proxy_detector import (
 
 _LOCK = threading.Lock()
 _PROXY_STATE: ProxyDetectionResult | None = None
+_PROXY_STATE_CHECKED_AT = 0.0
+_PROXY_STATE_TTL_SECONDS = 60.0
 
 
 def init_network() -> ProxyDetectionResult:
@@ -26,10 +29,13 @@ def init_network() -> ProxyDetectionResult:
 
 
 def get_proxy_state(*, force: bool = False) -> ProxyDetectionResult:
-    global _PROXY_STATE
+    global _PROXY_STATE, _PROXY_STATE_CHECKED_AT
     with _LOCK:
-        if force or _PROXY_STATE is None:
+        now = monotonic()
+        expired = now - _PROXY_STATE_CHECKED_AT >= _PROXY_STATE_TTL_SECONDS
+        if force or _PROXY_STATE is None or expired:
             _PROXY_STATE = detect_proxy()
+            _PROXY_STATE_CHECKED_AT = now
             write_proxy_state(_PROXY_STATE)
         return _PROXY_STATE
 

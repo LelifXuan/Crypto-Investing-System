@@ -22,13 +22,13 @@
     "--dur-drawer": 240
   },
   "reduced_motion_block_exists": true,
-  "infinite_animation_count": 0,
-  "hardcoded_duration_count": 6,
+  "infinite_animation_count": 8,
+  "hardcoded_duration_count": 4,
   "findings": [
     {
       "check": "hardcoded-duration",
       "severity": "WARN",
-      "detail": "6 transitions use hardcoded timing"
+      "detail": "4 transitions use hardcoded timing"
     }
   ],
   "fail_count": 0,

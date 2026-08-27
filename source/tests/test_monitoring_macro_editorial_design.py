@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
+STYLES = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
 MONITORING = (ROOT / "app" / "static" / "pages" / "monitoring.js").read_text(encoding="utf-8")
 
 
@@ -51,3 +51,31 @@ def test_macro_indicator_cards_have_a_small_consistent_gap() -> None:
   border: 1px solid var(--border);
   background: var(--surface-elevated);
 }""" in EDITORIAL
+
+
+def test_macro_groups_honor_the_default_collapsed_state() -> None:
+    assert (
+        "if (!macroGroupCollapsed.has(label)) macroGroupCollapsed.set(label, true);"
+        in MONITORING
+    )
+    assert '${isCollapsed ? "hidden" : ""}' in MONITORING
+    assert ".macro-group-cards[hidden]" in STYLES
+    assert "display: none !important;" in STYLES
+
+
+def test_event_window_stays_in_calculation_but_is_hidden_from_macro_detail() -> None:
+    assert (
+        'const HIDDEN_MACRO_DISPLAY_LAYERS = new Set(["events", "event_window", "事件窗口"]);'
+        in MONITORING
+    )
+    assert (
+        "const displayed = all.filter((item) => !isHiddenMacroDisplayItem(item));"
+        in MONITORING
+    )
+    assert '"cross_asset", "events"' not in MONITORING
+    # The terminal summary still consumes the computed event-risk module.
+    assert (
+        'moduleVotes = ["macro", "technical_trend", "momentum_volume", '
+        '"volatility", "structure", "event_risk"]'
+        in MONITORING
+    )

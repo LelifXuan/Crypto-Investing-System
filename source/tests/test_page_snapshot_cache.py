@@ -5,10 +5,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.db import db_manager
 from app.db.models.instrument import Instrument
+from app.db.models.market import PageSnapshotCache, StrategyDecision
 from app.repositories.market_repository import MarketRepository
 from app.services.cache_registry import CACHE_SOURCE_VERSION, cache_status
 
@@ -74,6 +76,71 @@ async def test_page_snapshot_cache_tracks_source_version_and_cache_state(cache_d
     assert created.cache_state == "fresh"
     assert created.cost_ms == 42
     assert cache_status(created) == "fresh"
+
+
+@pytest.mark.asyncio
+async def test_page_snapshot_cache_upsert_updates_unique_key_atomically(cache_db) -> None:
+    now = datetime.now(UTC)
+    async with db_manager.session() as session:
+        repository = MarketRepository(session)
+        for sequence in (1, 2):
+            await repository.upsert_page_snapshot_cache(
+                cache_key="macro_overview:v3",
+                page_type="macro",
+                payload_json={"sequence": sequence},
+                status="ready",
+                cache_state="fresh",
+                snapshot_at=now,
+            )
+
+        count = await session.scalar(
+            select(func.count(PageSnapshotCache.cache_id)).where(
+                PageSnapshotCache.cache_key == "macro_overview:v3"
+            )
+        )
+        cached = await repository.get_page_snapshot_cache("macro_overview:v3")
+
+    assert count == 1
+    assert cached is not None
+    assert cached.payload_json == {"sequence": 2}
+
+
+@pytest.mark.asyncio
+async def test_strategy_decision_insert_is_append_only_and_idempotent(cache_db) -> None:
+    now = datetime.now(UTC)
+
+    def decision(payload_sequence: int) -> StrategyDecision:
+        return StrategyDecision(
+            decision_id="strategy:active:stable-id",
+            instrument_id="btc-usdt-perp",
+            timeframe="4h",
+            decision_ts=now,
+            current_price=Decimal("65000.25"),
+            action="OBSERVE",
+            direction="NONE",
+            confidence_score=Decimal("50.0000"),
+            model_version="test-v1",
+            config_version="test-v1",
+            input_hash="stable-hash",
+            evidence_json=[],
+            conflict_json=[],
+            action_plan_json={},
+            payload_json={"sequence": payload_sequence},
+        )
+
+    async with db_manager.session() as session:
+        repository = MarketRepository(session)
+        first = await repository.add_strategy_decision(decision(1))
+        duplicate = await repository.add_strategy_decision(decision(2))
+        count = await session.scalar(
+            select(func.count(StrategyDecision.id)).where(
+                StrategyDecision.decision_id == "strategy:active:stable-id"
+            )
+        )
+
+    assert count == 1
+    assert first.id == duplicate.id
+    assert duplicate.payload_json == {"sequence": 1}
 
 
 @pytest.mark.asyncio

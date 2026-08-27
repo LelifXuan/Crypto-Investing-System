@@ -384,9 +384,9 @@ refresh_policies:
     priority: 6
   - indicator_key: us_unemployment_rate
     scope_type: global
-    mode: calendar_release
-    calendar_source: bls
-    release_key: us_unemployment
+    mode: cron
+    cron_expr: 30 13 * * 1-5
+    timezone: UTC
     fallback_interval_seconds: 21600
     priority: 6
   - indicator_key: fomc_event_window

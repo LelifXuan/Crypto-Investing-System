@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "app" / "static" / "pages" / "market_events.js").read_text(encoding="utf-8")
 EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
@@ -15,7 +14,7 @@ def test_supply_calendar_is_grouped_as_a_year_timeline() -> None:
     assert 'class="supply-calendar-track"' in PAGE
     assert 'class="supply-calendar-summary"' in PAGE
     assert "质押解锁日历" in PAGE
-    assert 'class="supply-calendar-toggle"' in PAGE
+    assert 'className: "supply-calendar-toggle"' in PAGE
 
 
 def test_supply_calendar_displays_quantity_and_current_value() -> None:
@@ -30,8 +29,9 @@ def test_calendar_controls_use_compact_editorial_treatment() -> None:
     assert 'class="dropdown supply-calendar-filter"' in PAGE
     assert 'density: "compact"' in PAGE
     assert 'body[data-page="market-events"] .supply-calendar-filter {' in EDITORIAL
-    assert 'body[data-page="market-events"] .supply-calendar-toggle {' in EDITORIAL
-    assert "color: var(--white);" in EDITORIAL
+    assert "renderDisclosureToggle" in PAGE
+    assert 'className: "supply-calendar-toggle"' in PAGE
+    assert "--disclosure-fg: var(--white);" in EDITORIAL
 
 
 def test_event_stream_refresh_is_primary_and_translation_is_secondary() -> None:
@@ -48,6 +48,11 @@ def test_event_stream_heading_metrics_and_actions_share_one_context_bar() -> Non
     assert 'class="events-inline-metric"' in PAGE
     assert 'body[data-page="market-events"] .events-context-bar {' in EDITORIAL
     assert 'grid-template-columns: repeat(4, minmax(104px, 1fr));' in EDITORIAL
+
+
+def test_collapsing_calendar_keeps_feed_below_sticky_topbar() -> None:
+    assert 'scrollIntoView({ block: "start", behavior: "smooth" })' in PAGE
+    assert "scroll-margin-top: calc(var(--topbar-height) + var(--space-card));" in EDITORIAL
 
 
 def test_snapshot_identifier_is_replaced_by_readable_evidence_copy() -> None:

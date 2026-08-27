@@ -60,8 +60,9 @@ def test_formatDateTime_renders_without_beijing_time_suffix() -> None:
 
     result = subprocess.run(
         ["node", "--input-type=module", "-e",
-         "import { formatDateTime } from 'file:///E:/Personal/Research/Crypto "
-         "Investing System/app/static/core/dom.js';"
+         "import { formatDateTime } from 'file://"
+         + (REPO / "app/static/core/dom.js").as_posix()
+         + "';"
          # jsdom-free: feed a valid ISO string and a Date.
          "const s = formatDateTime('2026-07-23T14:55:00+08:00'); "
          "console.log(JSON.stringify({ s }));"],
@@ -86,8 +87,9 @@ def test_strategy_formatIsoShort_renders_without_beijing_time_suffix() -> None:
 
     result = subprocess.run(
         ["node", "--input-type=module", "-e",
-         "import { formatIsoShort } from 'file:///E:/Personal/Research/Crypto "
-         "Investing System/app/static/pages/strategy/formatHelpers.js';"
+         "import { formatIsoShort } from 'file://"
+         + (REPO / "app/static/pages/strategy/formatHelpers.js").as_posix()
+         + "';"
          "const s = formatIsoShort('2026-07-23T14:55:00+08:00'); "
          "console.log(JSON.stringify({ s }));"],
         check=True, capture_output=True, text=True, encoding="utf-8",

@@ -1,10 +1,23 @@
-import { setRoot, bindTooltipEscape, renderNavSkeleton, updatePageContext } from "./core/dom.js";
+import { setRoot, bindTooltipEscape, renderNavSkeleton, revealStagger, updatePageContext } from "./core/dom.js";
 
 const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
 const moduleLoadPromises = new Map();
 const loadPageModule = (path) => {
   if (!moduleLoadPromises.has(path)) {
-    moduleLoadPromises.set(path, import(`${path}${assetVersion}`));
+    const versionedPath = assetVersion
+      ? `${path}${path.includes("?") ? "&" : "?"}${assetVersion.slice(1)}`
+      : path;
+    const p = import(versionedPath);
+    moduleLoadPromises.set(path, p);
+    // 2026-08-18: if the import fails (truncated network response →
+    // "Unexpected end of input"), evict the rejected promise so the
+    // next navigation retries instead of permanently serving the cached
+    // failure until hard refresh.
+    p.catch(() => {
+      if (moduleLoadPromises.get(path) === p) {
+        moduleLoadPromises.delete(path);
+      }
+    });
   }
   return moduleLoadPromises.get(path);
 };
@@ -20,7 +33,7 @@ const pageModules = {
   "ashare-etf": () => loadPageModule("./pages/ashare_etf.js"),
   "gold-allocation": () => loadPageModule("./pages/gold_v5.js"),
   "btc-derivatives": () => loadPageModule("./pages/btc_derivatives.js"),
-  "ai-strategy": () => loadPageModule("./pages/strategy.js?v=drawer-dismiss-v2"),
+  "ai-strategy": () => loadPageModule("./pages/strategy.js?v=opportunity-matrix-v2"),
 };
 
 const PAGE_META = {
@@ -39,6 +52,8 @@ const PAGE_META = {
 let activeController = null;
 let activePageId = null;
 let spaNavigationInFlight = false;
+let routeEnterCleanupTimer = null;
+let pageIdentityCleanupTimer = null;
 // When a nav click lands while the previous page's boot() is still settling
 // (mount() may await a data fetch), the click used to be silently dropped —
 // the link felt dead and verify_pages' SPA-switch test timed out waiting for
@@ -150,6 +165,22 @@ function prefetchPage(pageId) {
   });
 }
 
+function setActiveNavigation(pageId) {
+  document.querySelectorAll("[data-page-link]").forEach((link) => {
+    const isActive = link.getAttribute("data-page-link") === pageId;
+    link.classList.toggle("is-active", isActive);
+    link.classList.remove("is-pending");
+    if (isActive) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+}
+
+function setPendingNavigation(pageId) {
+  document.querySelectorAll("[data-page-link]").forEach((link) => {
+    link.classList.toggle("is-pending", link.getAttribute("data-page-link") === pageId);
+  });
+}
+
 function setDocumentTitleForPage(pageId) {
   const meta = PAGE_META[pageId] || { title: "Market Research Terminal", group: "研究", layout: "overview" };
   const title = meta.title;
@@ -160,13 +191,24 @@ function setDocumentTitleForPage(pageId) {
   document.title = `${title} | Market Research Terminal`;
   document.body.dataset.pageTitle = title;
   document.body.dataset.pageLayout = meta.layout;
-  document.querySelectorAll("[data-page-link]").forEach((link) => {
-    const isActive = link.getAttribute("data-page-link") === pageId;
-    link.classList.toggle("is-active", isActive);
-    if (isActive) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
-  });
+  setActiveNavigation(pageId);
   updatePageContext();
+}
+
+function transitionInPageIdentity(animate) {
+  const identity = document.querySelector(".app-page-identity");
+  if (pageIdentityCleanupTimer) {
+    clearTimeout(pageIdentityCleanupTimer);
+    pageIdentityCleanupTimer = null;
+  }
+  identity?.classList.remove("is-route-entering");
+  if (!animate || !identity) return;
+  void identity.offsetWidth;
+  identity.classList.add("is-route-entering");
+  pageIdentityCleanupTimer = setTimeout(() => {
+    identity.classList.remove("is-route-entering");
+    pageIdentityCleanupTimer = null;
+  }, 220);
 }
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -260,17 +302,79 @@ function awaitAnimationEnd(el, fallbackMs) {
   return Promise.allSettled(animations.map((a) => a.finished)).then(() => {});
 }
 
+function clearRouteAnimationClasses(pageRoot) {
+  if (routeEnterCleanupTimer) {
+    clearTimeout(routeEnterCleanupTimer);
+    routeEnterCleanupTimer = null;
+  }
+  pageRoot?.classList.remove("page-transition", "page-transition-out", "page-transition-skeleton");
+}
+
+async function transitionOutCurrentPage(pageRoot) {
+  if (!pageRoot || pageRoot.childElementCount === 0) return;
+  clearRouteAnimationClasses(pageRoot);
+  pageRoot.classList.add("page-transition-out");
+  await Promise.race([
+    awaitAnimationEnd(pageRoot, 80),
+    new Promise((resolve) => setTimeout(resolve, 120)),
+  ]).catch(() => {});
+}
+
+function mountRouteSkeleton(pageRoot, pageMeta) {
+  if (!pageRoot) return;
+  clearRouteAnimationClasses(pageRoot);
+  pageRoot.innerHTML = renderNavSkeleton(pageMeta);
+  pageRoot.setAttribute("aria-busy", "true");
+  pageRoot.classList.add("page-transition-skeleton");
+}
+
+function transitionInNewPage(pageRoot, animate) {
+  if (!pageRoot) return;
+  clearRouteAnimationClasses(pageRoot);
+  pageRoot.setAttribute("aria-busy", "false");
+  if (!animate || pageRoot.childElementCount === 0) return;
+  // The route skeleton and real page are separate visual states. Forcing a
+  // layout boundary here makes the freshly mounted page start at the first
+  // enter frame instead of inheriting the skeleton's final opacity.
+  void pageRoot.offsetWidth;
+  pageRoot.classList.add("page-transition");
+  revealStagger(pageRoot);
+  routeEnterCleanupTimer = setTimeout(() => {
+    pageRoot.classList.remove("page-transition");
+    routeEnterCleanupTimer = null;
+  }, 260);
+}
+
 async function boot() {
   const pageId = document.body.dataset.page;
   const loadModule = pageModules[pageId];
   if (!loadModule) return;
   const pageRoot = document.getElementById("page-root");
   const pageMeta = PAGE_META[pageId] || { title: document.body.dataset.pageTitle || "页面", layout: "overview" };
-  setDocumentTitleForPage(pageId);
+  const isRouteTransition = activePageId !== null && activePageId !== pageId;
+  const previousController = activeController;
   closeShellPanels(false);
   if (pageRoot) pageRoot.dataset.layout = pageMeta.layout;
   // §16.D — install Escape->blur on tooltip anchors once per SPA boot.
   bindTooltipEscape(document);
+
+  // Route motion must start before module/asset loading. The old flow replaced
+  // the page with a skeleton in navigateToPage(), so the exit animation was
+  // accidentally applied to that skeleton instead of the visible old page.
+  if (isRouteTransition) {
+    await transitionOutCurrentPage(pageRoot);
+    if (previousController) await previousController.unmount();
+    activeController = null;
+    mountRouteSkeleton(pageRoot, pageMeta);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  } else if (pageRoot && pageRoot.childElementCount === 0) {
+    // Initial page load gets a stable shell but deliberately skips route
+    // motion; repeated entrance animation on every reload adds no information.
+    mountRouteSkeleton(pageRoot, pageMeta);
+  }
+  setDocumentTitleForPage(pageId);
+  transitionInPageIdentity(isRouteTransition);
+
   let module;
   try {
     await ensureAssetsForPage(pageId);
@@ -282,30 +386,8 @@ async function boot() {
       `当前页面所需的静态资源加载失败，请刷新或稍后重试。${error?.message ? `详情：${error.message}` : ""}`,
       "asset-or-module-load",
     );
+    transitionInNewPage(pageRoot, isRouteTransition);
     return;
-  }
-  // --- Page exit animation ---
-  // Snapshot the active controller BEFORE nulling it so the unmount can still
-  // reference the old page's DOM for the exit transition.
-  const previousController = activeController;
-  if (previousController || (pageRoot && pageRoot.childElementCount > 0)) {
-    if (pageRoot) pageRoot.classList.add("page-transition-out");
-    // Exit is a system response — snap (80ms). Use a cap so a broken
-    // animation never blocks navigation indefinitely.
-    await Promise.race([
-      awaitAnimationEnd(pageRoot, 80),
-      new Promise((r) => setTimeout(r, 120)),
-    ]).catch(() => {});
-  }
-  if (previousController) {
-    await previousController.unmount();
-  }
-  activeController = null;
-  // Clear the root and remove the exit class so the enter animation can play
-  // from a clean state.
-  if (pageRoot) {
-    pageRoot.innerHTML = "";
-    pageRoot.classList.remove("page-transition-out");
   }
   const renderPage =
     module.renderPage ||
@@ -335,17 +417,7 @@ async function boot() {
     if (renderResult && typeof renderResult.mount === "function") {
       await activeController.mount();
     }
-    // --- Page enter animation ---
-    // Trigger after mount so the browser paints the new DOM first, then
-    // plays the fade-in (avoids animating an empty container).
-    if (pageRoot && pageRoot.childElementCount > 0) {
-      // Force reflow so the animation starts from the 'from' keyframe.
-      void pageRoot.offsetWidth;
-      pageRoot.classList.add("page-transition");
-      // Clean up the class after the animation completes (~220ms) so it
-      // doesn't re-trigger on subsequent DOM mutations.
-      setTimeout(() => pageRoot.classList.remove("page-transition"), 300);
-    }
+    transitionInNewPage(pageRoot, isRouteTransition);
     if (pageId !== "ai-strategy") {
       // AI strategy has the largest local renderer graph. Warm it once after
       // the first visible page renders so opening the workbench remains within
@@ -356,6 +428,7 @@ async function boot() {
     console.error("page:render:error", pageId, error);
     activeController = null;
     renderFatalPageError("页面渲染失败", "页面初始化过程中出现运行时错误，请刷新或稍后重试。", "render");
+    transitionInNewPage(pageRoot, isRouteTransition);
   }
 }
 
@@ -377,13 +450,10 @@ function navigateToPage(pageId, href) {
   spaNavigationInFlight = true;
   window.history.pushState({ pageId, href }, "", href);
   document.body.dataset.page = pageId;
-  setDocumentTitleForPage(pageId);
-  const pageRoot = document.getElementById("page-root");
-  if (pageRoot) pageRoot.innerHTML = renderNavSkeleton(PAGE_META[pageId]);
-  // Scroll to top on page switch — the previous page may have been scrolled
-  // far down. Use 'instant' to avoid animating the scroll during the exit
-  // transition; the enter animation handles the visual continuity.
-  window.scrollTo({ top: 0, behavior: "instant" });
+  // Selection responds on the click frame while the topbar/content keep their
+  // own motion cadence. The old page remains mounted until boot() completes
+  // its short exit transition.
+  setActiveNavigation(pageId);
   scheduleBoot();
 }
 
@@ -424,6 +494,7 @@ function installSpaRouter() {
       // fetch). Queue instead of dropping — a dropped click would leave the
       // user stuck on the current page with no feedback.
       pendingSpaNavigation = { pageId, href };
+      setPendingNavigation(pageId);
       return;
     }
     navigateToPage(pageId, href);
@@ -461,4 +532,4 @@ window.addEventListener("beforeunload", () => {
 
 installAppShell();
 installSpaRouter();
-void boot();
+scheduleBoot();

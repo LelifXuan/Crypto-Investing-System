@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import ExactNumeric
 
 
 class MarkPrice(Base):
@@ -145,6 +146,84 @@ class IndicatorValue(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class VolatilityResearchSnapshot(Base):
+    """Versioned, append-only volatility research result.
+
+    Research snapshots are deliberately isolated from canonical strategy
+    decisions.  A snapshot may be promoted only by changing
+    ``integration_status`` in a *new* snapshot; historical rows are never
+    overwritten.
+    """
+
+    __tablename__ = "volatility_research_snapshots"
+
+    snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    instrument_id: Mapped[str] = mapped_column(
+        ForeignKey("instruments.instrument_id"), nullable=False, index=True
+    )
+    timeframe: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    event_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    formula_version: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    integration_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="shadow", index=True
+    )
+    price_volatility_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    options_expectations_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    tail_pricing_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    leverage_crowding_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    liquidation_pressure_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    basis_funding_structure_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    quality_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    timestamp_contract_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class VolatilityFeatureObservation(Base):
+    """One immutable Decimal-valued feature belonging to a research snapshot."""
+
+    __tablename__ = "volatility_feature_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id",
+            "feature_key",
+            "parameter_set_id",
+            name="uq_volatility_feature_snapshot_key_params",
+        ),
+    )
+
+    observation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("volatility_research_snapshots.snapshot_id"), nullable=False, index=True
+    )
+    instrument_id: Mapped[str] = mapped_column(
+        ForeignKey("instruments.instrument_id"), nullable=False, index=True
+    )
+    timeframe: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    feature_key: Mapped[str] = mapped_column(String(96), nullable=False, index=True)
+    parameter_set_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    value_num: Mapped[Decimal | None] = mapped_column(ExactNumeric(38, 18), nullable=True)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    formula_version: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    quality_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    missing_reason: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    parameters_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class IndicatorRefreshPolicy(Base):
     __tablename__ = "indicator_refresh_policies"
     __table_args__ = (
@@ -188,6 +267,8 @@ class MarketEvent(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # 2026-08-11: is_frozen — 冻结后管道抓取不会覆盖此事件（用户手动修正）
+    is_frozen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

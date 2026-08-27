@@ -30,6 +30,7 @@ from app.services.ashare_etf_history import EtfHistoryService
 from app.services.ashare_etf_quotes import (
     AShareETFQuoteService,
     EastmoneyDirectETFClient,
+    SinaETFQuoteClient,
     market_for_code,
 )
 from app.services.ashare_etf_rebalance import (
@@ -61,7 +62,8 @@ def _build_service() -> AShareETFQuoteService:
             EastmoneyDirectETFClient(
                 base_url=settings.ashare_etf_eastmoney_base_url,
                 timeout_seconds=settings.ashare_etf_timeout_seconds,
-            )
+            ),
+            SinaETFQuoteClient(timeout_seconds=settings.ashare_etf_timeout_seconds),
         ],
         ttl_seconds=settings.ashare_etf_quote_ttl_seconds,
         stale_cache_seconds=settings.ashare_etf_stale_cache_seconds,

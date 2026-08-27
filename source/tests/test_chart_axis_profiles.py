@@ -241,8 +241,9 @@ def test_analysis_assigns_an_axis_profile_to_every_chart() -> None:
     batch = source[
         source.index("function renderChartBatch") : source.index("async function loadAll")
     ]
-    assert "requestAnimationFrame" not in batch
-    assert "window.setTimeout(step, 0)" in batch
+    # 2026-08-18: 改为同步渲染，不再用 setTimeout 分批。
+    assert "window.setTimeout(step, 0)" not in batch
+    assert "renderChart(key, canvas, config)" in batch
 
 
 def test_structure_chart_never_falls_back_to_zero_price() -> None:

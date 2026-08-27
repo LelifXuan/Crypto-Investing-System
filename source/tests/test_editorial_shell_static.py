@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = (REPO_ROOT / "app" / "templates" / "page.html").read_text(encoding="utf-8")
 MAIN = (REPO_ROOT / "app" / "static" / "main.js").read_text(encoding="utf-8")
@@ -40,7 +39,7 @@ def test_page_meta_is_the_shared_route_and_layout_registry() -> None:
         "knowledge-base",
     ):
         assert f'"{page_id}":' in MAIN
-    assert "renderNavSkeleton(PAGE_META[pageId])" in MAIN
+    assert "mountRouteSkeleton(pageRoot, pageMeta)" in MAIN
     assert "mountInspector" not in MAIN
 
 

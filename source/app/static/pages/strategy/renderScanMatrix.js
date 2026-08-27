@@ -43,16 +43,14 @@ export function renderScanMatrix(matrix, instruments, onSelect) {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p class="scan-matrix-hint">点击任意单元格查看完整策略推演</p>
+    <p class="scan-matrix-hint">矩阵仅标记通过严格门禁的机会；点击其他单元格可查看候选推演</p>
   `;
 }
 
 function renderCell(item, instrumentId, timeframe) {
-  // 2026-07-24 v3: distinguish three cell states.
-  // 1. cache_state in {missing, warming, error} → "数据待补" (data still pending)
-  // 2. cache_state == "fresh" + direction in {WAIT, NO_TRADE} → "无明确方向"
-  //    (data ready, market genuinely in transition)
-  // 3. cache_state == "fresh" + direction in {LONG, SHORT} → arrow + confidence
+  // The matrix is a promotion surface, not a confidence report.  Directional
+  // candidates that did not pass the backend's strict gate remain available
+  // for drill-down, but are not painted as opportunities here.
   if (
     item &&
     typeof item.cache_state === "string" &&
@@ -64,19 +62,26 @@ function renderCell(item, instrumentId, timeframe) {
       </button>
     </td>`;
   }
-  if (!item || item.direction === "WAIT" || item.direction === "NO_TRADE") {
-    return `<td class="scan-cell scan-cell-wait">
+  if (!item || item.qualified !== true) {
+    return `<td class="scan-cell scan-cell-wait scan-cell-unqualified">
       <button class="scan-cell-btn" data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}">
-        <small>无明确方向</small>
+        <strong aria-hidden="true">—</strong>
+        <small>等待确认</small>
       </button>
     </td>`;
   }
   const tone = item.direction === "LONG" ? "bullish" : "bearish";
-  const arrow = item.direction === "LONG" ? "↑" : "↓";
+  const iconPath = item.direction === "LONG"
+    ? "M6 15V5m0 0-4 4m4-4 4 4"
+    : "M6 3v10m0 0-4-4m4 4 4-4";
   return `<td class="scan-cell" data-tone="${tone}">
     <button class="scan-cell-btn" data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}">
-      <strong>${escapeHtml(item.direction_label)} ${arrow}</strong>
-      <small>${escapeHtml(String(Math.round(item.confidence)))}%</small>
+      <strong>
+        ${escapeHtml(item.direction_label)}
+        <svg class="scan-cell-direction-icon" viewBox="0 0 12 18" aria-hidden="true">
+          <path d="${iconPath}" />
+        </svg>
+      </strong>
     </button>
   </td>`;
 }

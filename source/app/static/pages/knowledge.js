@@ -6,6 +6,7 @@ import {
 } from "../core/knowledge.js";
 import { escapeHtml, knowledgeTooltip, setRoot } from "../core/dom.js";
 import { mountDropdown } from "../ui/dropdown.js";
+import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 
 const HIDDEN_KNOWLEDGE_TAGS = new Set([
   "technical",
@@ -35,6 +36,14 @@ const state = {
   query: "",
   section: "all",
   level: "all",
+  // 2026-08-18: 三层折叠状态。Set 持有"用户已展开"的 id — 默认首屏
+  // Set 为空,所有章节与使用指南默认折叠,只显示标题 / 条目数 / chevron。
+  // 点击章节 / 指南 → 加入 Set → 立即展开;再点击 → 移除 Set → 折叠。
+  // 用"白名单展开"语义而不是"黑名单折叠",因为 80+ 术语卡片的首屏
+  // 永远不参与折叠管理,只有 8 个章节 + 3 个指南需要维护状态 — Set
+  // 体积天然小,不需要担心内存。
+  collapsedSections: new Set(),
+  collapsedGuides: new Set(),
 };
 
 // Catalog 是静态 import 的：摊平一次，后续筛选与术语索引直接复用，
@@ -93,21 +102,36 @@ function renderSectionsHtml(sections) {
     return '<section class="card empty-state"><h3>没有匹配的术语</h3><p>请更换关键词，或放宽分区、等级过滤。</p></section>';
   }
   return sections
-    .map((section) => `
-      <section class="knowledge-section-card" id="section-${escapeHtml(section.id)}">
-        <div class="section-head">
-          <div>
+    .map((section) => {
+      // collapsedSections 持有"用户已展开过的章节 id" — 默认 Set 为空,所以
+      // 所有章节首屏默认折叠。
+      const isOpen = state.collapsedSections.has(section.id);
+      return `
+      <section class="knowledge-section-card ${isOpen ? "is-open" : "is-collapsed"}" id="section-${escapeHtml(section.id)}">
+        <header class="knowledge-section-header">
+          <div class="knowledge-section-heading">
             <p class="eyebrow">${escapeHtml(section.id.toUpperCase())}</p>
             <h2>${escapeHtml(section.title)}</h2>
-            <p class="section-summary">${escapeHtml(section.summary)}</p>
           </div>
-          <div class="knowledge-section-count"><strong>${section.items.length}</strong><span>条目</span></div>
-        </div>
-        <div class="knowledge-entry-list knowledge-card-grid">
+          <div class="knowledge-section-controls">
+            <div class="knowledge-section-count"><strong>${section.items.length}</strong><span>条目</span></div>
+            ${renderDisclosureToggle({
+              controls: `section-body-${section.id}`,
+              expanded: isOpen,
+              expandLabel: "展开",
+              collapseLabel: "收起",
+              variant: "section-compact",
+              className: "knowledge-section-toggle",
+              data: { toggleSection: section.id },
+            })}
+          </div>
+        </header>
+        <div class="knowledge-entry-list knowledge-card-grid" id="section-body-${escapeHtml(section.id)}" ${isOpen ? "" : "hidden"}>
           ${section.items.map((item) => (item.type === "guide" ? renderGuideCard(item) : renderTermCard(item))).join("")}
         </div>
       </section>
-    `)
+    `;
+    })
     .join("");
 }
 
@@ -115,13 +139,62 @@ function renderSectionsHtml(sections) {
 // 重建卡片后监听器依然有效,无需每次重绑 146 个按钮。防御性:渲染 HTML 是
 // 主职责,监听器只在真实 DOM 元素上挂载(stub/测试环境无 addEventListener
 // 或 dataset 时静默跳过,不影响 HTML 输出)。
+//
+// 2026-08-18: 新增三层折叠委托 — 章节 (data-toggle-section) / 使用指南
+// (data-toggle-guide) / 术语 (data-toggle-knowledge)。点击顺序不分先后,
+// 任何折叠态都独立维护在 state.collapsedSections / state.collapsedGuides
+// 与卡片自身的 is-open class 上。
 function bindKnowledgeDelegates(root) {
   if (!root || typeof root.querySelector !== "function") return;
   const sectionsEl = root.querySelector(".knowledge-sections");
   if (!sectionsEl || typeof sectionsEl.addEventListener !== "function") return;
   if (sectionsEl.dataset && sectionsEl.dataset.knowledgeDelegates === "1") return;
   sectionsEl.addEventListener("click", (event) => {
-    const button = event.target?.closest?.("[data-toggle-knowledge]");
+    const target = event.target;
+    if (!target || !target.closest) return;
+
+    // 章节只由标题栏右侧的唯一按钮切换。直接更新当前卡片,避免重建全部
+    // 章节导致焦点丢失,也让连续展开/收起可以立即响应。
+    // collapsedSections 持有"用户已展开的 id",因此:
+    //   - 当前未展开 → 点击后展开 → 把 id 加入 Set
+    //   - 当前已展开 → 点击后折叠 → 从 Set 删除
+    const sectionButton = target.closest("[data-toggle-section]");
+    if (sectionButton && sectionsEl.contains(sectionButton)) {
+      const sectionId = String(sectionButton.dataset.toggleSection || "");
+      if (sectionId) {
+        const currentlyOpen = state.collapsedSections.has(sectionId);
+        const nextOpen = !currentlyOpen;
+        setSectionExpanded(sectionId, nextOpen);
+      }
+      return;
+    }
+
+    // 使用指南 (type=guide) 卡片折叠:只切 .knowledge-guide-body 的可见性
+    // 与卡片自身的 className,不重渲整个章节列表 — 指南内容已经在 DOM 里。
+    // collapsedGuides 持有"用户已展开的 id",因此点击语义与章节一致。
+    const guideButton = target.closest("[data-toggle-guide]");
+    if (guideButton && sectionsEl.contains(guideButton)) {
+      const guideId = String(guideButton.dataset.toggleGuide || "");
+      const card = document.getElementById(guideId);
+      if (!card) return;
+      const currentlyOpen = card.classList.contains("is-open");
+      const nextOpen = !currentlyOpen;
+      card.classList.toggle("is-open", nextOpen);
+      card.classList.toggle("is-collapsed", !nextOpen);
+      guideButton.setAttribute("aria-expanded", String(nextOpen));
+      const body = card.querySelector(".knowledge-guide-body");
+      if (body) {
+        if (nextOpen) body.removeAttribute("hidden");
+        else body.setAttribute("hidden", "");
+      }
+      if (nextOpen) state.collapsedGuides.add(guideId);
+      else state.collapsedGuides.delete(guideId);
+      return;
+    }
+
+    // 术语卡片 (data-toggle-knowledge):旧行为保持不变 — 第一次展开时
+    // 才 inject 完整 body,避免 80+ 术语卡一次性渲染 600+ .knowledge-field。
+    const button = target.closest("[data-toggle-knowledge]");
     if (!button || !sectionsEl.contains(button)) return;
     const id = String(button.dataset.toggleKnowledge || "").replace(/^#/, "");
     const card = document.getElementById(id);
@@ -136,6 +209,37 @@ function bindKnowledgeDelegates(root) {
     if (label) label.textContent = isOpen ? "收起" : "阅读";
   });
   if (sectionsEl.dataset) sectionsEl.dataset.knowledgeDelegates = "1";
+}
+
+// CSS.escape 替代品:章节 id 可能含 - 等字符,querySelector 需要转义。
+// 这里只需要支持 ASCII 字母/数字/连字符/下划线 — 我们的 section id 都是
+// kebab-case,所以手工实现一个最小版本足够,避免 polyfill 引入额外依赖。
+function cssEscape(value) {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(value);
+  return String(value).replace(/([^a-zA-Z0-9_-])/g, "\\$1");
+}
+
+function setSectionExpanded(sectionId, nextOpen) {
+  if (!sectionId) return null;
+  if (nextOpen) state.collapsedSections.add(sectionId);
+  else state.collapsedSections.delete(sectionId);
+
+  const button = document.querySelector(`[data-toggle-section="${cssEscape(sectionId)}"]`);
+  const card = button?.closest(".knowledge-section-card")
+    || document.getElementById(`section-${sectionId}`);
+  if (!card) return null;
+
+  card.classList.toggle("is-open", nextOpen);
+  card.classList.toggle("is-collapsed", !nextOpen);
+  if (button) {
+    setDisclosureState(button, nextOpen);
+  }
+  const body = card.querySelector(".knowledge-entry-list");
+  if (body) {
+    if (nextOpen) body.removeAttribute("hidden");
+    else body.setAttribute("hidden", "");
+  }
+  return card;
 }
 
 function updateMetrics() {
@@ -210,13 +314,28 @@ function renderGuideCard(item) {
        </section>`
     : "";
 
+  // 2026-08-18: 默认折叠 — 与术语卡片一致,先看标题与"使用指南"标签,
+  // 用户主动点击后才展开 purpose / when / walkthrough 三个段落。
+  // collapsedGuides 持有"用户已展开过的指南 id",默认空 Set,所以全部折叠。
+  const isOpen = state.collapsedGuides.has(item.id);
+  const chevronIcon = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg>`;
+  const ariaExpanded = isOpen ? "true" : "false";
+
   return `
-    <article class="knowledge-guide-card is-open" id="${esc(item.id)}">
-      <header class="knowledge-guide-header">
-        ${guideBadge}
-        <h3>${esc(item.term)}</h3>
-      </header>
-      <div class="knowledge-guide-body">
+    <article class="knowledge-guide-card ${isOpen ? "is-open" : "is-collapsed"}" id="${esc(item.id)}">
+      <button
+        type="button"
+        class="knowledge-guide-toggle"
+        data-toggle-guide="${esc(item.id)}"
+        aria-expanded="${ariaExpanded}"
+        aria-controls="guide-body-${esc(item.id)}">
+        <header class="knowledge-guide-header">
+          ${guideBadge}
+          <h3>${esc(item.term)}</h3>
+        </header>
+        <span class="knowledge-guide-chevron" aria-hidden="true">${chevronIcon}</span>
+      </button>
+      <div class="knowledge-guide-body" id="guide-body-${esc(item.id)}" ${isOpen ? "" : "hidden"}>
         ${purposeBlock}
         ${whenBlock}
         ${walkthroughBlock}
@@ -360,12 +479,27 @@ function openTermCard(card) {
 function focusHashTarget() {
   const rawHash = decodeURIComponent(window.location.hash || "").replace(/^#/, "");
   if (!rawHash) return;
+  // 章节跳转(#section-xxx 来自左侧导航):直接展开该章节并滚动到标题,
+  // 不进入 openTermCard() 流程(那个是术语卡片用的)。
+  if (rawHash.startsWith("section-")) {
+    const sectionId = rawHash.slice("section-".length);
+    expandSection(sectionId);
+    const sectionEl = document.getElementById(rawHash);
+    if (sectionEl) {
+      window.requestAnimationFrame(() => sectionEl.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+    return;
+  }
   // If the target card is not in the DOM (filter hid it), clear
   // the filter so the card becomes visible. Without this, related-
   // term clicks from a filtered view silently do nothing.
   if (!ensureTargetVisible(rawHash)) return;
   const card = document.getElementById(rawHash);
   if (!card) return;
+  // 2026-08-18: 章节与使用指南默认折叠,跳转到术语卡片时必须先把祖先
+  // 章节 + (如果是 guide) 祖先指南展开,否则点击 hash 跳转后卡片仍在
+  // DOM 但视觉上不可见。术语卡片本身由 openTermCard() 负责展开。
+  expandAncestorsForCard(card);
   openTermCard(card);
   card.classList.remove("knowledge-highlight");
   window.requestAnimationFrame(() => {
@@ -373,6 +507,34 @@ function focusHashTarget() {
     card.classList.add("knowledge-highlight");
     window.setTimeout(() => card.classList.remove("knowledge-highlight"), 1800);
   });
+}
+
+// 单个章节的展开:同步状态与当前 DOM,若已展开也会校正 aria / hidden。
+// 给章节导航链接用,与 expandAncestorsForCard 的差别是这里不关心指南/术语。
+function expandSection(sectionId) {
+  if (!sectionId) return;
+  setSectionExpanded(sectionId, true);
+}
+
+// 2026-08-18: 三层折叠体系下的"祖先展开" — 跳转到术语时:
+//   1. 直接展开术语所在章节并同步 aria / hidden
+//   2. 如果术语是 type=guide,再展开指南正文
+function expandAncestorsForCard(card) {
+  const section = card.closest(".knowledge-section-card");
+  const sectionId = section?.id?.replace(/^section-/, "");
+  if (sectionId) setSectionExpanded(sectionId, true);
+  if (card.classList.contains("knowledge-guide-card")) {
+    const guideId = card.id;
+    if (guideId && !state.collapsedGuides.has(guideId)) {
+      state.collapsedGuides.add(guideId);
+    }
+    card.classList.add("is-open");
+    card.classList.remove("is-collapsed");
+    const body = card.querySelector(".knowledge-guide-body");
+    if (body) body.removeAttribute("hidden");
+    const toggleBtn = card.querySelector("[data-toggle-guide]");
+    if (toggleBtn) toggleBtn.setAttribute("aria-expanded", "true");
+  }
 }
 
 // V1.5.x: ensure the URL hash resolves to a visible card. If the
@@ -408,6 +570,11 @@ function resetState() {
   state.query = "";
   state.section = "all";
   state.level = "all";
+  // 2026-08-18: 三层折叠态也跟随 SPA 切换重置 — 切走后回来,默认全
+  // 折叠(用户的"再次进入页面")。如果想做"记忆折叠",需要把 Set 持久化
+  // 到 sessionStorage,这一轮不做,避免与 unmount 的清理语义冲突。
+  state.collapsedSections.clear();
+  state.collapsedGuides.clear();
 }
 
 function renderKnowledgeLayout() {
@@ -420,7 +587,7 @@ function renderKnowledgeLayout() {
       <div class="section-head">
         <div>
           <p class="eyebrow">KNOWLEDGE BASE</p>
-          <h1>研究参考手册 ${knowledgeTooltip("Knowledge Base / 知识百科", "tone-neutral")}</h1>
+          <h2 class="page-display-title">研究参考手册 ${knowledgeTooltip("Knowledge Base / 知识百科", "tone-neutral")}</h2>
           <p class="section-summary">从概念、计算口径到执行边界，集中查阅交易系统中真正影响判断的术语与方法。</p>
         </div>
       </div>

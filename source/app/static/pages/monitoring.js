@@ -8,20 +8,28 @@ import {
   statusBanner,
   updatePageContext,
 } from "../core/dom.js";
-import { scheduleIdlePrecompute } from "../core/precompute.js";
+import { scheduleIdlePrecompute, waitForAbortableDelay, waitForPrecomputeTask } from "../core/precompute.js";
 import { judgementMeta } from "../core/judgement.js";
 import { rangeStateLabel, rangeStateTone } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
+import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 
 let activeController = null;
 let refreshInFlight = false;
 let lastRenderedBundle = null;
 const queuedKeys = new Set();
+const macroGroupCollapsed = new Map();
+let macroGroupOrder = [];
 
 const DASH = "-";
 const MONITORING_TECH_INSTRUMENT_ID = "btc-usdt-perp";
 const MONITORING_TECH_TIMEFRAME = "1d";
 const MONITORING_SNAPSHOT_STORAGE_KEY = "monitoring.dashboard.lastSnapshot.v1";
+// The FOMC event-window observation remains part of macro scoring and the
+// terminal summary. It is intentionally omitted from the detailed indicator
+// ledger because that layer contains only one item and duplicates the event
+// signal already surfaced elsewhere on this page.
+const HIDDEN_MACRO_DISPLAY_LAYERS = new Set(["events", "event_window", "事件窗口"]);
 
 const INVALID_TEXT_VALUES = new Set([
   "",
@@ -86,6 +94,16 @@ const LAYER_LABELS = {
   cross_asset: "跨资产确认",
   events: "事件窗口",
   event_window: "事件窗口",
+};
+
+const EYEBROW_LABELS = {
+  rates_policy: "RATES & POLICY",
+  inflation: "INFLATION & PRICES",
+  growth: "GROWTH & EMPLOYMENT",
+  liquidity: "LIQUIDITY & CREDIT",
+  cross_asset: "CROSS ASSET",
+  events: "EVENT WINDOW",
+  macro: "MACRO LAYER",
 };
 
 const MACRO_DISPLAY_LABELS = {
@@ -154,6 +172,8 @@ const MISSING_REASON_LABELS = {
   suspect_zero: "数据待发布（口径异常）",
   missing: "同步未运行或缓存未命中",
   no_data: "同步未运行或缓存未命中",
+  display_only: "展示型指标（仅展示不计分）",
+  registry_rule_missing: "评分规则未配置（仅展示）",
 };
 
 function cleanText(value, fallback = DASH) {
@@ -515,18 +535,37 @@ function missingReason(item) {
   return MISSING_REASON_LABELS[normalizeKey(raw)] || readableText(raw, "暂无数据");
 }
 
+function missingTone(item) {
+  const status = normalizeKey(item?.status);
+  if (["auth_missing", "not_implemented", "disabled"].includes(status)) return "neutral";
+  if (["source_error", "parser_error", "rate_limited"].includes(status)) return "warning";
+  if (["missing", "unavailable", "stale_cache", "stale_seed"].includes(status)) return "stale";
+  return "neutral";
+}
+
 function renderShellFallback(message) {
   return `
-    ${statusBanner(message, "warning")}
-    <section class="monitoring-surface">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">MONITORING</p>
-          <h2>监控总览</h2>
+    <div id="monitoring-topbar">
+      <div class="monitoring-progress-banner">${statusBanner(message, "warning")}</div>
+      <section class="monitoring-surface monitoring-topbar is-warming">
+        <div class="monitoring-topbar-grid">
+          <article class="monitoring-topbar-item monitoring-topbar-context wide">
+            <span class="monitoring-context-status" data-status-tone="pending">正在读取最近快照</span>
+            <small>监控总览</small>
+            <strong>后台准备中</strong>
+          </article>
+        </div>
+      </section>
+    </div>
+    <section class="monitoring-surface monitoring-summary-surface">
+      <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
+        <div id="monitoring-macro-panel"></div>
+        <div id="monitoring-terminal-summary">
           <p class="section-summary">正在读取最近快照；可刷新或稍后自动更新。</p>
         </div>
       </div>
     </section>
+    <div id="monitoring-macro-grid"></div>
   `;
 }
 
@@ -576,8 +615,8 @@ function renderTopbar(data, macro) {
             <span>置信度</span>
             <strong>${escapeHtml(macroConfidence(macro))}</strong>
           </article>
-          <article class="monitoring-topbar-item">
-            <span>宏观覆盖</span>
+          <article class="monitoring-topbar-item" title="有有效数据的宏观指标占比；不足 100% 意味着部分指标缺失或过期，决策置信度会相应降低">
+            <span>宏观数据覆盖</span>
             <strong>${escapeHtml(formatNumber(macroCoverage, 0))}%</strong>
           </article>
           <article class="monitoring-topbar-item">
@@ -589,14 +628,6 @@ function renderTopbar(data, macro) {
             <strong>${missing} 项</strong>
           </article>
         </div>
-        <button class="primary-button monitoring-refresh button compact" type="button">刷新监控</button>
-      </div>
-      <div class="monitoring-source-pills">
-        <span class="monitoring-source-rail-label">信源</span>
-        ${getSourceStatus(data).map((source) => {
-          const meta = sourceMeta(source.status);
-          return `<span class="monitoring-source-pill"><span class="source-dot" data-source-state="${meta.tone}"></span>${escapeHtml(source.label)}</span>`;
-        }).join("")}
       </div>
     </section>
   `;
@@ -608,11 +639,14 @@ function renderLayerChip(layer) {
   const score = numeric(layer.score) ?? numeric(layer.contribution) ?? 0;
   const count = layer.effective_count ?? layer.scored_count ?? 0;
   const total = layer.total_count ?? layer.indicator_count ?? 0;
+  const coverage = total ? `评分 ${count}/${total}` : "无指标";
+  const coverageTip =
+    "该层 " + total + " 个指标中 " + count + " 个计入总分；其余为展示型指标，数据已获取但暂无评分阈值，仅展示不计分。";
   return `
     <article class="macro-layer-card">
       <strong>${escapeHtml(label)}</strong>
       <b>${escapeHtml(formatNumber(score, 0))}</b>
-      <small>贡献 ${escapeHtml(formatNumber(layer.contribution ?? 0, 2))} · 有效 ${count}/${total}</small>
+      <small title="${escapeHtml(coverageTip)}">贡献 ${escapeHtml(formatNumber(layer.contribution ?? 0, 2))} · ${escapeHtml(coverage)}</small>
       <span class="macro-layer-bar"><i style="width:${Math.max(0, Math.min(100, score))}%"></i></span>
     </article>
   `;
@@ -804,10 +838,114 @@ function renderMissingIndicators(items) {
   `;
 }
 
-function renderMacroIndicatorGrid(macro) {
+function isHiddenMacroDisplayItem(item) {
+  return [item?.layer, item?.layer_label, item?.category]
+    .map(normalizeKey)
+    .some((value) => HIDDEN_MACRO_DISPLAY_LAYERS.has(value));
+}
+
+function renderMacroIndicatorGrid(macro, data) {
   const all = getMacroIndicators(macro);
-  const visible = all.filter(validMacroIndicator);
-  const hidden = all.filter((item) => !validMacroIndicator(item));
+  const displayed = all.filter((item) => !isHiddenMacroDisplayItem(item));
+  const visible = displayed.filter(validMacroIndicator);
+  const hidden = displayed.filter((item) => !validMacroIndicator(item));
+
+  // 按类别分组
+  const groups = new Map();
+  for (const item of visible) {
+    const layer = readableText(item.layer_label || item.layer || item.category, "综合");
+    if (!groups.has(layer)) groups.set(layer, []);
+    groups.get(layer).push(item);
+  }
+
+  // 按 LAYER_LABELS 定义的顺序排列组
+  const layerOrder = ["rates_policy", "inflation", "growth", "liquidity", "cross_asset"];
+  const orderedGroups = [];
+  for (const key of layerOrder) {
+    const label = LAYER_LABELS[key] || key;
+    if (groups.has(label)) orderedGroups.push([label, groups.get(label)]);
+  }
+  // 补充未在 LAYER_LABELS 中定义的组
+  for (const [label, items] of groups.entries()) {
+    if (!orderedGroups.find(([l]) => l === label)) orderedGroups.push([label, items]);
+  }
+
+  // 默认折叠：新发现的组自动折叠，已保留状态的沿用旧值
+  for (const [label] of orderedGroups) {
+    if (!macroGroupCollapsed.has(label)) macroGroupCollapsed.set(label, true);
+  }
+  // 记录当前顺序用于 diff 更新定位
+  macroGroupOrder = orderedGroups.map(([label]) => label);
+
+  // 缺数据原因明细 — 收集所有非 ok/live/cached 的指标
+  const problematic = displayed.filter((item) => {
+    const status = normalizeKey(item?.status);
+    return !["ok", "live", "cached", "ready", ""].includes(status);
+  });
+
+  const gridContent = orderedGroups.length
+    ? orderedGroups.map(([label, items]) => {
+      const isCollapsed = macroGroupCollapsed.get(label);
+      const eyebrowKey = layerOrder.find((k) => LAYER_LABELS[k] === label) || "macro";
+      return `
+      <article class="card macro-indicator-group${isCollapsed ? " is-collapsed" : ""}" data-macro-group="${escapeHtml(label)}">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(EYEBROW_LABELS[eyebrowKey] || "MACRO LAYER")}</p>
+            <h3>${escapeHtml(label)}</h3>
+          </div>
+          ${renderDisclosureToggle({
+            controls: `macro-group-body-${label}`,
+            expanded: !isCollapsed,
+            expandLabel: "展开",
+            collapseLabel: "收起",
+            className: "macro-group-toggle",
+            data: { toggleGroup: label },
+          })}
+        </div>
+        <div id="macro-group-body-${escapeHtml(label)}" class="macro-group-cards" ${isCollapsed ? "hidden" : ""}>
+          ${items.map(renderMacroIndicatorCard).join("")}
+        </div>
+      </article>`;
+    }).join("")
+    : `<p class="monitoring-empty-note">暂无可展示宏观指标。</p>`;
+
+  // 信源状态 — 治理底栏用（governance bar）
+  const sourceRows = getSourceStatus(data);
+
+  // 缺数据原因明细
+  const missingDetail = problematic.length ? `
+    <div class="monitoring-missing-bar">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">DATA GAPS</p>
+          <h2>缺数据原因</h2>
+        </div>
+        ${renderDisclosureToggle({
+          controls: "monitoring-missing-body",
+          expanded: false,
+          expandLabel: `展开 ${problematic.length} 项`,
+          collapseLabel: `收起 ${problematic.length} 项`,
+          className: "monitoring-missing-toggle",
+          data: { missingToggle: "true" },
+        })}
+      </div>
+      <div id="monitoring-missing-body" class="monitoring-missing-body" hidden>
+        ${problematic.map((item) => {
+          const label = readableText(item.label || item.display_label || item.indicator_key || item.key, "未知指标");
+          const reason = missingReason(item);
+          const layer = readableText(item.layer_label || item.layer || item.category, "");
+          const tone = missingTone(item);
+          return `<div class="monitoring-missing-row">
+            <span class="status-chip chip-source data-source-state="${tone}">${escapeHtml(label)}</span>
+            ${layer ? `<span class="monitoring-missing-layer">${escapeHtml(layer)}</span>` : ""}
+            <span class="monitoring-missing-reason">${escapeHtml(reason)}</span>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>
+  ` : "";
+
   return `
     <section class="monitoring-surface monitoring-detail-panel">
       <div class="section-heading-row">
@@ -815,10 +953,12 @@ function renderMacroIndicatorGrid(macro) {
           <p class="eyebrow">MACRO DETAIL</p>
           <h2>宏观指标明细</h2>
         </div>
+        <button class="primary-button monitoring-refresh button compact" type="button">刷新监控</button>
       </div>
       <div class="macro-indicator-grid">
-        ${visible.map(renderMacroIndicatorCard).join("") || `<p class="monitoring-empty-note">暂无可展示宏观指标。</p>`}
+        ${gridContent}
       </div>
+      ${missingDetail}
       ${renderMissingIndicators(hidden)}
     </section>
   `;
@@ -840,17 +980,6 @@ function renderSourceRow(source) {
   `;
 }
 
-function renderSourcePanel(data) {
-  return `
-    <section class="monitoring-surface monitoring-detail-panel monitoring-source-panel">
-      <div class="section-heading-row">
-        <div><p class="eyebrow">SOURCES</p><h2>信源状态</h2></div>
-      </div>
-      <div class="monitoring-source-list">${getSourceStatus(data).map(renderSourceRow).join("")}</div>
-    </section>
-  `;
-}
-
 function renderDashboard(data) {
   const macro = getMacroPayload(data);
   return `
@@ -861,8 +990,58 @@ function renderDashboard(data) {
         ${renderTerminalSummary(data)}
       </div>
     </section>
-    ${renderMacroIndicatorGrid(macro)}
-    ${renderSourcePanel(data)}
+    ${renderMacroIndicatorGrid(macro, data)}
+    ${renderMonitoringGovernanceBar(data)}
+  `;
+}
+
+// 2026-08-19: 监控页底栏 — 参考 gold-allocation DATA GOVERNANCE 设计
+// 左 header + 右网格（信源状态 + 缺数据计数）
+function renderMonitoringGovernanceBar(data) {
+  const macro = getMacroPayload(data);
+  const indicators = getMacroIndicators(macro);
+  const visible = indicators.filter(validMacroIndicator);
+  const problematic = indicators.filter((item) => {
+    const status = normalizeKey(item?.status);
+    return !["ok", "live", "cached", "ready", ""].includes(status);
+  });
+  const sourceRows = getSourceStatus(data);
+  const freshSources = sourceRows.filter((s) => sourceMeta(s.status).tone !== "offline").length;
+
+  // 构建网格项：信源 + 缺数据
+  const gridItems = sourceRows.map((s) => {
+    const meta = sourceMeta(s.status);
+    return `
+      <article class="monitoring-governance-item" data-state="${meta.tone === "live" ? "fresh" : meta.tone === "stale" ? "stale" : "missing"}">
+        <div class="monitoring-governance-label">
+          <span class="monitoring-governance-dot" data-tone="${meta.tone === "live" ? "info" : meta.tone === "stale" ? "warning" : "danger"}" aria-hidden="true"></span>
+          <span>${escapeHtml(s.label)}</span>
+        </div>
+        <strong>${escapeHtml(meta.label)}</strong>
+      </article>`;
+  }).join("");
+
+  // 缺数据计数作为最后一个网格项
+  const missingItem = problematic.length ? `
+    <article class="monitoring-governance-item" data-state="missing">
+      <div class="monitoring-governance-label">
+        <span class="monitoring-governance-dot" data-tone="warning" aria-hidden="true"></span>
+        <span>缺数据</span>
+      </div>
+      <strong>${problematic.length} 项</strong>
+    </article>` : "";
+
+  return `
+    <section class="card monitoring-governance">
+      <div class="monitoring-governance-head">
+        <p class="eyebrow">DATA GOVERNANCE</p>
+        <h2>数据源状态</h2>
+        <p><strong>${freshSources}/${sourceRows.length}</strong> 个数据源当前可用</p>
+      </div>
+      <div class="monitoring-governance-grid">
+        ${gridItems}${missingItem}
+      </div>
+    </section>
   `;
 }
 
@@ -879,7 +1058,6 @@ const MONITORING_SECTION_IDS = [
   "monitoring-macro-panel",
   "monitoring-terminal-summary",
   "monitoring-macro-grid",
-  "monitoring-source-panel",
 ];
 
 function applyMonitoringDiff(data, options = {}) {
@@ -898,14 +1076,12 @@ function applyMonitoringDiff(data, options = {}) {
         </div>
       </section>
       <div id="monitoring-macro-grid"></div>
-      <div id="monitoring-source-panel"></div>
     `;
     root._monitoringSections = {
       topbar: root.querySelector("#monitoring-topbar"),
       "monitoring-macro-panel": root.querySelector("#monitoring-macro-panel"),
       "monitoring-terminal-summary": root.querySelector("#monitoring-terminal-summary"),
       "monitoring-macro-grid": root.querySelector("#monitoring-macro-grid"),
-      "monitoring-source-panel": root.querySelector("#monitoring-source-panel"),
     };
   }
   const macro = getMacroPayload(data);
@@ -913,8 +1089,9 @@ function applyMonitoringDiff(data, options = {}) {
   sections.topbar.innerHTML = renderTopbar(data, macro);
   sections["monitoring-macro-panel"].innerHTML = renderMacroPanel(data, macro);
   sections["monitoring-terminal-summary"].innerHTML = renderTerminalSummary(data);
-  sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro);
-  sections["monitoring-source-panel"].innerHTML = renderSourcePanel(data);
+  sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro, data);
+  bindMacroGroupToggles();
+  bindMonitoringMissingToggle();
   updatePageContext({
     instrument: "BTC · 1d",
     status: data?.status === "error" ? "数据降级" : "快照可用",
@@ -937,8 +1114,36 @@ function queueWarmup() {
     instrument_id: instrumentId,
     timeframe,
     reason: "monitoring_page_visible",
-    priority: 20,
+    priority: 5,
   });
+}
+
+async function applyCompletedMonitoringTask(bundle, controller, instrumentId, timeframe, depth = 0) {
+  const taskKey = bundle?.refresh_task_key;
+  if (!bundle?.refresh_enqueued || !taskKey || depth > 1) return;
+  try {
+    await waitForPrecomputeTask(taskKey, { signal: controller.signal });
+    await waitForAbortableDelay(250, controller.signal);
+    const refreshed = await api.getMonitoringDashboard(instrumentId, timeframe, {
+      force: true,
+      signal: controller.signal,
+      timeoutMs: 30000,
+    });
+    if (controller.signal.aborted || activeController !== controller) return;
+    applyMonitoringDiff(refreshed);
+    lastRenderedBundle = refreshed;
+    rememberMonitoringBundle(refreshed, instrumentId, timeframe);
+    bindRefreshButton();
+    if (refreshed?.refresh_task_key && refreshed.refresh_task_key !== taskKey) {
+      await applyCompletedMonitoringTask(refreshed, controller, instrumentId, timeframe, depth + 1);
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    console.warn("monitoring background refresh failed", error);
+    if (activeController === controller) {
+      showMonitoringBanner("后台更新未完成，已保留上一份可用快照。", "warning");
+    }
+  }
 }
 
 function bindRefreshButton() {
@@ -983,8 +1188,10 @@ function bindRefreshButton() {
       }
     }
   });
+
 }
 
+// 2026-08-15: helper that clears the dim class on the five stable section
 async function loadDashboard() {
   if (activeController) activeController.abort();
   const controller = new AbortController();
@@ -1025,7 +1232,9 @@ async function loadDashboard() {
       timeoutMs: 30000,
     });
   } catch (error) {
-    if (error?.name === "AbortError") return;
+    if (error?.name === "AbortError") {
+      return;
+    }
     console.warn("monitoring snapshot fetch failed", error);
     if (hasRenderedMonitoringShell()) {
       showMonitoringBanner("监控快照读取失败，已保留上一份可用快照。", "warning");
@@ -1041,6 +1250,7 @@ async function loadDashboard() {
     rememberMonitoringBundle(bundle, instrumentId, timeframe);
     bindRefreshButton();
     queueWarmup();
+    void applyCompletedMonitoringTask(bundle, controller, instrumentId, timeframe);
     macroPromise.then((macro) => {
       if (!macro || !lastRenderedBundle || controller.signal.aborted || activeController !== controller) return;
       try {
@@ -1071,6 +1281,8 @@ export async function renderMonitoring() {
   const loadPromise = loadDashboard().catch((error) => {
     console.error("monitoring:load:error", error);
   });
+  bindMacroGroupToggles();
+  bindMonitoringMissingToggle();
   const guideFab = mountPageGuide("monitoring-overview");
   return {
     async unmount() {
@@ -1082,4 +1294,38 @@ export async function renderMonitoring() {
     async pause() {},
     async resume() {},
   };
+}
+
+// 宏观指标分组折叠 — 直接绑定到每个按钮（在渲染后调用）
+function bindMacroGroupToggles() {
+  document.querySelectorAll(".macro-group-toggle").forEach((btn) => {
+    // 避免重复绑定：如果已有 data-bound 标记则跳过
+    if (btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      const label = btn.dataset.toggleGroup;
+      const group = btn.closest(".macro-indicator-group");
+      if (!group || !label) return;
+      const body = group.querySelector(".macro-group-cards");
+      if (!body) return;
+      const wasCollapsed = macroGroupCollapsed.get(label);
+      macroGroupCollapsed.set(label, !wasCollapsed);
+      group.classList.toggle("is-collapsed", !wasCollapsed);
+      body.hidden = !wasCollapsed;
+      setDisclosureState(btn, wasCollapsed);
+    });
+  });
+}
+
+function bindMonitoringMissingToggle() {
+  const button = document.querySelector("[data-missing-toggle]");
+  if (!button || button.dataset.bound === "1") return;
+  button.dataset.bound = "1";
+  button.addEventListener("click", () => {
+    const body = document.getElementById("monitoring-missing-body");
+    if (!body) return;
+    const nextExpanded = button.getAttribute("aria-expanded") !== "true";
+    body.hidden = !nextExpanded;
+    setDisclosureState(button, nextExpanded);
+  });
 }

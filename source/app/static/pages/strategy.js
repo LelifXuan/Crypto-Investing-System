@@ -1,1 +1,1 @@
-export { renderStrategy as default, renderStrategy } from "./strategy/index.js?v=drawer-dismiss-v2";
+export { renderStrategy as default, renderStrategy } from "./strategy/index.js?v=opportunity-matrix-v2";

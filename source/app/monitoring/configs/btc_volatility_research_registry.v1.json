@@ -1,0 +1,62 @@
+{
+  "registry_version": "btc-volatility-research-v1",
+  "status": "frozen",
+  "frozen_at": "2026-08-24T00:00:00Z",
+  "canonical_strategy_effect": "none",
+  "primary_question": "Does one BTC-native volatility feature add point-in-time information beyond the existing realized-volatility target?",
+  "multiple_testing": {
+    "unit": "feature_family",
+    "first_round_composite_or_ml_allowed": false,
+    "required_methods": ["anchored_walk_forward", "cpcv", "block_bootstrap", "pbo", "dsr"],
+    "promotion": {
+      "minimum_independent_years_or_regimes": 3,
+      "bootstrap_confidence": "0.95",
+      "dsr_confidence": "0.95",
+      "maximum_pbo": "0.50",
+      "maximum_other_primary_risk_degradation": "0.05"
+    }
+  },
+  "realized_volatility": {
+    "evaluation_windows": {"short": 14, "medium": 30, "long": 90},
+    "window_neighborhoods": {
+      "short": [7, 14, 21],
+      "medium": [21, 30, 45],
+      "long": [60, 90, 120]
+    },
+    "ewma_decay_candidates": ["0.90", "0.94", "0.97"],
+    "bollinger_window": 20,
+    "candidate_estimators": [
+      "close_to_close",
+      "ewma",
+      "atr_natr_diagnostic",
+      "parkinson",
+      "garman_klass",
+      "rogers_satchell",
+      "yang_zhang",
+      "bollinger_bandwidth",
+      "realized_range",
+      "bipower_variation",
+      "jump_variation"
+    ]
+  },
+  "source_policy": {
+    "priority": ["deribit_public", "volmex_public", "existing_exchange_sources"],
+    "licensed_research_only": ["cme_cf_bvx"],
+    "synthetic_backfill_allowed": false,
+    "missing_value_policy": "data_insufficient"
+  },
+  "ordered_families": [
+    "realized_volatility",
+    "implied_volatility",
+    "iv_rv",
+    "term_structure",
+    "option_skew",
+    "vol_surface",
+    "open_interest",
+    "funding",
+    "liquidation",
+    "futures_basis",
+    "cross_market_dispersion"
+  ],
+  "integration_statuses": ["shadow", "accepted", "diagnostic_only", "rejected"]
+}

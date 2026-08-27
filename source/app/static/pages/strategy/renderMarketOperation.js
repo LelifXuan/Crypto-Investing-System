@@ -201,11 +201,16 @@ function macroCoverageText(detail) {
   const effective = Number(completeness.effective_count);
   const total = Number(completeness.total_count);
   if (!Number.isFinite(effective) || !Number.isFinite(total) || total <= 0) return "";
+  const pct = Math.round((effective / total) * 100);
   const incompleteLayers = (Array.isArray(detail.layer_coverage) ? detail.layer_coverage : [])
     .filter((item) => Number(item.effective_count) < Number(item.total_count))
     .map((item) => `${item.label} ${item.effective_count}/${item.total_count}`)
     .join("；");
-  return `宏观覆盖 ${effective}/${total}${incompleteLayers ? `；缺口集中在 ${incompleteLayers}` : ""}`;
+  // 覆盖度 < 100% 时补充对决策的含义：数据不完整 → 判断可靠性降低
+  const implication = pct < 100
+    ? `（数据不完整，本类别判断可靠性降低）`
+    : `（数据完整）`;
+  return `宏观覆盖 ${effective}/${total} = ${pct}%${incompleteLayers ? `；缺口：${incompleteLayers}` : ""}${implication}`;
 }
 
 function sourceModuleLabel(value) {

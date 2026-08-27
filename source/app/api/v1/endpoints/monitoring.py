@@ -7,7 +7,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser, get_db_session, require_roles
+from app.api.dependencies import (
+    CurrentUser,
+    get_db_session,
+    get_db_writer_session,
+    require_roles,
+)
 from app.cache.shared_query_cache import shared_query_cache
 from app.core.config import settings
 from app.repositories.market_repository import MarketRepository
@@ -108,7 +113,7 @@ async def _ensure_monitoring_category_fresh(
 
 @router.get("/monitoring/macro-overview", response_model=MacroOverviewResponse)
 async def get_macro_overview(
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     repository = MarketRepository(session)
@@ -207,7 +212,7 @@ async def list_indicator_observations(
 async def get_monitoring_dashboard(
     instrument_id: str = Query(default="btc-usdt-perp"),
     timeframe: str = Query(default="1d"),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(
@@ -219,7 +224,7 @@ async def get_monitoring_dashboard(
 async def refresh_monitoring_dashboard(
     instrument_id: str = Query(default="btc-usdt-perp"),
     timeframe: str = Query(default="1d"),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     service = MonitoringDashboardService(MarketRepository(session))
@@ -235,7 +240,7 @@ async def refresh_indicators(
     instrument_id: str = Query(default="btc-usdt-perp"),
     timeframe: str | None = Query(default=None),
     payload: IndicatorRefreshRequest | None = Body(default=None),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     if payload is not None:
@@ -269,7 +274,7 @@ async def refresh_indicators(
 async def backfill_indicators(
     instrument_id: str = Query(default="btc-usdt-perp"),
     timeframe: str = Query(default="1h"),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     service = IndicatorMonitoringService(MarketRepository(session))
@@ -447,7 +452,7 @@ async def list_macro_calendar(
 
 @macro_router.post("/sync", response_model=MonitoringSyncResponse)
 async def sync_macro(
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     service = IndicatorMonitoringService(MarketRepository(session))
@@ -477,7 +482,7 @@ async def sync_macro(
 
 @onchain_router.post("/sync", response_model=MonitoringSyncResponse)
 async def sync_onchain(
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     service = IndicatorMonitoringService(MarketRepository(session))

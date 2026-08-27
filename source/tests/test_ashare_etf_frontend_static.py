@@ -220,3 +220,23 @@ class TestQuarterlyTopupStat:
         assert 'e.kind === "quarterly_rebalance"' in src, (
             "调仓竖线/工具提示必须只认 quarterly_rebalance,quarterly_topup 不画线"
         )
+
+
+class TestGovernanceFooter:
+    def test_footer_uses_shared_gold_ledger_contract(self):
+        src = _read()
+        css = (REPO_ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+
+        assert 'class="card governance-ledger etf-governance"' in src
+        assert 'id="etf-governance-title">数据就绪与快照</h2>' in src
+        assert 'class="governance-ledger__grid etf-governance-grid"' in src
+        assert 'body[data-page="ashare-etf"] .governance-ledger' in css
+        assert "background: var(--surface-muted);" in css
+        assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
+
+    def test_initial_quote_request_does_not_block_spa_mount(self):
+        src = _read()
+
+        assert "ready: loadPromise" in src
+        assert "async mount() { await loadPromise; }" not in src
+        assert "activeController?.abort();" in src

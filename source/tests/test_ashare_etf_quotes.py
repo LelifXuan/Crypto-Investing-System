@@ -8,6 +8,7 @@ from app.services.ashare_etf_quotes import (
     AShareETFQuote,
     AShareETFQuoteService,
     EastmoneyDirectETFClient,
+    SinaETFQuoteClient,
 )
 
 
@@ -54,6 +55,45 @@ class SuccessfulProvider(EastmoneyDirectETFClient):
             )
             for item in requested_items
         ]
+
+
+def test_sina_quote_parser_preserves_live_source_and_utc_timestamp() -> None:
+    fields = [
+        "军工ETF",
+        "1.100",
+        "1.090",
+        "1.120",
+        "1.130",
+        "1.080",
+        "1.119",
+        "1.120",
+        "123400",
+        "138000.50",
+        *(["0"] * 20),
+        "2026-08-24",
+        "14:30:00",
+        "00",
+    ]
+    text = f'var hq_str_sh512660="{",".join(fields)}";'
+    quotes = SinaETFQuoteClient._parse_payload(
+        text,
+        {
+            "sh512660": {
+                "code": "512660",
+                "name": "军工ETF",
+                "group": "halo",
+                "group_label": "HALO",
+            }
+        },
+    )
+
+    assert len(quotes) == 1
+    assert quotes[0].status == "ok"
+    assert quotes[0].source == "sina_quote"
+    assert quotes[0].last_price == pytest.approx(1.12)
+    assert quotes[0].change_pct == pytest.approx((1.12 - 1.09) / 1.09 * 100)
+    assert quotes[0].quote_time is not None
+    assert quotes[0].quote_time.isoformat() == "2026-08-24T06:30:00+00:00"
 
 
 @pytest.mark.asyncio

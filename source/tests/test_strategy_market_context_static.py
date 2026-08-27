@@ -357,14 +357,23 @@ def test_scan_result_cache_meta_counts_cells_ready_vs_pending():
     counts so the banner can show '数据补齐中 (X/Y)' when some cells
     are still pending."""
     from app.services.strategy_unified.opportunity_scanner import (
-        ScanResult,
         ScanItem,
+        ScanResult,
     )
 
     items = [
-        ScanItem("x", "x", "1w", "LONG", "做多", 70, 50, "", 0, "spot", "standard", "", [], cache_state="fresh", data_quality=80),
-        ScanItem("x", "x", "1d", "WAIT", "等待", 50, 0, "", 0, "spot", "observe", "", [], cache_state="fresh", data_quality=60),
-        ScanItem("x", "x", "4h", "WAIT", "等待", 30, 0, "", 0, "spot", "observe", "", [], cache_state="missing", data_quality=10),
+        ScanItem(
+            "x", "x", "1w", "LONG", "做多", 70, 50, "", 0, "spot",
+            "standard", "", [], cache_state="fresh", data_quality=80,
+        ),
+        ScanItem(
+            "x", "x", "1d", "WAIT", "等待", 50, 0, "", 0, "spot",
+            "observe", "", [], cache_state="fresh", data_quality=60,
+        ),
+        ScanItem(
+            "x", "x", "4h", "WAIT", "等待", 30, 0, "", 0, "spot",
+            "observe", "", [], cache_state="missing", data_quality=10,
+        ),
     ]
     result = ScanResult(
         scanned_at="2026-07-24T00:00:00Z",
@@ -400,7 +409,6 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
 
     from app.services.strategy_unified.opportunity_scanner import (
         OpportunityScanner,
-        SCAN_TIMEFRAMES,
     )
 
     # Stub repository with no instruments (we'll patch scan_all internals)
@@ -412,25 +420,22 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
 
     async def fake_build(self, instrument_id, force=False):  # noqa: ARG001
         call_count["n"] += 1
-        idx = call_count["n"]
-        # Alternate status to exercise both fresh and missing paths.
-        # idx=3 (mod 3 == 0) returns status="degraded" so we get a
-        # cache_state="missing" cell.
-        if idx % 3 == 0:
-            cell_status = "degraded"
-        else:
-            cell_status = "ready"
         return {
             "trade_decision": {
-                "side": "WAIT" if idx % 2 == 0 else "LONG",
-                "risk_reward": {"value": 1.5 if idx % 2 else 0},
-                "position_cap": "standard" if idx % 2 else "observe",
+                "side": "LONG",
+                "risk_reward": {"value": 1.5},
+                "position_cap": "standard",
                 "recommended_leverage": 0,
             },
-            "status": cell_status,
-            "market_decision_snapshot": {"snapshot_id": f"snapshot-{idx}"},
+            "status": "ready",
+            "market_decision_snapshot": {"snapshot_id": "snapshot-1"},
+            "timeframe_stack": [
+                {"timeframe": "1w", "direction": "LONG", "confidence": 91, "freshness": "fresh"},
+                {"timeframe": "1d", "direction": "WAIT", "confidence": 72, "freshness": "fresh"},
+                {"timeframe": "4h", "direction": "LONG", "confidence": 63, "freshness": "missing"},
+            ],
             "signal_coverage": [
-                {"module": "price_structure", "confidence": 50.0 + idx},
+                {"module": "price_structure", "confidence": 80.0},
             ],
             "market_operation": {"chain": {}},
             "evidence_trace": [],
@@ -451,12 +456,13 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
     finally:
         us_mod.UnifiedStrategyService.build_unified_strategy = orig_build
 
-    # With 3 cells and one of them having freshness_state="missing"
-    # (idx=3 ⇒ 3 % 3 == 0), we expect cells_ready=2, cells_pending=1.
+    # One unified payload yields three independent cells.  The missing 4h
+    # node must not contaminate the ready weekly/daily nodes.
+    assert call_count["n"] == 1
     assert "cells_ready" in result.cache_meta
     assert "cells_pending" in result.cache_meta
-    assert result.cache_meta["cells_ready"] >= 1
-    assert result.cache_meta["cells_pending"] >= 1
+    assert result.cache_meta["cells_ready"] == 2
+    assert result.cache_meta["cells_pending"] == 1
     assert result.cache_meta["cells_ready"] + result.cache_meta["cells_pending"] == len(
         result.matrix
     )

@@ -105,19 +105,19 @@ def _write_snapshot_disk(payload: dict) -> None:
 # ─── Per-venue endpoint registry ────────────────────────────────────────
 # Each tuple: (provider_key, symbol, kind, funding_endpoint, oi_endpoint)
 #
-# ``kind`` distinguishes the URL template: "bybit" uses symbol verbatim,
-# "okx" uses "INST-ID-SWAP", "binance" uses the USDT-M perp URL.
-#
 # ``PAXG`` and ``XAUT`` are both kept because each carries distinct
-# liquidity — PAXG dominates on Binance, XAUT dominates on OKX. We
-# aggregate across the union so the user's view is robust to a single
-# token pausing.
+# liquidity. Gate.io and Bitget are the currently verified sources; Bybit
+# and Binance remain as optional breadth when the deployment region permits
+# them. Invalid OKX instrument ids were removed after the live API returned
+# 51001 for both gold contracts.
 
 _VENUES: tuple[tuple[str, str], ...] = (
+    ("gateio", "PAXG_USDT"),
+    ("gateio", "XAUT_USDT"),
+    ("bitget", "PAXGUSDT"),
+    ("bitget", "XAUTUSDT"),
     ("bybit", "PAXGUSDT"),
     ("bybit", "XAUTUSDT"),
-    ("okx", "PAXG-USDT-SWAP"),
-    ("okx", "XAUT-USDT-SWAP"),
     ("binance", "PAXGUSDT"),
     ("binance", "XAUTUSDT"),
 )
@@ -366,6 +366,61 @@ async def _fetch_binance(client: httpx.AsyncClient, symbol: str) -> GoldPerpRow:
     return row
 
 
+async def _fetch_gateio(client: httpx.AsyncClient, symbol: str) -> GoldPerpRow:
+    """Fetch one Gate.io contract and normalize OI to token quantity."""
+    row = GoldPerpRow(provider="gateio", symbol=symbol)
+    try:
+        resp = await client.get(f"/api/v4/futures/usdt/contracts/{symbol}")
+        resp.raise_for_status()
+        item = resp.json()
+        row.mark_price = _to_decimal(item.get("mark_price"))
+        row.funding_rate = _to_decimal(item.get("funding_rate"))
+        position_size = _to_decimal(item.get("position_size"))
+        multiplier = _to_decimal(item.get("quanto_multiplier"))
+        # Gate reports integer contracts. Other venues report base-token OI,
+        # so normalize before aggregating PAXG/XAUT quantities.
+        if position_size is not None and multiplier is not None:
+            row.oi_contracts = position_size * multiplier
+        if row.oi_contracts is not None and row.mark_price is not None:
+            row.oi_usd = row.oi_contracts * row.mark_price
+        funding_next = item.get("funding_next_apply")
+        if funding_next is not None:
+            row.timestamp_ms = int(funding_next) * 1000
+    except Exception as exc:
+        row.error = f"gateio:{exc}"[:200]
+    return row
+
+
+async def _fetch_bitget(client: httpx.AsyncClient, symbol: str) -> GoldPerpRow:
+    """Fetch Bitget funding, mark price and base-token OI from one ticker."""
+    row = GoldPerpRow(provider="bitget", symbol=symbol)
+    try:
+        resp = await client.get(
+            "/api/v2/mix/market/ticker",
+            params={"symbol": symbol, "productType": "USDT-FUTURES"},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if payload.get("code") != "00000":
+            raise RuntimeError(
+                f"Bitget API {payload.get('code')}: {payload.get('msg', 'unknown error')}"
+            )
+        data = payload.get("data") or []
+        if data:
+            item = data[0]
+            row.mark_price = _to_decimal(item.get("markPrice"))
+            row.funding_rate = _to_decimal(item.get("fundingRate"))
+            row.oi_contracts = _to_decimal(item.get("holdingAmount"))
+            if row.oi_contracts is not None and row.mark_price is not None:
+                row.oi_usd = row.oi_contracts * row.mark_price
+            ts = item.get("ts") or payload.get("requestTime")
+            if ts is not None:
+                row.timestamp_ms = int(ts)
+    except Exception as exc:
+        row.error = f"bitget:{exc}"[:200]
+    return row
+
+
 async def _fetch_venue(provider: str, symbol: str, *, timeout: float = 10.0) -> GoldPerpRow:
     """Fetch one (provider, symbol) pair using the project's proxy-aware client.
 
@@ -375,6 +430,8 @@ async def _fetch_venue(provider: str, symbol: str, *, timeout: float = 10.0) -> 
     is path-agnostic. When no proxy is configured the request is direct.
     """
     base_urls = {
+        "gateio": "https://api.gateio.ws",
+        "bitget": "https://api.bitget.com",
         "bybit": "https://api.bybit.com",
         "okx": "https://www.okx.com",
         "binance": "https://fapi.binance.com",
@@ -398,6 +455,10 @@ async def _fetch_venue(provider: str, symbol: str, *, timeout: float = 10.0) -> 
         client_kwargs["proxy"] = proxy_url
     try:
         async with httpx.AsyncClient(**client_kwargs) as client:
+            if provider == "gateio":
+                return await _fetch_gateio(client, symbol)
+            if provider == "bitget":
+                return await _fetch_bitget(client, symbol)
             if provider == "bybit":
                 return await _fetch_bybit(client, symbol)
             if provider == "okx":
@@ -439,7 +500,7 @@ def _sum_oi(rows: list[GoldPerpRow]) -> Decimal:
 
 @dataclass(slots=True)
 class GoldDerivativesService:
-    """Aggregates Bybit + OKX + Binance (PAXG + XAUT) perps + CFTC COT."""
+    """Aggregate multi-venue PAXG/XAUT perps and the official CFTC COT."""
 
     oi_cache: AggregatedOICache = field(default_factory=AggregatedOICache)
     request_timeout: float = 10.0
@@ -451,6 +512,24 @@ class GoldDerivativesService:
         ]
         rows = await asyncio.gather(*tasks, return_exceptions=False)
         return [row for row in rows if row is not None]
+
+    def read_cached_snapshot(self) -> dict:
+        """Return memory/disk LKG without performing any network I/O.
+
+        The workbench's spot price and technical summary must never wait for
+        the six-venue derivatives fan-out. The dedicated derivatives endpoint
+        remains responsible for refreshing this optional enhancement.
+        """
+        now = time.monotonic()
+        cached = _snapshot_cache["payload"]
+        if cached is not None and (now - _snapshot_cache["ts"]) < _SNAPSHOT_TTL_SECONDS:
+            return copy.deepcopy(cached)
+        disk = _read_snapshot_disk() or _read_snapshot_disk_allow_stale()
+        if disk is None:
+            return {}
+        _snapshot_cache["ts"] = now
+        _snapshot_cache["payload"] = disk
+        return copy.deepcopy(disk)
 
     async def build_snapshot(self) -> dict:
         """Cached entry point — memory → disk (last-known-good) → live.
@@ -491,8 +570,13 @@ class GoldDerivativesService:
     async def _build_snapshot_uncached(self) -> dict:
         rows = await self.fetch_all_perps()
         valid_rows = [r for r in rows if r.is_valid()]
+        successful_venues = {row.provider for row in valid_rows}
 
         funding_rate = _weighted_funding(valid_rows)
+        # A single provider is useful diagnostically but must not determine a
+        # cross-venue funding signal. Preserve the documented two-source gate.
+        if len(successful_venues) < 2:
+            funding_rate = None
         oi_total = _sum_oi(valid_rows)
         oi_change = self.oi_cache.oi_change_4w(oi_total) if oi_total > 0 else None
 
@@ -523,12 +607,11 @@ class GoldDerivativesService:
 
         # Build notes for transparency (not surfaced to UI).
         notes: list[str] = []
-        successful_venues = {row.provider for row in valid_rows}
         all_venues = {provider for provider, _ in _VENUES}
         failed = all_venues - successful_venues
         if failed:
             notes.append(f"信源失败: {', '.join(sorted(failed))}")
-        if len(successful_venues) < 2 and funding_rate is None:
+        if len(successful_venues) < 2:
             notes.append("可用信源不足 2 个,funding 不可用")
         if cot_error:
             notes.append(cot_error)
@@ -566,7 +649,16 @@ class GoldDerivativesService:
         if not force:
             return await self.build_snapshot()
         payload = await self._build_snapshot_uncached()
-        _write_snapshot_disk(payload)
+        if payload.get("open_interest"):
+            _write_snapshot_disk(payload)
+        else:
+            # A manual refresh must not replace a valid last-known-good file
+            # with an all-failed payload. Keep the old market observation and
+            # surface the refresh failure explicitly.
+            stale = _read_snapshot_disk_allow_stale()
+            if stale is not None:
+                stale["derivatives_note"] = "实时刷新失败，保留磁盘缓存(可能过期)"
+                payload = stale
         _snapshot_cache["ts"] = time.monotonic()
         _snapshot_cache["payload"] = payload
         return copy.deepcopy(payload)

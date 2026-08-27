@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_db_session
+from app.api.dependencies import get_db_session, get_db_writer_session
 from app.main import create_app
 from app.schemas.market import PrecomputeHintResponse
 
@@ -26,6 +26,7 @@ def test_strategy_unified_endpoint_returns_200_when_service_throws(monkeypatch) 
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/api/v1/strategy/unified",
@@ -47,6 +48,7 @@ def test_strategy_prewarm_endpoint_enqueues_hint() -> None:
     """POST /strategy/prewarm enqueues a hint and returns immediately."""
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     with patch(
         "app.api.v1.endpoints.strategy.precompute_service"
     ) as mock_pc, TestClient(app, raise_server_exceptions=False) as client:

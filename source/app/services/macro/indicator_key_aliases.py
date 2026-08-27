@@ -21,7 +21,6 @@ CANONICAL_MACRO_KEYS: dict[str, str] = {
     "ism_services": "ism_srv_pmi",
     "pce_yoy": "us_cpi_yoy",
     "core_pce_yoy": "us_core_cpi_yoy",
-    "real_yield_10y": "us_10y_yield",
 }
 
 PROVIDER_ALIASES: dict[str, str] = {

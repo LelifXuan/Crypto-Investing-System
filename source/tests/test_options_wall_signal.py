@@ -69,6 +69,31 @@ def test_max_pain_migration_is_described_as_position_center_not_prediction() -> 
     assert "持仓重心" in text
 
 
+def test_stable_key_levels_keep_labels_structured_and_share_concise_explanation() -> None:
+    result = evaluate_key_levels_axis(
+        spot_price=61_000,
+        previous_spot_price=61_000,
+        call_wall=70_000,
+        previous_call_wall=70_000,
+        put_wall=52_000,
+        previous_put_wall=52_000,
+        max_pain=60_000,
+        previous_max_pain=60_000,
+        data_quality_status="live",
+    )
+
+    expected_labels = {
+        "call_wall": "Call Wall",
+        "put_wall": "Put Wall",
+        "max_pain": "Max Pain",
+    }
+    for level_id, label in expected_labels.items():
+        level = result["levels"][level_id]
+        assert level["label"] == label
+        assert level["signal"] == "wall_stable"
+        assert level["explanation"] == "未出现有效迁移"
+
+
 def test_missing_key_levels_returns_data_insufficient_not_neutral_success() -> None:
     result = evaluate_key_levels_axis(
         spot_price=61_000,

@@ -86,7 +86,7 @@ class FredMacroProvider:
             "series_id": source_key,
             "api_key": api_key,
             "file_type": "json",
-            "sort_order": "asc",
+            "sort_order": "desc",
             "limit": 60,
         }
         async with client_for_source("fred", timeout=15) as client:
@@ -125,7 +125,9 @@ class FredMacroProvider:
             )
         if not points:
             raise ValueError(f"no fred history for {source_key}")
-        return points[-lookback_points:]
+        # sort_order=desc returns newest first - take the newest
+        # lookback_points and reverse to ascending (fetch_history contract).
+        return list(reversed(points[:lookback_points]))
 
     async def _fetch_public_history(
         self, source_key: str, lookback_points: int

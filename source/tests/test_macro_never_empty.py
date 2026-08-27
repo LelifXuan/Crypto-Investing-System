@@ -108,6 +108,42 @@ def test_proxy_state_writes_to_runtime_config(monkeypatch, tmp_path) -> None:
     assert written.exists()
 
 
+def test_proxy_state_refreshes_after_ttl(monkeypatch, tmp_path) -> None:
+    first = ProxyDetectionResult(
+        proxy_detected=False,
+        selected_proxy=None,
+        selected_source="none",
+        candidates=[],
+        checked_at="2026-08-24T00:00:00+00:00",
+    )
+    second = ProxyDetectionResult(
+        proxy_detected=True,
+        selected_proxy="http://127.0.0.1:7890",
+        selected_source="windows_system_proxy",
+        candidates=[],
+        checked_at="2026-08-24T00:01:01+00:00",
+    )
+    detected = iter((first, second))
+    clock = iter((0.0, 61.0))
+    monkeypatch.setattr(http_client_factory, "_PROXY_STATE", None)
+    monkeypatch.setattr(http_client_factory, "_PROXY_STATE_CHECKED_AT", 0.0)
+    monkeypatch.setattr(http_client_factory, "detect_proxy", lambda: next(detected))
+    monkeypatch.setattr(http_client_factory, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(http_client_factory, "write_proxy_state", lambda _result: tmp_path)
+
+    assert http_client_factory.get_proxy_state().proxy_detected is False
+    assert http_client_factory.get_proxy_state().selected_proxy == "http://127.0.0.1:7890"
+
+
+def test_volatility_source_proxy_policies_are_explicit() -> None:
+    assert proxy_detector.proxy_for_source(
+        "deribit_dvol", True, "http://127.0.0.1:7890"
+    ) == "http://127.0.0.1:7890"
+    assert proxy_detector.proxy_for_source(
+        "volmex", True, "http://127.0.0.1:7890"
+    ) is None
+
+
 def test_init_network_fast_path_under_500ms(monkeypatch, tmp_path) -> None:
     result = ProxyDetectionResult(
         proxy_detected=True,

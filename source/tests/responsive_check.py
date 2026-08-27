@@ -68,6 +68,10 @@ DEFAULT_VIEWPORTS = [
     {"name": "tablet", "width": 768, "height": 1024},
     {"name": "laptop", "width": 1366, "height": 900},
     {"name": "desktop", "width": 1920, "height": 1080},
+    # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440 (16:9).
+    # desktop-2k stays as the second default for cross-checking; desktop-2k-1600
+    # is the priority.
+    {"name": "desktop-2k-1600", "width": 2560, "height": 1600},
     {"name": "desktop-2k", "width": 2560, "height": 1440},
 ]
 

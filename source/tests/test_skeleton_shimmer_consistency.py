@@ -31,7 +31,15 @@ DOM = (ROOT / "app" / "static" / "core" / "dom.js").read_text(encoding="utf-8")
 # ---- 1. keyframe definition ---------------------------------------------
 
 def test_skeletonShimmer_keyframe_defined() -> None:
-    """@keyframes skeletonShimmer must define 0.45↔0.85 opacity breath."""
+    """@keyframes skeletonShimmer must define an opacity breath.
+
+    2026-08-17: tuned from 0.45↔0.85 → 0.78↔1.0 → 0.65↔1.0 (Δ 0.35).
+    The candle breath (chart-skeleton-candle, scaleY+opacity wave) is the
+    primary motion signal. The wrapper opacity keeps non-candle carriers
+    (axis spans, .shimmer-bar::after, .nav-skeleton-row,
+    .event-stream-skeleton-copy i) visibly alive — too subtle (0.78↔1.0,
+    Δ 0.22) made the horizontal bars read as static.
+    """
     # Keyframes contain nested { ... } blocks (per-step), so we
     # bracket-balance instead of relying on [^}]+ which truncates
     # at the first inner brace.
@@ -53,11 +61,28 @@ def test_skeletonShimmer_keyframe_defined() -> None:
                 break
             depth -= 1
     body = STYLES[body_start:body_end]
-    assert re.search(r"0%\s*,\s*100%\s*\{\s*opacity:\s*0\.45", body), (
-        "skeletonShimmer 0%/100% should be opacity:0.45"
+    # Wrapper breath at rest should be lighter than the candle peak
+    # (candles reach opacity 0.95 mid-cycle). Range 0.5–0.85 keeps the
+    # wrapper visible without competing with the candle wave; peak ~1.0
+    # is the upper bound.
+    m = re.search(r"0%\s*,\s*100%\s*\{\s*opacity:\s*([0-9.]+)", body)
+    assert m is not None, "skeletonShimmer 0%/100% must declare opacity"
+    rest = float(m.group(1))
+    assert 0.5 <= rest <= 0.85, (
+        f"skeletonShimmer rest opacity should be in [0.5, 0.85] for visible breath "
+        f"(Δ≥0.15), got {rest}"
     )
-    assert re.search(r"50%\s*\{\s*opacity:\s*0\.85", body), (
-        "skeletonShimmer 50% should be opacity:0.85"
+    peak = float(re.search(r"50%\s*\{\s*opacity:\s*([0-9.]+)", body).group(1))
+    assert peak >= 0.95, (
+        f"skeletonShimmer peak should be ~1.0 (got {peak})"
+    )
+    delta = peak - rest
+    assert delta >= 0.15, (
+        f"skeletonShimmer breath delta should be ≥0.15 (visible), got {delta:.2f}"
+    )
+    assert delta < 0.5, (
+        f"skeletonShimmer breath delta should be <0.5 so it doesn't compete "
+        f"with candle wave; got {delta:.2f}"
     )
 
 
@@ -82,14 +107,13 @@ def test_chart_skeleton_candles_carry_loading_pulse_class() -> None:
 
 def test_chart_skeleton_axis_spans_carry_loading_pulse_class() -> None:
     """Each axis <span> must carry loading-pulse."""
-    # Pattern: <span class="loading-pulse"></span> appears 5 times
+    # Axis markup is generated from five entries and each carries its phase.
     matches = re.findall(
-        r'<span\s+class="loading-pulse"></span>',
+        r'<span\s+class="loading-pulse"\s+style="\$\{skeletonPhaseStyle',
         DOM,
     )
-    assert len(matches) >= 5, (
-        f"chartSkeleton() axis should emit ≥5 loading-pulse spans, got {len(matches)}"
-    )
+    assert "{ length: 5 }" in DOM
+    assert matches, "chartSkeleton() axis spans must carry loading-pulse and a global phase"
 
 
 # ---- 4. .shimmer-bar::after switched to skeletonShimmer ------------------
@@ -214,6 +238,88 @@ def test_dead_keyframe_nav_skeleton_shimmer_removed() -> None:
 
 # ---- 8. prefers-reduced-motion unchanged --------------------------------
 
+# ---- 7b. per-candle scaleY wave (2026-08-17 redesign) -------------------
+
+def test_candleBreath_keyframe_defined() -> None:
+    """@keyframes candleBreath must define a coordinated scaleY+opacity wave.
+
+    Replaces the prior per-candle ::after translateX sweep. Each candle
+    fades+rises from a runtime negative phase, so the breath reads as a
+    single left→right wave immediately rather than N independent sweeps.
+    """
+    assert "@keyframes candleBreath" in STYLES, (
+        "@keyframes candleBreath missing — per-candle scaleY wave not implemented"
+    )
+    # Wave must move scaleY (not just opacity) to feel like "linked breath"
+    assert re.search(
+        r"@keyframes candleBreath[\s\S]*?scaleY",
+        STYLES,
+    ), "@keyframes candleBreath must animate scaleY for the linked-breath wave"
+    # Wave must use ease-in-out (smooth start/end), not linear.
+    # The animation is declared on .chart-skeleton-candle.loading-pulse
+    # (higher specificity) so it wins over the bare .loading-pulse
+    # skeletonShimmer rule that lives later in the file.
+    candle_rule = re.search(
+        r"\.chart-skeleton-candle\.loading-pulse\s*\{[^}]*animation:\s*([^;]+);",
+        STYLES,
+    )
+    assert candle_rule is not None, (
+        ".chart-skeleton-candle.loading-pulse must declare an animation"
+    )
+    assert "candleBreath" in candle_rule.group(1), (
+        ".chart-skeleton-candle.loading-pulse animation must reference candleBreath"
+    )
+    assert "infinite" in candle_rule.group(1), (
+        "candleBreath should be infinite (skeleton loops until data lands)"
+    )
+
+
+def test_chart_skeleton_candle_uses_runtime_negative_phase() -> None:
+    """Any candle count must join the wave immediately without nth-child rules."""
+    assert "skeletonPhaseStyle(-i, { periodMs: 2400, stepMs: 70 })" in DOM
+    assert "--candle-index" not in STYLES
+    assert re.search(
+        r"animation-delay:\s*var\(--skeleton-delay,\s*0ms\)",
+        STYLES,
+    )
+
+
+def test_chart_skeleton_no_legacy_shimmer_sweep() -> None:
+    """@keyframes shimmerSweep must be removed — replaced by candleBreath wave."""
+    assert "@keyframes shimmerSweep" not in STYLES, (
+        "@keyframes shimmerSweep should be removed — per-candle sweep replaced by candleBreath"
+    )
+
+
+def test_chart_skeleton_candle_fill_mode_both() -> None:
+    """.chart-skeleton-candle.loading-pulse must set animation-fill-mode: both.
+
+    Runtime delays are negative, so there is no pending delay window. Keep
+    "both" as a defensive contract for CSS fallback or future retiming.
+    """
+    candle_rule = re.search(
+        r"\.chart-skeleton-candle\.loading-pulse\s*\{([^}]*)\}",
+        STYLES,
+    )
+    assert candle_rule is not None, (
+        ".chart-skeleton-candle.loading-pulse rule missing"
+    )
+    body = candle_rule.group(1)
+    assert "animation-fill-mode" in body, (
+        ".chart-skeleton-candle.loading-pulse must set animation-fill-mode"
+    )
+    assert re.search(r"animation-fill-mode:\s*both", body), (
+        "animation-fill-mode must be 'both' so candles show trough state during delay"
+    )
+
+
+def test_chart_skeleton_candle_no_after_pseudo() -> None:
+    """The old per-candle pseudo-element sweep must remain removed."""
+    assert ".chart-skeleton-candle::after" not in STYLES, (
+        ".chart-skeleton-candle::after should stay replaced by the candleBreath wave"
+    )
+
+
 def test_reduced_motion_global_block_still_present() -> None:
     """Global @media (prefers-reduced-motion: reduce) must clamp duration to 0.01ms."""
     match = re.search(
@@ -230,23 +336,13 @@ def test_reduced_motion_global_block_still_present() -> None:
 
 
 def test_loading_pulse_reduced_motion_strategy() -> None:
-    """.loading-pulse should NOT appear in the explicit 'animation: none' list —
-    it relies on the global duration clamp (consistent with other skeletonShimmer
-    carriers). The explicit 'none' list should only target true infinite loops
-    that benefit from complete disable (vol-compression-spin / dropdown-spin).
-    """
+    """Reduced-motion users receive a stable placeholder, not a compressed loop."""
     match = re.search(
         r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]+?)\n\}",
         STYLES,
     )
     assert match is not None
     body = match.group(1)
-    # Find the explicit 'animation: none' block(s)
-    none_blocks = re.findall(
-        r"([^{}]+)\{\s*animation:\s*none\s*!important\s*;?\s*\}",
-        body,
-    )
-    joined = " | ".join(none_blocks)
-    assert ".loading-pulse" not in joined, (
-        ".loading-pulse should rely on the global clamp, not the explicit none list"
-    )
+    assert ".loading-pulse" in body
+    assert "[data-stagger-item]" in body
+    assert "animation: none !important" in body

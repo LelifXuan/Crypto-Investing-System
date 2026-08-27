@@ -5,6 +5,7 @@ import {
   formatNumber,
   hydrateKnowledgeTooltips,
   knowledgeTooltip,
+  revealStagger,
   setRoot,
   statusBanner,
 } from "../core/dom.js";
@@ -18,6 +19,7 @@ import { judgementMeta } from "../core/judgement.js?v=semantic-v3";
 import { rangeStateLabel } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
 import { mountDropdown } from "../ui/dropdown.js";
+import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 
 // Semantic color lock — same series always wears the same color regardless
 // of which chart it appears in. Canonical palette shared with analysis.js + structure.js.
@@ -94,8 +96,11 @@ const DECISION_CARD_TERM = {
 let requestController = null;
 let dashboard = null;
 let autoRefreshAttempted = false;
+let initialDashboardRevealPlayed = false;
 let pageGuideFab = null;
 let hedgePlan = null;
+let isHedgePlannerCollapsed = true;
+let isAuditGroupCollapsed = true;
 const RISK_CHART_VIEWS = Object.freeze({
   sentiment: {
     title: "期权情绪",
@@ -117,7 +122,7 @@ const RISK_CHART_VIEWS = Object.freeze({
 // every AUTO_REFRESH_MS so the chart catches up without manual
 // clicks. Manual "刷新" still uses refresh=true (job+force); this
 // loop is read-only and aborts cleanly on unmount/pause.
-const AUTO_REFRESH_MS = 60_000;
+const AUTO_REFRESH_MS = 1_800_000;
 let autoRefreshTimer = null;
 let filters = {
   window: "",
@@ -244,7 +249,7 @@ function renderHero({ banner = "", freshness = "" } = {}) {
     <section class="hero-card btc-derivatives-hero">
       <div>
         <p class="eyebrow">BTC DERIVATIVES COCKPIT</p>
-        <h1>杠杆、波动率与保护成本</h1>
+        <h2 class="page-display-title">杠杆、波动率与保护成本</h2>
         <p>${escapeHtml(heroMarketVerdict())}</p>
       </div>
       <div class="btc-hero-actions">
@@ -963,68 +968,22 @@ function renderMaturityKeyLevelsSnapshot() {
   `;
 }
 
-function renderDetailsDrawer() {
-  return `
-    <details class="btc-details-drawer">
-      <summary>
-        <span>原始市场明细</span>
-        <small>期货合约与 ${escapeHtml(filters.selectedExpiry || "当前到期日")} 期权链</small>
-      </summary>
-      <div class="btc-details-grid">
-        <article class="card btc-table-card">
-          <h2>期货 / 永续明细</h2>
-          ${renderFuturesTable()}
-        </article>
-        <article class="card btc-table-card">
-          <h2>期权链</h2>
-          ${renderOptionChain()}
-        </article>
-      </div>
-    </details>
-  `;
-}
-
-function renderEvidenceLayer() {
-  const analysis = dashboard?.joint_analysis || {};
-  const blocks = analysis.inference_blocks || [];
-  const indicatorTiles = renderIndicatorJudgements();
-  const inferenceTiles = blocks.map((block) => `
-    <article class="btc-evidence-tile" data-tone="${escapeHtml(block.tone || "neutral")}">
-      <header>
-        <span class="btc-tone-chip" data-tone="${escapeHtml(block.tone || "neutral")}">${escapeHtml(block.title || "证据")}</span>
-        ${confidenceChip(block.confidence)}
-      </header>
-      <h3>${escapeHtml(block.conclusion || "当前数据不足以形成清晰判断")}</h3>
-      <p class="btc-evidence-basis"><strong>依据</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
-      <p><strong>影响</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
-    </article>
-  `).join("");
-  return `
-    <section class="card btc-evidence-layer">
-      <div class="btc-section-heading">
-        <div><p class="eyebrow">EVIDENCE & ROLES</p><h2>指标状态与多空证据</h2></div>
-        <div class="btc-section-meta">
-          ${confidenceChip(analysis.confidence)}
-          <p>综合结论置信度：拥挤度、波动和关键价位不直接解释为多空方向。</p>
-        </div>
-      </div>
-      <div class="btc-evidence-grid">
-        ${indicatorTiles}${inferenceTiles}
-      </div>
-      ${(analysis.conflicts || []).map((item) => `<p class="btc-warning">${escapeHtml(item)}</p>`).join("")}
-    </section>
-  `;
-}
-
 function renderHedgePlanner() {
   const context = dashboard?.hedge_context || {};
   return `
-    <section class="btc-bottom-group btc-protection-group">
+    <section class="btc-bottom-group btc-protection-group${isHedgePlannerCollapsed ? " is-collapsed" : ""}">
       <div class="btc-section-heading">
         <div><p class="eyebrow">LIMITED RISK PROTECTION</p><h2>网格与现货保护规划</h2></div>
         <p>根据当前 IV、关键价位与保护成本，比较有限风险保护和降低敞口。</p>
+        ${renderDisclosureToggle({
+          controls: "btc-protection-body",
+          expanded: !isHedgePlannerCollapsed,
+          expandLabel: "展开规划",
+          collapseLabel: "收起规划",
+          className: "btc-protection-toggle",
+        })}
       </div>
-      <div class="btc-bottom-group-body btc-hedge-layout">
+      <div id="btc-protection-body" class="btc-bottom-group-body btc-hedge-layout" ${isHedgePlannerCollapsed ? "hidden" : ""}>
         <form class="card btc-hedge-form" id="btc-hedge-form">
           <fieldset class="btc-hedge-section">
             <legend>标的</legend>
@@ -1096,15 +1055,60 @@ function renderHedgePlanner() {
   `;
 }
 
+function setHedgePlannerCollapsed(collapsed) {
+  isHedgePlannerCollapsed = Boolean(collapsed);
+  const group = document.querySelector(".btc-protection-group");
+  const button = group?.querySelector(".btc-protection-toggle");
+  const body = group?.querySelector("#btc-protection-body");
+
+  group?.classList.toggle("is-collapsed", isHedgePlannerCollapsed);
+  setDisclosureState(button, !isHedgePlannerCollapsed);
+  if (body) body.hidden = isHedgePlannerCollapsed;
+}
+
+function setAuditGroupCollapsed(collapsed) {
+  isAuditGroupCollapsed = Boolean(collapsed);
+  const group = document.querySelector(".btc-audit-group");
+  const button = group?.querySelector(".btc-audit-toggle");
+  const body = group?.querySelector("#btc-audit-body");
+
+  group?.classList.toggle("is-collapsed", isAuditGroupCollapsed);
+  setDisclosureState(button, !isAuditGroupCollapsed);
+  if (body) body.hidden = isAuditGroupCollapsed;
+}
+
 function renderAuditGroup() {
+  const analysis = dashboard?.joint_analysis || {};
+  const blocks = analysis.inference_blocks || [];
+  const indicatorTiles = renderIndicatorJudgements();
+  const inferenceTiles = blocks.map((block) => `
+    <article class="btc-evidence-tile" data-tone="${escapeHtml(block.tone || "neutral")}">
+      <header>
+        <span class="btc-tone-chip" data-tone="${escapeHtml(block.tone || "neutral")}">${escapeHtml(block.title || "证据")}</span>
+        ${confidenceChip(block.confidence)}
+      </header>
+      <h3>${escapeHtml(block.conclusion || "当前数据不足以形成清晰判断")}</h3>
+      <p class="btc-evidence-basis"><strong>依据</strong>${escapeHtml((block.basis || []).join("；") || "暂无有效依据")}</p>
+      <p><strong>影响</strong>${escapeHtml(block.implication || "等待更多有效数据。")}</p>
+    </article>
+  `).join("");
   return `
-    <section class="btc-bottom-group btc-audit-group">
+    <section class="btc-bottom-group btc-audit-group${isAuditGroupCollapsed ? " is-collapsed" : ""}">
       <div class="btc-section-heading">
-        <div><p class="eyebrow">明细审计</p><h2>原始市场明细</h2></div>
-        <p>把期货、永续与期权链明细收进可展开区域，供复核和追溯使用。</p>
+        <div><p class="eyebrow">EVIDENCE & AUDIT</p><h2>指标状态 · 多空证据</h2></div>
+        ${renderDisclosureToggle({
+          controls: "btc-audit-body",
+          expanded: !isAuditGroupCollapsed,
+          expandLabel: "展开明细",
+          collapseLabel: "收起明细",
+          className: "btc-audit-toggle",
+        })}
       </div>
-      <div class="btc-bottom-group-body">
-        ${renderDetailsDrawer()}
+      <div id="btc-audit-body" class="btc-bottom-group-body" ${isAuditGroupCollapsed ? "hidden" : ""}>
+        <div class="btc-evidence-grid">
+          ${indicatorTiles}${inferenceTiles}
+        </div>
+        ${(analysis.conflicts || []).map((item) => `<p class="btc-warning">${escapeHtml(item)}</p>`).join("")}
       </div>
     </section>
   `;
@@ -1136,82 +1140,119 @@ function renderHedgePlan() {
   `;
 }
 
-function renderLiveSourceStatus() {
-  const quality = dashboard?.data_quality || {};
-  const providers = dashboard?.source_status || quality.providers || [];
-  const snapshotState = dashboard?.snapshot_state || quality.mode || "data_insufficient";
-  const stateMessage = snapshotState === "stale"
-    ? `正在使用最近真实缓存，数据时间 ${formatDateTime(dashboard?.data_timestamp)}`
-    : snapshotState === "data_insufficient"
-      ? "当前没有可用实时数据，也没有 15 分钟内的真实缓存。"
-      : "当前展示实时公开数据。";
+function sourceConnectivity(status) {
+  const value = String(status || "unknown");
+  if (value === "ok" || value === "healthy") return "ok";
+  if (value === "degraded") return "degraded";
+  if (value === "circuit_open") return "circuit_open";
+  if (value === "failed") return "failed";
+  return "unknown";
+}
+
+// Keep the footer at the same four-cell density as the gold allocation ledger.
+// Provider-level health is preserved, but related venues are summarized into
+// decision-friendly domains so the footer remains a compact status strip.
+const PROVIDER_LABELS = {
+  deribit: "Deribit",
+  okx: "OKX",
+  bybit: "Bybit",
+  binance_futures: "Binance",
+  bitget: "Bitget",
+  hyperliquid: "Hyperliquid",
+};
+
+function governanceProviderItem(label, entry, { snapshot = false } = {}) {
+  const state = entry?.state || "missing";
   return `
-    <section class="card btc-data-quality">
-      <div class="btc-section-heading">
-        <div><p class="eyebrow">数据质量</p><h2>数据源状态</h2></div>
-        <div class="btc-quality-actions">
-          <span class="btc-quality-badge" data-state="${escapeHtml(snapshotState)}">${escapeHtml(displayState(snapshotState))}</span>
-          <button id="btc-probe-sources" class="secondary-button" type="button">一键探测数据源</button>
-        </div>
+    <article class="governance-ledger__item btc-governance-item${snapshot ? " governance-ledger__snapshot btc-governance-snapshot" : ""}" data-state="${escapeHtml(state)}">
+      <div class="governance-ledger__label btc-governance-label">
+        ${snapshot
+          ? '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>'
+          : '<span class="governance-ledger__dot btc-governance-dot" aria-hidden="true"></span>'}
+        <span>${escapeHtml(label)}</span>
       </div>
-      <p class="${snapshotState === "live" ? "" : "btc-fixture-warning"}">${escapeHtml(stateMessage)}</p>
-      <details class="btc-source-details">
-        <summary>查看数据源明细、缺失字段与方法警告</summary>
-        <div class="btc-provider-grid">
-          ${providers.map((item) => `
-            <article class="btc-provider-card" data-status="${escapeHtml(item.status || "unknown")}">
-              <div><strong>${escapeHtml(item.provider || item.name || "unknown")}</strong><span>${escapeHtml(displayState(item.status))}</span></div>
-              <p>${escapeHtml((item.capabilities || []).join(" / ") || "能力未知")}</p>
-              <small>延迟 ${item.latency_ms == null ? "—" : `${Math.round(item.latency_ms)}ms`} · 最近成功 ${escapeHtml(formatDateTime(item.last_success_at))}</small>
-              ${item.last_error ? `<small class="btc-provider-error">${escapeHtml(item.last_error)}</small>` : ""}
-              ${item.circuit_open_until ? `<small>熔断至 ${escapeHtml(formatDateTime(item.circuit_open_until))}</small>` : ""}
-            </article>
-          `).join("") || "<p>暂无数据源健康记录，可点击探测。</p>"}
-        </div>
-        <details class="btc-quality-details">
-          <summary>查看缺失字段、陈旧快照与方法警告</summary>
-          <div class="btc-quality-grid">
-            <article><h3>缺失字段</h3><p>${escapeHtml((quality.missing_fields || []).join(" / ") || "无")}</p></article>
-            <article><h3>陈旧快照</h3><p>${escapeHtml((quality.stale_snapshots || []).join(" / ") || "无")}</p></article>
-            <article><h3>历史积累</h3><p>${quality.history_available ? "可用" : "真实样本积累中"}</p></article>
-          </div>
-          <ul>${(quality.warnings || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-        </details>
-      </details>
-      <small>生成时间：${escapeHtml(formatDateTime(dashboard?.generated_at))}</small>
-    </section>
+      <strong>${escapeHtml(entry?.value || "未配置")}</strong>
+      <small>${escapeHtml(entry?.detail || "—")}</small>
+    </article>
   `;
 }
 
-function renderDataQuality() {
-  return renderLiveSourceStatus();
+function summarizeProviderGroup(items, { emptyValue = "尚未接入" } = {}) {
+  const providers = Array.isArray(items) ? items : [];
+  const ready = providers.filter((item) => sourceConnectivity(item?.status) === "ok");
+  const degraded = providers.filter((item) => sourceConnectivity(item?.status) === "degraded");
+  const endpointSuccess = providers.reduce((sum, item) => sum + Number(item?.endpoint_success || 0), 0);
+  const endpointTotal = providers.reduce((sum, item) => sum + Number(item?.endpoint_total || 0), 0);
+  const state = providers.length === 0
+    ? "missing"
+    : ready.length === providers.length
+      ? "fresh"
+      : ready.length || degraded.length
+        ? "degraded"
+        : "missing";
+  const value = providers.length === 0
+    ? emptyValue
+    : ready.length === providers.length
+      ? "已就绪"
+      : ready.length
+        ? `${ready.length}/${providers.length} 平台可用`
+        : degraded.length
+          ? "受限可用"
+          : "暂不可用";
+  const venueNames = providers.map((item) => PROVIDER_LABELS[item?.provider] || item?.provider || "未知源");
+  const endpointText = endpointTotal ? `${endpointSuccess}/${endpointTotal} 端点` : "端点统计待补齐";
+  return { state, value, detail: `${venueNames.join(" / ")} · ${endpointText}` };
 }
 
 function renderGovernanceGroup() {
+  const quality = dashboard?.data_quality || {};
+  const providers = dashboard?.source_status || quality.providers || [];
+  const snapshotState = dashboard?.snapshot_state || quality.mode || "data_insufficient";
+
+  const optionsProviders = providers.filter((item) => item?.provider === "deribit");
+  const perpetualProviders = providers.filter((item) => item?.provider !== "deribit");
+  const optionSummary = summarizeProviderGroup(optionsProviders);
+  const perpetualSummary = summarizeProviderGroup(perpetualProviders);
+  const endpointSuccess = providers.reduce((sum, item) => sum + Number(item?.endpoint_success || 0), 0);
+  const endpointTotal = providers.reduce((sum, item) => sum + Number(item?.endpoint_total || 0), 0);
+  const coverageState = endpointTotal === 0
+    ? "missing"
+    : endpointSuccess === endpointTotal
+      ? "fresh"
+      : endpointSuccess > 0
+        ? "degraded"
+        : "missing";
+  const snapshotAt = dashboard?.data_timestamp || dashboard?.generated_at;
+  const snapReady = snapshotState === "live" || snapshotState === "healthy" || snapshotState === "ok";
+  const snapshotItem = governanceProviderItem("快照时间", {
+    value: snapshotAt ? formatDateTime(snapshotAt) : "等待快照",
+    detail: snapshotAt
+      ? `UTC · ${snapReady ? "当前研究快照" : "最近可用快照"}`
+      : "尚未生成有效快照",
+    state: snapshotAt ? (snapReady ? "fresh" : "degraded") : "missing",
+  }, { snapshot: true });
+
+  const readyCount = providers.filter((item) => sourceConnectivity(item.status) === "ok").length;
+  const totalCount = providers.length;
+
   return `
-    <section class="btc-bottom-group btc-governance-group">
-      <div class="btc-section-heading">
-        <div><p class="eyebrow">数据与边界</p><h2>数据源状态与方法边界</h2></div>
-        <p>集中查看数据可用性、缺失字段、方法限制和不执行下单的边界。</p>
+    <section class="card governance-ledger btc-governance" aria-labelledby="btc-governance-title">
+      <div class="governance-ledger__head btc-governance-head">
+        <p class="eyebrow">DATA GOVERNANCE</p>
+        <h2 id="btc-governance-title">数据就绪与快照</h2>
+        <p><strong>${readyCount}/${totalCount}</strong> 个数据源当前可用</p>
       </div>
-      <div class="btc-bottom-group-body btc-governance-grid">
-        ${renderDataQuality()}
-        ${renderMethodNotes()}
+      <div class="governance-ledger__grid btc-governance-grid">
+        ${governanceProviderItem("期权行情", optionSummary)}
+        ${governanceProviderItem("永续合约", perpetualSummary)}
+        ${governanceProviderItem("接口覆盖", {
+          value: endpointTotal ? `${endpointSuccess}/${endpointTotal} 端点` : "等待统计",
+          detail: `${providers.length} 个数据源已配置`,
+          state: coverageState,
+        })}
+        ${snapshotItem}
       </div>
     </section>
-  `;
-}
-
-function renderMethodNotes() {
-  return `
-    <details class="btc-method-notes">
-      <summary>风险提示与方法边界</summary>
-      <div>
-        <p>最大痛点用于观察持仓分布迁移，不作为价格预测。</p>
-        <p>有效期权墙不是“最大 OI 执行价”的别名：Call 必须位于现价上方、Put 必须位于现价下方，并通过 8D–45D Delta、局部 OI 集群、期限 OI 占比和报价质量门禁。它仍只是潜在对冲敏感区，不作为确定支撑或阻力。</p>
-        <p>页面不执行下单，不推荐裸卖期权，也不把比例价差描述为安全对冲。</p>
-      </div>
-    </details>
   `;
 }
 
@@ -1230,9 +1271,6 @@ function renderPageShell(banner = "", freshness = "") {
       ${renderWallInterpretation()}
       <div class="btc-layout-row btc-layout-row--charts">
         ${renderChartSections()}
-      </div>
-      <div class="btc-layout-row btc-layout-row--evidence">
-        <div class="btc-layout-main">${renderEvidenceLayer()}</div>
       </div>
       <div class="btc-layout-row btc-layout-row--protection">
         <div class="btc-layout-main">${renderHedgePlanner()}</div>
@@ -1545,6 +1583,18 @@ function renderCharts() {
   }
 }
 
+function revealInitialDashboard() {
+  if (initialDashboardRevealPlayed) return;
+  const page = document.querySelector(".btc-derivatives-page");
+  if (!page) return;
+  // The router can only reveal the lightweight loading shell because this
+  // page resolves its dashboard asynchronously. Reveal the semantic sections
+  // after Chart.js has drawn so a cold load and a fast cache hit share the
+  // same skeleton-to-content handoff without replaying on filter changes.
+  revealStagger(page);
+  initialDashboardRevealPlayed = true;
+}
+
 function updateFiltersFromControls(form) {
   const values = new FormData(form);
   filters = {
@@ -1582,25 +1632,17 @@ function bindEvents() {
   document.getElementById("btc-refresh")?.addEventListener("click", () => {
     loadDashboard({ refresh: true }).catch(handleLoadError);
   });
-  document.getElementById("btc-probe-sources")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = "探测中…";
-    try {
-      await api.probeBtcDerivativesSources({ timeoutMs: 45000 });
-      await loadDashboard({ refresh: true });
-    } catch (error) {
-      handleLoadError(error);
-    } finally {
-      button.disabled = false;
-      button.textContent = "一键探测数据源";
-    }
-  });
   document.getElementById("btc-chart-controls")?.addEventListener("change", (event) => {
     updateFiltersFromControls(event.currentTarget);
     loadDashboard().catch(handleLoadError);
   });
   mountBtcChartDropdowns();
+  document.querySelector(".btc-protection-toggle")?.addEventListener("click", () => {
+    setHedgePlannerCollapsed(!isHedgePlannerCollapsed);
+  });
+  document.querySelector(".btc-audit-toggle")?.addEventListener("click", () => {
+    setAuditGroupCollapsed(!isAuditGroupCollapsed);
+  });
   document.getElementById("btc-hedge-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1623,7 +1665,7 @@ function bindEvents() {
     };
     try {
       hedgePlan = await api.planBtcDerivativeHedge(payload);
-      setRoot(renderPageShell(statusBanner("有限风险保护方案已更新", "neutral")));
+      setRoot(renderPageShell(statusBanner("有限风险保护方案已更新", "neutral")), { pageTransition: true });
       bindEvents();
       renderCharts();
       // Re-initialize hedge form visibility
@@ -1667,7 +1709,7 @@ async function waitForRefreshJob(receipt, signal) {
 
 function showError(error) {
   console.error("btc derivatives page failed", error);
-  setRoot(renderPageShell(statusBanner("衍生品数据读取失败，请稍后重试", "error")));
+  setRoot(renderPageShell(statusBanner("衍生品数据读取失败，请稍后重试", "error")), { pageTransition: true });
   bindEvents();
   renderCharts();
 }
@@ -1699,7 +1741,7 @@ async function loadDashboard({ refresh = false } = {}) {
     if (dashboard?.snapshot_state === "data_insufficient" && !autoRefreshAttempted) {
       autoRefreshAttempted = true;
       const banner = statusBanner("首次加载自动拉取衍生品实时数据", "info");
-      setRoot(`<div class="btc-derivatives-page">${renderHero({ banner })}</div>`);
+      setRoot(`<div class="btc-derivatives-page">${renderHero({ banner })}</div>`, { pageTransition: true });
       try {
         const receipt = await api.refreshBtcDerivativesDashboard(
           dashboardQuery(),
@@ -1719,7 +1761,7 @@ async function loadDashboard({ refresh = false } = {}) {
   }
   syncFiltersFromDashboard();
   destroyChartsForPage("btc-derivatives-");
-  setRoot(renderPageShell("", refresh ? "衍生品快照已刷新" : ""));
+  setRoot(renderPageShell("", refresh ? "衍生品快照已刷新" : ""), { pageTransition: true });
   await hydrateKnowledgeTooltips(document.getElementById("page-root"));
   bindEvents();
   renderCharts();
@@ -1730,10 +1772,14 @@ async function loadDashboard({ refresh = false } = {}) {
     if (ptHidden) updateHedgeFormForPortfolioType(ptHidden.value);
   }
   mountBtcHedgeDropdowns();
+  revealInitialDashboard();
 }
 
 export async function renderBtcDerivatives() {
   autoRefreshAttempted = false;
+  initialDashboardRevealPlayed = false;
+  isHedgePlannerCollapsed = true;
+  isAuditGroupCollapsed = true;
   if (!pageGuideFab) {
     pageGuideFab = mountPageGuide("btc-derivatives");
   }

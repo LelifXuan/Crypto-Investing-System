@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from time import perf_counter
 from typing import Any
 
@@ -52,6 +53,7 @@ class SourceHttpClient:
         endpoint: EndpointSpec,
         *,
         force: bool = False,
+        decimal_json: bool = False,
     ) -> tuple[Any, float, int]:
         state = self.state(provider.key)
         if state.is_open() and not force:
@@ -80,9 +82,32 @@ class SourceHttpClient:
                             )
                         response.raise_for_status()
                         latency = (perf_counter() - started) * 1000
-                        return response.json(), latency, response.status_code
+                        payload = (
+                            response.json(parse_float=Decimal)
+                            if decimal_json
+                            else response.json()
+                        )
+                        return payload, latency, response.status_code
                     except (httpx.HTTPError, ValueError) as exc:
                         last_error = exc
+                        status_code = (
+                            exc.response.status_code
+                            if isinstance(exc, httpx.HTTPStatusError)
+                            and exc.response is not None
+                            else None
+                        )
+                        # Authentication, permission and geo-policy responses
+                        # are deterministic for the current route. Retrying the
+                        # same request only adds 8 seconds of latency per source
+                        # and cannot recover. Keep 408/429 and 5xx retryable.
+                        if (
+                            status_code is not None
+                            and 400 <= status_code < 500
+                            and status_code not in {408, 429}
+                        ):
+                            raise RuntimeError(
+                                f"permanent HTTP {status_code}: {exc}"
+                            ) from exc
                         if attempt == 3:
                             break
                         await asyncio.sleep((1, 2, 5)[attempt])

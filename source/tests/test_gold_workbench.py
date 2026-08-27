@@ -203,6 +203,23 @@ def _client() -> TestClient:
 
 
 class TestWorkbenchEndpoint:
+    def test_workbench_never_waits_for_live_derivatives_fanout(self, monkeypatch):
+        from app.services.gold_derivatives import GoldDerivativesService
+
+        async def fail_if_called(self):  # pragma: no cover - failure sentinel
+            raise AssertionError("live derivatives fan-out must not block workbench")
+
+        monkeypatch.setattr(GoldDerivativesService, "build_snapshot", fail_if_called)
+        monkeypatch.setattr(
+            GoldDerivativesService,
+            "read_cached_snapshot",
+            lambda self: {"funding_rate": 0.0001},
+        )
+        with _client() as client:
+            resp = client.get("/api/v1/gold/workbench")
+        assert resp.status_code == 200
+        assert resp.json()["derivatives"]["funding_rate"] == 0.0001
+
     def test_workbench_returns_setup_required_without_policy(self):
         """With no DB session the endpoint must degrade to a structured
         setup_required payload — not 500 — and still ship the full shell

@@ -14,6 +14,9 @@ from app.services.cache_registry import expires_at_for_page
 
 from .cache_policy import CachePolicy, CanonicalCacheEntry
 
+# 策略热路径的代表性 timeframe（与预计算计划一致）
+_STRATEGY_HOTPATH_TF = "1d"
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +80,11 @@ class PageSnapshotCacheAdapter:
                 instrument_id=instrument,
                 source_updated_at=entry.created_at,
                 source_version="strategy_runtime_v1",
+                expires_at=expires_at_for_page(
+                    "strategy_unified",
+                    entry.created_at,
+                    timeframe=_STRATEGY_HOTPATH_TF,
+                ),
             )
         except Exception:
             logger.exception("strategy cache publish failed", extra={"instrument": instrument})

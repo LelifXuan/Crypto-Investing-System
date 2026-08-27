@@ -127,7 +127,7 @@ def test_strategy_index_wires_scan_renderers_and_detail_panel():
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
 
     for token in (
-        'from "./renderScanMatrix.js"',
+        'from "./renderScanMatrix.js?v=opportunity-matrix-v2"',
         'from "./renderScanRanked.js"',
         'from "./renderDetailPanel.js"',
         "renderScanMatrix(",
@@ -261,7 +261,8 @@ def test_strategy_scan_matrix_renders_table_with_three_timeframes():
     assert "data-instrument" in matrix
     assert "data-timeframe" in matrix
     assert "scan-cell-btn" in matrix
-    assert "无明确方向" in matrix  # 2026-07-24 v3: ready-but-no-edge cell
+    assert "等待确认" in matrix
+    assert "item.qualified !== true" in matrix
 
 
 def test_strategy_scan_matrix_bind_clicks_route_to_onSelect():
@@ -316,7 +317,8 @@ def test_strategy_scan_banner_and_ranking_share_visible_matrix_source():
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     assert "const visibleMatrix = matrix.filter" in index
     assert "const ranked = visibleMatrix" in index
-    assert "const oppCount = ranked.length" in index
+    assert "const qualified = visibleMatrix.filter" in index
+    assert "const oppCount = qualified.length" in index
     assert "data.ranked?.length" not in index
 
 
@@ -426,33 +428,31 @@ def test_strategy_never_uses_pending_risk_reward_copy():
 # ---------------------------------------------------------------------------
 
 
-def test_strategy_scan_matrix_handles_cache_state_per_cell():
-    """renderScanMatrix must render three distinct cell states
-    (actionable / ready-no-edge / data-pending). It must branch on
-    cache_state and render different copy for missing/warming/error
-    vs fresh+WAIT."""
+def test_strategy_scan_matrix_handles_cache_state_and_qualification_per_cell():
+    """Pending, unqualified and promoted cells remain visibly distinct."""
     matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(
         encoding="utf-8"
     )
-    # The renderer must check item.cache_state — both for the
-    # pending branch and for the ready-no-edge branch.
     assert "cache_state" in matrix, (
         "renderScanMatrix must read item.cache_state to render pending cells"
     )
-    # It must distinguish the pending case from the WAIT-but-ready case.
     has_pending_branch = (
         'cache_state === "missing"' in matrix
         or 'cache_state === "warming"' in matrix
         or "'missing'" in matrix
         or '"missing"' in matrix
     )
-    has_ready_no_edge_branch = ("WAIT" in matrix) and ("无明确方向" in matrix)
     assert has_pending_branch, (
         "renderScanMatrix must have a branch for cache_state in missing/warming/error"
     )
-    assert has_ready_no_edge_branch, (
-        "renderScanMatrix must still render WAIT cells for fresh+no-edge"
-    )
+    assert "item.qualified !== true" in matrix
+    assert "等待确认" in matrix
+    assert "item.confidence" not in matrix
+    assert "scan-cell-direction-icon" in matrix
+
+    editorial = (ROOT / "app/static/editorial.css").read_text(encoding="utf-8")
+    assert ":not(.scan-cell-btn)" in editorial
+    assert ".scan-cell-unqualified .scan-cell-btn" in editorial
 
 
 def test_strategy_scan_ranked_empty_state_distinguishes_pending_vs_ready():

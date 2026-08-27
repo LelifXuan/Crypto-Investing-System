@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatNumber,
   knowledgeTooltip,
+  revealStagger,
   setRoot,
   statusChip,
 } from "../core/dom.js";
@@ -762,6 +763,7 @@ function patternConfirmationIndex(primary, candles) {
 function currentPriceGuide(snapshot, candles) {
   const close = latestClose(candles);
   const primary = snapshot?.classic_patterns?.primary;
+  const textDecision = snapshot?.overall?.text_decision || {};
   const levels = primary?.levels || {};
   if (close === null || !primary || primary.renderable === false) {
     return {
@@ -784,17 +786,27 @@ function currentPriceGuide(snapshot, candles) {
   // whether the close actually triggered a confirmed breakout. We
   // trust the backend verdict here and only fall back to the raw
   // level check when the snapshot verdict is missing.
-  const textDecision = snapshot?.overall?.text_decision || {};
   const resolved = textDecision.resolved_state || null;
 
   const breakout = finiteLevel(levels.breakout_confirm);
   const breakdown = finiteLevel(levels.breakdown_confirm);
   const invalidation = finiteLevel(levels.invalidation);
-  const upper = finiteLevel(levels.resistance_line ?? levels.resistance ?? levels.upper_boundary ?? levels.breakout_confirm);
-  const lower = finiteLevel(levels.support_line ?? levels.support ?? levels.lower_boundary ?? levels.breakdown_confirm);
+  const upper = textDecision.boundary_valid
+    ? finiteLevel(textDecision.upper_boundary)
+    : finiteLevel(levels.resistance_line ?? levels.resistance ?? levels.upper_boundary ?? levels.breakout_confirm);
+  const lower = textDecision.boundary_valid
+    ? finiteLevel(textDecision.lower_boundary)
+    : finiteLevel(levels.support_line ?? levels.support ?? levels.lower_boundary ?? levels.breakdown_confirm);
   const direction = primary.direction_bias || "neutral";
   const patternStartIndex = patternSearchStartIndex(primary, candles);
   const confirmedBreakIndex = patternConfirmationIndex(primary, candles);
+
+  if (resolved === "no_actionable_pattern") {
+    return { state: "price_only", label: "暂无明确形态边界", close, level: null, message: textDecision.message || "当前没有可验证的经典形态边界。" };
+  }
+  if (resolved === "pattern_expired") {
+    return { state: "expired", label: "旧形态边界已过期", close, level: null, message: textDecision.message || "旧形态已经超出有效投影范围。" };
+  }
 
   if (Number.isFinite(invalidation) && ((direction === "bullish" && close < invalidation) || (direction === "bearish" && close > invalidation))) {
     return {
@@ -829,7 +841,7 @@ function currentPriceGuide(snapshot, candles) {
       message: "最新收盘价跌破经典图形下沿确认位，旧区间支撑已被破坏。系统已结合综合结构方向给出具体执行权限判断。",
     };
   }
-  if (Number.isFinite(upper) && Number.isFinite(lower) && close <= upper && close >= lower) {
+  if (textDecision.boundary_valid && Number.isFinite(upper) && Number.isFinite(lower) && lower < upper && close <= upper && close >= lower) {
     return { state: "inside", label: "位于形态内部", close, level: null, message: "价格仍在形态区间内部，需等待收盘突破或跌破后再确认方向。" };
   }
   return { state: "retest", label: "回踩确认中", close, level: Number.isFinite(upper) ? upper : lower, message: "价格已离开主要形态区域，需观察是否回踩边界并重新获得确认。" };
@@ -867,6 +879,11 @@ function buildCurrentPriceGuideMarkup(guide, textDecision) {
   const levelText = Number.isFinite(guide.level) ? `关键位 ${formatNumber(guide.level, 2)}` : "";
   const closeText = Number.isFinite(guide.close) ? `最新收盘 ${formatNumber(guide.close, 2)}` : "";
   const decision = textDecision || {};
+  const boundaryText = decision.boundary_valid
+    && Number.isFinite(Number(decision.lower_boundary))
+    && Number.isFinite(Number(decision.upper_boundary))
+    ? `${decision.pattern_label || "形态边界"} ${formatNumber(decision.lower_boundary, 2)}–${formatNumber(decision.upper_boundary, 2)}`
+    : "";
   const headline = decision.headline || guide.label || "当前价格位置";
   const message = decision.message || guide.message || "";
   const permissionLabel = decision.permission_label || "";
@@ -875,7 +892,7 @@ function buildCurrentPriceGuideMarkup(guide, textDecision) {
   return `
     <div class="structure-price-guide guide-${escapeHtml(tone)}">
       <strong>${escapeHtml(headline)}</strong>
-      <span>${escapeHtml([closeText, levelText].filter(Boolean).join(" ｜ "))}</span>
+      <span>${escapeHtml([closeText, boundaryText, levelText].filter(Boolean).join(" ｜ "))}</span>
       <p>${escapeHtml(message)}</p>
       ${nextTrigger ? `<p class="muted">下一触发：${escapeHtml(nextTrigger)}</p>` : ""}
       ${permissionLabel ? `<span class="status-chip chip-neutral">执行权限：${escapeHtml(permissionLabel)}</span>` : ""}
@@ -1178,10 +1195,6 @@ function renderChart(snapshot, candles) {
   const invalidSwingPointCount = rawGeometry
     .filter((item) => item.system === "swing")
     .reduce((total, item) => total + Number(item.meta_json?.invalid_point_count ?? item.meta?.invalid_point_count ?? 0), 0);
-
-  // 2026-08-11: fade transition — briefly fade before replacing content
-  chartPanel.classList.add("chart-fading-out");
-  requestAnimationFrame(() => requestAnimationFrame(() => chartPanel.classList.remove("chart-fading-out")));
 
   if (!candles.length) {
     chartPanel.className = "structure-chart-panel empty";
@@ -1605,12 +1618,21 @@ export async function renderStructure() {
         renderStatus("正在拉取 K 线并生成结构快照", "loading");
         try {
           await api.refreshStructure(instrumentId, timeframe);
-          bundle = await api.getStructureBundle(instrumentId, timeframe, {
-            includeGeometry: true,
-            candlesLimit: limit,
-            force: true,
-            signal: activeController.signal,
-          });
+          // 轮询等待后台计算完成（最多 30 秒，每 3 秒一次）
+          const maxAttempts = 10;
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            if (disposed || requestToken !== state.requestToken || lastRequestedKey !== requestKey) return;
+            bundle = await api.getStructureBundle(instrumentId, timeframe, {
+              includeGeometry: true,
+              candlesLimit: limit,
+              force: true,
+              signal: activeController.signal,
+            });
+            const newCandles = normalizeCandles(bundle.candles);
+            if (bundle.cache_state !== "missing" && newCandles.length > 0) break;
+            renderStatus(`正在生成结构快照… (${attempt + 1}/${maxAttempts})`, "loading");
+          }
         } catch (recoveryError) {
           console.warn("structure:auto-recovery:failed", recoveryError);
         }
@@ -1618,6 +1640,8 @@ export async function renderStructure() {
 
       if (disposed || requestToken !== state.requestToken || lastRequestedKey !== requestKey) return;
       renderFromBundle(bundle);
+      revealStagger(document.getElementById("structure-chart-panel"));
+      revealStagger(document.getElementById("structure-summary-panel"));
     } catch (error) {
       if (error?.name === "AbortError" || error?.name === "TimeoutError") {
         return;

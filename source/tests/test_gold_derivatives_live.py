@@ -8,7 +8,7 @@ Covers:
 * Aggregated OI cache round-trip + 4-week comparison.
 * ``GoldDerivativesService.build_snapshot`` returns the four-field contract
   even when all venues are unreachable.
-* Static guard: ``gateio.ws`` must not reappear in gold_derivatives.py.
+* Gate.io contract quantities and Bitget ticker payloads are normalized.
 """
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ from app.services.gold_derivatives import (
     GoldDerivativesService,
     GoldPerpRow,
     OISnapshot,
+    _fetch_bitget,
+    _fetch_gateio,
     _sum_oi,
     _to_decimal,
     _weighted_funding,
@@ -183,34 +185,128 @@ async def test_refresh_all_returns_same_shape_as_build_snapshot() -> None:
     assert set(snap.keys()) == set(refreshed.keys())
 
 
-# ─── Static guard against the old Gate.io dependency ─────────────────────
+@pytest.mark.asyncio
+async def test_refresh_failure_preserves_last_known_good(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.gold_derivatives as module
+
+    stale = {
+        "oi_change_4w": "0.1",
+        "funding_rate": "0.0002",
+        "cot_net_spec_percentile": "0.5",
+        "open_interest": "42",
+        "derivatives_note": "数据可用",
+        "_venues": [],
+    }
+    failed = {**stale, "open_interest": None, "funding_rate": None}
+    svc = GoldDerivativesService()
+
+    async def fail_refresh(_self: GoldDerivativesService) -> dict:
+        return failed
+
+    writes: list[dict] = []
+    monkeypatch.setattr(GoldDerivativesService, "_build_snapshot_uncached", fail_refresh)
+    monkeypatch.setattr(module, "_read_snapshot_disk_allow_stale", lambda: stale.copy())
+    monkeypatch.setattr(module, "_write_snapshot_disk", writes.append)
+
+    result = await svc.refresh_all(force=True)
+    assert result["open_interest"] == "42"
+    assert "保留磁盘缓存" in result["derivatives_note"]
+    assert writes == []
 
 
-def test_no_gateio_ws_in_gold_derivatives_source() -> None:
-    """2026-08-07: the live aggregator replaces the legacy Gate.io endpoint.
-    This guard ensures no future refactor accidentally re-imports or
-    re-references ``api.gateio.ws`` in the gold-derivatives module.
-    """
-    src = Path(__file__).resolve().parents[1] / "app" / "services" / "gold_derivatives.py"
-    text = src.read_text(encoding="utf-8")
-    assert "gateio.ws" not in text, (
-        "gold_derivatives.py must not reference api.gateio.ws; "
-        "the new aggregator uses Bybit + OKX + Binance."
-    )
-    # Both PAXG and XAUT must be present — the user explicitly wants
-    # the cross-token breadth so a single token pausing does not
-    # collapse the indicator.
-    assert "PAXG" in text
-    assert "XAUT" in text
+@pytest.mark.asyncio
+async def test_single_provider_cannot_publish_funding_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    svc = GoldDerivativesService()
+
+    async def one_provider(_self: GoldDerivativesService) -> list[GoldPerpRow]:
+        return [
+            GoldPerpRow(
+                provider="gateio",
+                symbol="XAUT_USDT",
+                funding_rate=Decimal("0.001"),
+                oi_contracts=Decimal("2"),
+                oi_usd=Decimal("5000"),
+            )
+        ]
+
+    monkeypatch.setattr(GoldDerivativesService, "fetch_all_perps", one_provider)
+    monkeypatch.setattr(svc.oi_cache, "write", lambda _snapshot: None)
+    result = await svc._build_snapshot_uncached()
+    assert result["funding_rate"] is None
+    assert "可用信源不足 2 个" in result["derivatives_note"]
+
+
+# ─── Live-provider normalization ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_gateio_contract_oi_is_normalized_to_token_quantity() -> None:
+    class Client:
+        async def get(self, _path: str):
+            class Response:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict:
+                    return {
+                        "mark_price": "2500",
+                        "funding_rate": "0.0001",
+                        "position_size": "12000",
+                        "quanto_multiplier": "0.001",
+                        "funding_next_apply": 1_800_000_000,
+                    }
+
+            return Response()
+
+    row = await _fetch_gateio(Client(), "XAUT_USDT")  # type: ignore[arg-type]
+    assert row.oi_contracts == Decimal("12")
+    assert row.oi_usd == Decimal("30000")
+
+
+@pytest.mark.asyncio
+async def test_bitget_ticker_fields_are_decimal_safe() -> None:
+    class Client:
+        async def get(self, _path: str, *, params: dict):
+            assert params["productType"] == "USDT-FUTURES"
+
+            class Response:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict:
+                    return {
+                        "code": "00000",
+                        "requestTime": 1_800_000_000_000,
+                        "data": [
+                            {
+                                "markPrice": "2500.25",
+                                "fundingRate": "-0.00003",
+                                "holdingAmount": "42.125",
+                            }
+                        ],
+                    }
+
+            return Response()
+
+    row = await _fetch_bitget(Client(), "PAXGUSDT")  # type: ignore[arg-type]
+    assert row.funding_rate == Decimal("-0.00003")
+    assert row.oi_contracts == Decimal("42.125")
+    assert row.oi_usd == Decimal("105323.03125")
 
 
 def test_both_paxg_and_xaut_present_in_venue_table() -> None:
     """Regression guard: the venue tuple must list PAXG + XAUT across
-    every venue (Bybit + OKX + Binance). Removing either token from
+    every venue. Removing either token from
     either venue breaks the cross-token breadth the user requested."""
     src = Path(__file__).resolve().parents[1] / "app" / "services" / "gold_derivatives.py"
     text = src.read_text(encoding="utf-8")
     assert "PAXGUSDT" in text
     assert "XAUTUSDT" in text
-    assert "PAXG-USDT-SWAP" in text
-    assert "XAUT-USDT-SWAP" in text
+    assert "PAXG_USDT" in text
+    assert "XAUT_USDT" in text
+    assert '("gateio", "PAXG_USDT")' in text
+    assert '("bitget", "XAUTUSDT")' in text
+    assert "PAXG-USDT-SWAP" not in text
+    assert "XAUT-USDT-SWAP" not in text

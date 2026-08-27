@@ -267,7 +267,7 @@ class MarketStreamWorker:
         await self._flush_microstructure_if_due()
         if not legacy_items:
             return
-        async with db_manager.session() as session:
+        async with db_manager.writer_session() as session:
             repo = MarketRepository(session)
             event_repo = EventRepository(session)
             market_service = MarketService(repo, event_repo)
@@ -298,7 +298,7 @@ class MarketStreamWorker:
         self._micro_trades = defaultdict(list)
         self._micro_books = {}
         self._micro_stats = {}
-        async with db_manager.session() as session:
+        async with db_manager.writer_session() as session:
             repo = MarketRepository(session)
             for instrument_id, samples in trades.items():
                 definition = await repo.get_indicator_definition("cvd_delta")

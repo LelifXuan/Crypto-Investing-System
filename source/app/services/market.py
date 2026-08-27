@@ -47,7 +47,13 @@ class MarketService:
             )
         return persisted
 
-    async def get_best_mark(self, instrument_id: str, prefer_live: bool = True) -> MarkPrice | None:
+    async def get_best_mark(
+        self,
+        instrument_id: str,
+        prefer_live: bool = True,
+        *,
+        persist_live: bool = True,
+    ) -> MarkPrice | None:
         if prefer_live and settings.market_stream_prefer_ws_cache:
             cached = await market_cache.get_mark(instrument_id)
             if cached is not None:
@@ -60,12 +66,15 @@ class MarketService:
                 )
         if prefer_live and settings.market_data_provider.lower() == "gateio":
             try:
-                return await self.fetch_and_persist_live_mark(instrument_id)
+                if persist_live:
+                    return await self.fetch_and_persist_live_mark(instrument_id)
+                return await self.fetch_live_mark(instrument_id)
             except Exception:
                 pass
         return await self.repository.latest_mark(instrument_id)
 
-    async def fetch_and_persist_live_mark(self, instrument_id: str) -> MarkPrice:
+    async def fetch_live_mark(self, instrument_id: str) -> MarkPrice:
+        """Read a live quote without opening a SQLite write transaction."""
         instrument = await self._require_instrument(instrument_id)
         ref = self.resolve_gate_reference(instrument)
         ts_event = datetime.now(timezone.utc)
@@ -87,6 +96,10 @@ class MarketService:
                 source="gateio:futures.contracts",
                 ts_event=ts_event,
             )
+        return model
+
+    async def fetch_and_persist_live_mark(self, instrument_id: str) -> MarkPrice:
+        model = await self.fetch_live_mark(instrument_id)
         return await self.add_mark_price(model)
 
     async def add_candle(self, candle: MarketCandle) -> MarketCandle:

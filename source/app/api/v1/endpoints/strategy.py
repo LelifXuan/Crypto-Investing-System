@@ -6,7 +6,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser, get_db_session, require_roles
+from app.api.dependencies import (
+    CurrentUser,
+    get_db_session,
+    get_db_writer_session,
+    require_roles,
+)
 from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for_cache
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import PrecomputeHintRequest, PrecomputeHintResponse
@@ -233,7 +238,7 @@ def _degraded_payload(instrument_id: str, reason: str) -> dict[str, object]:
 async def get_unified_strategy(
     instrument_id: str = Query(default="btc-usdt-perp"),
     force: bool = Query(default=False),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     normalized_instrument = _instrument(instrument_id)
@@ -392,7 +397,7 @@ async def get_unified_strategy(
             cache_state="fresh" if payload.get("status") != "degraded" else "stale",
             snapshot_at=now,
             data_ts=now,
-            expires_at=expires_at_for_page("strategy_unified", now),
+            expires_at=expires_at_for_page("strategy_unified", now, timeframe="1d"),
             source_updated_at=now,
             source_version=CACHE_SOURCE_VERSION,
             meta_json={"force": force},
@@ -540,7 +545,7 @@ async def get_strategy_review(
 @router.get("/scan")
 async def get_strategy_scan(
     force: bool = Query(default=False),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     """Scan all configured instruments × core timeframes for opportunities.

@@ -11,7 +11,8 @@ EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-
 def test_topbar_groups_context_metrics_and_sources() -> None:
     assert 'class="monitoring-topbar-item monitoring-topbar-context wide"' in PAGE
     assert 'class="monitoring-metric-rail"' in PAGE
-    assert 'class="monitoring-source-rail-label"' in PAGE
+    # 2026-08-18: governance bar removed — topbar is now self-contained.
+    assert 'class="monitoring-governance"' not in PAGE
     assert 'class="monitoring-top-status"' not in PAGE
 
 

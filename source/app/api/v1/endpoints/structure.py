@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser, get_db_session, require_roles
+from app.api.dependencies import (
+    CurrentUser,
+    get_db_session,
+    get_db_writer_session,
+    require_roles,
+)
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import PrecomputeHintRequest
 from app.schemas.structure import (
@@ -40,7 +45,7 @@ async def get_structure_snapshot(
     timeframe: str = Query(default="1h"),
     include_geometry: bool = Query(default=True),
     include_diagnostics: bool = Query(default=False),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     service = _structure_service(session)
@@ -61,7 +66,7 @@ async def get_structure_bundle(
     timeframe: str = Query(default="1h"),
     include_geometry: bool = Query(default=True),
     candles_limit: int = Query(default=220, ge=50, le=400),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     validated_timeframe = _validate_timeframe(timeframe)
@@ -161,7 +166,7 @@ async def get_structure_diagnostics(
 async def refresh_structure_snapshot(
     instrument_id: str = Query(...),
     timeframe: str = Query(default="1h"),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
 ):
     service = _structure_service(session)

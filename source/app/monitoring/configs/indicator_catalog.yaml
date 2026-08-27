@@ -998,11 +998,11 @@ indicators:
   display_name: US Unemployment Rate
   category: macro
   family: labor
-  source_provider: bls
+  source_provider: fred
   source_kind: raw_series
   calc_engine: raw
   calc_params:
-    external_symbol: LNS14000000
+    external_symbol: UNRATE
   supported_assets:
   - global
   supported_timeframes:
@@ -2275,7 +2275,7 @@ indicators:
   category: macro
   family: liquidity_credit
   source_provider: fred
-  source_kind: derived
+  source_kind: raw_series
   calc_engine: raw
   calc_params:
     external_symbol: WTREGEN

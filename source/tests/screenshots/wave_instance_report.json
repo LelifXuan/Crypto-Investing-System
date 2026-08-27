@@ -1,0 +1,56 @@
+[
+  {
+    "page": "market-analysis",
+    "phase": "cold-start",
+    "candle_count": 72,
+    "wave_alive_A": true,
+    "wave_alive_B": true,
+    "msg_A": "ok",
+    "msg_B": "ok",
+    "first_anim": "candleBreath",
+    "first_delay": "0s",
+    "first_transform_A": "matrix(1, 0, 0, 1.03455, 0, 0)",
+    "first_transform_B": "matrix(1, 0, 0, 1.04998, 0, 0)",
+    "opacity_profile_A": [
+      "0.895",
+      "0.924",
+      "0.939",
+      "0.947",
+      "0.950",
+      "0.949",
+      "0.945",
+      "0.936"
+    ],
+    "opacity_profile_B": [
+      "0.950",
+      "0.949",
+      "0.944",
+      "0.935",
+      "0.917",
+      "0.888",
+      "0.834",
+      "0.709"
+    ],
+    "wave_moved": true,
+    "err_count": 0
+  },
+  {
+    "page": "indicators (reduced-motion)",
+    "phase": "reduced-motion",
+    "candle_count": 72,
+    "durations_seen": [
+      "1e-05s"
+    ],
+    "first_anim": "candleBreath",
+    "first_fill_mode": "both",
+    "clamped_to_0_01ms": true
+  },
+  {
+    "page": "structure (via SPA)",
+    "phase": "spa-switch",
+    "candle_count": 20,
+    "wave_alive": true,
+    "msg": "ok",
+    "first_anim": "candleBreath"
+  }
+]

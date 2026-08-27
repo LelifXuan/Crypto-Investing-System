@@ -42,6 +42,43 @@ def _stub_gateio_rwa_provider(service: IndicatorMonitoringService, monkeypatch) 
     monkeypatch.setattr(provider, "fetch_latest", fake_fetch_latest)
 
 
+class _FakeMacroResult:
+    """Stand-in for a provider fetch result (matches MacroObservation contract)."""
+
+    def __init__(self, symbol: str, value: str) -> None:
+        self.observation_ts = datetime(2026, 4, 1, tzinfo=UTC)
+        self.value = Decimal(value)
+        self.source_ref = f"test-stub:{symbol}"
+        self.source_granularity = "intraday"
+        self.metadata = {}
+
+
+def _stub_all_macro_providers(service: IndicatorMonitoringService, monkeypatch) -> None:
+    """Isolate every macro provider from the real network.
+
+    ``sync_macro`` walks all 18 registered providers (fetch_latest + a
+    per-provider healthcheck at the end). The tests only stub gateio_rwa and
+    used to leave the rest on the live network — on Windows an unreachable
+    provider can hang the whole coroutine (TCP connect is not always
+    cancellable), making the suite flaky. Stub the network surface of every
+    provider so the tests assert orchestration deterministically.
+    """
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    for provider in service.macro_provider_registry.providers():
+
+        async def fake_fetch_latest(symbol: str, _p=provider):
+            return _FakeMacroResult(symbol, "100.00")
+
+        async def fake_healthcheck(_p=provider):
+            return "healthy", None
+
+        monkeypatch.setattr(provider, "fetch_latest", fake_fetch_latest)
+        if hasattr(provider, "healthcheck"):
+            monkeypatch.setattr(provider, "healthcheck", fake_healthcheck)
+
+
 @pytest.fixture()
 async def monitoring_db(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "monitoring.db"
@@ -259,6 +296,7 @@ async def test_sync_macro_creates_observations(monitoring_db, monkeypatch) -> No
     async with db_manager.session() as session:
         service = IndicatorMonitoringService(MarketRepository(session))
         await service.seed_defaults()
+        _stub_all_macro_providers(service, monkeypatch)
         _stub_gateio_rwa_provider(service, monkeypatch)
 
         async def fake_fred_latest(symbol: str):
@@ -339,6 +377,7 @@ async def test_latest_by_key_returns_observation_models(monitoring_db, monkeypat
     async with db_manager.session() as session:
         service = IndicatorMonitoringService(MarketRepository(session))
         await service.seed_defaults()
+        _stub_all_macro_providers(service, monkeypatch)
         _stub_gateio_rwa_provider(service, monkeypatch)
 
         async def fake_fred_latest(symbol: str):

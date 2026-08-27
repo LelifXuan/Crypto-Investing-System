@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.db.models.account import Account
 from app.db.models.core_entities import Strategy, Tenant
 from app.db.models.instrument import Instrument
-from app.db.models.market import IndicatorRefreshPolicy
+from app.db.models.market import IndicatorRefreshPolicy, SupplyEventCalendarNode
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.bootstrap_repository import BootstrapRepository
 from app.repositories.market_repository import MarketRepository
@@ -33,6 +34,30 @@ DEFAULT_GATEIO_INSTRUMENTS: tuple[tuple[str, str, str], ...] = (
     ("spyx-usdt-perp", "SPYX_USDT", "SPYX"),
     ("qqqx-usdt-perp", "QQQX_USDT", "QQQX"),
     ("slvon-usdt-perp", "SLVON_USDT", "SLVON"),
+)
+
+# HYPE whitepaper unlock schedule (Founder / Team tranche).
+# Source: HYPE tokenomics whitepaper.  Monthly unlocks on the 6th UTC.
+# 2026-08 through 2027-10: 9,920,000 HYPE each; 2027-11: 7,380,000 HYPE (final tranche).
+# release_pct is the share of total supply released at that node.
+_HYPE_UNLOCK_SCHEDULE: tuple[tuple[str, str, float], ...] = (
+    # (YYYY-MM-DD, nominal_qty, release_pct)
+    ("2026-08-06", "9920000", 2.42),
+    ("2026-09-06", "9920000", 2.37),
+    ("2026-10-06", "9920000", 2.31),
+    ("2026-11-06", "9920000", 2.26),
+    ("2026-12-06", "9920000", 2.21),
+    ("2027-01-06", "9920000", 2.16),
+    ("2027-02-06", "9920000", 2.12),
+    ("2027-03-06", "9920000", 2.07),
+    ("2027-04-06", "9920000", 2.03),
+    ("2027-05-06", "9920000", 1.99),
+    ("2027-06-06", "9920000", 1.95),
+    ("2027-07-06", "9920000", 1.91),
+    ("2027-08-06", "9920000", 1.88),
+    ("2027-09-06", "9920000", 1.84),
+    ("2027-10-06", "9920000", 1.81),
+    ("2027-11-06", "7380000", 1.32),
 )
 
 
@@ -109,6 +134,7 @@ class LocalBootstrapService:
             password=settings.bootstrap_admin_password,
         )
         await self._seed_indicator_refresh_policies(seeded_instruments)
+        await self._seed_supply_calendar_nodes()
         await IndicatorMonitoringService(self.market_repository).seed_defaults(
             default_instrument_id=default_instrument.instrument_id
         )
@@ -137,6 +163,37 @@ class LocalBootstrapService:
                         parameters_json=default_params,
                     )
                 )
+
+    async def _seed_supply_calendar_nodes(self) -> None:
+        """Seed the HYPE whitepaper unlock schedule into the calendar table.
+
+        Idempotent: uses upsert so re-seeding on every startup is safe.
+        The node_id encodes (asset, source, date, type) to guarantee stability
+        across runs — same input always maps to the same row.
+        """
+        for date_str, qty, pct in _HYPE_UNLOCK_SCHEDULE:
+            event_at = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            date_tag = date_str.replace("-", "")
+            node_id = f"node:hype-whitepaper-{date_tag}:scheduled_unlock:{date_tag}T000000Z"
+            snapshot_id = f"whitepaper:hype-usdt-perp:{date_tag}"
+            await self.market_repository.upsert_supply_calendar_node(
+                SupplyEventCalendarNode(
+                    node_id=node_id,
+                    event_id=node_id,
+                    instrument_id="hype-usdt-perp",
+                    asset="HYPE",
+                    node_type="scheduled_unlock",
+                    event_at=event_at,
+                    source="whitepaper",
+                    snapshot_id=snapshot_id,
+                    payload_json={
+                        "nominal_unlock_qty": qty,
+                        "allocation": "Founder / Team",
+                        "release_pct": pct,
+                        "stage": "SCHEDULED",
+                    },
+                )
+            )
 
 
 async def seed_local_defaults(

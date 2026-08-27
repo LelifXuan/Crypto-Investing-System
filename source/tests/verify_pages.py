@@ -441,8 +441,8 @@ def _check_diff_inline(page_id: str) -> dict:
         from PIL import Image, ImageChops
         import numpy as np
 
-        img_a = Image.open(baseline_path).convert("RGB").resize((2560, 1440), Image.Resampling.LANCZOS)
-        img_b = Image.open(current_path).convert("RGB").resize((2560, 1440), Image.Resampling.LANCZOS)
+        img_a = Image.open(baseline_path).convert("RGB").resize((2560, 1600), Image.Resampling.LANCZOS)
+        img_b = Image.open(current_path).convert("RGB").resize((2560, 1600), Image.Resampling.LANCZOS)
 
         diff = ImageChops.difference(img_a, img_b)
         diff_arr = np.array(diff, dtype=np.float64)
@@ -493,8 +493,9 @@ def main(argv: list[str]) -> int:
     )
     p.add_argument(
         "--viewport",
-        default="2560x1440",
-        help="viewport as WxH (e.g. 375x667, 2560x1440)",
+        # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440.
+        default="2560x1600",
+        help="viewport as WxH (e.g. 375x667, 2560x1600)",
     )
     p.add_argument(
         "--a11y",
@@ -519,7 +520,7 @@ def main(argv: list[str]) -> int:
         vp_w, vp_h = args.viewport.lower().split("x")
         viewport = {"width": int(vp_w), "height": int(vp_h)}
     except Exception:
-        print(f"invalid viewport: {args.viewport} (expected WxH, e.g. 2560x1440)", file=sys.stderr)
+        print(f"invalid viewport: {args.viewport} (expected WxH, e.g. 2560x1600)", file=sys.stderr)
         return 2
 
     report = {"per_page": [], "spa_switches": [], "summary": {}, "options": {

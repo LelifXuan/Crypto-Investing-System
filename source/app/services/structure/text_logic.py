@@ -23,6 +23,12 @@ def resolve_structure_text(
     contribution_breakdown: dict[str, float] | None = None,
     primary_drivers: list[str] | None = None,
     opposing_factors: list[str] | None = None,
+    pattern_type: str | None = None,
+    pattern_label: str | None = None,
+    upper_boundary: float | None = None,
+    lower_boundary: float | None = None,
+    boundary_as_of: str | None = None,
+    boundary_valid: bool = False,
 ) -> dict:
     """Translate local pattern state and fused bias into user-facing guidance.
 
@@ -39,6 +45,20 @@ def resolve_structure_text(
     )
     permission = resolved["permission"]
     next_trigger = resolved.get("next_trigger") or ""
+    if (
+        local_state == "inside"
+        and boundary_valid
+        and upper_boundary is not None
+        and lower_boundary is not None
+    ):
+        label = pattern_label or "有效形态"
+        resolved["headline"] = (
+            f"{label}：{lower_boundary:,.4f}–{upper_boundary:,.4f}，价格位于边界内部"
+        )
+        resolved["message"] = (
+            "该结论只引用图中当前可见的上下边界；方向倾向来自综合结构，"
+            "仍需等待边界外收盘确认。"
+        )
 
     return {
         "local_state": local_state,
@@ -53,6 +73,12 @@ def resolve_structure_text(
         "opposing_evidence": resolved.get("opposing_evidence", []),
         "next_trigger": next_trigger,
         "show_trade_action": resolved.get("show_trade_action", False),
+        "pattern_type": pattern_type,
+        "pattern_label": pattern_label,
+        "upper_boundary": upper_boundary,
+        "lower_boundary": lower_boundary,
+        "boundary_as_of": boundary_as_of,
+        "boundary_valid": boundary_valid,
     }
 
 
@@ -76,6 +102,7 @@ def _build_decision(
         "breakdown": _decide_breakdown,
         "breakout": _decide_breakout,
         "invalidated": _decide_invalidated,
+        "expired": _decide_expired,
         "inside": _decide_inside,
         "retest": _decide_retest,
     }.get(local_state, _decide_default)
@@ -239,6 +266,25 @@ def _decide_invalidated(
     )
 
 
+def _decide_expired(
+    overall_bias: str,
+    breakdown: dict[str, float],
+    primary_drivers: list[str],
+    opposing_factors: list[str],
+) -> dict:
+    supporting, opposing = _classify_contributions(breakdown)
+    return _base_payload(
+        resolved_state="pattern_expired",
+        headline="旧形态边界已过期",
+        message="最新价格已经超出该形态的有效投影范围，系统不再使用旧边界描述当前位置，等待新的结构区间形成。",
+        permission="observe_only",
+        tone="warning",
+        supporting=supporting,
+        opposing=opposing,
+        next_trigger="等待新的可验证形态与上下边界形成。",
+    )
+
+
 def _decide_inside(
     overall_bias: str,
     breakdown: dict[str, float],
@@ -297,8 +343,8 @@ def _decide_default(
     supporting, opposing = _classify_contributions(breakdown)
     return _base_payload(
         resolved_state="no_actionable_pattern",
-        headline="暂无明确形态触发",
-        message="当前形态没有形成可执行的突破、跌破或失效信号，先保留结构观察。",
+        headline="暂无明确形态边界",
+        message="当前没有同时通过质量门禁且可在图上验证的上下边界，系统不会把普通坐标范围描述为价格区间。",
         permission="observe_only",
         tone="neutral",
         supporting=supporting,

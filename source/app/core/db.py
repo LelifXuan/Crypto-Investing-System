@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -21,6 +22,10 @@ class DatabaseManager:
     def __init__(self) -> None:
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
+        # 进程内写锁：SQLite 单写者。任何写入事务必须先 acquire 再
+        # release，覆盖“写入 + flush + commit/rollback”完整边界，否则并发
+        # 写会触发 database is locked（AGENTS.md §九.4）。
+        self._write_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         if self._engine is None:
@@ -45,6 +50,37 @@ class DatabaseManager:
                     if mmap_mb > 0:
                         await connection.execute(text(f"PRAGMA mmap_size={mmap_mb * 1024 * 1024}"))
                     await connection.execute(text("PRAGMA foreign_keys=ON"))
+
+                # 每个池化连接也必须带 busy_timeout —— PRAGMA 是 per-connection
+                # 状态，只对首个连接设置的话，并发会话的新连接会在等锁时立即
+                # 失败（database is locked），busy_timeout 完全不生效。
+                @event.listens_for(self._engine.sync_engine, "connect")
+                def _set_sqlite_pragmas(dbapi_conn, _record):
+                    cursor = dbapi_conn.cursor()
+                    cursor.execute("PRAGMA busy_timeout=30000")
+                    cursor.execute("PRAGMA foreign_keys=ON")
+                    cursor.close()
+
+    @asynccontextmanager
+    async def writer_session(self) -> AsyncIterator[AsyncSession]:
+        """Serialize write transactions behind the process-wide write lock.
+
+        SQLite allows one writer; concurrent transactions that each span a
+        network fetch (macro sync runs policy → fetch → flush) will otherwise
+        contend on the same write lock and fail with ``database is locked``
+        even with a busy_timeout. Wrap the session in the lock so only one
+        transaction writes at a time.
+        """
+        async with self._write_lock:
+            session = self.session_factory()
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
 
     async def disconnect(self) -> None:
         if self._engine is not None:

@@ -29,6 +29,13 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def get_db_writer_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a session whose full transaction is protected by the SQLite writer gate."""
+
+    async with db_manager.writer_session() as session:
+        yield session
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     session: AsyncSession = Depends(get_db_session),

@@ -19,19 +19,26 @@ Known issues (2026-08-11):
 Regression flow (2026-08-13): while /strategy/scan is still pending, clicking
 another SPA page must navigate immediately instead of waiting for the scan.
 """
+
 import argparse
 import sys
 import time
 
 try:
-    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    from playwright.sync_api import TimeoutError as PWTimeout
+    from playwright.sync_api import sync_playwright
 except ImportError:
     print("playwright not installed: pip install playwright", file=sys.stderr)
     sys.exit(2)
 
 import os
+
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
-VIEWPORT = {"width": 2560, "height": 1440}
+# 2026-08-18: dev / target viewport is 2560x1600 (16:10). 1440 was kept for
+# legacy CLI invocations but the new default flows through the --viewport
+# CLI flag below (default="2560x1600"). The Python constant here is used
+# only when stress_test.py is invoked as a module without a CLI.
+VIEWPORT = {"width": 2560, "height": 1600}
 
 
 def stress_test_strategy_pending_navigation(browser) -> dict:
@@ -81,6 +88,7 @@ def stress_test_strategy_pending_navigation(browser) -> dict:
     finally:
         ctx.close()
     return result
+
 
 # Which pages support stress testing and what to click
 STRESS_PAGES = {
@@ -181,7 +189,6 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
         # --- RAPID CLICKING ---
         for action_cfg in config["actions"]:
             action_type = action_cfg["type"]
-            label = action_cfg["label"]
 
             if action_type == "dropdown":
                 _rapid_dropdown_switch(page, action_cfg, rapid_clicks, result)
@@ -192,9 +199,22 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
             elif action_cfg["type"] == "matrix-cells":
                 _rapid_matrix_cells(page, action_cfg, rapid_clicks, result)
 
-        # Wait for debounce + potential async settle
-        # Pages with debouncing need: debounce_delay (300ms) + API_timeout
-        page.wait_for_timeout(8000)
+        # Wait for debounce + potential async settle. Analysis now uses a
+        # tracked background job rather than a blocking browser fetch, so a
+        # cold final target can legitimately remain queued beyond the old
+        # fixed eight-second sleep. Wait for the bounded page state machine to
+        # leave transitioning; a timeout still falls through to the existing
+        # LOADING_STUCK / CHART_VANISHED assertions below.
+        if page_id == "market-analysis":
+            try:
+                page.wait_for_function(
+                    "document.querySelectorAll('.analysis-is-transitioning').length === 0",
+                    timeout=100_000,
+                )
+            except PWTimeout:
+                pass
+        else:
+            page.wait_for_timeout(8000)
 
         # Capture final state
         after_state = _get_page_state(page, config)
@@ -219,7 +239,9 @@ def _get_page_state(page, config: dict) -> dict:
     """Capture current page state for comparison."""
     return page.evaluate(
         """(checkSel) => {
-            var loading = document.querySelectorAll('[class*="loading"], [class*="spinner"], [class*="skeleton"]').length;
+            var loading = document.querySelectorAll(
+                '[class*="loading"], [class*="spinner"], [class*="skeleton"]'
+            ).length;
             var canvas = document.querySelectorAll('canvas').length;
             var checkEl = checkSel ? document.querySelector(checkSel) : null;
             var heading = document.querySelector('h2');
@@ -283,17 +305,21 @@ def _rapid_dropdown_switch(page, action_cfg: dict, count: int, result: dict):
                 except Exception:
                     break
 
-            result["actions"].append({
-                "label": f"{label}[{i}]",
-                "ms": round(elapsed, 1),
-                "ok": True,
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i}]",
+                    "ms": round(elapsed, 1),
+                    "ok": True,
+                }
+            )
         except Exception as e:
-            result["actions"].append({
-                "label": f"{label}[{i}]",
-                "ok": False,
-                "error": str(e)[:80],
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i}]",
+                    "ok": False,
+                    "error": str(e)[:80],
+                }
+            )
 
 
 def _rapid_buttons_click(page, action_cfg: dict, count: int, result: dict):
@@ -304,7 +330,9 @@ def _rapid_buttons_click(page, action_cfg: dict, count: int, result: dict):
     buttons = page.query_selector_all(selector)
     if not buttons:
         # Fallback: try to find any clickable elements in the control bar
-        result["actions"].append({"label": label, "status": "buttons-not-found", "selector": selector})
+        result["actions"].append(
+            {"label": label, "status": "buttons-not-found", "selector": selector}
+        )
         return
 
     btn_count = len(buttons)
@@ -320,17 +348,21 @@ def _rapid_buttons_click(page, action_cfg: dict, count: int, result: dict):
             if not buttons:
                 break
 
-            result["actions"].append({
-                "label": f"{label}[{i % btn_count}]",
-                "ms": round(elapsed, 1),
-                "ok": True,
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i % btn_count}]",
+                    "ms": round(elapsed, 1),
+                    "ok": True,
+                }
+            )
         except Exception as e:
-            result["actions"].append({
-                "label": f"{label}[{i}]",
-                "ok": False,
-                "error": str(e)[:80],
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i}]",
+                    "ok": False,
+                    "error": str(e)[:80],
+                }
+            )
 
 
 def _rapid_click(page, action_cfg: dict, count: int, result: dict):
@@ -345,17 +377,21 @@ def _rapid_click(page, action_cfg: dict, count: int, result: dict):
             elapsed = (time.monotonic() - t0) * 1000
             page.wait_for_timeout(80)  # extremely rapid
 
-            result["actions"].append({
-                "label": f"{label}[{i}]",
-                "ms": round(elapsed, 1),
-                "ok": True,
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i}]",
+                    "ms": round(elapsed, 1),
+                    "ok": True,
+                }
+            )
         except Exception as e:
-            result["actions"].append({
-                "label": f"{label}[{i}]",
-                "ok": False,
-                "error": str(e)[:80],
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i}]",
+                    "ok": False,
+                    "error": str(e)[:80],
+                }
+            )
 
 
 def _rapid_matrix_cells(page, action_cfg: dict, count: int, result: dict):
@@ -422,15 +458,19 @@ def _rapid_matrix_cells(page, action_cfg: dict, count: int, result: dict):
                 close_btn = page.query_selector("#strategy-detail-close")
                 if close_btn:
                     page.evaluate("() => document.querySelector('#strategy-detail-close')?.click()")
-                    page.wait_for_selector("#strategy-detail-overlay", state="detached", timeout=2000)
+                    page.wait_for_selector(
+                        "#strategy-detail-overlay", state="detached", timeout=2000
+                    )
                 cells = page.query_selector_all(f"{selector}:not([disabled])")
 
         except Exception as e:
-            result["actions"].append({
-                "label": f"{label}[{i}]",
-                "ok": False,
-                "error": str(e)[:80],
-            })
+            result["actions"].append(
+                {
+                    "label": f"{label}[{i}]",
+                    "ok": False,
+                    "error": str(e)[:80],
+                }
+            )
 
     if issues:
         result.setdefault("matrix_issues", []).extend(issues)
@@ -449,7 +489,11 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
         result["verdict"] = "FAIL"
 
     # Issue 2: Canvas/chart disappeared
-    if config.get("expected_canvas") and after.get("canvas", 0) == 0 and before.get("canvas", 0) > 0:
+    if (
+        config.get("expected_canvas")
+        and after.get("canvas", 0) == 0
+        and before.get("canvas", 0) > 0
+    ):
         issues.append(
             f"CHART_VANISHED: canvas went from {before['canvas']} to 0 after rapid switching"
         )
@@ -458,7 +502,11 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
     # Issue 3: A previously visible stable element disappeared. Optional
     # surfaces such as a closed detail drawer are allowed to be absent both
     # before and after the interaction sequence.
-    if config.get("check_selector") and before.get("checkVisible") is True and after.get("checkVisible") is False:
+    if (
+        config.get("check_selector")
+        and before.get("checkVisible") is True
+        and after.get("checkVisible") is False
+    ):
         issues.append(
             f"CHECK_ELEMENT_HIDDEN: '{config['check_selector']}' not visible after stress test"
         )
@@ -486,7 +534,9 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
     # Issue 6: Matrix cell data invalid (AI strategy page)
     matrix_issues = result.get("matrix_issues", [])
     if matrix_issues:
-        invalid_cells = [a for a in result["actions"] if a.get("invalidPrices") or a.get("zeroRiskReward")]
+        invalid_cells = [
+            a for a in result["actions"] if a.get("invalidPrices") or a.get("zeroRiskReward")
+        ]
         issues.append(
             f"INVALID_STRATEGY_DATA: {len(invalid_cells)}/{len(result['actions'])} cells "
             f"show invalid prices or 0:1 risk/reward"
@@ -514,7 +564,10 @@ def main():
     parser.add_argument(
         "--pages",
         default=",".join(STRESS_PAGES.keys()),
-        help=f"comma-separated page IDs (default: all). Available: {', '.join(STRESS_PAGES.keys())}",
+        help=(
+            "comma-separated page IDs (default: all). Available: "
+            + ", ".join(STRESS_PAGES.keys())
+        ),
     )
     parser.add_argument(
         "--rapid-clicks",
@@ -524,15 +577,20 @@ def main():
     )
     parser.add_argument(
         "--viewport",
-        default="2560x1440",
-        help="viewport as WxH (default: 2560x1440)",
+        default="2560x1600",
+        # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440 (16:9).
+        # See docs/design-guidelines.md §11 and AGENTS.md §六.1.
+        help="viewport as WxH (default: 2560x1600)",
     )
     args = parser.parse_args()
 
     page_ids = [s.strip() for s in args.pages.split(",") if s.strip()]
     for pid in page_ids:
         if pid not in STRESS_PAGES:
-            print(f"unknown page_id: {pid} (available: {', '.join(STRESS_PAGES.keys())})", file=sys.stderr)
+            print(
+                f"unknown page_id: {pid} (available: {', '.join(STRESS_PAGES.keys())})",
+                file=sys.stderr,
+            )
             return 2
 
     # Parse viewport

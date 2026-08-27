@@ -33,7 +33,7 @@ class MarketEventFeedWorker:
         self._task = None
 
     async def run_once(self) -> int:
-        async with db_manager.session() as session:
+        async with db_manager.writer_session() as session:
             service = MarketEventFeedService(MarketRepository(session))
             return await service.sync_default_feeds()
 

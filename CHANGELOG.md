@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## V2.2 (2026-08-25)
+
+### 波动率研究与影子验证
+
+- 新增 BTC 原生波动率研究层，覆盖 realized volatility、range estimator、经验分位、IV–RV、期限结构、skew、basis、funding、OI 与清算压力等候选族。
+- 新增 append-only 波动率观测与版本化研究快照，金额、价格和比率保持 Decimal/numeric，时间戳统一为 UTC，并记录 `event_time`、`available_at`、`calculated_at`、数据质量与缺失原因。
+- 研究候选默认使用 `shadow / diagnostic_only / rejected` 状态；未通过时间戳、稳定性和增量价值门禁前，不参与 canonical decision、仓位、杠杆或方向判断。
+- 修正将 `BB Width / 90 日均值` 表述为 percentile rank 的语义问题，明确区分均值比率与 rolling empirical percentile。
+
+### 数据抓取、网络与缓存治理
+
+- 统一 direct/proxy 请求路径、代理探测、超时和错误状态，外部 API 不可达时保留 last-known-good 或返回明确的 `source_unavailable / data_insufficient`。
+- 补强冷启动预热、后台刷新、防重入、writer queue 与 SQLite 事务边界，避免空结果覆盖有效快照及并发写锁竞争。
+- 增加外部市场数据重置与重新抓取工具，支持在不保留旧行情缓存的情况下重新验证数据链路。
+
+### 首次加载与动效衔接
+
+- 全局 stagger 调整为 28ms 间隔、最多 6 个相位；真实内容从较高透明度和 3px 位移开始衔接，避免 skeleton 替换时闪白。
+- skeleton shimmer 使用基于全局时钟的负相位，蜡烛、文本条和事件行首次出现即形成完整错峰波形。
+- 技术指标、形态结构、市场事件、BTC 衍生品、A股 ETF 与黄金配置页均在异步数据真正落地后执行一次性 reveal。
+- 黄金配置页新增醒目的“正在接入黄金配置数据”加载面板，BTC 衍生品等待 Chart.js 绘制完成后入场，ETF 曲线与业务内容分别衔接且后续交互不重放整页动画。
+- `prefers-reduced-motion` 下直接呈现稳定终态，并清理临时动画状态与合成层。
+
+### 分发与验证
+
+- V2.2 内部分发包包含内置 Python 运行环境、依赖和当前 `.env` 配置；运行数据库、日志、缓存、测试截图及 Git 元数据不进入压缩包。
+- 全量验证结果：`1793 passed, 6 skipped`；Playwright 冷启动 11/11、SPA 切换 10/10，console error 与 pageerror 均为 0。
+- 动效专项检查无失败；保留 4 项历史硬编码时长警告，未影响本次页面交接。
+
+### 安全提示
+
+- V2.2 压缩包包含密钥和代理配置，只允许通过可信渠道发送给授权同事，不得上传至公开仓库或公开共享链接。
+
 ## Unreleased (2026-07-30)
 
 ### 全站自定义 Dropdown 统一

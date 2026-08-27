@@ -47,12 +47,17 @@ async def create_mark_price(
 async def get_latest_mark(
     instrument_id: str = Query(...),
     prefer_live: bool = Query(default=settings.market_data_prefer_live),
+    persist_live: bool = Query(default=True),
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ) -> MarkPrice | None:
     repo = MarketRepository(session)
     service = MarketService(repo, EventRepository(session))
-    return await service.get_best_mark(instrument_id=instrument_id, prefer_live=prefer_live)
+    return await service.get_best_mark(
+        instrument_id=instrument_id,
+        prefer_live=prefer_live,
+        persist_live=persist_live,
+    )
 
 
 @router.post("/candles", response_model=CandleRead)

@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
     refresh_jobs,
     strategy,
     structure,
+    volatility_research,
 )
 from app.core.config import settings
 
@@ -46,5 +47,6 @@ v1_router.include_router(precompute.router)
 v1_router.include_router(refresh_jobs.router)
 v1_router.include_router(structure.router)
 v1_router.include_router(strategy.router)
+v1_router.include_router(volatility_research.router)
 
 api_router.include_router(v1_router)

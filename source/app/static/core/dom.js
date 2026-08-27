@@ -56,6 +56,71 @@ export function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+const SKELETON_SHIMMER_PERIOD_MS = 1600;
+const revealStates = new WeakMap();
+
+function positiveModulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+/**
+ * Return an inline custom-property declaration that starts a skeleton loop at
+ * the current document-wide phase. Newly mounted placeholders therefore join
+ * the existing rhythm instead of restarting from the first keyframe.
+ */
+export function skeletonPhaseStyle(
+  index = 0,
+  { periodMs = SKELETON_SHIMMER_PERIOD_MS, stepMs = 96 } = {},
+) {
+  const clock = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const elapsed = positiveModulo(clock + (Number(index) || 0) * stepMs, periodMs);
+  return `--skeleton-delay: -${Math.round(elapsed)}ms;`;
+}
+
+function clearRevealState(container) {
+  const previous = revealStates.get(container);
+  if (!previous) return;
+  window.clearTimeout(previous.timerId);
+  container.classList.remove("is-stagger-revealing");
+  previous.items.forEach((item) => {
+    item.removeAttribute("data-stagger-item");
+    item.style.removeProperty("--stagger-delay");
+  });
+  revealStates.delete(container);
+}
+
+/**
+ * Run a bounded, one-shot reveal over semantic content that has just replaced
+ * a skeleton. The delay caps after six phases so long dashboards never feel
+ * like a queue. Repeated calls cancel and clean up the prior reveal.
+ */
+export function revealStagger(
+  container,
+  { selector = ":scope > *", stepMs = 28, maxPhases = 6, durationMs = 180 } = {},
+) {
+  if (!(container instanceof Element)) return;
+  clearRevealState(container);
+  const items = [...container.querySelectorAll(selector)].filter((item) => item instanceof HTMLElement);
+  if (!items.length) return;
+
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (reducedMotion) return;
+
+  const lastPhase = Math.max(0, maxPhases - 1);
+  items.forEach((item, index) => {
+    item.setAttribute("data-stagger-item", "");
+    item.style.setProperty("--stagger-delay", `${Math.min(index, lastPhase) * stepMs}ms`);
+  });
+  void container.offsetWidth;
+  container.classList.add("is-stagger-revealing");
+
+  const timerId = window.setTimeout(
+    () => clearRevealState(container),
+    durationMs + lastPhase * stepMs + 80,
+  );
+  revealStates.set(container, { items, timerId });
+}
+
 export function setRoot(content, options = {}) {
   const root = byId("page-root");
   delete root._monitoringSections;
@@ -63,9 +128,23 @@ export function setRoot(content, options = {}) {
   const layout = options.layout || bodyDataset?.pageLayout || "overview";
   if (bodyDataset) bodyDataset.pageLayout = layout;
   if (root.dataset) root.dataset.layout = layout;
+  // 2026-08-15: pageTransition option reuses the SPA router's .page-transition
+  // class so the freshly-rendered shell fades in instead of popping in.
+  // The same class is added by main.js once per SPA navigation; adding it
+  // again here just retriggers the 220ms fade-in keyframe against the new
+  // content. Used by btc-derivatives / gold_v5 / monitoring on
+  // user-initiated re-fetches where the old page-root is dimmed first.
+  if (options.pageTransition && root.classList) {
+    root.classList.remove("page-transition");
+    // Force reflow so the animation restarts even if the class was
+    // already present in the previous render.
+    void root.offsetWidth;
+    root.classList.add("page-transition");
+  }
   root.innerHTML = content;
   return root;
 }
+
 
 // V1.5.x: SPA router skeleton. Used as the immediate content
 // for #page-root when the user clicks a top-nav link, so the
@@ -91,10 +170,10 @@ export function renderNavSkeleton(pageMeta) {
         <div class="knowledge-section-count">加载中</div>
       </div>
       <div class="nav-skeleton-grid">
-        <div class="nav-skeleton-row nav-skeleton-row-wide"></div>
-        <div class="nav-skeleton-row"></div>
-        <div class="nav-skeleton-row"></div>
-        <div class="nav-skeleton-row nav-skeleton-row-short"></div>
+        <div class="nav-skeleton-row nav-skeleton-row-wide" style="${skeletonPhaseStyle(0)}"></div>
+        <div class="nav-skeleton-row" style="${skeletonPhaseStyle(1)}"></div>
+        <div class="nav-skeleton-row" style="${skeletonPhaseStyle(2)}"></div>
+        <div class="nav-skeleton-row nav-skeleton-row-short" style="${skeletonPhaseStyle(3)}"></div>
       </div>
     </section>
   `;
@@ -351,7 +430,7 @@ export function loadingState(message = "正在读取缓存") {
   return `
     <div class="data-state data-state-loading">
       <strong>${escapeHtml(message)}</strong>
-      <div class="shimmer-bar" aria-hidden="true"></div>
+      <div class="shimmer-bar" style="${skeletonPhaseStyle()}" aria-hidden="true"></div>
     </div>
   `;
 }
@@ -359,17 +438,27 @@ export function loadingState(message = "正在读取缓存") {
 // 2026-08-11: chart skeleton placeholder — mimics chart axes + candles.
 // 2026-08-14: each candle/span carries .loading-pulse so the unified
 // skeletonShimmer (styles.css) provides the breathing animation.
-export function chartSkeleton(candleCount = 24) {
+// 2026-08-17: default reduced 24 → 12 candles. Each skeleton drives one
+// .loading-pulse per candle + 5 axis ticks, so 12 candles yields 17
+// simultaneously-animating nodes (down from 29). When multiple chart
+// skeletons are mounted at once (e.g., the analysis page's six chart-wraps
+// during a symbol/timeframe switch), this cuts animated nodes from
+// 6×29=174 to 6×17=102 — a ~40% reduction in compositor work. Visual
+// fidelity is preserved because the skeleton is decorative — fewer bars
+// still reads as "chart-shaped placeholder".
+export function chartSkeleton(candleCount = 12) {
   let candles = "";
   for (let i = 0; i < candleCount; i++) {
-    candles += `<div class="chart-skeleton-candle loading-pulse"></div>`;
+    candles += `<div class="chart-skeleton-candle loading-pulse" style="${skeletonPhaseStyle(-i, { periodMs: 2400, stepMs: 70 })}"></div>`;
   }
+  const axis = Array.from(
+    { length: 5 },
+    (_, index) => `<span class="loading-pulse" style="${skeletonPhaseStyle(index, { stepMs: 120 })}"></span>`,
+  ).join("");
   return `
     <div class="chart-skeleton" role="status" aria-label="图表加载中">
       <div class="chart-skeleton-grid">${candles}</div>
-      <div class="chart-skeleton-axis">
-        <span class="loading-pulse"></span><span class="loading-pulse"></span><span class="loading-pulse"></span><span class="loading-pulse"></span><span class="loading-pulse"></span>
-      </div>
+      <div class="chart-skeleton-axis">${axis}</div>
     </div>
   `;
 }

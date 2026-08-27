@@ -1,24 +1,30 @@
 """CFTC Commitments of Traders (COT) provider — gold futures speculative positioning."""
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
+import logging
 import time
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
 from app.core.decimal_utils import D
-from app.core.paths import app_paths
 from app.services.macro.providers.base import MacroFetchResult
 from app.services.network.http_client_factory import client_for_source
 
 UTC = timezone.utc
+logger = logging.getLogger(__name__)
 
 # CFTC Disaggregated Futures+Options COT report (current week)
 _COT_URL = "https://www.cftc.gov/dea/newcot/c_disagg.txt"
+_COT_HISTORY_URL = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_{year}.zip"
 
 # Gold futures contract identifiers
 _GOLD_CONTRACT_NAME = "GOLD - COMMODITY EXCHANGE INC."
@@ -41,6 +47,7 @@ _COL_MM_SHORT = 12  # Managed Money Short
 # on first run instead of blocking on a live download; refreshes update the
 # file in place (commit the update to share the newer baseline).
 _CACHE_MAX_POINTS = 156  # ~3 years of weekly data
+_MIN_HISTORY_POINTS = 52
 _HISTORY_FILE = "gold_history.json"
 _RAW_COT_FILE = "cot_raw.txt"
 _REPO_ROOT = Path(__file__).resolve().parents[4]  # app/services/macro/providers/ -> repo root
@@ -108,6 +115,16 @@ class CftcHistoryCache:
             self._points = self._points[-self.max_points:]
         self._flush()
 
+    def extend(self, snapshots: list[CotSnapshot]) -> None:
+        """Merge historical observations and flush once, keyed by report date."""
+
+        merged = {date: value for date, value in self._points}
+        for snapshot in snapshots:
+            key = snapshot.report_date.astimezone(UTC).date().isoformat()
+            merged[key] = float(snapshot.net_pct_of_oi)
+        self._points = sorted(merged.items())[-self.max_points :]
+        self._flush()
+
     def history(self) -> list[float]:
         """Return net_pct_of_oi history excluding the latest entry.
 
@@ -146,8 +163,12 @@ def _parse_int(value: str) -> int:
     return int(value.strip().replace(",", "") or "0")
 
 
-def _parse_cot_csv(text: str, contract_name: str = _GOLD_CONTRACT_NAME) -> Optional[CotSnapshot]:
-    """Parse the CFTC COT CSV text and extract the target contract row."""
+def _parse_cot_history_csv(
+    text: str, contract_name: str = _GOLD_CONTRACT_NAME
+) -> list[CotSnapshot]:
+    """Parse every matching weekly row from a current or annual CFTC report."""
+
+    snapshots: list[CotSnapshot] = []
     reader = csv.reader(io.StringIO(text))
     for row in reader:
         if len(row) < max(_COL_OI, _COL_MM_LONG, _COL_MM_SHORT) + 1:
@@ -162,13 +183,41 @@ def _parse_cot_csv(text: str, contract_name: str = _GOLD_CONTRACT_NAME) -> Optio
             report_date = datetime.strptime(row[_COL_DATE].strip(), "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             continue
-        return CotSnapshot(
-            report_date=report_date,
-            oi_total=_parse_int(row[_COL_OI]),
-            managed_money_long=_parse_int(row[_COL_MM_LONG]),
-            managed_money_short=_parse_int(row[_COL_MM_SHORT]),
-        )
-    return None
+        try:
+            snapshots.append(
+                CotSnapshot(
+                    report_date=report_date,
+                    oi_total=_parse_int(row[_COL_OI]),
+                    managed_money_long=_parse_int(row[_COL_MM_LONG]),
+                    managed_money_short=_parse_int(row[_COL_MM_SHORT]),
+                )
+            )
+        except ValueError:
+            continue
+    return sorted(snapshots, key=lambda item: item.report_date)
+
+
+def _parse_cot_csv(
+    text: str, contract_name: str = _GOLD_CONTRACT_NAME
+) -> Optional[CotSnapshot]:
+    """Parse the latest matching contract row from a CFTC report."""
+
+    snapshots = _parse_cot_history_csv(text, contract_name)
+    return snapshots[-1] if snapshots else None
+
+
+def _parse_cot_history_zip(content: bytes) -> list[CotSnapshot]:
+    """Extract all gold observations from an official annual CFTC archive."""
+
+    snapshots: dict[str, CotSnapshot] = {}
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        for name in archive.namelist():
+            if not name.lower().endswith((".txt", ".csv")):
+                continue
+            text = archive.read(name).decode("utf-8-sig", errors="replace")
+            for snapshot in _parse_cot_history_csv(text):
+                snapshots[snapshot.report_date.date().isoformat()] = snapshot
+    return sorted(snapshots.values(), key=lambda item: item.report_date)
 
 
 def _compute_percentile(history: list[float], current: float) -> Optional[float]:
@@ -242,7 +291,39 @@ class CftcCotProvider:
         self._write_raw_cache(resp.text)
         return resp.text
 
+    async def _bootstrap_history_if_needed(self) -> None:
+        """Rebuild a missing percentile baseline from official annual archives."""
+
+        if len(self._history_cache) >= _MIN_HISTORY_POINTS:
+            return
+        current_year = datetime.now(UTC).year
+        years = range(current_year - 2, current_year + 1)
+        try:
+            async with client_for_source("cftc", timeout=45) as client:
+                responses = await asyncio.gather(
+                    *(
+                        client.get(_COT_HISTORY_URL.format(year=year))
+                        for year in years
+                    ),
+                    return_exceptions=True,
+                )
+            snapshots: list[CotSnapshot] = []
+            for year, response in zip(years, responses, strict=True):
+                if isinstance(response, Exception):
+                    logger.warning("CFTC history %s unavailable: %s", year, response)
+                    continue
+                try:
+                    response.raise_for_status()
+                    snapshots.extend(_parse_cot_history_zip(response.content))
+                except (httpx.HTTPError, ValueError, zipfile.BadZipFile) as exc:
+                    logger.warning("CFTC history %s invalid: %s", year, exc)
+            if snapshots:
+                self._history_cache.extend(snapshots)
+        except Exception as exc:  # latest weekly report must remain available
+            logger.warning("CFTC history bootstrap failed: %s", exc)
+
     async def fetch_latest(self, source_key: str) -> MacroFetchResult:
+        await self._bootstrap_history_if_needed()
         text = await self._fetch_cot_text()
         snapshot = _parse_cot_csv(text)
         if snapshot is None:

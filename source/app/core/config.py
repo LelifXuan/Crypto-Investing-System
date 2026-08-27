@@ -226,6 +226,16 @@ class Settings(BaseSettings):
     monitoring_scheduler_poll_seconds: int = Field(
         default=15, alias="MONITORING_SCHEDULER_POLL_SECONDS"
     )
+    # 宏观指标同步并发度。网络抓取是耗时主体（FRED 每项约 2s），
+    # 串行全量约 2 分钟；并发 4 压到 ~35s（失败项自动串行重试兜底）。
+    # SQLite 走 WAL + busy_timeout，写竞争由数据库排队兜底（AGENTS.md §九.4）。
+    macro_sync_concurrency: int = Field(default=4, alias="MACRO_SYNC_CONCURRENCY")
+    # 单任务超时（秒）：某个 provider 请求挂起时，任务被强制取消而非永久
+    # 占死信号量槽位 —— 这是"全并发卡死"的防御底线。
+    macro_sync_task_timeout_seconds: int = Field(default=60, alias="MACRO_SYNC_TASK_TIMEOUT_SECONDS")
+    # 总超时（秒）：整批同步的保守上限，即使个别任务异常挂起也必须在
+    # 此时间内返回，绝不无限等待。
+    macro_sync_batch_timeout_seconds: int = Field(default=180, alias="MACRO_SYNC_BATCH_TIMEOUT_SECONDS")
     monitoring_stale_refresh_check_seconds: int = Field(
         default=3600,
         alias="MONITORING_STALE_REFRESH_CHECK_SECONDS",
@@ -262,6 +272,11 @@ class Settings(BaseSettings):
     openexchangerates_app_id: str = Field(
         default="", alias="OPENEXCHANGERATES_APP_ID"
     )
+    # 2026-08: added so SecretLoader can read these from settings — without the
+    # fields pydantic's extra="ignore" drops the .env values and the providers
+    # report AuthMissing even when the key is present (usd_cny had no source).
+    twelvedata_api_key: str = Field(default="", alias="TWELVEDATA_API_KEY")
+    alpha_vantage_api_key: str = Field(default="", alias="ALPHA_VANTAGE_API_KEY")
     history_mark_prices_keep_per_series: int = Field(
         default=720,
         alias="HISTORY_MARK_PRICES_KEEP_PER_SERIES",
@@ -286,23 +301,28 @@ class Settings(BaseSettings):
     cache_refresh_scan_seconds: int = Field(
         default=120, alias="CACHE_REFRESH_SCAN_SECONDS"
     )
+    # 兜底 TTL（当调用方未传入 timeframe 时使用）。
+    # 对于 analysis/structure 等页面，实际 TTL 由 expires_at_for_page() 按 timeframe 动态决定。
     page_snapshot_analysis_ttl_seconds: int = Field(
-        default=180, alias="PAGE_SNAPSHOT_ANALYSIS_TTL_SECONDS"
+        default=600, alias="PAGE_SNAPSHOT_ANALYSIS_TTL_SECONDS"
     )
     page_snapshot_structure_ttl_seconds: int = Field(
-        default=180, alias="PAGE_SNAPSHOT_STRUCTURE_TTL_SECONDS"
+        default=600, alias="PAGE_SNAPSHOT_STRUCTURE_TTL_SECONDS"
     )
     page_snapshot_alerts_ttl_seconds: int = Field(
-        default=180, alias="PAGE_SNAPSHOT_ALERTS_TTL_SECONDS"
+        default=600, alias="PAGE_SNAPSHOT_ALERTS_TTL_SECONDS"
     )
     page_snapshot_monitoring_ttl_seconds: int = Field(
-        default=180, alias="PAGE_SNAPSHOT_MONITORING_TTL_SECONDS"
+        default=600, alias="PAGE_SNAPSHOT_MONITORING_TTL_SECONDS"
     )
     page_snapshot_macro_ttl_seconds: int = Field(
         default=300, alias="PAGE_SNAPSHOT_MACRO_TTL_SECONDS"
     )
     page_snapshot_events_ttl_seconds: int = Field(
         default=300, alias="PAGE_SNAPSHOT_EVENTS_TTL_SECONDS"
+    )
+    page_snapshot_strategy_scan_ttl_seconds: int = Field(
+        default=7200, alias="PAGE_SNAPSHOT_STRATEGY_SCAN_TTL_SECONDS"
     )
 
 

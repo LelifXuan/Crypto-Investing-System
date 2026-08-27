@@ -117,9 +117,8 @@ def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
     content = source.read_text(encoding="utf-8")
 
     assert "monitoring-surface" in content
-    assert "信源状态" in content
-    assert "monitoring-source-list" in content
-    assert "renderSourcePanel(data)" in content
+    assert "数据源状态</h2>" in content  # 数据源状态作为底栏标题（governance bar）
+    assert "monitoring-governance" in content
     assert "monitoring-topbar" in content
     assert "monitoring-snapshot-grid" in content
     assert "renderTerminalSummary(data)" in content

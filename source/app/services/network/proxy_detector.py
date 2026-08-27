@@ -293,6 +293,13 @@ def write_proxy_state(
 SOURCE_PROXY_POLICY = {
     "bls": "prefer_proxy",
     "coinmarketcap": "prefer_proxy",
+    # Deribit is commonly unreachable over the direct route in the target
+    # environment. Prefer the detected VPN/local proxy, while retaining a
+    # direct attempt when no proxy is available.
+    "deribit_dvol": "prefer_proxy",
+    # Volmex is currently reachable directly; avoid routing it through the
+    # VPN unless a future source policy explicitly changes this decision.
+    "volmex": "direct_first",
     "fred": "auto",
     "bea": "direct_first",
     "treasury": "direct_first",

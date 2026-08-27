@@ -23,7 +23,6 @@ def test_source_rows_have_semantic_time_and_compact_heading() -> None:
     assert '<time datetime="${escapeHtml(source.updatedAt)}">' in PAGE
 
 
-def test_source_panel_has_a_container_responsive_single_column_mode() -> None:
-    assert ".monitoring-source-panel" in STYLES
-    assert "container-type: inline-size" in STYLES
-    assert "@container (max-width: 620px)" in STYLES
+def test_source_inline_has_compact_chip_styling() -> None:
+    assert ".monitoring-source-inline" in STYLES
+    assert ".chip-source" in STYLES

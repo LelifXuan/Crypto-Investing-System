@@ -21,7 +21,10 @@ class TestCanonicalMacroKey:
         assert canonical_macro_key("nfp") == "us_nfp"
         assert canonical_macro_key("dxy") == "dollar_index"
         assert canonical_macro_key("wti_oil") == "wti_crude"
-        assert canonical_macro_key("real_yield_10y") == "us_10y_yield"
+        # real_yield_10y must NOT collapse onto us_10y_yield: both have
+        # independent scoring rules (TIPS vs nominal yield thresholds) and
+        # sharing a canonical key made one rule silently overwrite the other.
+        assert canonical_macro_key("real_yield_10y") == "real_yield_10y"
 
     def test_unknown_key_passes_through(self) -> None:
         assert canonical_macro_key("us_10y_yield") == "us_10y_yield"

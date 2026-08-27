@@ -273,6 +273,21 @@
       "higher_value_bias": "bullish_for_risk_assets"
     },
     {
+      "indicator_key": "us_10y_3m_spread",
+      "aliases": ["us10y_3m_spread"],
+      "bullish_label": "曲线陡峭化，期限溢价正常",
+      "bearish_label": "3M-10Y 倒挂加深，衰退预期升温",
+      "neutral_label": "3M-10Y 利差处于中性区间",
+      "scoring_policy": "scored",
+      "formula_id": "range_score",
+      "unit": "%",
+      "thresholds": {
+        "bearish_below": -0.5,
+        "bullish_above": 0.4
+      },
+      "higher_value_bias": "bullish_for_risk_assets"
+    },
+    {
       "indicator_key": "sofr",
       "aliases": [],
       "bullish_label": "???????",

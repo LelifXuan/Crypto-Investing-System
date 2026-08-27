@@ -138,7 +138,7 @@ class MarketEventTranslationWorker:
 
     async def _load_backlog_batch(self) -> list[str]:
         translator = MarketEventTranslationService(enabled=True)
-        async with db_manager.session() as session:
+        async with db_manager.writer_session() as session:
             repo = MarketRepository(session)
             events = await repo.list_market_events(
                 limit=settings.market_events_translation_batch_size * 3
@@ -158,7 +158,7 @@ class MarketEventTranslationWorker:
 
         async def translate_one(event_id: str) -> bool:
             async with semaphore:
-                async with db_manager.session() as session:
+                async with db_manager.writer_session() as session:
                     repo = MarketRepository(session)
                     translator = MarketEventTranslationService(enabled=True)
                     event = await repo.get_market_event(event_id)

@@ -142,8 +142,13 @@ export function invalidateCache(prefix = "") {
 }
 
 export const api = {
-  precomputeHint(payload) {
-    return requestJson("/precompute/hint", { method: "POST", body: payload });
+  precomputeHint(payload, options = {}) {
+    return requestJson("/precompute/hint", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 10000,
+    });
   },
   getPrecomputeStatus() {
     return requestJson("/precompute/status", { ttl: 3, retry: 1 });
@@ -153,6 +158,8 @@ export const api = {
       ttl: 2,
       retry: 1,
       force: options.force ?? false,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 10000,
     });
   },
   getEtfCatalog(options = {}) {
@@ -282,6 +289,8 @@ export const api = {
   // this snapshot.
   getGoldWorkbench(options = {}) {
     return requestJson("/gold/workbench", {
+      ttl: options.force ? 0 : 8,
+      force: options.force ?? false,
       signal: options.signal,
       timeoutMs: options.timeoutMs ?? 8000,
     });
@@ -289,6 +298,8 @@ export const api = {
 
   getGoldWorkbenchCharts(snapshotId, options = {}) {
     return requestJson(`/gold/workbench/charts/${encodeURIComponent(snapshotId)}`, {
+      ttl: options.force ? 0 : 8,
+      force: options.force ?? false,
       signal: options.signal,
       timeoutMs: options.timeoutMs ?? 5000,
     });
@@ -418,6 +429,7 @@ export const api = {
       params: {
         instrument_id: instrumentId,
         prefer_live: options.preferLive ? "true" : "false",
+        persist_live: options.persistLive === false ? "false" : "true",
       },
         ttl: 300,
         force: options.force ?? false,
@@ -551,7 +563,8 @@ export const api = {
     return requestJson("/onchain/sync", { method: "POST" });
   },
   getMacroCalendar(limit = 200) {
-    return requestJson("/macro/calendar", { params: { limit }, ttl: 60 });
+    // 宏观日历是计划性事件（未来日程），5 分钟内数据不会变化
+    return requestJson("/macro/calendar", { params: { limit }, ttl: 300 });
   },
   getAlertEvents(limit = 100) {
     return requestJson("/alerts/events", { params: { limit }, ttl: 20 });

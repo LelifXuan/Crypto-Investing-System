@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_db_session
+from app.api.dependencies import get_db_session, get_db_writer_session
 from app.main import create_app
 
 
@@ -48,6 +48,7 @@ def _build_app(monkeypatch, *, cache_lookup, list_instruments, upsert_cache, sca
         )
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     return app
 
 

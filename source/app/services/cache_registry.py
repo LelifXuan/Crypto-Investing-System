@@ -256,7 +256,9 @@ def knowledge_catalog_cache_key(version: str = KNOWLEDGE_CATALOG_VERSION) -> str
     return f"knowledge_catalog:{version}"
 
 
-def strategy_scan_cache_key(source_version: str = CACHE_SOURCE_VERSION) -> str:
+def strategy_scan_cache_key(
+    source_version: str = f"{CACHE_SOURCE_VERSION}-opportunity-v2",
+) -> str:
     return f"strategy_scan:v{source_version}"
 
 
@@ -288,22 +290,30 @@ def ttl_seconds_for_page(page_type: str) -> int:
         "strategy": settings.page_snapshot_analysis_ttl_seconds,
         "strategy_unified": settings.page_snapshot_analysis_ttl_seconds,
         "market_context": settings.page_snapshot_monitoring_ttl_seconds,
-        "strategy_scan": 900,
+        "strategy_scan": 3600,
     }
     return mapping.get(page_type, settings.page_snapshot_analysis_ttl_seconds)
 
 
-def dataset_ttl_seconds(dataset_type: str) -> int:
+def dataset_ttl_seconds(dataset_type: str, timeframe: str | None = None) -> int:
+    # market_bundle / indicator 数据集跟随 timeframe 自然周期。
+    # 1h 蜡烛图在 90min 内不会变，无需每 180s 重新抓取 Gate.io。
+    if timeframe and dataset_type in (
+        "market_bundle",
+        "indicator_matrix",
+        "indicator_series_core",
+        "indicator_series_secondary",
+    ):
+        normalized = normalize_timeframe_for_cache(timeframe)
+        ttl = TIMEFRAME_TTL_SECONDS.get(normalized)
+        if ttl:
+            return ttl
     mapping = {
-        "market_bundle": 180,
         "contract_snapshot": 30,
         "contract_snapshot_core": 5,
         "contract_snapshot_stats": 60,
         "contract_snapshot_book": 5,
         "contract_snapshot_trades": 20,
-        "indicator_matrix": 240,
-        "indicator_series_core": 120,
-        "indicator_series_secondary": 240,
         "microstructure": 30,
         "knowledge_catalog": 86400,
         "monitoring_decision_brief": 86400,
@@ -311,14 +321,38 @@ def dataset_ttl_seconds(dataset_type: str) -> int:
     return mapping.get(dataset_type, 120)
 
 
-def expires_at_for_page(page_type: str, now: datetime | None = None) -> datetime:
+# 基于 timeframe 自然周期的 TTL —— 缓存持续到下一根 Bar 收盘后才过期。
+# 1h → 90min, 4h → 5h, 1d → 36h。这确保在 Bar 未收盘时缓存始终有效，
+# 预热服务只需在 Bar 收盘后刷新一次，不会因 TTL 过短触发前端回退。
+TIMEFRAME_TTL_SECONDS: dict[str, int] = {
+    "1h": 90 * 60,
+    "4h": 5 * 60 * 60,
+    "1d": 36 * 60 * 60,
+    "1w": 9 * 24 * 60 * 60,
+    "30d": 45 * 24 * 60 * 60,
+}
+
+
+def expires_at_for_page(
+    page_type: str,
+    now: datetime | None = None,
+    *,
+    timeframe: str | None = None,
+) -> datetime:
     now = now or datetime.now(UTC)
+    if timeframe:
+        normalized = normalize_timeframe_for_cache(timeframe)
+        ttl = TIMEFRAME_TTL_SECONDS.get(normalized)
+        if ttl:
+            return now + timedelta(seconds=ttl)
     return now + timedelta(seconds=ttl_seconds_for_page(page_type))
 
 
 def expires_at_for_scan(now: datetime | None = None) -> datetime:
     now = now or datetime.now(UTC)
-    return now + timedelta(seconds=ttl_seconds_for_page("strategy_scan"))
+    # 扫描缓存是单行全局行，预热服务每 120s 刷新一次。
+    # TTL = 2h（刷新间隔的 60×），确保即使多次刷新延迟也不会触发冷扫描。
+    return now + timedelta(seconds=settings.page_snapshot_strategy_scan_ttl_seconds)
 
 
 def expires_at_for_strategy(timeframe: str, now: datetime | None = None) -> datetime:
@@ -326,9 +360,13 @@ def expires_at_for_strategy(timeframe: str, now: datetime | None = None) -> date
     return now + timedelta(seconds=strategy_ttl_seconds_for_timeframe(timeframe))
 
 
-def expires_at_for_dataset(dataset_type: str, now: datetime | None = None) -> datetime:
+def expires_at_for_dataset(
+    dataset_type: str,
+    now: datetime | None = None,
+    timeframe: str | None = None,
+) -> datetime:
     now = now or datetime.now(UTC)
-    return now + timedelta(seconds=dataset_ttl_seconds(dataset_type))
+    return now + timedelta(seconds=dataset_ttl_seconds(dataset_type, timeframe))
 
 
 def _normalize_expires_at(ts: datetime) -> datetime:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 
@@ -24,6 +25,10 @@ from app.services.range_regime import RangeClassification, classify_range
 from app.services.strategy_signal.config_loader import detect_asset_class, detect_mode
 
 UTC = timezone.utc
+# Uvicorn configures its own application logger at INFO while leaving the
+# process root logger at WARNING. Use that operational channel so per-stage
+# timings are present in the runtime log instead of being silently filtered.
+logger = logging.getLogger("uvicorn.error")
 
 
 def _extract_latest_adx(adx_series) -> float | None:
@@ -195,12 +200,14 @@ class AnalysisBundleService:
         sync_inputs: bool = True,
     ) -> AnalysisBundleRead:
         started = time.perf_counter()
+        stage_cost_ms: dict[str, int] = {}
         now = datetime.now(timezone.utc)
         market_service = MarketService(self.repository)
         monitoring_service = IndicatorMonitoringService(self.repository)
         normalized_timeframe = "30d" if timeframe == "1M" else timeframe
         limit = limit_for_view_window(normalized_timeframe, view_window)
         if sync_inputs:
+            stage_started = time.perf_counter()
             await MarketDataBundleService(self.repository).get_bundle(
                 instrument_id=instrument_id,
                 timeframe=normalized_timeframe,
@@ -208,6 +215,8 @@ class AnalysisBundleService:
                 allow_stale=False,
                 refresh=True,
             )
+            stage_cost_ms["market_data"] = int((time.perf_counter() - stage_started) * 1000)
+            stage_started = time.perf_counter()
             try:
                 await monitoring_service.sync_technical(
                     instrument_id=instrument_id,
@@ -216,18 +225,28 @@ class AnalysisBundleService:
             except Exception:
                 # Keep bundle generation resilient if indicator sync is temporarily unavailable.
                 pass
+            stage_cost_ms["indicator_sync"] = int((time.perf_counter() - stage_started) * 1000)
         # These helpers share the same SQLAlchemy session and may write computed
         # caches. Keep them sequential to avoid concurrent flushes on one session.
+        stage_started = time.perf_counter()
         contract_snapshot = await ContractSnapshotService(self.repository).get_snapshot(
             instrument_id, include_stats=True
         )
-        mark = await market_service.get_best_mark(instrument_id=instrument_id, prefer_live=True)
+        stage_cost_ms["contract_snapshot"] = int((time.perf_counter() - stage_started) * 1000)
+        stage_started = time.perf_counter()
+        mark = await market_service.get_best_mark(instrument_id=instrument_id, prefer_live=False)
+        stage_cost_ms["mark_price"] = int((time.perf_counter() - stage_started) * 1000)
+        stage_started = time.perf_counter()
         indicator_matrix = await IndicatorMatrixService(self.repository).get_matrix(
             instrument_id=instrument_id, timeframe=normalized_timeframe, limit=limit
         )
+        stage_cost_ms["indicator_matrix"] = int((time.perf_counter() - stage_started) * 1000)
+        stage_started = time.perf_counter()
         final_decision = await FinalDecisionService(self.repository).build(
             instrument_id, normalized_timeframe
         )
+        stage_cost_ms["final_decision"] = int((time.perf_counter() - stage_started) * 1000)
+        stage_started = time.perf_counter()
         market_bundle = await MarketDataBundleService(self.repository).get_bundle(
             instrument_id=instrument_id,
             timeframe=normalized_timeframe,
@@ -235,6 +254,7 @@ class AnalysisBundleService:
             allow_stale=False,
             refresh=False,
         )
+        stage_cost_ms["snapshot_read"] = int((time.perf_counter() - stage_started) * 1000)
         candles = [CandleRead.model_validate(item) for item in market_bundle.get("candles", [])]
         source_updated_at = candles[-1].ts_open if candles else (mark.ts_event if mark else now)
         core_indicator_series = {
@@ -277,6 +297,7 @@ class AnalysisBundleService:
         payload["asset_class"] = asset_class
         payload.update(range_classification.as_dict())
         cost_ms = int((time.perf_counter() - started) * 1000)
+        persist_started = time.perf_counter()
         cache = await self.repository.upsert_page_snapshot_cache(
             cache_key=analysis_cache_key(instrument_id, normalized_timeframe, limit),
             page_type="analysis",
@@ -287,11 +308,26 @@ class AnalysisBundleService:
             cache_state="fresh",
             snapshot_at=now,
             data_ts=source_updated_at,
-            expires_at=expires_at_for_page("analysis", now),
+            expires_at=expires_at_for_page("analysis", now, timeframe=normalized_timeframe),
             source_updated_at=source_updated_at,
             source_version=CACHE_SOURCE_VERSION,
             cost_ms=cost_ms,
-            meta_json={"view_window": view_window, "limit": limit, "profile": view_window},
+            meta_json={
+                "view_window": view_window,
+                "limit": limit,
+                "profile": view_window,
+                "stage_cost_ms": stage_cost_ms,
+            },
+        )
+        stage_cost_ms["persist"] = int((time.perf_counter() - persist_started) * 1000)
+        logger.info(
+            "analysis snapshot ready instrument=%s timeframe=%s view_window=%s "
+            "cost_ms=%s stages=%s",
+            instrument_id,
+            normalized_timeframe,
+            view_window,
+            int((time.perf_counter() - started) * 1000),
+            stage_cost_ms,
         )
         return AnalysisBundleRead.model_validate(
             {

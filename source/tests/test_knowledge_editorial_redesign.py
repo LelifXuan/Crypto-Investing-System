@@ -25,8 +25,13 @@ def test_term_cards_are_rendered_as_continuous_reading_entries() -> None:
 
 
 def test_reference_workspace_obeys_reading_measure_and_responsive_rules() -> None:
-    assert "grid-template-columns: 240px minmax(560px, var(--reading-measure))" in EDITORIAL
-    assert "max-width: var(--reading-measure)" in EDITORIAL
+    # 2026-08-18: middle column widened from `minmax(560px, var(--reading-measure))`
+    # to `minmax(720px, 1fr)`, and `.knowledge-content-column` lost its
+    # `max-width: var(--reading-measure)` cap (the cap was designed for
+    # paragraph line-length, not card grids). See
+    # `tests/test_knowledge_page_term_area_layout.py` for the layout-shape
+    # guard; this assertion now reflects the wider workspace.
+    assert "grid-template-columns: 240px minmax(720px, 1fr) minmax(240px, 300px)" in EDITORIAL
     assert 'body[data-page="knowledge-base"] .knowledge-entry-list' in EDITORIAL
     assert "@media (max-width: 900px)" in EDITORIAL
 

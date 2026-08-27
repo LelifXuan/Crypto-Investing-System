@@ -3,7 +3,6 @@ let invalidateCache;
 let appState;
 let getWindowProfile;
 let persistState;
-let emptyState;
 let errorState;
 let escapeHtml;
 let formatDateTime;
@@ -11,18 +10,21 @@ let formatChartTime;
 let formatNumber;
 let impactChip;
 let knowledgeTooltip;
-let loadingState;
 let setRoot;
+let revealStagger;
+let skeletonPhaseStyle;
 let statusBanner;
 let statusChip;
 let updatePageContext;
+let chartSkeleton;
 let barDataset;
 let candleDataset;
 let destroyChartsForPage;
 let lineDataset;
 let renderChart;
 let sanitizeChartSeries;
-let scheduleIdlePrecompute;
+let scheduleAnalysisMatrixWarmup;
+let waitForPrecomputeTask;
 let rangeStateLabel;
 let mountDropdown;
 let activeRangeClassification = null;
@@ -45,7 +47,6 @@ async function ensureDeps() {
   ({ api, invalidateCache } = apiModule);
   ({ appState, getWindowProfile, persistState } = stateModule);
   ({
-    emptyState,
     errorState,
     escapeHtml,
     formatChartTime,
@@ -53,11 +54,13 @@ async function ensureDeps() {
     formatNumber,
     impactChip,
     knowledgeTooltip,
-    loadingState,
     setRoot,
+    revealStagger,
+    skeletonPhaseStyle,
     statusBanner,
     statusChip,
     updatePageContext,
+    chartSkeleton,
   } = domModule);
   ({
     barDataset,
@@ -67,7 +70,7 @@ async function ensureDeps() {
     renderChart,
     sanitizeChartSeries,
   } = chartModule);
-  ({ scheduleIdlePrecompute } = precomputeModule);
+  ({ scheduleAnalysisMatrixWarmup, waitForPrecomputeTask } = precomputeModule);
   ({ rangeStateLabel } = rangeModule);
   ({ mountDropdown } = dropdownModule);
 }
@@ -79,8 +82,6 @@ const MIN_ANALYSIS_CANDLES = {
   "1w": 20,
   "1M": 12,
 };
-
-const autoFetchKeys = new Set();
 
 function minCandlesFor(timeframe) {
   return MIN_ANALYSIS_CANDLES[timeframe] || 40;
@@ -887,9 +888,8 @@ function heroTemplate() {
 
 let isMounted = false;
 let markTimer = null;
-let bundleRetryTimer = null;
-let bundleRetryCount = 0;
 let abortController = null;
+let warmupController = null;
 let analysisRequestPending = false;
 let timeframeDropdown = null;
 let windowDropdown = null;
@@ -901,44 +901,9 @@ let lastAnalysisKey = null;
 
 const analysisCache = new Map();
 const MAX_ANALYSIS_CACHE = 8;
-const MAX_BUNDLE_RETRY = 3;
-
-function clearBundleRetry() {
-  if (bundleRetryTimer) {
-    window.clearTimeout(bundleRetryTimer);
-    bundleRetryTimer = null;
-  }
-}
-
-function resetBundleRetry() {
-  bundleRetryCount = 0;
-  clearBundleRetry();
-}
 
 function isRunActive(token) {
   return isMounted && token === activeRenderToken;
-}
-
-function scheduleBundleRetry(token = activeRenderToken) {
-  clearBundleRetry();
-  if (bundleRetryCount >= MAX_BUNDLE_RETRY) {
-    renderAnalysisStatus("后台暂未就绪，请稍后手动刷新。", "warning");
-    return;
-  }
-  bundleRetryCount += 1;
-  bundleRetryTimer = window.setTimeout(() => {
-    if (!isRunActive(token)) return;
-    loadAll(true, token).catch((error) => console.warn("analysis:bundle-retry:error", error));
-  }, 4000);
-}
-
-function getFocusMode() {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("focus");
-  } catch (error) {
-    return null;
-  }
 }
 
 export function classifyVolatilityPhase(secondarySeries) {
@@ -1109,42 +1074,6 @@ export function buildUserTradeGuidance(phase, direction, mode = null) {
   return "多空没有明显优势，等待价格离开当前整理区后再选择方向。";
 }
 
-function renderFocusBanner(mode, secondarySeries, directionalBias = activeDirectionalBias) {
-  if (mode !== "transition") return "";
-  if (getFocusMode() !== "breakout") return "";
-  const phase = classifyVolatilityPhase(secondarySeries);
-  if (phase === null || directionalBias === null) {
-    // Show banner with loading state — never return empty here. The page may
-    // load before the analysis bundle is populated, so secondary_indicator_series
-    // is empty and the score cannot be computed yet. The user clicked
-    // ?focus=breakout, so we still need to acknowledge their intent with a
-    // loading-state banner instead of rendering nothing.
-    return `
-      <div class="status-focus-banner" data-focus-banner="breakout" data-state="loading">
-        <h3>⚡ 正在更新交易判断</h3>
-        <p>正在汇总趋势、动量、量能与价格位置，完成前不建议据此开仓。</p>
-      </div>
-    `;
-  }
-  const guidance = buildUserTradeGuidance(phase, directionalBias, mode);
-  return `
-    <div class="status-focus-banner" data-focus-banner="breakout">
-      <h3>⚡ 交易判断：${escapeHtml(directionalBias.label)} · ${escapeHtml(phase.label)}</h3>
-      <p>${escapeHtml(directionalBias.summary)}</p>
-      <p><strong>操作建议：</strong>${escapeHtml(guidance)}</p>
-    </div>
-  `;
-}
-
-function scrollTransitionBadgeIntoView() {
-  if (getFocusMode() !== "breakout") return;
-  // Defer until after the badge is painted so smooth-scroll lands correctly.
-  window.requestAnimationFrame(() => {
-    const badge = document.querySelector(".status-mode-badge.transition-mode");
-    if (badge) badge.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-}
-
 function renderAnalysisStatus(message, tone = "neutral", mode = null, secondarySeries = null, directionalBias = activeDirectionalBias) {
   const el = document.getElementById("analysis-statusbar");
   if (!el) return;
@@ -1153,8 +1082,7 @@ function renderAnalysisStatus(message, tone = "neutral", mode = null, secondaryS
     el.innerHTML = statusBanner(message, tone);
     return;
   }
-  el.innerHTML = `${statusBanner(message, tone)}${badge}${renderFocusBanner(mode, secondarySeries, directionalBias)}`;
-  scrollTransitionBadgeIntoView();
+  el.innerHTML = `${statusBanner(message, tone)}${badge}`;
 }
 
 function renderModeBadge(mode, secondarySeries = null, directionalBias = activeDirectionalBias) {
@@ -1236,10 +1164,6 @@ function renderModeBadge(mode, secondarySeries = null, directionalBias = activeD
           <span class="regime-eyebrow">市场状态 · TRANSITION</span>
           <span class="regime-title">${escapeHtml(statusLine)}</span>
         </div>
-        <a class="regime-action" href="/indicators-page?focus=breakout">
-          <span>关注突破信号</span>
-          ${arrowIcon}
-        </a>
       </div>
     `;
   }
@@ -1250,153 +1174,168 @@ function setRefreshBusy(isBusy, label = "刷新分析") {
   const button = document.getElementById("analysis-refresh");
   if (!button) return;
   button.setAttribute("aria-busy", isBusy ? "true" : "false");
-  button.textContent = isBusy ? label : "刷新分析";
+  button.dataset.busy = isBusy ? "true" : "false";
+  button.setAttribute("aria-label", isBusy ? `${label}，可重新提交刷新` : "刷新分析");
+  // Keep the stable action label while work is running. The current task phase
+  // is rendered in the status strip; changing this text made the otherwise
+  // usable toolbar button disappear from text-based navigation and tests.
+  button.textContent = "刷新分析";
 }
 
-function renderChartBatch(defs, token = activeRenderToken) {
-  let idx = 0;
-  const step = () => {
+// 2026-08-15: when switching instrument/timeframe/viewWindow, the user
+// expects the chart positions to fade before the new data arrives. We
+// stage a skeleton placeholder inside each chart-wrap so the brief
+// period between switch-click and data-arrival reads as "switching",
+// not as "blank". The skeleton is re-added each call because Chart.js
+// replaces the canvas inner content on every render.
+const ANALYSIS_CHART_IDS = [
+  "analysis-price-chart",
+  "analysis-vegas-chart",
+  "analysis-boll-chart",
+  "analysis-rsi-chart",
+  "analysis-volume-chart",
+  "analysis-macd-chart",
+];
+
+function analysisLoadingCards() {
+  return Array.from({ length: 6 }, (_, cardIndex) => `
+    <article class="signal-card analysis-skeleton-card" aria-hidden="true">
+      <span class="shimmer-bar loading-pulse" style="${skeletonPhaseStyle(cardIndex * 3)}"></span>
+      <span class="shimmer-bar loading-pulse" style="${skeletonPhaseStyle(cardIndex * 3 + 1)}"></span>
+      <span class="shimmer-bar loading-pulse" style="${skeletonPhaseStyle(cardIndex * 3 + 2)}"></span>
+    </article>
+  `).join("");
+}
+
+function beginAnalysisTransition(message = "正在准备目标标的与周期") {
+  const root = document.getElementById("page-root");
+  root?.classList.add("analysis-is-transitioning");
+  destroyChartsForPage?.("analysis-");
+  const summary = document.getElementById("analysis-summary");
+  if (summary) summary.innerHTML = '<span class="shimmer-bar loading-pulse"></span>';
+  const price = document.getElementById("analysis-mark-price");
+  if (price) {
+    price.textContent = "—";
+    price.classList.add("loading-pulse");
+  }
+  ["analysis-mark-updated", "analysis-mark-close", "analysis-mark-aux"].forEach((id) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = "—";
+  });
+  const next = document.getElementById("analysis-mark-next");
+  if (next) next.textContent = "等待后台快照";
+  const cards = document.getElementById("analysis-signal-cards");
+  if (cards) cards.innerHTML = analysisLoadingCards();
+  ["analysis-window-copy", "analysis-vegas-copy", "analysis-boll-copy", "analysis-rsi-copy", "analysis-volume-copy", "analysis-macd-copy"].forEach((id) => {
+    const element = document.getElementById(id);
+    if (element) element.innerHTML = '<span class="shimmer-bar loading-pulse"></span>';
+  });
+  ANALYSIS_CHART_IDS.forEach((id) => {
+    const canvas = document.getElementById(id);
+    const wrap = canvas?.closest(".chart-wrap") || document.querySelector(`[data-analysis-chart-id="${id}"]`);
+    if (!wrap) return;
+    wrap.dataset.analysisChartId = id;
+    wrap.innerHTML = chartSkeleton();
+  });
+  renderAnalysisStatus(message, "loading");
+}
+
+function restoreAnalysisCanvas(id) {
+  const wrap = document.querySelector(`[data-analysis-chart-id="${id}"]`);
+  if (wrap) wrap.innerHTML = `<canvas id="${id}"></canvas>`;
+  return document.getElementById(id);
+}
+
+function finishAnalysisTransition() {
+  document.getElementById("page-root")?.classList.remove("analysis-is-transitioning");
+  document.getElementById("analysis-mark-price")?.classList.remove("loading-pulse");
+}
+
+function nextAnimationFrame() {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+async function renderChartBatch(defs, token = activeRenderToken) {
+  for (let index = 0; index < defs.length; index += 2) {
     if (!isRunActive(token)) return;
-    const end = Math.min(idx + 2, defs.length);
-    for (let i = idx; i < end; i++) {
-      const [key, canvas, config] = defs[i];
+    for (const [key, , config] of defs.slice(index, index + 2)) {
+      const canvas = restoreAnalysisCanvas(`${key}-chart`);
       if (!canvas?.isConnected) continue;
       renderChart(key, canvas, config);
+      revealStagger(canvas.closest(".chart-wrap"));
     }
-    idx = end;
-    if (idx < defs.length) window.setTimeout(step, 0);
-  };
-  window.setTimeout(step, 0);
+    if (index + 2 < defs.length) await nextAnimationFrame();
+  }
 }
 
 async function loadAll(force = false, token = activeRenderToken) {
   if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
-  clearBundleRetry();
-  resetBundleRetry();
   const profile = getWindowProfile(appState.selectedTimeframe, appState.selectedViewWindow);
-  const requestLimit = Math.min(profile.calcBars, 1000);
-  const fetchKey = `${appState.selectedInstrumentId}:${appState.selectedTimeframe}`;
   const minCandles = minCandlesFor(appState.selectedTimeframe);
-  let liveFetched = false;
   let bundleMode = null;
   let bundleSecondary = null;
   activeRangeClassification = null;
   activeDirectionalBias = null;
+  // 2026-08-15: fade chart panels + paint skeletons before kicking off
   renderAnalysisStatus("正在读取缓存", "loading", bundleMode, bundleSecondary);
   setRefreshBusy(true, force ? "计算中" : "读取中");
   analysisRequestPending = true;
-  if (force) {
-    invalidateCache("/marketdata/candles");
-    invalidateCache("/market-prices/marks/latest");
-  }
   try {
     abortController?.abort();
     abortController = new AbortController();
-    const bundle = await api.getAnalysisBundle(
+    let bundle = await api.getAnalysisBundle(
       appState.selectedInstrumentId,
       appState.selectedTimeframe,
       appState.selectedViewWindow,
-      { force, signal: abortController.signal },
+      { force: true, signal: abortController.signal },
     );
+    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
+
+    const needsRefresh = force || ["missing", "stale", "refreshing", "error"].includes(bundle?.status);
+    if (needsRefresh) {
+      let taskKey = force ? null : bundle?.refresh_task_key;
+      if (!taskKey) {
+        const receipt = await api.precomputeHint({
+          current_page: "analysis",
+          instrument_id: appState.selectedInstrumentId,
+          timeframe: appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe,
+          view_window: appState.selectedViewWindow,
+          visible: true,
+          candidates: ["analysis"],
+          reason: force ? "analysis_manual_reload" : "analysis_bundle_read",
+          priority: force ? 2 : 3,
+        }, {
+          signal: abortController.signal,
+          timeoutMs: 10000,
+        });
+        taskKey = receipt?.queued_keys?.[0] || null;
+      }
+      if (!taskKey) throw new Error("后台未返回可跟踪的分析任务");
+      renderAnalysisStatus(force ? "正在刷新当前分析快照" : "当前快照准备中", "loading");
+      setRefreshBusy(true, force ? "刷新中" : "计算中");
+      await waitForPrecomputeTask(taskKey, {
+        signal: abortController.signal,
+        intervalMs: 1000,
+        maxAttempts: 90,
+      });
+      invalidateCache("/analysis/bundle");
+      bundle = await api.getAnalysisBundle(
+        appState.selectedInstrumentId,
+        appState.selectedTimeframe,
+        appState.selectedViewWindow,
+        { force: true, signal: abortController.signal },
+      );
+    }
+
     bundleMode = bundle?.mode ?? null;
     activeRangeClassification = bundle || null;
     bundleSecondary = bundle?.secondary_indicator_series || null;
-    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
-    if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
-      await scheduleIdlePrecompute({
-        page: "market-analysis",
-        instrumentId: appState.selectedInstrumentId,
-        timeframe: appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe,
-        viewWindow: appState.selectedViewWindow,
-        reason: force ? "analysis_manual_reload" : "analysis_bundle_read",
-        priority: force ? 2 : 4,
-      });
-    }
-    let candlesPayload = { candles: bundle.candles || [] };
+    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
+    const candlesPayload = { candles: bundle.candles || [] };
     let markPayload = bundle.mark || null;
     let allCandles = normalizeOhlcCandles(candlesPayload.candles || []);
-    const shouldAutoFetch = allCandles.length < minCandles && !autoFetchKeys.has(fetchKey);
-    // Do not compete with a forced/live candle request for the same provider
-    // and database connection. That path already updates the headline from
-    // the newest candle; only enhance the mark when the cached bundle is
-    // otherwise sufficient.
-    if (!force && !shouldAutoFetch) {
-      void enhanceLatestMark(token, { preferLive: true });
-    }
-    if (force || shouldAutoFetch) {
-      autoFetchKeys.add(fetchKey);
-      liveFetched = true;
-      renderAnalysisStatus("本地快照不足，正在从 Gate.io 拉取 K 线", "loading", bundleMode, bundleSecondary);
-      setRefreshBusy(true, "拉取中");
-      const livePayload = await api.getCandles(
-        appState.selectedInstrumentId,
-        appState.selectedTimeframe,
-        requestLimit,
-        { preferLive: true, force: true, signal: abortController.signal },
-      );
-      if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
-      allCandles = normalizeOhlcCandles(livePayload.candles || []);
-      invalidateCache("/marketdata/candles");
-      candlesPayload = livePayload;
-      renderAnalysisStatus("正在计算指标", "loading", bundleMode, bundleSecondary);
-      setRefreshBusy(true, "计算中");
-      try {
-        await api.refreshTechnical(appState.selectedInstrumentId, appState.selectedTimeframe === "1M" ? "30d" : appState.selectedTimeframe, {
-          fetchLimit: Math.min(profile.calcBars, 1000),
-        });
-      } catch (error) {
-        console.warn("analysis:technical-refresh:error", error);
-      }
-    }
-    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
     if (!allCandles.length) {
-      if (bundle.status === "missing" || bundle.status === "stale" || bundle.status === "refreshing") {
-        document.getElementById("analysis-summary").textContent = "后台正在准备当前标的与周期的数据，请稍后刷新。";
-        document.getElementById("analysis-mark-price").textContent = "-";
-        document.getElementById("analysis-mark-updated").textContent = "-";
-        document.getElementById("analysis-mark-next").textContent = "等待后台预计算";
-        document.getElementById("analysis-mark-close").textContent = "-";
-        document.getElementById("analysis-mark-aux").textContent = "-";
-        document.getElementById("analysis-vegas-copy").textContent = "快照生成后将自动回填 Vegas 通道。";
-        document.getElementById("analysis-boll-copy").textContent = "快照生成后将自动回填布林与波动结构。";
-        document.getElementById("analysis-rsi-copy").textContent = "快照生成后将自动回填动量读数。";
-        document.getElementById("analysis-volume-copy").textContent = "快照生成后将自动回填成交量与量能判断。";
-        document.getElementById("analysis-macd-copy").textContent = "快照生成后将自动回填 MACD 与趋势结构。";
-        document.getElementById("analysis-signal-cards").innerHTML = loadingState(
-          bundle.status === "stale" ? "快照略有滞后，后台正在刷新" : "暂无快照，已加入预计算队列",
-        );
-        document.getElementById("analysis-price-chart").innerHTML = emptyState("后台正在准备图表数据");
-        document.getElementById("analysis-vegas-chart").innerHTML = emptyState("等待快照回填后渲染 Vegas 通道");
-        document.getElementById("analysis-boll-chart").innerHTML = emptyState("等待快照回填后渲染波动结构");
-        document.getElementById("analysis-rsi-chart").innerHTML = emptyState("等待快照回填后渲染 RSI");
-        document.getElementById("analysis-volume-chart").innerHTML = emptyState("等待快照回填后渲染成交量");
-        document.getElementById("analysis-macd-chart").innerHTML = emptyState("等待快照回填后渲染 MACD");
-        renderAnalysisStatus(
-          bundle.status === "stale" ? "快照可用，但可能略滞后；后台正在准备最新数据" : "暂无快照，已加入预计算队列",
-          bundle.status === "stale" ? "warning" : "loading",
-          bundleMode,
-          bundleSecondary,
-        );
-        scheduleBundleRetry(token);
-        return {
-          status: bundle.status,
-          data: { candles: [], mark: markPayload, bundle },
-          refreshed: false,
-          error: null,
-        };
-      }
-      document.getElementById("analysis-summary").textContent =
-        bundle.status_message || "暂无快照，后台正在准备当前标的与周期的数据";
-      document.getElementById("analysis-signal-cards").innerHTML = emptyState(
-        "暂无快照，已加入预计算队列",
-      );
-      renderAnalysisStatus("暂无快照，后台准备中", "loading", bundleMode, bundleSecondary);
-      return {
-        status: "missing",
-        data: { candles: [], mark: markPayload, bundle },
-        refreshed: false,
-        error: null,
-      };
+      throw new Error(bundle.status_message || "后台任务完成，但分析快照仍没有有效 K 线");
     }
     const calcCandles = allCandles.slice(-profile.calcBars);
     const candles = calcCandles.slice(-profile.visibleBars);
@@ -1498,6 +1437,7 @@ async function loadAll(force = false, token = activeRenderToken) {
         <p class="signal-copy">${item.desc}</p>
       </article>
     `).join("");
+    revealStagger(document.getElementById("analysis-signal-cards"));
 
     const instrument = appState.instruments.find((item) => item.id === appState.selectedInstrumentId);
     updatePageContext({
@@ -1506,8 +1446,8 @@ async function loadAll(force = false, token = activeRenderToken) {
       status: activeDirectionalBias?.label || "等待方向",
       updatedAt: markPayload?.ts_event ? formatDateTime(markPayload.ts_event) : "",
     });
-    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: liveFetched, error: null };
-    renderChartBatch([
+    if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
+    await renderChartBatch([
       ["analysis-price", document.getElementById("analysis-price-chart"), {
         type: "line",
         axisProfile: "price",
@@ -1647,11 +1587,12 @@ async function loadAll(force = false, token = activeRenderToken) {
       }],
     ], token);
     renderAnalysisStatus(
-      allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : liveFetched ? "数据已就绪" : "",
+      allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : "数据已就绪",
       allCandles.length < minCandles ? "warning" : "success",
       bundleMode,
       bundleSecondary,
     );
+    finishAnalysisTransition();
     return {
       status: bundle.status || "ready",
       data: { candles: candlesPayload.candles || [], mark: markPayload, bundle },
@@ -1660,10 +1601,10 @@ async function loadAll(force = false, token = activeRenderToken) {
     };
   } catch (error) {
     if (error?.name === "AbortError" || error?.name === "TimeoutError") {
-      return { status: "aborted", data: null, refreshed: liveFetched, error: null };
+      return { status: "aborted", data: null, refreshed: false, error: null };
     }
     if (!isRunActive(token)) {
-      return { status: "aborted", data: null, refreshed: liveFetched, error: null };
+      return { status: "aborted", data: null, refreshed: false, error: null };
     }
     console.error("analysis:load:error", error);
     const errMsg = String(error?.message || error || "未知错误");
@@ -1673,7 +1614,8 @@ async function loadAll(force = false, token = activeRenderToken) {
     document.getElementById("analysis-mark-next").textContent = "请手动刷新";
     document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
     renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode, bundleSecondary);
-    return { status: "error", data: null, refreshed: liveFetched, error };
+    finishAnalysisTransition();
+    return { status: "error", data: null, refreshed: false, error };
   } finally {
     analysisRequestPending = false;
     if (isRunActive(token)) setRefreshBusy(false);
@@ -1685,6 +1627,7 @@ async function enhanceLatestMark(token = activeRenderToken, { preferLive = false
   try {
     const markPayload = await api.getLatestMark(appState.selectedInstrumentId, {
       preferLive,
+      persistLive: false,
       force: preferLive,
       signal: abortController?.signal,
       timeoutMs: preferLive ? 5000 : 1500,
@@ -1728,10 +1671,15 @@ function debouncedLoadAll() {
   }
   const key = `${appState.selectedInstrumentId}:${appState.selectedTimeframe}:${appState.selectedViewWindow}`;
   lastAnalysisKey = key;
+  abortController?.abort();
+  const token = ++activeRenderToken;
+  beginAnalysisTransition("正在切换标的与周期");
   analysisDebounceTimer = window.setTimeout(() => {
     analysisDebounceTimer = null;
     if (lastAnalysisKey !== key) return;
-    loadAll();
+    loadAll(false, token).catch((error) => {
+      if (isRunActive(token)) console.error("analysis:switch-load:error", error);
+    });
   }, 300);
 }
 
@@ -1777,21 +1725,10 @@ function bindEventHandlers() {
   }
 
   document.getElementById("analysis-refresh").addEventListener("click", async () => {
-    if (analysisRequestPending) {
-      debouncedLoadAll();
-      return;
-    }
-    setRefreshBusy(true, "刷新中");
-    try {
-      await api.refreshAnalysisBundle(
-        appState.selectedInstrumentId,
-        appState.selectedTimeframe,
-        appState.selectedViewWindow,
-      );
-      await loadAll(true);
-    } finally {
-      setRefreshBusy(false);
-    }
+    abortController?.abort();
+    const token = ++activeRenderToken;
+    beginAnalysisTransition("正在刷新当前分析快照");
+    await loadAll(true, token);
   });
 }
 
@@ -1809,8 +1746,17 @@ export async function renderAnalysis() {
     syncToolbarState();
   }
 
+  beginAnalysisTransition("正在读取当前分析快照");
   const loadPromise = loadAll(false, token).catch((error) => {
     if (isRunActive(token)) console.error("analysis:initial-load:error", error);
+  });
+  warmupController?.abort();
+  warmupController = new AbortController();
+  scheduleAnalysisMatrixWarmup({
+    instruments: appState.instruments,
+    selectedInstrumentId: appState.selectedInstrumentId,
+    selectedTimeframe: appState.selectedTimeframe,
+    signal: warmupController.signal,
   });
 
   return {
@@ -1819,11 +1765,12 @@ export async function renderAnalysis() {
       if (analysisDebounceTimer) { window.clearTimeout(analysisDebounceTimer); analysisDebounceTimer = null; }
       abortController?.abort();
       abortController = null;
+      warmupController?.abort();
+      warmupController = null;
       if (markTimer) {
         window.clearInterval(markTimer);
         markTimer = null;
       }
-      clearBundleRetry();
       destroyChartsForPage?.("analysis-");
       document.removeEventListener("visibilitychange", refreshMarkOnly);
       activeRangeClassification = null;

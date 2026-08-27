@@ -4,11 +4,11 @@ import {
   formatNumber,
   impactChip,
   knowledgeTooltip,
-  metricCard,
   setRoot,
   statusBanner,
   tooltipWrap,
 } from "../core/dom.js";
+import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 
 const MONTH_NAMES = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 const WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"];
@@ -113,38 +113,31 @@ function renderMonthGrid(items, activeMonth) {
   }
 
   return `
-    <article class="card">
-      <div class="calendar-head">
-        <button id="calendar-prev-month" class="calendar-month-button" type="button" aria-label="查看上个月" title="上个月">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.5-5 5.5 5 5.5"/></svg>
-          <span>上个月</span>
-        </button>
-        <strong class="calendar-current-month" aria-live="polite">${activeMonth.getFullYear()} 年 ${MONTH_NAMES[activeMonth.getMonth()]}</strong>
-        <button id="calendar-next-month" class="calendar-month-button" type="button" aria-label="查看下个月" title="下个月">
-          <span>下个月</span>
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"/></svg>
-        </button>
-      </div>
-      <div class="calendar-weekdays">${WEEKDAY_NAMES.map((name) => `<span>${name}</span>`).join("")}</div>
-      <div class="calendar-grid">${cells.join("")}</div>
-    </article>
+    <div class="calendar-head">
+      <button id="calendar-prev-month" class="calendar-month-button" type="button" aria-label="查看上个月" title="上个月">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.5-5 5.5 5 5.5"/></svg>
+        <span>上个月</span>
+      </button>
+      <strong class="calendar-current-month" aria-live="polite">${activeMonth.getFullYear()} 年 ${MONTH_NAMES[activeMonth.getMonth()]}</strong>
+      <button id="calendar-next-month" class="calendar-month-button" type="button" aria-label="查看下个月" title="下个月">
+        <span>下个月</span>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"/></svg>
+      </button>
+    </div>
+    <div class="calendar-weekdays">${WEEKDAY_NAMES.map((name) => `<span>${name}</span>`).join("")}</div>
+    <div class="calendar-grid">${cells.join("")}</div>
   `;
 }
 
 function renderCalendarTable(items) {
   return `
-    <section class="card">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">RELEASE BOARD</p>
-          <h2>宏观事件明细 ${knowledgeTooltip("Macro Sync / 宏观同步 与 Event Window / 事件窗口", "tone-neutral", "展示过去三个月与未来六个月的宏观事件。", { extra: "展示过去三个月与未来六个月的宏观事件。" })}</h2>
-          <p class="section-summary">按时间顺序查看发布安排与实际结果，便于复盘宏观扰动。</p>
-        </div>
-        <div class="toolbar compact-toolbar">
-          <button id="macro-sync-button" class="primary-button compact" type="button">同步宏观</button>
-        </div>
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">RELEASE BOARD</p>
+        <h2>宏观事件明细</h2>
       </div>
-      <div class="table-wrap">
+    </div>
+    <div class="table-wrap">
         <table>
           <thead>
             <tr>
@@ -184,21 +177,119 @@ function renderCalendarTable(items) {
           </tbody>
         </table>
       </div>
-    </section>
   `;
 }
 
 let autoSyncedMacro = false;
 
+// 2026-08-19: market-events-style context bar — unified 3-column card with
+// title + inline metrics + actions, replacing the separate summary cards
+// and table toolbar. Mirrors the events-context-bar design language.
+function renderContextBar(items, isCalendarCollapsed) {
+  const released = items.filter((item) => item.status === "released").length;
+  const scheduled = items.filter((item) => item.status !== "released").length;
+  const fomc = items.filter((item) => String(item.event_key || "").includes("fomc")).length;
+  const core = items.filter((item) => ["us_cpi", "us_nfp", "ism_mfg", "ism_srv"].includes(item.event_key)).length;
+  return `
+    <div class="macro-calendar-head">
+      <div class="macro-context-copy">
+        <p class="eyebrow">CALENDAR</p>
+        <h2>宏观日历</h2>
+      </div>
+      <dl class="macro-metrics-grid">
+        <div class="macro-inline-metric">
+          <dt>已发布</dt>
+          <dd>${released}</dd>
+        </div>
+        <div class="macro-inline-metric">
+          <dt>待发布</dt>
+          <dd>${scheduled}</dd>
+        </div>
+        <div class="macro-inline-metric">
+          <dt>FOMC</dt>
+          <dd>${fomc}</dd>
+        </div>
+        <div class="macro-inline-metric">
+          <dt>核心发布</dt>
+          <dd>${core}</dd>
+        </div>
+      </dl>
+      <div class="macro-context-actions">
+        ${renderDisclosureToggle({
+          id: "macro-calendar-toggle",
+          controls: "macro-calendar-body",
+          expanded: !isCalendarCollapsed,
+          expandLabel: "展开日历",
+          collapseLabel: "收起日历",
+          className: "macro-calendar-toggle",
+        })}
+        <button id="macro-sync-button" class="primary-button compact" type="button">更新日历</button>
+      </div>
+    </div>
+  `;
+}
+
+// 骨架占位：与真实结构一致，避免"空白 → 加载中 → 内容"三段跳
+function renderCalendarSkeleton() {
+  return `
+    <section id="macro-calendar-container">
+      <article class="card macro-calendar-card is-collapsed">
+        <div class="macro-calendar-head">
+          <div class="macro-context-copy"><p class="eyebrow">CALENDAR</p><h2>宏观日历</h2></div>
+          <dl class="macro-metrics-grid">
+            <div class="skeleton-cell" style="width:64px;height:32px"></div>
+            <div class="skeleton-cell" style="width:64px;height:32px"></div>
+            <div class="skeleton-cell" style="width:64px;height:32px"></div>
+            <div class="skeleton-cell" style="width:64px;height:32px"></div>
+          </dl>
+          <div class="macro-context-actions">
+            ${renderDisclosureToggle({
+              controls: "macro-calendar-body",
+              expanded: false,
+              expandLabel: "展开日历",
+              collapseLabel: "收起日历",
+              className: "macro-calendar-toggle",
+              disabled: true,
+            })}
+            <button class="primary-button compact" type="button" disabled>更新日历</button>
+          </div>
+        </div>
+      </article>
+      <article id="macro-calendar-detail" class="card macro-calendar-detail-card">
+        <div class="skeleton-cell" style="height:200px"></div>
+      </article>
+    </section>
+    <footer id="macro-statusbar" class="macro-statusbar">${statusBanner("正在读取日历数据", "loading")}</footer>
+  `;
+}
+
+// 宏观日历卡片：context bar + 日历网格
+function renderMacroCalendarCard(items, currentMonth, isCalendarCollapsed) {
+  return `
+    <article class="card macro-calendar-card${isCalendarCollapsed ? " is-collapsed" : ""}">
+      ${renderContextBar(items, isCalendarCollapsed)}
+      <div id="macro-calendar-body" class="macro-calendar-body" ${isCalendarCollapsed ? "hidden" : ""}>
+        ${renderMonthGrid(items, currentMonth)}
+      </div>
+    </article>
+  `;
+}
+
+// 宏观事件明细卡片
+function renderMacroDetailCard(items) {
+  return `
+    <article id="macro-calendar-detail" class="card macro-calendar-detail-card">
+      ${renderCalendarTable(items)}
+    </article>
+  `;
+}
+
 export async function renderMacroCalendar() {
   let currentMonth = monthStart(new Date());
+  let isCalendarCollapsed = true;
   let disposed = false;
-  setRoot(`
-    <section id="macro-statusbar"></section>
-    <section class="grid cols-4" id="macro-summary-cards"></section>
-    <section id="macro-calendar-module"></section>
-    <section id="macro-calendar-detail"></section>
-  `);
+  let weekdaysScrollHandler = null;
+  setRoot(renderCalendarSkeleton());
 
   const renderStatus = (message, tone = "neutral") => {
     const el = document.getElementById("macro-statusbar");
@@ -207,6 +298,7 @@ export async function renderMacroCalendar() {
 
   async function load(force = false) {
     if (force) invalidateCache("/macro/calendar");
+    if (force) renderStatus("正在同步宏观日历", "loading");
     let payload = await api.getMacroCalendar(300);
     let items = filterCalendarItems(payload || []);
     if (false && !items.length && !force && !autoSyncedMacro) {
@@ -218,21 +310,62 @@ export async function renderMacroCalendar() {
       items = filterCalendarItems(payload || []);
       renderStatus(items.length ? "数据已就绪" : "同步完成，但暂无宏观事件", items.length ? "success" : "warning");
     }
-    const released = items.filter((item) => item.status === "released").length;
-    const scheduled = items.filter((item) => item.status !== "released").length;
-    const fomc = items.filter((item) => String(item.event_key || "").includes("fomc")).length;
-    const core = items.filter((item) => ["us_cpi", "us_nfp", "ism_mfg", "ism_srv"].includes(item.event_key)).length;
     if (disposed) return;
 
-    document.getElementById("macro-summary-cards").innerHTML = [
-      metricCard("已发布", released, "事件数"),
-      metricCard("待发布", scheduled, "事件数"),
-      metricCard("FOMC", fomc, "日历节点"),
-      metricCard("CPI / NFP / ISM", core, "核心发布"),
-    ].join("");
+    document.getElementById("macro-calendar-container").innerHTML = `
+      ${renderMacroCalendarCard(items, currentMonth, isCalendarCollapsed)}
+      ${renderMacroDetailCard(items)}
+    `;
 
-    document.getElementById("macro-calendar-module").innerHTML = renderMonthGrid(items, currentMonth);
-    document.getElementById("macro-calendar-detail").innerHTML = renderCalendarTable(items);
+    if (weekdaysScrollHandler) {
+      window.removeEventListener("scroll", weekdaysScrollHandler);
+      weekdaysScrollHandler = null;
+    }
+
+    // Bind the weekday fade only while the calendar is visible. Measuring a
+    // hidden row yields a zero rect and would otherwise leave it transparent
+    // on the first expansion.
+    const bindWeekdaysFade = () => {
+      const weekdaysRow = document.querySelector(".macro-calendar-card .calendar-weekdays");
+      if (!weekdaysRow || weekdaysScrollHandler) return;
+      let fadeRaf = null;
+      const FADE_DISTANCE = 40;
+      const updateFade = () => {
+        if (fadeRaf) return;
+        fadeRaf = requestAnimationFrame(() => {
+          fadeRaf = null;
+          const card = weekdaysRow.closest(".macro-calendar-card");
+          if (!card) return;
+          const cardRect = card.getBoundingClientRect();
+          const rowRect = weekdaysRow.getBoundingClientRect();
+          // 当星期横栏上沿距卡片顶边（即表头边缘）< FADE_DISTANCE 时渐隐
+          const distFromTop = rowRect.top - cardRect.top;
+          const opacity = Math.max(0, Math.min(1, distFromTop / FADE_DISTANCE));
+          weekdaysRow.style.opacity = String(opacity);
+        });
+      };
+      weekdaysScrollHandler = updateFade;
+      window.addEventListener("scroll", weekdaysScrollHandler, { passive: true });
+      updateFade();
+    };
+
+    if (!isCalendarCollapsed) bindWeekdaysFade();
+
+    document.getElementById("macro-calendar-toggle")?.addEventListener("click", () => {
+      isCalendarCollapsed = !isCalendarCollapsed;
+      const card = document.querySelector(".macro-calendar-card");
+      const body = document.getElementById("macro-calendar-body");
+      const button = document.getElementById("macro-calendar-toggle");
+      card?.classList.toggle("is-collapsed", isCalendarCollapsed);
+      if (body) body.hidden = isCalendarCollapsed;
+      setDisclosureState(button, !isCalendarCollapsed);
+      if (isCalendarCollapsed && weekdaysScrollHandler) {
+        window.removeEventListener("scroll", weekdaysScrollHandler);
+        weekdaysScrollHandler = null;
+      } else if (!isCalendarCollapsed) {
+        bindWeekdaysFade();
+      }
+    });
 
     document.getElementById("calendar-prev-month").addEventListener("click", async () => {
       currentMonth = addMonths(currentMonth, -1);
@@ -246,17 +379,17 @@ export async function renderMacroCalendar() {
       const button = document.getElementById("macro-sync-button");
       if (button) {
         button.disabled = true;
-        button.textContent = "同步中";
+        button.textContent = "更新中";
       }
       try {
-        renderStatus("正在同步宏观日历", "loading");
+        renderStatus("正在更新宏观日历", "loading");
         await api.refreshMacro();
         await load(true);
         renderStatus("数据已就绪", "success");
       } finally {
         if (button) {
           button.disabled = false;
-          button.textContent = "同步宏观";
+          button.textContent = "更新日历";
         }
       }
     });
@@ -268,6 +401,10 @@ export async function renderMacroCalendar() {
   return {
     async unmount() {
       disposed = true;
+      if (weekdaysScrollHandler) {
+        window.removeEventListener("scroll", weekdaysScrollHandler);
+        weekdaysScrollHandler = null;
+      }
       void loadPromise.catch(() => null);
     },
     async pause() {},

@@ -136,7 +136,7 @@ class MarketDataBundleService:
             cache_state="fresh" if candles else "missing",
             source_version=CACHE_SOURCE_VERSION,
             calculated_at=datetime.now(timezone.utc),
-            expires_at=expires_at_for_dataset("market_bundle"),
+            expires_at=expires_at_for_dataset("market_bundle", timeframe=cache_timeframe),
             meta_json={
                 "requested_limit": limit,
                 "limit_bucket": limit_bucket,

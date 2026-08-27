@@ -5,6 +5,7 @@ from app.services.btc_derivatives.chart_builder import (
     build_dashboard_charts,
 )
 from app.services.btc_derivatives.market_state_engine import build_market_state
+from app.services.btc_derivatives.options_wall_signal import evaluate_key_levels_axis
 from app.services.btc_derivatives.wall_tracker import movement_label
 
 
@@ -121,3 +122,44 @@ def test_key_levels_axis_prevents_single_call_wall_rising_from_becoming_strong_b
     assert "call_wall_rising" not in result["helps_long"]
     assert key_block["tone"] == "bearish"
     assert "偏空" in key_block["conclusion"]
+
+
+def test_stable_key_level_basis_uses_concise_capsule_copy() -> None:
+    axis = evaluate_key_levels_axis(
+        spot_price=61_000,
+        previous_spot_price=61_000,
+        call_wall=70_000,
+        previous_call_wall=70_000,
+        put_wall=52_000,
+        previous_put_wall=52_000,
+        max_pain=60_000,
+        previous_max_pain=60_000,
+        data_quality_status="live",
+    )
+    result = build_market_state(
+        price_oi_state="flat",
+        funding_state="neutral",
+        iv_state="iv_neutral",
+        skew_state="skew_neutral",
+        wall_movement={"call_wall": "stable", "put_wall": "stable"},
+        max_pain_movement="stable",
+        data_quality_status="live",
+        options_wall_signal=axis,
+    )
+
+    key_block = next(
+        block for block in result["inference_blocks"] if block["id"] == "key_levels"
+    )
+    assert key_block["basis"] == [
+        "Call Wall 未出现有效迁移",
+        "Put Wall 未出现有效迁移",
+        "Max Pain 未出现有效迁移",
+    ]
+    joined = " ".join(key_block["basis"])
+    for forbidden in (
+        "Call Wall：Call Wall",
+        "Put Wall：Put Wall",
+        "Max Pain：Max Pain",
+        "暂未出现有效迁移",
+    ):
+        assert forbidden not in joined

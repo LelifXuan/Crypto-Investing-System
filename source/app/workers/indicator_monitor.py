@@ -23,7 +23,7 @@ class IndicatorMonitorWorker:
     async def start(self) -> None:
         if not settings.monitoring_scheduler_enabled or self._task is not None:
             return
-        async with db_manager.session() as session:
+        async with db_manager.writer_session() as session:
             service = IndicatorMonitoringService(MarketRepository(session))
             await service.seed_defaults()
         self._stopping.clear()
@@ -41,7 +41,7 @@ class IndicatorMonitorWorker:
     async def _run_loop(self) -> None:
         while not self._stopping.is_set():
             try:
-                async with db_manager.session() as session:
+                async with db_manager.writer_session() as session:
                     service = IndicatorMonitoringService(MarketRepository(session))
                     if settings.worker_profile.lower() == "desktop_light":
                         await self._run_lightweight_refresh(service)

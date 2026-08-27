@@ -164,6 +164,11 @@ python tests/verify_pages.py --skip-spa             # 只测冷启动
 python tests/verify_pages.py --baseline             # 把当前截图入库为基准
 ```
 
+> **实例回收（2026-08-18）**：实例检查用到的后端**必须是你自己这条命令拉起的实例**，
+> 验证完成后**必须把它关掉**（`Ctrl+C` 或 `taskkill /PID <pid> /F`），保持环境与验证前一致。
+> 不允许"借别人的实例"或"验证完不管、留下孤儿进程"——否则你拉起的实例会占用 8002 端口、
+> 在别人眼里像"进程自己复活了"，还会与真正由用户管理的实例混淆。
+
 **或用 Playwright 直接检查单个页面**:
 
 ```python
@@ -366,3 +371,11 @@ python tests/stress_test.py                          # 全量压力测试
 8. SQLite writer gate 必须覆盖冷启动可达的全部写路径。只保护 candle/cache，而遗漏事件、指标或幂等记录写入，仍会在真实预热中产生锁竞争。
 9. `stale_revalidating` 且存在 last-known-good 时必须先渲染旧快照，再后台跟踪刷新；不得把 stale 当作纯冷启动壳同步等待任务完成。
 10. precompute 对外请求优先级固定为 1–9，不能把 writer 内部优先级（如 20/40/80）直接传给 API；前端调用必须由静态测试钉住范围。
+
+## 十二、验证数据库体积门禁
+
+1. 禁止为页面或单模块验证复制完整 `trading_system.db`。完整历史库包含百万级指标运行记录，不属于 UI 验证输入。
+2. AI 策略页面需要隔离实例时，使用 `scripts/create_verification_db.py` 创建“空结构 + 品种目录 + 已发布策略页面快照”的精简数据库。
+3. 验证实例必须设置 `WORKER_PROFILE=none` 和 `LOCAL_BOOTSTRAP_WARMUP_ENABLED=false`，避免验证期间补写行情、指标与历史事实。
+4. 单元测试继续使用 `tmp_path` 独立空库和最小 fixture；只有明确的数据迁移/回放测试才允许复制相关表，并必须按时间、标的或主键范围裁剪。
+5. 验证结束后删除精简数据库及 `-wal`、`-shm` 侧文件，不得在 `runtime_dev/` 留下孤立数据库。

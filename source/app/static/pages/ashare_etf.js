@@ -1,5 +1,12 @@
 import { api } from "../core/api.js";
-import { escapeHtml, formatDateTime, formatNumber, setRoot, statusBanner } from "../core/dom.js";
+import {
+  escapeHtml,
+  formatDateTime,
+  formatNumber,
+  revealStagger,
+  setRoot,
+  statusBanner,
+} from "../core/dom.js";
 import { destroyChartsForPage, lineDataset, renderChart } from "../ui/charts.js";
 import { mountDropdown } from "../ui/dropdown.js";
 
@@ -42,6 +49,8 @@ let planController = null;
 let latestPayload = null;
 let latestPlan = null;
 let debounceTimer = null;
+let initialContentRevealPlayed = false;
+let initialEquityRevealPlayed = false;
 let state = readSavedState();
 
 function defaultState() {
@@ -195,7 +204,105 @@ function renderShell() {
     <section id="etf-equity-curve"></section>
     <section id="etf-quote-deck"></section>
     <section id="etf-workbench"></section>
+    <section id="etf-governance"></section>
   `);
+}
+
+// 2026-08-18: gold-standard governance card for the A股 ETF page.
+// Mirrors the gold-allocation DATA GOVERNANCE layout: a header column with
+// muted background + bordered-right, and a 3–4 column item grid showing
+// the quote source, equity-curve source, cache state, and plan status.
+function governanceSourceItem(label, entry, { dotTone = "info" } = {}) {
+  const state = entry?.state || "missing";
+  return `
+    <article class="governance-ledger__item etf-governance-item" data-state="${escapeHtml(state)}">
+      <div class="governance-ledger__label etf-governance-label">
+        <span class="governance-ledger__dot etf-governance-dot" data-tone="${dotTone}" aria-hidden="true"></span>
+        <span>${escapeHtml(label)}</span>
+      </div>
+      <strong>${escapeHtml(entry?.value || "未配置")}</strong>
+      <small>${escapeHtml(entry?.detail || "—")}</small>
+    </article>
+  `;
+}
+
+function renderGovernance() {
+  const payload = latestPayload || {};
+  const eqMeta = equityCurveCache?.meta || {};
+
+  // Quote source
+  const sourceStatus = payload.source_status || "ok";
+  const cacheStatus = payload.cache_status || "live";
+  const sourceLabel = sourceStatusLabel(payload);
+  const updatedAt = payload.updated_at || payload.generated_at || payload.data_timestamp;
+  const quoteAge = updatedAt
+    ? formatAgeShort((Date.now() - new Date(updatedAt).getTime()) / 1000)
+    : "尚未更新";
+  const quoteState = sourceStatus === "ok" ? "fresh"
+    : sourceStatus === "partial" ? "degraded"
+    : sourceStatus === "error" ? "missing" : "degraded";
+
+  // Equity curve source
+  const eqSource = eqMeta.data_source || "eastmoney_kline";
+  const eqFetchedAt = eqMeta.fetched_at;
+  const eqAge = eqFetchedAt
+    ? formatAgeShort((Date.now() - new Date(eqFetchedAt).getTime()) / 1000)
+    : null;
+  const eqSourceState = eqMeta.source_status === "ok" ? "fresh"
+    : eqMeta.source_status === "partial" ? "degraded"
+    : eqMeta.source_status ? "missing" : "missing";
+
+  // Plan status
+  const planState = latestPlan ? "fresh" : "missing";
+
+  // 快照时间 — 参考 gold-allocation 设计
+  const snapshotAt = updatedAt || eqFetchedAt;
+  const snapshotState = snapshotAt ? "fresh" : "missing";
+
+  // Count ready sources for the header summary
+  const readyCount = [quoteState === "fresh", eqSourceState === "fresh", planState === "fresh"].filter(Boolean).length;
+  const totalSources = 3;
+
+  return `
+    <section class="card governance-ledger etf-governance" aria-labelledby="etf-governance-title">
+      <div class="governance-ledger__head etf-governance-head">
+        <p class="eyebrow">DATA GOVERNANCE</p>
+        <h2 id="etf-governance-title">数据就绪与快照</h2>
+        <p><strong>${readyCount}/${totalSources}</strong> 个数据源当前可用</p>
+      </div>
+      <div class="governance-ledger__grid etf-governance-grid">
+        ${governanceSourceItem("行情数据源", { value: sourceLabel, detail: quoteAge, state: quoteState }, { dotTone: quoteState === "fresh" ? "info" : quoteState === "degraded" ? "warning" : "danger" })}
+        ${governanceSourceItem("净值数据", { value: eqSourceState === "fresh" ? eqSource : "等待数据", detail: eqAge ? eqAge : "尚未拉取", state: eqSourceState }, { dotTone: eqSourceState === "fresh" ? "info" : "warning" })}
+        ${governanceSourceItem("执行计划", { value: planState === "fresh" ? "计划已生成" : "等待计划", detail: planState === "fresh" ? `${(latestPlan?.orders || []).length} 笔指令` : "输入持仓后生成", state: planState }, { dotTone: planState === "fresh" ? "info" : "warning" })}
+        ${governanceSnapshotItem(snapshotAt)}
+      </div>
+    </section>
+  `;
+}
+
+// 参考 gold-allocation 的 governanceSnapshotItem
+function governanceSnapshotItem(snapshotAt) {
+  const ready = !!snapshotAt;
+  const observed = ready ? formatDateTime(snapshotAt) : "—";
+  return `
+    <article class="governance-ledger__item governance-ledger__snapshot etf-governance-item etf-governance-snapshot" data-state="${ready ? "fresh" : "missing"}">
+      <div class="governance-ledger__label etf-governance-label">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>
+        <span>快照时间</span>
+      </div>
+      <strong>${escapeHtml(observed)}</strong>
+      <small>${ready ? "UTC · 当前研究快照" : "尚未生成有效快照"}</small>
+    </article>
+  `;
+}
+
+function formatAgeShort(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return "更新时间未知";
+  if (value < 60) return `${Math.round(value)} 秒前`;
+  if (value < 3600) return `${Math.round(value / 60)} 分钟前`;
+  if (value < 86400) return `${Math.round(value / 3600)} 小时前`;
+  return `${Math.round(value / 86400)} 天前`;
 }
 
 // ---------------------------------------------------------------------------
@@ -988,7 +1095,7 @@ async function loadEquityCurve() {
   const isSim = equityCurveMode === "simulation";
   // First-ever render has an EMPTY from-month input → this call is the
   // wide discovery window; record it BEFORE fetching, because the response
-  // handler re-renders the shell which immediately fills the input with
+    // handler re-renders the shell which immediately fills the input with
   // meta.halos_listing_start (making a post-hoc emptiness check useless).
   const monthInput = document.getElementById("etf-equity-from-month");
   const discoveryCall = Boolean(isSim && monthInput && !monthInput.value);
@@ -1014,6 +1121,8 @@ async function loadEquityCurve() {
     }
     equityCurveCache = result;
     if (statusRoot) statusRoot.innerHTML = "";
+    // 2026-08-15: drop the dim class so the freshly-rendered curve fades
+    // back in. renderEquityCurve rewrites #etf-equity-curve innerHTML —
     renderEquityCurve(result, equityCurveMode);
     // Discovery resolved: replay once from the six-all-present day (e.g.
     // 2023-07) so the chart starts at the first complete basket month.
@@ -1024,6 +1133,12 @@ async function loadEquityCurve() {
       const nextInput = document.getElementById("etf-equity-from-month");
       if (nextInput) nextInput.value = String(halo).slice(0, 7);
       void loadEquityCurve();
+    } else if (!initialEquityRevealPlayed) {
+      const equitySection = document.getElementById("etf-equity-curve");
+      if (equitySection) {
+        revealStagger(equitySection);
+        initialEquityRevealPlayed = true;
+      }
     }
   } catch (error) {
     if (error?.name === "AbortError") return;
@@ -1289,8 +1404,23 @@ function renderAll(statusHtml = "") {
   document.getElementById("etf-quote-deck").innerHTML = renderQuoteDeck();
   document.getElementById("etf-workbench").innerHTML = renderWorkbench();
   renderEquityCurve(equityCurveCache);
+  const govEl = document.getElementById("etf-governance");
+  if (govEl) govEl.innerHTML = renderGovernance();
   bindControls();
   restoreFocusedField(focused);
+}
+
+function revealInitialEtfContent() {
+  if (initialContentRevealPlayed) return;
+  const root = document.getElementById("page-root");
+  if (!root || !document.getElementById("etf-workbench")) return;
+  // Quote and plan data land after the router has already revealed the shell.
+  // Reveal only the newly-populated page sections; later refreshes, form edits
+  // and strategy generation keep their local, interruptible transitions.
+  revealStagger(root, {
+    selector: ":scope > section:not(#etf-equity-curve)",
+  });
+  initialContentRevealPlayed = true;
 }
 
 function updateStateFromInput(target) {
@@ -1378,6 +1508,10 @@ function buildPlanPayload() {
 async function planRebalance() {
   planController?.abort();
   planController = new AbortController();
+  // 2026-08-15: dim #page-root before kicking off the re-plan. The new
+  // renderAll() replaces four section innerHTMLs in a single tick; the
+  // brief dim-out → fade-in makes position-input / mode-ddown
+  // changes read as a continuous transition.
   try {
     latestPlan = await api.planEtfRebalance(buildPlanPayload(), { signal: planController.signal });
     renderAll(statusBanner("执行计划已生成", "success"));
@@ -1401,9 +1535,12 @@ async function loadQuotes({ force = false } = {}) {
     if (error?.name === "AbortError") return;
     renderAll(statusBanner("行情读取失败；将保留最新可用收盘价生成计划。", "warning"));
   }
+  revealInitialEtfContent();
 }
 
 export async function renderAshareEtf() {
+  initialContentRevealPlayed = false;
+  initialEquityRevealPlayed = false;
   renderShell();
   renderAll(statusBanner("正在读取 A股ETF 行情", "loading"));
   const loadPromise = loadQuotes().catch((error) => {
@@ -1413,7 +1550,10 @@ export async function renderAshareEtf() {
   // overview / quote deck / workbench.
   void loadEquityCurve();
   return {
-    async mount() { await loadPromise; },
+    // The shell is already mounted above. Expose the request as readiness
+    // metadata instead of a blocking mount step so a rapid SPA navigation
+    // cannot race an in-flight ETF quote request against the next page.
+    ready: loadPromise,
     async unmount() {
       activeController?.abort();
       planController?.abort();

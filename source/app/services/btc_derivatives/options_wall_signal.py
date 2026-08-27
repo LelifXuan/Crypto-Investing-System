@@ -157,7 +157,7 @@ def _signal_for_level(
             "wall_stable",
             "neutral",
             "unconfirmed",
-            f"{_level_label(level_id)} 暂未出现有效迁移",
+            "未出现有效迁移",
         )
 
     if level_id == "call_wall":
@@ -274,7 +274,7 @@ def _signal_for_level(
             "divergent",
             "Max Pain 持仓重心下移，但现价尚未同步确认",
         )
-    return ("wall_stable", "neutral", "unconfirmed", "Max Pain 暂未出现有效迁移")
+    return ("wall_stable", "neutral", "unconfirmed", "未出现有效迁移")
 
 
 def _build_level(

@@ -15,13 +15,23 @@
 // replaces V4's hard-coded chip-warning ternary on the governance strip.
 
 import { api } from "../core/api.js";
-import { escapeHtml, formatNumber, impactChip, setRoot } from "../core/dom.js";
+import {
+  escapeHtml,
+  formatNumber,
+  impactChip,
+  revealStagger,
+  setRoot,
+  skeletonPhaseStyle,
+} from "../core/dom.js";
+import { waitForAbortableDelay, waitForPrecomputeTask } from "../core/precompute.js";
 import { barDataset, destroyChartsForPage, lineDataset, renderChart } from "../ui/charts.js";
 
 const CHART_PREFIX = "gold-chart-";
 
 let controller = null;
 let latestData = null;
+let loadVersion = 0;
+let initialGoldRevealPlayed = false;
 
 // ----- Status-code tone mapping (V5 replaces V4's hard-coded chip-neutral / chip-warning).
 const STATUS_TONE_MAP = {
@@ -143,7 +153,7 @@ function renderHero(data) {
         <div class="card-head-inline">
           <div>
             <p class="eyebrow">GOLD ALLOCATION</p>
-            <h1 class="gold-page-h1">黄金配置 Workbench</h1>
+            <h2 class="page-display-title gold-page-h1">黄金配置 Workbench</h2>
             <p class="gold-page-sub">${escapeHtml(subtitle)}</p>
             ${
               shock
@@ -373,9 +383,9 @@ function governanceSourceItem(manifest, label, sourceKey) {
   const entry = (manifest || []).find((s) => s?.source_key === sourceKey);
   const state = entry?.freshness_state || "missing";
   return `
-    <article class="gold-governance-item" data-state="${escapeHtml(state)}">
-      <div class="gold-governance-label">
-        <span class="gold-governance-dot" aria-hidden="true"></span>
+    <article class="governance-ledger__item gold-governance-item" data-state="${escapeHtml(state)}">
+      <div class="governance-ledger__label gold-governance-label">
+        <span class="governance-ledger__dot gold-governance-dot" aria-hidden="true"></span>
         <span>${escapeHtml(label)}</span>
       </div>
       <strong>${escapeHtml(entry ? labelForFreshness(state) : "未配置")}</strong>
@@ -387,8 +397,8 @@ function governanceSourceItem(manifest, label, sourceKey) {
 function governanceSnapshotItem(observed) {
   const ready = !!observed && observed !== "—";
   return `
-    <article class="gold-governance-item gold-governance-snapshot" data-state="${ready ? "fresh" : "missing"}">
-      <div class="gold-governance-label">
+    <article class="governance-ledger__item governance-ledger__snapshot gold-governance-item gold-governance-snapshot" data-state="${ready ? "fresh" : "missing"}">
+      <div class="governance-ledger__label gold-governance-label">
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>
         <span>快照时间</span>
       </div>
@@ -406,13 +416,13 @@ function renderGovernance(data) {
     manifest.find((entry) => entry?.source_key === sourceKey)?.freshness_state === "fresh"
   )).length;
   return `
-    <section class="card gold-governance" aria-labelledby="gold-governance-title">
-      <div class="gold-governance-head">
+    <section class="card governance-ledger gold-governance" aria-labelledby="gold-governance-title">
+      <div class="governance-ledger__head gold-governance-head">
         <p class="eyebrow">DATA GOVERNANCE</p>
         <h2 id="gold-governance-title">数据就绪与快照</h2>
         <p><strong>${readyCount}/${sourceKeys.length}</strong> 个数据源当前可用</p>
       </div>
-      <div class="gold-governance-grid">
+      <div class="governance-ledger__grid gold-governance-grid">
         ${governanceSourceItem(manifest, "策略配置", "gold_policy")}
         ${governanceSourceItem(manifest, "XAUT 行情", "gold_spot_quote")}
         ${governanceSourceItem(manifest, "衍生品", "gold_derivatives")}
@@ -466,35 +476,161 @@ function renderShell(data) {
   `;
 }
 
+function renderGoldLoading() {
+  const rows = Array.from({ length: 6 }, () => `
+    <div class="gold-loading-row" aria-hidden="true">
+      <span class="gold-loading-dot"></span>
+      <span class="gold-loading-copy"><i></i><i></i><i></i></span>
+    </div>
+  `).join("");
+  return `
+    <article class="card gold-data-loading" role="status" aria-label="正在接入黄金配置数据">
+      <div class="gold-loading-head">
+        <div>
+          <p class="eyebrow">GOLD DATA PIPELINE</p>
+          <h2>正在接入黄金配置数据</h2>
+        </div>
+        <span>同步策略、XAUT 行情与衍生品快照</span>
+      </div>
+      <div class="gold-loading-grid">${rows}</div>
+    </article>
+  `;
+}
+
+function phaseGoldLoadingSkeleton() {
+  document.querySelectorAll(".gold-loading-copy i").forEach((element, index) => {
+    const declaration = skeletonPhaseStyle(index);
+    const delay = declaration.match(/--skeleton-delay:\s*([^;]+)/)?.[1];
+    if (delay) element.style.setProperty("--skeleton-delay", delay);
+  });
+}
+
 // ----- Data fetching + chart wiring --------------------------------------
 
-async function loadData() {
+function isActiveLoad(version, signal) {
+  return !signal?.aborted && controller?.signal === signal && loadVersion === version;
+}
+
+function bindGoldRefreshButton() {
+  const refreshBtn = document.getElementById("gold-refresh");
+  if (!refreshBtn || refreshBtn.dataset.bound === "true") return;
+  refreshBtn.dataset.bound = "true";
+  refreshBtn.addEventListener("click", () => loadData({ force: true, requestCoreRefresh: true }), {
+    signal: controller.signal,
+  });
+}
+
+async function renderGoldSnapshot(data, version, signal) {
+  if (!isActiveLoad(version, signal)) return;
+  latestData = data;
+  setRoot(renderShell(data), { pageTransition: true });
+  applyPostMountStyles();
+  replayPageEnter();
+  bindGoldRefreshButton();
+  const chartToken = data?.chart_series_or_chart_token;
+  if (chartToken?.path && (chartToken.count || 0) > 0) {
+    try {
+      await renderGoldCharts(data, signal);
+    } catch (err) {
+      if (err?.name !== "AbortError") console.warn("[gold_v5] chart render failed", err);
+    }
+  }
+  if (!initialGoldRevealPlayed && isActiveLoad(version, signal)) {
+    const root = document.getElementById("page-root");
+    if (root) {
+      revealStagger(root);
+      initialGoldRevealPlayed = true;
+    }
+  }
+}
+
+function mergeDerivatives(data, derivatives) {
+  const hasData = ["oi_change_4w", "funding_rate", "cot_net_spec_percentile", "open_interest"]
+    .some((key) => derivatives?.[key] != null);
+  const manifest = [...(data?.source_manifest || [])];
+  const index = manifest.findIndex((entry) => entry?.source_key === "gold_derivatives");
+  const entry = {
+    source_key: "gold_derivatives",
+    freshness_state: hasData ? "fresh" : "missing",
+    age_seconds: hasData ? 0 : null,
+  };
+  if (index >= 0) manifest[index] = { ...manifest[index], ...entry };
+  else manifest.push(entry);
+  return { ...data, derivatives: derivatives || {}, source_manifest: manifest };
+}
+
+function patchDerivatives(data, version, signal) {
+  if (!isActiveLoad(version, signal)) return;
+  latestData = data;
+  const contract = document.querySelector(".gold-contract-ref");
+  const governance = document.querySelector(".gold-governance");
+  if (contract) contract.outerHTML = renderContractRef(data);
+  if (governance) governance.outerHTML = renderGovernance(data);
+  applyPostMountStyles();
+}
+
+async function loadDerivativesEnhancement(baseData, version, signal) {
+  try {
+    const derivatives = await api.getGoldDerivatives({ signal, timeoutMs: 25000 });
+    if (!isActiveLoad(version, signal)) return;
+    patchDerivatives(mergeDerivatives(latestData || baseData, derivatives), version, signal);
+  } catch (error) {
+    if (error?.name !== "AbortError") console.warn("[gold_v5] derivatives enhancement failed", error);
+  }
+}
+
+async function refreshGoldCore(baseData, version, signal, forceRefresh = false) {
+  const token = baseData?.chart_series_or_chart_token;
+  const needsCoreData = baseData?.technical_summary?.price == null || !(token?.count > 0);
+  if (!needsCoreData && !forceRefresh) return;
+  try {
+    const receipt = await api.precomputeHint({
+      current_page: "gold-allocation",
+      instrument_id: "xaut-usdt-perp",
+      timeframe: "1d",
+      view_window: "default",
+      visible: true,
+      candidates: ["analysis"],
+      reason: "gold_workbench_cold_read",
+      priority: 2,
+    }, { signal });
+    const taskKey = receipt?.queued_keys?.find((key) => key.startsWith("analysis:"));
+    if (!taskKey) return;
+    await waitForPrecomputeTask(taskKey, { signal });
+    await waitForAbortableDelay(250, signal);
+    const refreshed = await api.getGoldWorkbench({ force: true, signal, timeoutMs: 8000 });
+    await renderGoldSnapshot(refreshed, version, signal);
+  } catch (error) {
+    if (error?.name !== "AbortError") console.warn("[gold_v5] XAUT background refresh failed", error);
+  }
+}
+
+async function loadData({ force = false, requestCoreRefresh = false } = {}) {
+  const version = ++loadVersion;
+  const signal = controller?.signal;
+  // 2026-08-15: dim the existing shell before kicking off the workbench
+  // fetch. First call (warming shell mount) has no content yet so the
   try {
     if (typeof api.getGoldWorkbench !== "function") {
       throw new Error("api.getGoldWorkbench is not wired in app/static/core/api.js");
     }
-    const data = await api.getGoldWorkbench();
-    latestData = data;
+    const data = await api.getGoldWorkbench({ force, signal, timeoutMs: 8000 });
     // Render the full shell (hero + workbench cards + governance) even when
     // chart data is missing, so verify_pages' real-content selectors
     // (.gold-workbench-grid / .gold-governance-grid) still match and the
     // user sees an explicit empty state instead of a dead page.
-    setRoot(renderShell(data));
-    applyPostMountStyles();
-    // The SPA router's enter animation plays against the warming shell
-    // (its 300ms cleanup long expired while the 5-6s workbench request
-    // settled), so replay the transition against the real content to
-    // avoid a hard visual cut when the data lands.
-    replayPageEnter();
-    const chartToken = data && data.chart_series_or_chart_token;
-    if (chartToken && chartToken.path && (chartToken.count || 0) > 0) {
-      renderGoldCharts(data).catch((err) => console.warn("[gold_v5] chart render failed", err));
+    await renderGoldSnapshot(data, version, signal);
+    void loadDerivativesEnhancement(data, version, signal);
+    if (requestCoreRefresh || data?.technical_summary?.price == null) {
+      void refreshGoldCore(data, version, signal, requestCoreRefresh);
     }
   } catch (err) {
+    if (err?.name === "AbortError" || !isActiveLoad(version, signal)) return;
     console.warn("[gold_v5] workbench unavailable:", err && err.message ? err.message : err);
-    setRoot(renderShell({ snapshot: { status: "error" }, detail: String((err && err.message) || err) }));
+    setRoot(renderShell({ snapshot: { status: "error" }, detail: String((err && err.message) || err) }), { pageTransition: true });
     applyPostMountStyles();
     replayPageEnter();
+    bindGoldRefreshButton();
   }
 }
 
@@ -513,9 +649,9 @@ function replayPageEnter() {
   setTimeout(() => root.classList.remove("page-transition"), 300);
 }
 
-async function renderGoldCharts(data) {
+async function renderGoldCharts(data, signal) {
   destroyChartsForPage("gold");
-  const candles = await fetchChartSeries(data?.chart_series_or_chart_token);
+  const candles = await fetchChartSeries(data?.chart_series_or_chart_token, signal);
   if (!candles.length) return;
   // Backend candle rows are { ts_open, open, high, low, close, volume }
   // (ISO-string ts_open serves as the x-axis label; see the workbench chart
@@ -606,13 +742,13 @@ async function renderGoldCharts(data) {
   });
 }
 
-async function fetchChartSeries(token) {
+async function fetchChartSeries(token, signal) {
   // token is { snapshot_id, path, count }; the chart endpoint
   // (GET /api/v1/gold/workbench/charts/{snapshot_id}) returns the candles
   // bound to this workbench snapshot: { snapshot_id, observed_at, candles }.
   if (!token?.snapshot_id) return [];
   try {
-    const res = await api.getGoldWorkbenchCharts(token.snapshot_id);
+    const res = await api.getGoldWorkbenchCharts(token.snapshot_id, { signal });
     return res?.candles || res?.series || res?.data || [];
   } catch (err) {
     console.warn("[gold_v5] chart series fetch failed", err);
@@ -700,16 +836,14 @@ function applyPostMountStyles() {
 export async function renderGoldV5() {
   controller?.abort?.();
   controller = new AbortController();
-  // The warming shell is structurally complete so SPA navigation gets an
-  // immediate stable workspace while the workbench request settles.
-  setRoot(renderShell({ snapshot: { status: "loading" }, chart_series_or_chart_token: null }));
-  applyPostMountStyles();
+  initialGoldRevealPlayed = false;
+  // Use a conspicuous ingestion state instead of rendering zero-like strategy
+  // cards while the first immutable snapshot is still unavailable.
+  setRoot(renderGoldLoading());
+  phaseGoldLoadingSkeleton();
   await loadData();
   applyPostMountStyles();
-  const refreshBtn = document.getElementById("gold-refresh");
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => loadData(), { signal: controller.signal });
-  }
+  bindGoldRefreshButton();
   // Return a controller so the SPA router (main.js normalizeController)
   // calls unmount() on navigation — previously the page returned undefined
   // and the abort controller / charts were never torn down.
@@ -719,6 +853,7 @@ export async function renderGoldV5() {
 export function unmount() {
   controller?.abort?.();
   controller = null;
+  loadVersion += 1;
   destroyChartsForPage("gold");
   latestData = null;
 }

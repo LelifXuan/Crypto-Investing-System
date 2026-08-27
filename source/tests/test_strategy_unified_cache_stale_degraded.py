@@ -18,10 +18,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_db_session
+from app.api.dependencies import get_db_session, get_db_writer_session
 from app.main import create_app
 from app.schemas.market import PrecomputeHintResponse
 
@@ -119,6 +118,7 @@ def test_stale_degraded_cache_row_is_demoted_and_does_not_serve_content(monkeypa
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/api/v1/strategy/unified",
@@ -141,7 +141,10 @@ def test_stale_degraded_cache_row_is_demoted_and_does_not_serve_content(monkeypa
     refresh_limitations = payload.get("refresh_limitations") or []
     assert any(
         "background prewarm" in txt for txt in refresh_limitations
-    ), f"expected cold-read refresh_limitations to mention background prewarm; got {refresh_limitations!r}"
+    ), (
+        "expected cold-read refresh_limitations to mention background prewarm; "
+        f"got {refresh_limitations!r}"
+    )
 
     # The cached stale-degraded payload's refresh_limitations text must not leak.
     assert not any(
@@ -199,6 +202,7 @@ def test_fresh_ready_cache_row_is_served_as_is(monkeypatch) -> None:
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/api/v1/strategy/unified",

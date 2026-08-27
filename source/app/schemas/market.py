@@ -122,6 +122,8 @@ class MarketEventRead(ORMModel):
     ts_event: datetime
     payload_json: dict
     instrument_ids: list[str] = Field(default_factory=list)
+    # 2026-08-11: 冻结状态，冻结后管道不会覆盖
+    is_frozen: bool = False
 
 
 class IndicatorPoint(BaseModel):
@@ -685,7 +687,7 @@ class PrecomputeHintRequest(BaseModel):
     reason: str | None = None
     visible: bool = True
     candidates: list[str] = Field(default_factory=list)
-    priority: int = 5
+    priority: int = Field(default=5, ge=1, le=9)
 
 
 class PrecomputeHintResponse(BaseModel):

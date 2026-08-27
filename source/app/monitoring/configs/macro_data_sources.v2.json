@@ -189,8 +189,8 @@
       "name_zh": "跨资产确认",
       "weight": 0.075,
       "indicators": [
-        {"id": "qqq", "name_zh": "NAS100 纳斯达克100指数", "source": "gateio_rwa", "symbol": "NAS100_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
-        {"id": "spy", "name_zh": "US500 标普500指数", "source": "gateio_rwa", "symbol": "SPX500_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "qqq", "name_zh": "NAS100 纳指100", "source": "gateio_rwa", "symbol": "NAS100_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
+        {"id": "spy", "name_zh": "US500 标普500", "source": "gateio_rwa", "symbol": "SPX500_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "twelvedata"},
         {"id": "vix", "name_zh": "VIX 波动率指数", "source": "gateio_rwa", "symbol": "VIX_USDT", "frequency": "daily", "unit": "index", "priority": "must", "enabled": true, "fallback_source": "fred", "fallback_series": "VIXCLS"},
         {"id": "move_index", "name_zh": "MOVE 债券波动率", "source": "websearch_cache", "frequency": "daily", "unit": "index", "priority": "optional", "enabled": true, "is_scored": false},
         {"id": "hyg", "name_zh": "高收益债 ETF", "source": "tiingo", "symbol": "HYG", "frequency": "daily", "unit": "usd", "priority": "should", "enabled": true, "fallback_source": "twelvedata"},

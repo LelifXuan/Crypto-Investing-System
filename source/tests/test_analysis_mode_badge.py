@@ -94,9 +94,11 @@ def test_transition_mode_badge_visible(base_url):
         browser.close()
 
 
-def test_focus_breakout_banner_visible(base_url):
-    """When ?focus=breakout is in the URL AND mode='transition', a focus
-    banner appears with a user-facing direction and action."""
+def test_focus_banner_removed_on_analysis_page(base_url):
+    """The wide trade-judgement banner is no longer rendered on the technical
+    indicator page (2026-08-11 product decision — the content duplicates the
+    AI strategy page; only the compact status-mode badge remains). Whatever the
+    mode or ?focus= param, `.status-focus-banner` must not appear."""
     if not _backend_up():
         pytest.skip("backend not running on :8002")
     from playwright.sync_api import sync_playwright
@@ -111,33 +113,23 @@ def test_focus_breakout_banner_visible(base_url):
         )
         page.wait_for_timeout(2000)
 
-        # The focus banner only applies to transition mode.
-        badge = page.locator(".status-mode-badge.transition-mode")
-        if badge.count() == 0:
-            ctx.close()
-            browser.close()
-            pytest.skip("backend is not currently in transition mode")
-
-        banner = page.locator(".status-focus-banner[data-focus-banner='breakout']")
-        assert banner.count() == 1
-        assert banner.first.is_visible()
-        text = banner.first.inner_text()
-        assert "交易判断" in text
-        assert "操作建议" in text
-        assert "vol_compression" not in text
-        assert "mt_compression" not in text
+        banner = page.locator(".status-focus-banner")
+        assert banner.count() == 0, (
+            "The focus banner was removed from the analysis page (2026-08-11); "
+            "the compact status-mode-badge is the only mode indicator."
+        )
 
         # The URL must keep focus=breakout so the user can refresh and still
-        # see the banner.
+        # see the same mode.
         assert "focus=breakout" in page.url
 
         ctx.close()
         browser.close()
 
 
-def test_focus_breakout_banner_absent_without_param(base_url):
-    """When ?focus=breakout is NOT in the URL, no focus banner is rendered,
-    even when the transition badge is present (regression guard)."""
+def test_focus_banner_absent_without_param(base_url):
+    """No `.status-focus-banner` is ever rendered on the analysis page (the
+    wide banner was removed on 2026-08-11), regardless of URL params."""
     if not _backend_up():
         pytest.skip("backend not running on :8002")
     from playwright.sync_api import sync_playwright
@@ -175,17 +167,14 @@ def test_mode_badge_markup_has_no_emoji_or_text_arrow():
     assert "<svg" in badge_block, "Status badge must include inline SVG"
 
 
-def test_focus_breakout_banner_shows_with_loading_state_when_data_empty(base_url):
-    """When focus=breakout is set and the analysis bundle has not yet
-    populated secondary_indicator_series, the banner must STILL appear with the loading state
-    instead of rendering nothing.
+def test_focus_banner_never_renders_when_data_empty(base_url):
+    """The wide focus banner is removed from the analysis page (2026-08-11
+    product decision), so even a cold bundle (`secondary_indicator_series`
+    empty) must not produce a `.status-focus-banner` node — the compact
+    status-mode-badge carries the mode state instead.
 
-    Regression guard for the "怎么有的点进去还是空白" (some clicks go to blank)
-    bug: the previous fix (commit 1aad391) only rendered the banner when the
-    score could be computed. If the user clicked the badge link before the
-    bundle populated, the banner would be absent. The new behaviour is to
-    render a banner with data-state="loading" so the user always sees that
-    their click was acknowledged.
+    Kept as a browser test rather than deleted so future re-introductions of
+    the banner are reviewed against this decision.
     """
     if not _backend_up():
         pytest.skip("backend not running on :8002")
@@ -199,7 +188,7 @@ def test_focus_breakout_banner_shows_with_loading_state_when_data_empty(base_url
         # Intercept the analysis bundle response and short-circuit
         # secondary_indicator_series to an empty object so the frontend
         # phase classification returns null. We KEEP the mode field
-        # at "transition" so the banner branch is still entered.
+        # at "transition" — the old banner branch is not entered any more.
         def _short_circuit_bundle(route, request):
             body = (
                 '{"status":"ready","mode":"transition",'
@@ -211,38 +200,20 @@ def test_focus_breakout_banner_shows_with_loading_state_when_data_empty(base_url
 
         page.route("**/api/v1/analysis/bundle**", _short_circuit_bundle)
 
-        # The technical-indicator page renders under /indicators-page (the
-        # 404 at /market-analysis is the upstream bug this test is not
-        # trying to cover — see the existing badge tests). The ?focus=breakout
-        # query param is what renderFocusBanner's getFocusMode() reads.
         page.goto(
             f"{base_url}/indicators-page?focus=breakout",
             wait_until="domcontentloaded",
         )
-        # Short wait — we want to capture the state right after the bundle
-        # returns but before any retry/refetch replaces it.
         page.wait_for_timeout(2500)
 
-        banner = page.locator(".status-focus-banner[data-focus-banner='breakout']")
-        assert banner.count() == 1, (
-            "Expected the focus banner to render even when "
-            "secondary_indicator_series is empty (loading state)."
-        )
-        assert banner.first.is_visible()
-        text = banner.first.inner_text()
-        assert "正在更新交易判断" in text
-        assert "不建议据此开仓" in text
-        assert "vol_compression" not in text
-        assert "mt_compression" not in text
-
-        # data-state="loading" should be set so the spinner styling applies.
-        state_attr = banner.first.get_attribute("data-state")
-        assert state_attr == "loading", (
-            f"Expected data-state='loading' on the banner, got {state_attr!r}"
+        banner = page.locator(".status-focus-banner")
+        assert banner.count() == 0, (
+            "The focus banner was removed from the analysis page (2026-08-11); "
+            "it must not render even with focus=breakout and an empty bundle."
         )
 
         # The URL must still carry focus=breakout so a manual refresh keeps
-        # the banner active.
+        # the same mode.
         assert "focus=breakout" in page.url
 
         ctx.close()

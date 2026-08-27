@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import logging
@@ -347,25 +348,68 @@ class IndicatorMonitoringService:
             raise
 
     async def sync_macro(self) -> list[SyncResult]:
-        results: list[SyncResult] = []
+        """Sequentially sync all enabled macro policies.
+
+        Serial on purpose (2026-08-18): the previous concurrent rewrite ran
+        each policy in a fresh `IndicatorMonitoringService` with its own DB
+        session. That broke two invariants:
+        - callers / tests that monkeypatch this instance's provider methods
+          (e.g. ``_fred_latest``) lost the patch — the fresh instances used
+          the real network and hung on unreachable providers;
+        - every policy that wrote contended on the SQLite single-writer lock,
+          the same write-storm the opportunity scanner hit.
+
+        We keep the useful defenses: per-policy timeout (a stuck provider is
+        cancelled instead of blocking the loop forever) and health records via
+        a fresh session (a failed run_policy leaves the shared session in
+        PendingRollback, so it cannot be reused for the health write).
+        """
+        from app.core.db import db_manager
+
         policies = await self.repository.list_monitoring_policies(
             enabled_only=True, category="macro"
         )
+        results: list[SyncResult] = []
+
+        async def _record_health_fresh(policy, exc) -> None:
+            # 用独立的新 session 记健康 —— run_policy 失败的 session 可能已
+            # PendingRollback，不能复用来写。
+            try:
+                async with db_manager.session() as session:
+                    svc = IndicatorMonitoringService(MarketRepository(session))
+                    await svc._record_macro_source_health(
+                        provider_key="macro_sync",
+                        source_key=policy.indicator_key,
+                        status="error",
+                        message=str(exc),
+                        payload_json={
+                            "indicator_key": policy.indicator_key,
+                            "policy_id": policy.policy_id,
+                        },
+                    )
+            except Exception:
+                logger.warning(
+                    "macro sync health record failed: %s", policy.indicator_key, exc_info=True
+                )
+
         for policy in policies:
             try:
-                results.append(await self.run_policy(policy, trigger_type="manual"))
+                # 单任务超时：某个 provider 请求挂起时，任务被强制取消而不是
+                # 永久占死同步循环。
+                r = await asyncio.wait_for(
+                    self.run_policy(policy, trigger_type="manual"),
+                    timeout=settings.macro_sync_task_timeout_seconds,
+                )
+                results.append(r)
+            except asyncio.TimeoutError:
+                logger.warning("macro sync policy timed out: %s", policy.indicator_key)
+                await _record_health_fresh(
+                    policy,
+                    TimeoutError("macro sync task timed out"),
+                )
             except Exception as exc:
                 logger.warning("macro sync policy failed: %s", policy.indicator_key, exc_info=True)
-                await self._record_macro_source_health(
-                    provider_key="macro_sync",
-                    source_key=policy.indicator_key,
-                    status="error",
-                    message=str(exc),
-                    payload_json={
-                        "indicator_key": policy.indicator_key,
-                        "policy_id": policy.policy_id,
-                    },
-                )
+                await _record_health_fresh(policy, exc)
         await self._refresh_macro_source_health()
         return results
 
@@ -961,7 +1005,11 @@ class IndicatorMonitoringService:
             symbol = str(definition.calc_params_json.get("external_symbol"))
             latest_obs = await self.repository.latest_observation(indicator_key)
             freshness_days = self._freshness_days_for_frequency(definition)
-            if latest_obs is not None and fresh_in_window(latest_obs, freshness_days) and latest_obs.signal_state != "source_error":
+            if (
+                latest_obs is not None
+                and fresh_in_window(latest_obs, freshness_days)
+                and latest_obs.signal_state not in {"source_error", "pending_release"}
+            ):
                 return [latest_obs]
             symbol_fallback = self._get_fallback_symbols(
                 indicator_key,
@@ -1591,7 +1639,12 @@ class IndicatorMonitoringService:
                     timeframe=observation.timeframe or "",
                 )
                 if recent is not None:
-                    age = (datetime.now(timezone.utc) - recent.triggered_at).total_seconds()
+                    triggered_at = (
+                        recent.triggered_at
+                        if recent.triggered_at.tzinfo
+                        else recent.triggered_at.replace(tzinfo=UTC)
+                    )
+                    age = (datetime.now(timezone.utc) - triggered_at).total_seconds()
                     if age < cooldown:
                         continue
                 await self.repository.add_alert_event(

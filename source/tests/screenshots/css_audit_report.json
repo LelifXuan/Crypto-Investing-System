@@ -1,16 +1,23 @@
 {
   "css_file": "app\\static\\styles.css",
-  "css_size_kb": 252.8,
-  "total_rules": 1742,
-  "total_selectors": 959,
-  "total_custom_props": 103,
+  "css_size_kb": 264.2,
+  "total_rules": 1794,
+  "total_selectors": 969,
+  "total_custom_props": 105,
   "dead_selectors": {
-    "count": 471,
-    "ratio": 0.491,
+    "count": 473,
+    "ratio": 0.488,
     "baseline_count": 484,
-    "new_dead_count": 0,
-    "new_dead_samples": [],
-    "verdict": "PASS",
+    "new_dead_count": 6,
+    "new_dead_samples": [
+      ".event-feed-item",
+      ".source-dot",
+      ".status-focus-banner",
+      ".strategy-degraded-footer",
+      ".strategy-degraded-grid",
+      ".strategy-degraded-summary"
+    ],
+    "verdict": "FAIL",
     "mode": "incremental"
   },
   "unused_custom_props": {
@@ -48,7 +55,7 @@
     ]
   },
   "orphan_class_refs": {
-    "count": 193,
+    "count": 192,
     "samples": [
       ".alert-action-button",
       ".alert-action-inline",
@@ -83,7 +90,7 @@
     ]
   },
   "hardcoded_colors": {
-    "count": 337,
+    "count": 333,
     "unique_values": [
       "#0f3a37",
       "#12181d",
@@ -129,10 +136,10 @@
     "verdict": "WARN"
   },
   "token_coverage": {
-    "total": 103,
-    "referenced_in_css": 74,
+    "total": 105,
+    "referenced_in_css": 76,
     "referenced_in_js_html": 0,
-    "total_referenced": 74,
-    "coverage_ratio": 0.718
+    "total_referenced": 76,
+    "coverage_ratio": 0.724
   }
 }

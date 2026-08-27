@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_db_session
+from app.api.dependencies import get_db_session, get_db_writer_session
 from app.main import create_app
 from app.schemas.market import PrecomputeHintResponse
 
@@ -175,6 +175,7 @@ def test_strategy_unified_endpoint_returns_unified_payload(monkeypatch) -> None:
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/api/v1/strategy/unified",
@@ -232,6 +233,7 @@ def test_strategy_unified_cold_read_returns_shell_without_build(monkeypatch) -> 
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/api/v1/strategy/unified",

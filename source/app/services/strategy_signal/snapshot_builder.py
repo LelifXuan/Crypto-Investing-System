@@ -163,7 +163,12 @@ def _compute_vol_compression(
     bb_width: float | None,
     bb_width_ma_90: float | None,
 ) -> float:
-    """Multi-period percentile rank: current BB-width in 90-day distribution.
+    """Legacy BB-width/mean ratio bucket retained for strategy compatibility.
+
+    Despite its historical name, this is not a percentile rank: it compares
+    current BB width with a 90-period mean and maps the ratio into fixed
+    buckets.  The research-only empirical percentile is published under a
+    separate formula version and has no canonical strategy effect.
 
     Returns 0-100:
     - 90+ = extreme compression (BB-width < 50% of 90-day MA)
@@ -998,8 +1003,8 @@ class StrategySnapshotBuilder:
         features["funding_regime_state"] = (
             funding_state if funding_state is not None else "missing"
         )
-        # V1.7.5: surface vol_compression (bb_width vs bb_width_ma_90 percentile
-        # rank) and setup_probability (Bayesian posterior) on the features dict
+        # V1.7.5 compatibility: surface the legacy bb_width/bb_width_ma_90
+        # ratio bucket and setup_probability on the features dict
         # so the transition-mode multiplicative gate and downstream consumers
         # (strategy generator, terminal summary) can read them directly.
         # ``_compute_vol_compression`` falls back to 50 when ``bb_width_ma_90``
@@ -1008,6 +1013,8 @@ class StrategySnapshotBuilder:
             bb_width=_num(indicators.get("bb_width")),
             bb_width_ma_90=_num(indicators.get("bb_width_ma_90")) or None,
         )
+        features["vol_compression_formula_version"] = "legacy-bb-width-ratio-v1"
+        features["vol_compression_is_empirical_percentile"] = False
         # Setup-ready proxy mirrors the ``long_setup_ready`` rule applied later
         # in ``build()`` (``direction_metrics.bullish >= 58``). Conflict score
         # is not surfaced through ``_feature_components`` yet, so we fall back
@@ -1067,7 +1074,7 @@ class StrategySnapshotBuilder:
         raw_short = weighted_score(feature_dict, short_weights)
         neutral_score = weighted_score(feature_dict, neutral_weights)
 
-        # V1.7.5 transition multiplicative gate: scale the long/short scores
+        # V1.7.5 legacy transition multiplicative gate: scale long/short scores
         # by ``vol_compression / 100`` so an extended squeeze (low bb_width
         # relative to its 90-day MA) dampens the directional signal in
         # transition mode where neither trend nor range weights are reliable.

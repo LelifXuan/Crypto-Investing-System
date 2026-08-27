@@ -208,7 +208,7 @@ class ComputedDatasetCacheService:
                 cache_state="fresh",
                 source_version=CACHE_SOURCE_VERSION,
                 calculated_at=source_data_ts if source_data_ts else datetime.now(timezone.utc),
-                expires_at=expires_at_for_dataset(f"indicator_series_{indicator_group}"),
+                expires_at=expires_at_for_dataset(f"indicator_series_{indicator_group}", timeframe=timeframe),
                 cost_ms=cost_ms,
                 meta_json={"points": len(candles)},
             )

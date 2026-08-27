@@ -4,7 +4,16 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.base import Base
-from app.db.models.market import ComputedDatasetCache
+from app.db.models.market import (
+    ComputedDatasetCache,
+    VolatilityFeatureObservation,
+    VolatilityResearchSnapshot,
+)
+
+VOLATILITY_RESEARCH_TABLES = [
+    VolatilityResearchSnapshot.__table__,
+    VolatilityFeatureObservation.__table__,
+]
 
 PAGE_SNAPSHOT_COLUMNS = {
     "cache_state": "VARCHAR NOT NULL DEFAULT 'missing'",
@@ -27,7 +36,7 @@ async def _ensure_sqlite_schema_compatibility(engine: AsyncEngine) -> None:
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[ComputedDatasetCache.__table__],
+                tables=[ComputedDatasetCache.__table__, *VOLATILITY_RESEARCH_TABLES],
             )
         )
         rows = await conn.execute(text("PRAGMA table_info(page_snapshot_cache)"))
@@ -72,6 +81,26 @@ async def _ensure_sqlite_schema_compatibility(engine: AsyncEngine) -> None:
                 "ON page_snapshot_cache(source_version)"
             )
         )
+        # 2026-08-11: 市场事件冻结标记（仅当表存在时执行）
+        rows = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='market_events'")
+        )
+        if rows.fetchone() is not None:
+            rows = await conn.execute(text("PRAGMA table_info(market_events)"))
+            columns = {row[1] for row in rows.fetchall()}
+            if "is_frozen" not in columns:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE market_events "
+                        "ADD COLUMN is_frozen BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_market_events_is_frozen "
+                    "ON market_events(is_frozen)"
+                )
+            )
 
 
 async def _ensure_postgres_schema_compatibility(engine: AsyncEngine) -> None:
@@ -79,7 +108,7 @@ async def _ensure_postgres_schema_compatibility(engine: AsyncEngine) -> None:
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[ComputedDatasetCache.__table__],
+                tables=[ComputedDatasetCache.__table__, *VOLATILITY_RESEARCH_TABLES],
             )
         )
         await conn.execute(
@@ -127,5 +156,20 @@ async def _ensure_postgres_schema_compatibility(engine: AsyncEngine) -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS idx_page_snapshot_cache_source_version "
                 "ON page_snapshot_cache(source_version)"
+            )
+        )
+        # 2026-08-11: 市场事件冻结标记
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE market_events
+                ADD COLUMN IF NOT EXISTS is_frozen BOOLEAN NOT NULL DEFAULT FALSE
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_market_events_is_frozen "
+                "ON market_events(is_frozen)"
             )
         )

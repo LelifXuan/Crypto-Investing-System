@@ -224,6 +224,14 @@ class PrecomputeTaskPlanner:
             )
             tasks.extend(expanded)
             planned_types.update(task.task_type for task in expanded)
+        # Public hint priorities are intentionally constrained to 1..9, with
+        # smaller numbers meaning more urgent work. Fold that signal into the
+        # existing page/task score so a visible or manually refreshed target
+        # can promote an already queued low-priority matrix warmup entry.
+        request_priority = max(1, min(9, int(payload.priority)))
+        request_priority_boost = (10 - request_priority) * 40
+        for task in tasks:
+            task.score += request_priority_boost
         return self.sort_tasks(tasks)
 
     def sort_tasks(self, tasks: Iterable[PrecomputeTask]) -> list[PrecomputeTask]:
@@ -580,9 +588,14 @@ class PrecomputeService:
                 state = self._enqueue_task_locked(task)
                 if state == "accepted":
                     accepted += 1
-                    queued_keys.append(task.cache_key)
-                else:
+                elif state == "deduped":
                     deduped += 1
+                # A deduped task is still a tracked active/recent job from the
+                # caller's perspective. Returning its stable key lets the
+                # browser poll and re-read the published snapshot instead of
+                # getting stuck on a warming shell.
+                if state in {"accepted", "deduped"} and task.cache_key not in queued_keys:
+                    queued_keys.append(task.cache_key)
             queue_depth = len(self._queue)
         if accepted:
             self._wakeup.set()
@@ -723,7 +736,11 @@ class PrecomputeService:
                     status="error",
                     cache_state="error",
                     snapshot_at=datetime.now(timezone.utc),
-                    expires_at=expires_at_for_page(task.page_type, datetime.now(timezone.utc)),
+                    expires_at=expires_at_for_page(
+                        task.page_type,
+                        datetime.now(timezone.utc),
+                        timeframe=task.timeframe,
+                    ),
                     source_updated_at=None,
                     source_version=CACHE_SOURCE_VERSION,
                     last_error=error_text,
@@ -842,7 +859,7 @@ class PrecomputeService:
                 cache_state="fresh" if payload.get("status") != "degraded" else "stale",
                 snapshot_at=now,
                 data_ts=now,
-                expires_at=expires_at_for_page("strategy_unified", now),
+                expires_at=expires_at_for_page("strategy_unified", now, timeframe=task.timeframe),
                 source_updated_at=now,
                 source_version=CACHE_SOURCE_VERSION,
                 cost_ms=int((time.perf_counter() - started) * 1000),
@@ -895,7 +912,7 @@ class PrecomputeService:
                 cache_state=context.cache_meta.get("cache_state") or "fresh",
                 snapshot_at=now,
                 data_ts=now,
-                expires_at=expires_at_for_page("market_context", now),
+                expires_at=expires_at_for_page("market_context", now, timeframe=task.timeframe),
                 source_updated_at=now,
                 source_version=CACHE_SOURCE_VERSION,
                 cost_ms=int((time.perf_counter() - started) * 1000),

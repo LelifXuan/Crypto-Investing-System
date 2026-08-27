@@ -1,7 +1,15 @@
 import { api, invalidateCache } from "../core/api.js";
 import { appState, persistState } from "../core/state.js";
-import { escapeHtml, formatDateOnly, setRoot, statusBanner } from "../core/dom.js";
+import {
+  escapeHtml,
+  formatDateOnly,
+  revealStagger,
+  setRoot,
+  skeletonPhaseStyle,
+  statusBanner,
+} from "../core/dom.js";
 import { mountDropdown } from "../ui/dropdown.js";
+import { renderDisclosureToggle } from "../ui/disclosure.js";
 
 let autoSyncedEvents = false;
 let translationPollTimer = null;
@@ -16,7 +24,7 @@ let calendarCacheAt = 0;
 const CALENDAR_TTL_MS = 60 * 1000;
 // 当前供给日历筛选值(模块级,筛选切换时局部更新 list 容器)。
 let currentCalendarFilter = "all";
-let isSupplyCalendarCollapsed = false;
+let isSupplyCalendarCollapsed = true;
 // 竞态防护:进行中的 load 请求统一走一个 AbortController。
 let loadController = null;
 
@@ -90,7 +98,10 @@ function translationChipMarkup(payload, item) {
   if (!appState.translateEvents) return "";
   const status = payload.translation_status || item.translation_status || "";
   const label = translationStatusLabel(status);
-  return label ? `<span class="status-chip chip-neutral">${escapeHtml(label)}</span>` : "";
+  if (!label) return "";
+  const isBusy = status === "pending" || status === "queued";
+  const dot = isBusy ? `<span class="translation-dot" aria-hidden="true"></span>` : "";
+  return `<span class="status-chip chip-translating">${dot}${escapeHtml(label)}</span>`;
 }
 
 function renderEventFeed(items) {
@@ -109,15 +120,25 @@ function renderEventFeed(items) {
               : item.summary,
             "",
           );
+          // 2026-08-11: 冻结状态标记 + 按钮
+          const isFrozen = item.is_frozen === true;
+          const frozenClass = isFrozen ? " is-frozen" : "";
+          const freezeBtn = isFrozen
+            ? `<button class="event-freeze-btn is-frozen" data-event-freeze="${item.event_id}" title="解冻事件">🔒</button>`
+            : `<button class="event-freeze-btn" data-event-freeze="${item.event_id}" title="冻结事件（防止管道覆盖）">🔓</button>`;
           return `
-            <article class="event-card event-feed-item">
+            <article class="event-card event-feed-item${frozenClass}" data-event-id="${item.event_id}">
               <div class="event-feed-meta">
                 <div class="event-feed-tags">
                   <span class="status-chip" data-event-category="${eventCategoryKey(item.category)}">${escapeHtml(eventCategoryLabel(item.category))}</span>
                   ${item.source ? `<span class="event-feed-source">${escapeHtml(text(item.source, ""))}</span>` : ""}
                   ${translationChipMarkup(payload, item)}
+                  ${isFrozen ? `<span class="event-frozen-badge">已固化</span>` : ""}
                 </div>
-                <small>${escapeHtml(formatDateOnly(item.ts_event))}</small>
+                <div class="event-feed-meta-right">
+                  <small>${escapeHtml(formatDateOnly(item.ts_event))}</small>
+                  ${freezeBtn}
+                </div>
               </div>
               <strong>${escapeHtml(text(title, "-"))}</strong>
               ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
@@ -145,9 +166,9 @@ function renderEventFeedLoading() {
     <div class="event-stream-skeleton-row" style="--event-row: ${index}" aria-hidden="true">
       <span class="event-stream-skeleton-dot"></span>
       <span class="event-stream-skeleton-copy">
-        <i></i>
-        <i></i>
-        <i></i>
+        <i style="${skeletonPhaseStyle(index * 3)}"></i>
+        <i style="${skeletonPhaseStyle(index * 3 + 1)}"></i>
+        <i style="${skeletonPhaseStyle(index * 3 + 2)}"></i>
       </span>
     </div>
   `).join("");
@@ -346,10 +367,13 @@ function renderSupplyCalendarCard(items, coverage = [], filter = "all") {
             <span class="dropdown-label">${escapeHtml(SUPPLY_FILTER_LABELS[filter] || SUPPLY_FILTER_LABELS.all)}</span>
             <span class="dropdown-arrow" aria-hidden="true"><svg viewBox="0 0 10 10" width="11" height="11"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           </button>
-          <button class="supply-calendar-toggle" type="button" aria-expanded="${String(!isSupplyCalendarCollapsed)}" aria-controls="supply-calendar-body">
-            <span>${isSupplyCalendarCollapsed ? "展开日历" : "收起日历"}</span>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4 4.5-4"/></svg>
-          </button>
+          ${renderDisclosureToggle({
+            controls: "supply-calendar-body",
+            expanded: !isSupplyCalendarCollapsed,
+            expandLabel: "展开日历",
+            collapseLabel: "收起日历",
+            className: "supply-calendar-toggle",
+          })}
         </div>
       </div>
       <div id="supply-calendar-body" class="supply-calendar-body" ${isSupplyCalendarCollapsed ? "hidden" : ""}>
@@ -496,6 +520,7 @@ export async function renderMarketEvents() {
     const signal = controller.signal;
     if (force) invalidateCache("/marketevents");
 
+    // 2026-08-15: fade the feed + metrics + calendar sections before
     const [response, calendarPayload] = await Promise.all([
       api.getMarketEvents(50, appState.translateEvents, { force, signal }),
       ensureCalendar(force, signal),
@@ -524,6 +549,7 @@ export async function renderMarketEvents() {
         </div>
       `).join("");
       document.getElementById("events-feed").innerHTML = renderEventFeed(orderedItemsCache);
+      revealStagger(document.getElementById("events-feed"), { selector: ".event-card" });
     }
 
     // 供给日历:单独指纹,变化时只重建日历卡。
@@ -551,6 +577,7 @@ export async function renderMarketEvents() {
         new Date(right.ts_event || 0).getTime() - new Date(left.ts_event || 0).getTime(),
     );
     document.getElementById("events-feed").innerHTML = renderEventFeed(orderedItemsCache);
+    revealStagger(document.getElementById("events-feed"), { selector: ".event-card" });
   }
 
   async function pollTranslations() {
@@ -648,6 +675,33 @@ export async function renderMarketEvents() {
       invalidateCache("/marketevents");
       await loadFeed(true);
       renderStatus("已关闭中文翻译", "success");
+    }
+  });
+
+  // 2026-08-11: 冻结/解冻按钮事件委托
+  document.getElementById("events-feed")?.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-event-freeze]");
+    if (!btn) return;
+    const eventId = btn.dataset.eventFreeze;
+    const wasFrozen = btn.classList.contains("is-frozen");
+    btn.disabled = true;
+    try {
+      if (wasFrozen) {
+        await api.request(`/market-events/${eventId}/unfreeze`, { method: "POST" });
+      } else {
+        await api.request(`/market-events/${eventId}/freeze`, { method: "POST" });
+      }
+      // 就地更新按钮状态，不重建整个列表
+      btn.classList.toggle("is-frozen");
+      btn.title = wasFrozen ? "冻结事件（防止管道覆盖）" : "解冻事件";
+      btn.textContent = wasFrozen ? "🔓" : "🔒";
+      // 更新卡片冻结视觉
+      const card = btn.closest(".event-card");
+      if (card) card.classList.toggle("is-frozen", !wasFrozen);
+    } catch (err) {
+      console.error("market-events:freeze:error", err);
+    } finally {
+      btn.disabled = false;
     }
   });
 

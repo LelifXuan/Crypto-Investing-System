@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from app.core.timeframes import normalize_timeframe_for_cache
@@ -58,6 +59,91 @@ def _format_lag(seconds: int) -> str:
     return f"{days:g} 天"
 
 
+def _finite_float(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _line_value_at(lines: list[dict], roles: set[str], target_index: int) -> float | None:
+    for line in lines:
+        if str(line.get("role") or "") not in roles:
+            continue
+        points = []
+        for point in line.get("points") or []:
+            index = _finite_float(point.get("index", point.get("pivot_index")))
+            price = _finite_float(point.get("price", point.get("value")))
+            if index is not None and price is not None:
+                points.append((index, price))
+        points.sort(key=lambda item: item[0])
+        if len(points) < 2:
+            continue
+        left, right = points[0], points[-1]
+        if right[0] == left[0]:
+            return right[1]
+        ratio = (target_index - left[0]) / (right[0] - left[0])
+        return left[1] + (right[1] - left[1]) * ratio
+    return None
+
+
+def _primary_boundary_evidence(primary: dict | None, candles: list) -> dict:
+    evidence = {
+        "pattern_type": None,
+        "pattern_label": None,
+        "upper_boundary": None,
+        "lower_boundary": None,
+        "boundary_as_of": None,
+        "boundary_valid": False,
+        "boundary_expired": False,
+        "status": None,
+    }
+    if not isinstance(primary, dict) or primary.get("renderable") is False or not candles:
+        return evidence
+
+    latest_index = len(candles) - 1
+    display_range = primary.get("display_range") or {}
+    projection_end = _finite_float(display_range.get("projection_end_index"))
+    boundary_ts = getattr(candles[-1], "ts_open", None)
+    evidence.update(
+        {
+            "pattern_type": primary.get("pattern_type"),
+            "pattern_label": primary.get("display_name") or primary.get("pattern_type"),
+            "boundary_as_of": (
+                boundary_ts.isoformat() if hasattr(boundary_ts, "isoformat") else boundary_ts
+            ),
+            "status": primary.get("status"),
+        }
+    )
+    if projection_end is not None and latest_index > projection_end:
+        evidence["boundary_expired"] = True
+        return evidence
+
+    levels = primary.get("levels") or {}
+    lines = primary.get("lines") or []
+    upper = _line_value_at(lines, {"upper_boundary", "resistance"}, latest_index)
+    lower = _line_value_at(lines, {"lower_boundary", "support"}, latest_index)
+    if upper is None:
+        upper = _finite_float(
+            levels.get("resistance")
+            or levels.get("upper_boundary")
+            or levels.get("resistance_line")
+        )
+    if lower is None:
+        lower = _finite_float(
+            levels.get("support")
+            or levels.get("lower_boundary")
+            or levels.get("support_line")
+        )
+    if upper is None or lower is None or lower >= upper:
+        return evidence
+    evidence["upper_boundary"] = round(upper, 8)
+    evidence["lower_boundary"] = round(lower, 8)
+    evidence["boundary_valid"] = True
+    return evidence
+
+
 def _compute_text_decision(fusion, classic_bundle, candles: list) -> dict | None:
     try:
         last_candle = candles[-1] if candles else None
@@ -65,53 +151,46 @@ def _compute_text_decision(fusion, classic_bundle, candles: list) -> dict | None
             float(last_candle.close) if last_candle and hasattr(last_candle, "close") else None
         )
 
-        local_state = "inside"
+        local_state = "no_actionable_pattern"
         local_level = None
         local_label = None
+        boundary_evidence = _primary_boundary_evidence(None, candles)
 
         if classic_bundle and hasattr(classic_bundle, "score"):
             meta = classic_bundle.score.metadata or {}
             patterns = meta.get("classic_patterns") or {}
             primary = patterns.get("primary") if isinstance(patterns, dict) else None
             if primary and isinstance(primary, dict):
-                geom = primary.get("geometry")
-                upper = None
-                lower = None
-                status = None
-                if isinstance(geom, list) and geom:
-                    g = geom[0]
-                    if hasattr(g, "meta_json"):
-                        g_meta = g.meta_json or {}
-                        upper = g_meta.get("upper_boundary")
-                        lower = g_meta.get("lower_boundary")
-                        status = g_meta.get("status") or g.status
-                    elif isinstance(g, dict):
-                        g_meta = g.get("meta_json") or g.get("meta") or {}
-                        upper = g_meta.get("upper_boundary")
-                        lower = g_meta.get("lower_boundary")
-                        status = g_meta.get("status") or g.get("status")
-
+                boundary_evidence = _primary_boundary_evidence(primary, candles)
+                upper = boundary_evidence["upper_boundary"]
+                lower = boundary_evidence["lower_boundary"]
+                status = str(boundary_evidence["status"] or "")
                 if status == "invalidated":
                     local_state = "invalidated"
                     local_label = "形态已失效"
-                elif latest_close is not None and (upper or lower):
-                    upper = float(upper) if upper is not None else None
-                    lower = float(lower) if lower is not None else None
-                    if upper is not None and latest_close > upper:
-                        local_state = "breakout"
+                elif status == "expired" or boundary_evidence["boundary_expired"]:
+                    local_state = "expired"
+                    local_label = "形态边界已过期"
+                elif status == "breakout_confirmed":
+                    local_state = "breakout"
+                    local_level = upper
+                    local_label = "已突破上沿"
+                elif status == "breakdown_confirmed":
+                    local_state = "breakdown"
+                    local_level = lower
+                    local_label = "已跌破下沿"
+                elif latest_close is not None and boundary_evidence["boundary_valid"]:
+                    if latest_close > upper:
+                        local_state = "retest"
                         local_level = upper
-                        local_label = "已突破上沿"
-                    elif lower is not None and latest_close < lower:
-                        local_state = "breakdown"
+                        local_label = "等待上破确认"
+                    elif latest_close < lower:
+                        local_state = "retest"
                         local_level = lower
-                        local_label = "已跌破下沿"
-                    elif upper is not None and lower is not None and lower <= latest_close <= upper:
+                        local_label = "等待下破确认"
+                    elif lower <= latest_close <= upper:
                         local_state = "inside"
                         local_label = "区间运行中"
-                    else:
-                        local_state = "retest"
-                        local_label = "回踩确认中"
-
         return resolve_structure_text(
             local_state=local_state,
             local_label=local_label,
@@ -125,6 +204,12 @@ def _compute_text_decision(fusion, classic_bundle, candles: list) -> dict | None
             contribution_breakdown=fusion.contribution_breakdown or {},
             primary_drivers=fusion.primary_drivers or [],
             opposing_factors=fusion.opposing_factors or [],
+            pattern_type=boundary_evidence["pattern_type"],
+            pattern_label=boundary_evidence["pattern_label"],
+            upper_boundary=boundary_evidence["upper_boundary"],
+            lower_boundary=boundary_evidence["lower_boundary"],
+            boundary_as_of=boundary_evidence["boundary_as_of"],
+            boundary_valid=boundary_evidence["boundary_valid"],
         )
     except Exception:
         return None
@@ -426,7 +511,7 @@ class StructureSnapshotService:
                 timeframe=timeframe,
                 snapshot_at=snapshot_at,
                 data_ts=data_ts,
-                expires_at=expires_at_for_page("structure", snapshot_at),
+                expires_at=expires_at_for_page("structure", snapshot_at, timeframe=timeframe),
                 source_updated_at=data_ts,
                 source_version=CACHE_SOURCE_VERSION,
                 meta_json={"include_geometry": include_geometry},

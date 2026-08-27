@@ -6,7 +6,7 @@ import {
   statusBanner, loadingState,
 } from "../../core/dom.js";
 import { normalizeUnifiedStrategy } from "./adapter.js?v=trade-4h-v1";
-import { renderScanMatrix, bindScanMatrix } from "./renderScanMatrix.js";
+import { renderScanMatrix, bindScanMatrix } from "./renderScanMatrix.js?v=opportunity-matrix-v2";
 import { renderScanRanked, bindScanRanked } from "./renderScanRanked.js";
 import { openDetailPanel } from "./renderDetailPanel.js";
 import { mountPageGuide } from "../../ui/pageGuideFab.js";
@@ -26,7 +26,7 @@ function renderScanShell() {
       <section class="strategy-v2-toolbar card">
         <div>
           <p class="eyebrow">OPPORTUNITY SCANNER</p>
-          <h1>跨品种跨周期机会扫描</h1>
+          <h2 class="page-display-title">跨品种跨周期机会扫描</h2>
           <p>自动扫描全部品种 · 周线/日线/4H · 综合评分排序</p>
         </div>
         <div class="strategy-v2-actions">
@@ -40,7 +40,7 @@ function renderScanShell() {
             <div>
               <p class="eyebrow">MATRIX</p>
               <h2>机会矩阵</h2>
-              <p class="section-summary">品种 × 级别 一览</p>
+              <p class="section-summary">仅显示通过严格门禁的高确定性机会</p>
             </div>
           </div>
           <div id="strategy-scan-matrix"></div>
@@ -50,7 +50,7 @@ function renderScanShell() {
             <div>
               <p class="eyebrow">RANKED</p>
               <h2>机会排序</h2>
-              <p class="section-summary">按综合评分降序，仅显示有方向的信号</p>
+              <p class="section-summary">候选信号按综合评分降序，保留置信度</p>
             </div>
           </div>
           <div id="strategy-scan-ranked"></div>
@@ -71,9 +71,13 @@ function renderScanResults(data) {
   const visibleInstrumentIds = new Set(appState.instruments.map((item) => item.id));
   const visibleMatrix = matrix.filter((item) => visibleInstrumentIds.has(item?.instrument_id));
   const ranked = visibleMatrix
-    .filter((item) => ["LONG", "SHORT"].includes(item?.direction))
+    .filter((item) => (
+      item?.cache_state === "fresh" && ["LONG", "SHORT"].includes(item?.direction)
+    ))
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
-  const oppCount = ranked.length;
+  const qualified = visibleMatrix.filter((item) => item?.qualified === true);
+  const oppCount = qualified.length;
+  const candidateCount = ranked.length;
   const totalCells = appState.instruments.length * (data.timeframes?.length || 0);
   const sourceLabel = data.cache_meta?.source === "cache" ? "（缓存）" : "";
   // 2026-07-24 v3: per-cell readiness from backend.
@@ -89,14 +93,16 @@ function renderScanResults(data) {
   let bannerText;
   let bannerTone;
   if (oppCount > 0) {
-    bannerText = `发现 ${oppCount} 个方向信号 / 共扫描 ${totalCells} 个周期组合 ${sourceLabel}`;
+    bannerText = `发现 ${oppCount} 个高确定性机会 / 共扫描 ${totalCells} 个周期组合 ${sourceLabel}`;
     bannerTone = "success";
   } else if (cellsPending > 0) {
-    bannerText = `数据补齐中（${cellsReady}/${totalCells} 已就绪），尚无明确交易机会 ${sourceLabel}`;
+    bannerText = `数据补齐中（${cellsReady}/${totalCells} 已就绪），尚无高确定性机会 ${sourceLabel}`;
     bannerTone = "info";
+  } else if (candidateCount > 0) {
+    bannerText = `发现 ${candidateCount} 个方向候选，暂无信号通过高确定性门禁 ${sourceLabel}`;
+    bannerTone = "neutral";
   } else {
-    // All cells ready, no opportunities — market is genuinely in transition.
-    bannerText = `全部数据已就绪，当前无明确交易方向 ${sourceLabel}`;
+    bannerText = `全部数据已就绪，当前无高确定性交易机会 ${sourceLabel}`;
     bannerTone = "neutral";
   }
 
@@ -307,7 +313,26 @@ async function pollWhileWarming(attempt = 0) {
 export async function renderStrategy() {
   mounted = true;
   renderScanShell();
-  renderWarmingStatus();
+
+  // 2026-08-17: delayed warming placeholder. When the scan cache is
+  // fresh the backend responds in <500ms and we should render results
+  // immediately — flashing a warming banner for 200ms then replacing it
+  // looks like a glitch. We show warming only if data hasn't arrived
+  // after WARMING_DELAY_MS. This keeps the warming signal for genuine
+  // cold loads without the flicker on cache hits.
+  const WARMING_DELAY_MS = 500;
+  let warmingVisible = false;
+  let warmingTimer = null;
+
+  function showWarmingDelayed() {
+    warmingTimer = setTimeout(() => {
+      if (!mounted) return;
+      warmingVisible = true;
+      renderWarmingStatus();
+    }, WARMING_DELAY_MS);
+  }
+
+  showWarmingDelayed();
 
   // 2026-07-24: fire-and-forget prewarm so the cold-cache scan doesn't
   // block 60+ seconds before responding. Module-level guard ensures we
@@ -315,6 +340,9 @@ export async function renderStrategy() {
   await tryPrewarm();
 
   document.getElementById("strategy-scan-refresh")?.addEventListener("click", () => {
+    // Manual refresh always shows loading state — user expects feedback.
+    if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
+    warmingVisible = true;
     renderScanLoading();
     loadScan(true);
   });
@@ -326,7 +354,14 @@ export async function renderStrategy() {
   // empty matrix as a real "no opportunities" result.
   const scanPromise = (async () => {
     const first = await loadScan(false);
+    // Data arrived — cancel the delayed-warming timer so the banner
+    // never flashes if it hasn't appeared yet.
+    if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
     if (first && first.__state === "warming") {
+      // Genuine cold load — show warming now (data path will replace it
+      // once the poll loop gets a real result).
+      warmingVisible = true;
+      renderWarmingStatus(first.cache_meta?.message);
       pollWhileWarming(0);
     }
     return first;
@@ -349,6 +384,7 @@ export async function renderStrategy() {
     unmount: async () => {
       guideFab.unmount();
       mounted = false;
+      if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
       activeDetailPanelClose?.();
       activeDetailPanelClose = null;
       if (strategyDebounceTimer) { clearTimeout(strategyDebounceTimer); strategyDebounceTimer = null; }

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, get_db_session, require_roles
@@ -129,6 +129,7 @@ async def list_market_events(
             ts_event=event.ts_event,
             payload_json=_event_payload_for_view(event.payload_json, translate),
             instrument_ids=mapping.get(event.event_id, []),
+            is_frozen=event.is_frozen,
         )
         for event in events
     ]
@@ -154,6 +155,7 @@ async def create_market_event_alias(
         ts_event=event.ts_event,
         payload_json=event.payload_json,
         instrument_ids=instrument_ids,
+        is_frozen=False,
     )
 
 
@@ -189,10 +191,42 @@ async def query_market_events(
             ts_event=event.ts_event,
             payload_json=_event_payload_for_view(event.payload_json, translate),
             instrument_ids=mapping.get(event.event_id, []),
+            is_frozen=event.is_frozen,
         )
         for event in events
     ]
     return MarketEventQueryResponse(items=items)
+
+
+# 2026-08-11: 冻结/解冻市场事件接口
+@router.post("/{event_id}/freeze")
+async def freeze_market_event(
+    event_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
+) -> dict:
+    """冻结事件：管道抓取不会覆盖此事件。"""
+    repo = MarketRepository(session)
+    ok = await repo.freeze_market_event(event_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="event not found")
+    await session.commit()
+    return {"status": "ok", "event_id": event_id, "is_frozen": True}
+
+
+@router.post("/{event_id}/unfreeze")
+async def unfreeze_market_event(
+    event_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
+) -> dict:
+    """解冻事件：恢复管道正常更新。"""
+    repo = MarketRepository(session)
+    ok = await repo.unfreeze_market_event(event_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="event not found")
+    await session.commit()
+    return {"status": "ok", "event_id": event_id, "is_frozen": False}
 
 
 @router.post("/sync")

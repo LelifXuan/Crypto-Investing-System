@@ -32,3 +32,16 @@ def test_secret_loader_reports_missing_without_leaking_values(monkeypatch) -> No
 
     assert loader.get("BEA_API_KEY") in {None, ""}
     assert loader.auth_state(["BEA_API_KEY"]) == "missing"
+
+
+def test_usd_cny_provider_keys_have_config_fields() -> None:
+    """2026-08 regression: usd_cny had no source because twelvedata_api_key /
+    alpha_vantage_api_key were absent from Settings — pydantic extra="ignore"
+    dropped their .env values and SecretLoader reported AuthMissing even with
+    a valid key. These fields must stay declared so the fallback chain can
+    reach the configured providers."""
+    for field_name in ("twelvedata_api_key", "alpha_vantage_api_key", "openexchangerates_app_id"):
+        assert field_name in settings.model_fields, (
+            f"Settings.{field_name} missing — usd_cny fallback providers "
+            "cannot read their .env keys"
+        )

@@ -116,6 +116,22 @@ async def test_get_best_mark_falls_back_to_rest_when_cache_missing() -> None:
     assert mark.mark_price == Decimal("68100")
 
 
+async def test_get_best_mark_can_read_live_without_persisting() -> None:
+    await market_cache.clear()
+    repository = DummyRepoWithInstrument()
+    service = MarketService(repository, gate_client=DummyGateClient())
+
+    mark = await service.get_best_mark(
+        "btc-usdt-perp",
+        prefer_live=True,
+        persist_live=False,
+    )
+
+    assert mark is not None
+    assert mark.mark_price == Decimal("68100")
+    assert repository.latest is None
+
+
 async def test_sync_candles_reuses_shared_query_cache() -> None:
     await shared_query_cache.clear()
     repo = DummyRepoWithInstrument()

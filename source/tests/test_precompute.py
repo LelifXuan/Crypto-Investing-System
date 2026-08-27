@@ -102,6 +102,28 @@ async def test_precompute_hint_analysis_expands_related_tasks(precompute_db) -> 
 
 
 @pytest.mark.asyncio
+async def test_deduped_hint_still_returns_trackable_task_keys(precompute_db) -> None:
+    precompute_service._queue.clear()  # noqa: SLF001
+    precompute_service._queued.clear()  # noqa: SLF001
+    precompute_service._last_seen_at.clear()  # noqa: SLF001
+    request = PrecomputeHintRequest(
+        current_page="market-analysis",
+        instrument_id="xaut-usdt-perp",
+        timeframe="1d",
+        view_window="default",
+        reason="gold_workbench_cold_read",
+        candidates=["analysis"],
+        priority=2,
+    )
+    first = await precompute_service.enqueue_hint(request)
+    second = await precompute_service.enqueue_hint(request)
+
+    assert first.queued_keys
+    assert second.status == "deduped"
+    assert second.queued_keys == first.queued_keys
+
+
+@pytest.mark.asyncio
 async def test_precompute_hint_strategy_expands_market_context_task(precompute_db) -> None:
     precompute_service._queue.clear()  # noqa: SLF001
     precompute_service._queued.clear()  # noqa: SLF001
@@ -150,6 +172,41 @@ def test_precompute_planner_strategy_unified_candidate() -> None:
     assert len(unified) == 1
     assert unified[0].page_type == "strategy_unified"
     assert unified[0].cache_key.startswith("strategy_unified:btc-usdt-perp:")
+
+
+def test_analysis_visible_hint_outranks_matrix_warmup_and_promotes_duplicate() -> None:
+    planner = PrecomputeTaskPlanner()
+    warmup = planner.build_tasks(
+        PrecomputeHintRequest(
+            current_page="analysis",
+            instrument_id="eth-usdt-perp",
+            timeframe="4h",
+            visible=False,
+            candidates=["analysis"],
+            reason="analysis_matrix_idle_warmup",
+            priority=8,
+        )
+    )[0]
+    visible = planner.build_tasks(
+        PrecomputeHintRequest(
+            current_page="analysis",
+            instrument_id="eth-usdt-perp",
+            timeframe="4h",
+            visible=True,
+            candidates=["analysis"],
+            reason="analysis_manual_reload",
+            priority=2,
+        )
+    )[0]
+
+    assert visible.dedupe_key == warmup.dedupe_key
+    assert visible.score > warmup.score
+
+    service = PrecomputeService()
+    assert service._enqueue_task_locked(warmup) == "accepted"  # noqa: SLF001
+    assert service._enqueue_task_locked(visible) == "deduped"  # noqa: SLF001
+    assert service._queue[0].score == visible.score  # noqa: SLF001
+    assert service._queue[0].visible is True  # noqa: SLF001
 
 
 @pytest.mark.asyncio

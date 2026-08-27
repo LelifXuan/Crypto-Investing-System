@@ -46,14 +46,14 @@ class EventBusWorker:
                 await asyncio.sleep(settings.event_bus_poll_interval_ms / 1000)
 
     async def _poll_once(self) -> int:
-        async with db_manager.session() as claim_session:
+        async with db_manager.writer_session() as claim_session:
             claim_repo = EventRepository(claim_session)
             batch = await claim_repo.claim_pending_batch(settings.event_bus_batch_size)
         if not batch:
             return 0
 
         for item in batch:
-            async with db_manager.session() as process_session:
+            async with db_manager.writer_session() as process_session:
                 repo = EventRepository(process_session)
                 outbox = await repo.get_outbox(item.outbox_id)
                 if outbox is None:

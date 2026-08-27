@@ -20,7 +20,7 @@ from app.repositories.auth_repository import AuthRepository
 from app.repositories.bootstrap_repository import BootstrapRepository
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import PrecomputeHintRequest
-from app.services.bootstrap import seed_local_defaults
+from app.services.bootstrap import seed_local_defaults, warm_local_market_data
 from app.services.network.http_client_factory import init_network
 from app.services.precompute import precompute_service
 from app.web.router import web_router
@@ -37,7 +37,6 @@ MAIN_PAGE_PATHS = {
 
 
 STRATEGY_CRITICAL_WARMUP_PLAN = (
-    ("strategy", ["strategy_unified"], ("1d",)),
     ("strategy", ["strategy", "market_context"], ("30d", "1w", "1d", "4h", "1h", "15m")),
     ("analysis", ["analysis"], ("1w", "1d", "4h", "1h")),
     ("structure", ["structure"], ("1w", "1d", "4h", "1h")),
@@ -79,6 +78,21 @@ async def _enqueue_strategy_critical_warmup(
             priority=priority,
         )
     )
+    # Unified synthesis consumes the strategy timeframes and BTC derivatives
+    # queued above. Keep it last so a cold start cannot publish an empty but
+    # apparently fresh cross-validation matrix.
+    for target_instrument_id in instrument_ids:
+        await precompute_service.enqueue_hint(
+            PrecomputeHintRequest(
+                current_page="strategy",
+                instrument_id=target_instrument_id,
+                timeframe="1d",
+                reason=reason,
+                visible=False,
+                candidates=["strategy_unified"],
+                priority=priority,
+            )
+        )
 
 
 async def _enqueue_daily_page_prewarm() -> None:
@@ -142,6 +156,7 @@ def _load_worker(name: str):
 async def lifespan(app: FastAPI):
     warmup_task: asyncio.Task | None = None
     warmup_instrument_ids: list[str] | None = None
+    cold_source_start = False
     bootstrap_runtime_environment()
     init_network()
     await db_manager.connect()
@@ -175,6 +190,14 @@ async def lifespan(app: FastAPI):
                 ]
             if settings.local_bootstrap_warmup_all_instruments:
                 warmup_instrument_ids = [instrument.instrument_id for instrument in instruments]
+            probe_instrument_id = warmup_instrument_ids[0]
+            cold_source_start = not bool(
+                await market_repository.list_candles(
+                    probe_instrument_id,
+                    "1d",
+                    limit=1,
+                )
+            )
     worker_names = [
         ("event_bus", "event_bus"),
         ("market_stream", "market_stream"),
@@ -183,15 +206,25 @@ async def lifespan(app: FastAPI):
         ("market_event_translation", "market_event_translation"),
         ("precompute", "precompute"),
     ]
-    for profile_key, worker_name in worker_names:
-        if _should_start_worker(profile_key):
-            try:
-                await _load_worker(profile_key).start()
-                logger.info("worker %s: started", worker_name)
-            except Exception:
-                logger.exception("worker %s: failed to start", worker_name)
-        else:
-            logger.info("worker %s: skipped (profile=%s)", worker_name, settings.worker_profile)
+    async def start_workers() -> None:
+        for profile_key, worker_name in worker_names:
+            if _should_start_worker(profile_key):
+                try:
+                    await _load_worker(profile_key).start()
+                    logger.info("worker %s: started", worker_name)
+                except Exception:
+                    logger.exception("worker %s: failed to start", worker_name)
+            else:
+                logger.info(
+                    "worker %s: skipped (profile=%s)",
+                    worker_name,
+                    settings.worker_profile,
+                )
+
+    if cold_source_start:
+        logger.info("cold source database detected; deferring workers until source warmup")
+    else:
+        await start_workers()
     logger.info(
         "startup complete: profile=%s workers=%d warmup=%s",
         settings.worker_profile,
@@ -207,7 +240,18 @@ async def lifespan(app: FastAPI):
                 priority=3,
                 initial_delay_seconds=1.0,
             )
-            await asyncio.sleep(45)
+            if cold_source_start:
+                for target_instrument_id in instrument_ids:
+                    # A genuinely cold database has no candles for queued
+                    # analysis/strategy work. Rebuild sources before allowing
+                    # any derived writer worker to consume the queue.
+                    async with db_manager.writer_session() as session:
+                        await warm_local_market_data(
+                            MarketRepository(session), target_instrument_id
+                        )
+                await start_workers()
+            else:
+                await asyncio.sleep(45)
             for target_instrument_id in instrument_ids:
                 await precompute_service.enqueue_hint(
                     PrecomputeHintRequest(

@@ -455,7 +455,7 @@ class MonitoringDashboardService:
             cache_state="fresh",
             snapshot_at=now,
             data_ts=source_updated_at,
-            expires_at=expires_at_for_page("monitoring", now),
+            expires_at=expires_at_for_page("monitoring", now, timeframe=timeframe),
             source_updated_at=source_updated_at,
             source_version=CACHE_SOURCE_VERSION,
             cost_ms=int((time.perf_counter() - started) * 1000),

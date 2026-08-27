@@ -285,34 +285,65 @@ function mergeWithMacro(model, macro) {
   return model;
 }
 
+// 2026-08-17: gold-style governance bar for the strategy detail panel.
+// Replaces the old collapsible <details> with a fixed 4-column grid that
+// mirrors the gold allocation page's DATA GOVERNANCE section.
+
+function governanceEndpointState(item) {
+  if (item.status === "ok") return "fresh";
+  if (item.status === "failed") return "missing";
+  return "unknown";
+}
+
+function governanceEndpointTone(state) {
+  if (state === "fresh") return "info";
+  if (state === "missing") return "danger";
+  return "neutral";
+}
+
+function formatEndpointAge(value) {
+  if (!value) return "尚未更新";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const seconds = Math.round((Date.now() - d.getTime()) / 1000);
+  if (seconds < 0) return "刚刚";
+  if (seconds < 60) return `${seconds} 秒前`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟前`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时前`;
+  return `${Math.round(seconds / 86400)} 天前`;
+}
+
 function buildDataDegradedFooter(model) {
   const endpoints = ensureArray(model.data_access_endpoints);
   if (endpoints.length === 0) return "";
-  const items = endpoints
-    .map((item) => {
-      const state = item.status === "ok" ? "fresh" : item.status === "failed" ? "missing" : "unknown";
-      return `
-        <article class="strategy-degraded-item ${state}">
-          <strong>${escapeHtmlSafe(item.label || item.name)}</strong>
-          <span>${escapeHtmlSafe(item.status_label || state)}</span>
-          <small>${escapeHtmlSafe(item.detail || "")}</small>
-        </article>
-      `;
-    })
-    .join("");
-  const hasFailures = endpoints.some((item) => item.status !== "ok");
+  const readyCount = endpoints.filter((item) => item.status === "ok").length;
   return `
-    <details class="strategy-degraded-footer strategy-collapsible card" ${hasFailures ? "open" : ""}>
-      <summary class="strategy-degraded-summary strategy-collapsible-summary">
-        <div>
-          <p class="eyebrow">DATA ACCESS</p>
-          <h2>数据源接入状态</h2>
-          <small>${escapeHtmlSafe(endpoints.map((item) => `${item.label} ${item.status_label}`).join(" · "))}</small>
-        </div>
-        <span class="strategy-collapse-control" aria-hidden="true"></span>
-      </summary>
-      <div class="strategy-degraded-grid">${items}</div>
-    </details>
+    <section class="strategy-governance" aria-labelledby="strategy-governance-title">
+      <div class="strategy-governance-head">
+        <p class="eyebrow">DATA ACCESS</p>
+        <h2 id="strategy-governance-title">数据源接入状态</h2>
+        <p><strong>${readyCount}/${endpoints.length}</strong> 个数据源当前可用</p>
+      </div>
+      <div class="strategy-governance-grid">
+        ${endpoints.map((item) => {
+          const state = governanceEndpointState(item);
+          const tone = governanceEndpointTone(state);
+          const ageText = item.status === "ok"
+            ? formatEndpointAge(item.detail)
+            : escapeHtmlSafe(item.detail || "数据源不可用");
+          return `
+            <article class="strategy-governance-item" data-state="${state}">
+              <div class="strategy-governance-label">
+                <span class="strategy-governance-dot" data-tone="${tone}" aria-hidden="true"></span>
+                <span>${escapeHtmlSafe(item.label || item.name)}</span>
+              </div>
+              <strong>${escapeHtmlSafe(item.status_label || state)}</strong>
+              <small>${ageText}</small>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
   `;
 }
 

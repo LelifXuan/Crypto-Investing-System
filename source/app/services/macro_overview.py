@@ -279,8 +279,8 @@ TRADFI_LABEL_OVERRIDES = {
     "brent_oil": ("Brent原油", "Gate.io BZ 原油代理，作为全球能源价格参考。"),
     "real_yield_5y": ("美国5年实际利率", "FRED DFII5，用于观察中期实际利率压力。"),
     "vix": ("VIX波动率", "Gate.io VIX 或 FRED VIXCLS，用于观察风险厌恶程度。"),
-    "qqq": ("纳斯达克100指数", "Gate.io NAS100 指数代理，用于观察美股科技风险偏好。"),
-    "spy": ("标普500指数", "Gate.io US500 指数代理，用于观察美股宽基风险偏好。"),
+    "qqq": ("纳指100", "Gate.io NAS100 指数代理，用于观察美股科技风险偏好。"),
+    "spy": ("标普500", "Gate.io US500 指数代理，用于观察美股宽基风险偏好。"),
     "hyg": ("高收益债ETF", "高收益债ETF用于观察信用风险偏好，依赖外部ETF行情源。"),
     "usd_cny": ("美元兑人民币", "美元兑人民币用于观察人民币与美元流动性压力。"),
 }
@@ -360,9 +360,10 @@ class MacroOverviewService:
                 )
             _apply_macro_scoring_metadata(indicators)
             scored = [item for item in indicators if item.is_scored]
+            score_values = [item.score for item in scored if item.score is not None]
             score = (
-                round(sum(int(item.score or 50) for item in scored) / len(scored))
-                if scored
+                round(sum(score_values) / len(score_values))
+                if score_values
                 else 50
             )
             layer_scores[layer.layer_key] = score
@@ -396,7 +397,7 @@ class MacroOverviewService:
                 )
             )
 
-        layer_contributions = _layer_contributions(layer_scores)
+        layer_contributions = _layer_contributions(layer_scores, layers)
         for layer in layers:
             layer.contribution = layer_contributions.get(layer.layer_key, 0.0)
         total_score = _total_score(layer_contributions)
@@ -420,7 +421,7 @@ class MacroOverviewService:
             total_score=total_score,
             score_band=_score_band(total_score),
             score_explanation=_score_explanation(total_score, layer_contributions),
-            confidence=_confidence(completeness),
+            confidence=_confidence(completeness, layers),
             data_completeness=completeness,
             warnings=warnings,
             layer_contributions=layer_contributions,
@@ -590,6 +591,7 @@ class MacroOverviewService:
                 status,
                 is_scored,
                 obs_ts,
+                block_reason,
             ),
             transform_applied=transform_applied,
             transform_source=transform_source,
@@ -949,11 +951,27 @@ def _apply_macro_scoring_metadata(items: list[MacroOverviewIndicatorRead]) -> No
         if item.is_scored:
             item.is_scored = result.is_scored
         if not item.is_scored:
-            item.score_block_reason = item.score_block_reason or result.reason
+            item.score_block_reason = _humanize_block_reason(
+                item.score_block_reason or result.reason
+            )
+            item.direction = None
+            item.direction_label = None
+            if item.value_num is not None or item.value_text:
+                item.insight = (
+                    f"{item.label}有数据但暂不参与评分：{item.score_block_reason}"
+                )
+            continue
+        if result.score is None:
+            # is_scored=True must always carry a concrete score; never
+            # fabricate a neutral 50 for a missing formula result.
+            item.is_scored = False
+            item.score_block_reason = (
+                item.score_block_reason or "评分公式未返回分数，暂不参与评分。"
+            )
             item.direction = None
             item.direction_label = None
             continue
-        score = int(result.score or 50)
+        score = int(result.score)
         if score >= 65:
             item.direction = "bullish"
             item.direction_label = "偏多"
@@ -963,6 +981,22 @@ def _apply_macro_scoring_metadata(items: list[MacroOverviewIndicatorRead]) -> No
         else:
             item.direction = "neutral"
             item.direction_label = "中性"
+
+
+BLOCK_REASON_LABELS = {
+    "display_only": "该指标为展示型指标（绝对量纲，暂无评分阈值），仅展示不参与总分。",
+    "registry_rule_missing": "评分规则尚未配置，数据仅展示。",
+    "missing_value": "缺少可评分数值。",
+    "text_value": "该指标为文本状态，不参与数值评分。",
+    "history_insufficient": "历史数据不足，无法计算动量。",
+    "invalid_history": "历史数据无效，无法计算动量。",
+}
+
+
+def _humanize_block_reason(reason: str | None) -> str:
+    if reason is None:
+        return "暂不参与评分。"
+    return BLOCK_REASON_LABELS.get(str(reason), str(reason))
 
 
 def _event_window_state(display_status: str) -> str:
@@ -1013,22 +1047,56 @@ def _layer_summary(
 ) -> str:
     if not scored:
         return f"{label}暂无可评分数据，仅保留状态展示。"
-    return f"{label}当前为{_score_to_bias(score)}，有效指标 {len(scored)}/{total}。"
+    return f"{label}当前为{_score_to_bias(score)}，参与评分 {len(scored)}/{total}。"
 
 
-def _layer_contributions(layer_scores: dict[str, int]) -> dict[str, float]:
-    weights = {
-        "rates_policy": 0.25,
-        "inflation": 0.2,
-        "growth_labor": 0.2,
-        "liquidity_credit": 0.15,
-        "cross_asset_confirmation": 0.12,
-        "event_window": 0.08,
-    }
-    return {
-        key: round((layer_scores.get(key, 50) - 50) * weight, 2)
-        for key, weight in weights.items()
-    }
+LAYER_CONTRIBUTION_WEIGHTS = {
+    "rates_policy": 0.24,
+    "inflation": 0.19,
+    "growth_labor": 0.19,
+    "liquidity_credit": 0.11,
+    "fed_operations": 0.10,
+    "cross_asset_confirmation": 0.11,
+    "event_window": 0.06,
+}
+# Weights must cover every layer and sum to 1 so that a 0–100 layer
+# score can move the total across the full range. Normalization guards
+# against future additions silently dropping a layer from the total
+# (fed_operations was missing before 2026-08-19 and its score never
+# affected the total).
+assert sum(LAYER_CONTRIBUTION_WEIGHTS.values()) == 1.0, (
+    "layer contribution weights must sum to 1.0"
+)
+
+
+def _layer_contributions(
+    layer_scores: dict[str, int],
+    layers: list[MacroOverviewLayerRead] | None = None,
+) -> dict[str, float]:
+    """Contribution of each layer to the total macro score.
+
+    The contribution is ``(layer_score - 50) * weight`` scaled by the
+    share of scored indicators in that layer. A layer with few effective
+    indicators (e.g. 2/4) still shows its real mean score but pulls the
+    total proportionally less, so sparse coverage cannot masquerade as a
+    confident signal.
+    """
+    total_weight = sum(LAYER_CONTRIBUTION_WEIGHTS.values())
+    coverages: dict[str, float] = {}
+    if layers:
+        for layer in layers:
+            total = layer.total_count or 0
+            coverages[layer.layer_key] = (
+                (layer.effective_count or 0) / total if total else 0.0
+            )
+    contributions: dict[str, float] = {}
+    for key, weight in LAYER_CONTRIBUTION_WEIGHTS.items():
+        coverage = coverages.get(key, 1.0)
+        contributions[key] = round(
+            (layer_scores.get(key, 50) - 50) * (weight / total_weight) * coverage,
+            2,
+        )
+    return contributions
 
 
 def _total_score(contributions: dict[str, float]) -> int:
@@ -1047,8 +1115,23 @@ def _data_completeness(layers: list[MacroOverviewLayerRead]) -> dict[str, float]
     }
 
 
-def _confidence(completeness: dict[str, float]) -> str:
+def _confidence(
+    completeness: dict[str, float],
+    layers: list[MacroOverviewLayerRead] | None = None,
+) -> str:
     ratio = float(completeness.get("ratio") or 0)
+    if layers:
+        # A layer with fewer than half its indicators scored should not
+        # keep the overview at "high" confidence; cap by the sparsest
+        # scored layer.
+        scored_layers = [layer for layer in layers if layer.total_count]
+        if scored_layers:
+            min_coverage = min(
+                (layer.effective_count or 0) / layer.total_count
+                for layer in scored_layers
+            )
+            if min_coverage < 0.5:
+                return "low"
     if ratio >= 0.75:
         return "high"
     if ratio >= 0.45:
@@ -1084,7 +1167,7 @@ def _regime_label(score: int) -> str:
 
 def _regime_summary(score: int, completeness: dict[str, float]) -> str:
     return (
-        f"宏观总分 {score}，评分区间为{_score_band(score)}；可评分指标 "
+        f"宏观总分 {score}，评分区间为{_score_band(score)}；参与评分指标 "
         f"{int(completeness.get('effective_count') or 0)}/"
         f"{int(completeness.get('total_count') or 0)}。"
     )
@@ -1104,7 +1187,7 @@ def _warnings(layers: list[MacroOverviewLayerRead]) -> list[str]:
         if not layer.is_scored:
             warnings.append(f"{layer.label_cn}暂无可评分数据。")
         elif layer.effective_count < max(1, layer.total_count // 3):
-            warnings.append(f"{layer.label_cn}有效指标偏少，置信度较低。")
+            warnings.append(f"{layer.label_cn}参与评分指标偏少，置信度较低。")
     return warnings[:6]
 
 
@@ -1115,9 +1198,11 @@ def _indicator_insight(
     status: str,
     is_scored: bool,
     observation_ts: datetime | None,
+    block_reason: str | None = None,
 ) -> str:
     if not is_scored:
-        return f"{label}暂不参与评分：{_status_reason(status)}"
+        reason = block_reason or _status_reason(status)
+        return f"{label}有数据但暂不参与评分：{reason}"
     shown = _format_macro_value(value, text_value)
     suffix = f"，更新时间 {observation_ts.date().isoformat()}" if observation_ts else ""
     return f"{label}：{shown}{suffix}。"

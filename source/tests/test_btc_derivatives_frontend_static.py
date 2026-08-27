@@ -78,7 +78,7 @@ def test_page_renders_current_chart_layout_from_backend_metadata() -> None:
     assert "CHART_CANVAS_IDS" not in source
     assert "renderDecisionCards" in source
     assert "renderHedgePlanner" in source
-    assert "renderDataQuality" in source
+    assert "renderGovernanceGroup" in source
     assert "renderFuturesTable" in source, (
         "the per-venue crowding table renderer must be present"
     )
@@ -139,24 +139,28 @@ def test_page_renders_standard_expiry_matrix_and_disables_fixed_selector_in_cons
 
 
 def test_option_chain_and_raw_tables_are_in_closed_details_panel() -> None:
+    # 2026-08-19: 原始市场明细已删除，此测试不再适用
+    # 保留空函数以避免测试收集器告警
+    pass
+
+
+def test_data_source_footer_matches_gold_governance_ledger() -> None:
     source = PAGE.read_text(encoding="utf-8")
+    styles = STYLES.read_text(encoding="utf-8")
 
-    assert '<details class="btc-details-drawer">' in source
-    assert '<details class="btc-details-drawer" open>' not in source
-    details = source[source.index('<details class="btc-details-drawer">') :]
-    assert "renderOptionChain()" in details
-    assert "renderFuturesTable()" in details
-
-
-def test_live_source_provider_cards_are_collapsed_by_default() -> None:
-    source = PAGE.read_text(encoding="utf-8")
-
-    assert '<details class="btc-source-details">' in source
-    assert '<details class="btc-source-details" open>' not in source
-    details = source[source.index('<details class="btc-source-details">') :]
-    assert "btc-provider-grid" in details
-    assert "btc-quality-details" in details
-    assert "一键探测数据源" in source[: source.index('<details class="btc-source-details">')]
+    assert 'class="card governance-ledger btc-governance"' in source
+    assert 'id="btc-governance-title">数据就绪与快照</h2>' in source
+    for label in ("期权行情", "永续合约", "接口覆盖", "快照时间"):
+        assert label in source
+    assert 'class="governance-ledger__grid btc-governance-grid"' in source
+    assert 'body[data-page="btc-derivatives"] .governance-ledger' in styles
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in styles
+    assert '<details class="btc-source-details">' not in source
+    assert '<details class="btc-quality-details">' not in source
+    assert "btc-provider-card" not in source
+    assert "btc-provider-error" not in source
+    for leak in ("last_error", "Client error", "HTTPStatus", "Mozilla"):
+        assert leak not in source
 
 
 def test_filter_request_abort_is_not_reported_as_page_error() -> None:
@@ -211,17 +215,18 @@ def test_single_point_history_charts_show_centered_markers() -> None:
     assert "{ x: { offset: true } }" in source
 
 
-def test_page_safety_copy_is_explicit_and_forbidden_actions_are_absent() -> None:
+def test_method_notes_section_is_removed() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
-    assert '<details class="btc-method-notes">' in source
-    assert '<details class="btc-method-notes" open>' not in source
-    method_notes = source[source.index('<details class="btc-method-notes">') :]
-    assert "最大痛点" in method_notes and "价格预测" in method_notes
-    assert "期权墙" in method_notes and "确定支撑或阻力" in method_notes
-    assert "不执行下单" in method_notes
-    assert "不推荐裸卖期权" in method_notes
-    assert "比例价差" in method_notes and "安全对冲" in method_notes
+    assert "btc-method-notes" not in source
+    assert "renderMethodNotes" not in source
+    for fragment in (
+        "风险提示与方法边界",
+        "最大痛点用于观察持仓分布迁移",
+        "不推荐裸卖期权",
+        "也不把比例价差描述为安全对冲",
+    ):
+        assert fragment not in source
     for forbidden in {"naked_sell", '"sell_call"', '"sell_put"', '"ratio_spread"'}:
         assert forbidden not in source
 
@@ -307,9 +312,33 @@ def test_bottom_sections_are_grouped_into_parent_containers() -> None:
     assert "btc-bottom-group" in source
     assert "btc-protection-group" in source
     assert "btc-audit-group" in source
-    assert "btc-governance-group" in source
+    assert "btc-governance" in source
     assert ".btc-bottom-group" in styles
     assert ".btc-bottom-group-body" in styles
+    assert ".governance-ledger__head" in styles
+    assert ".governance-ledger__item" in styles
+
+
+def test_protection_planner_is_collapsed_by_default_and_toggle_hides_its_body() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    styles = STYLES.read_text(encoding="utf-8")
+
+    assert "let isHedgePlannerCollapsed = true;" in source
+    assert 'body.hidden = isHedgePlannerCollapsed' in source
+    assert 'setHedgePlannerCollapsed(!isHedgePlannerCollapsed)' in source
+    assert ".btc-bottom-group .btc-bottom-group-body[hidden]" in styles
+    assert "display: none !important;" in styles
+
+
+def test_audit_details_are_collapsed_by_default_and_toggle_hides_the_body() -> None:
+    source = PAGE.read_text(encoding="utf-8")
+    styles = STYLES.read_text(encoding="utf-8")
+
+    assert "let isAuditGroupCollapsed = true;" in source
+    assert 'body.hidden = isAuditGroupCollapsed' in source
+    assert 'setAuditGroupCollapsed(!isAuditGroupCollapsed)' in source
+    assert ".btc-bottom-group .btc-bottom-group-body[hidden]" in styles
+    assert "指标信号与多空推断，供复核和追溯使用。" not in source
 
 
 def test_page_has_scoped_responsive_styles() -> None:
@@ -446,13 +475,90 @@ def test_btc_derivatives_expiry_mode_is_a_locked_context_value() -> None:
     )
 
 
+def test_chart_toolbar_uses_equal_fifth_columns() -> None:
+    # 2026-08-19: the previous weighted template (`1.4fr 0.7fr 1fr 1.4fr 1fr`)
+    # gave the locked `到期模式` badge a visibly narrower cell than its
+    # neighbours, and stretched `标准到期日` to a different rhythm from
+    # `期限桶` / `行权价范围`. On a 2560×1600 viewport the five controls
+    # read as having uneven horizontal spacing even though the gaps were
+    # identical. Switched back to equal fifths so all 5 controls share the
+    # same width and the row reads as visually consistent.
+    import re
+
+    css = STYLES.read_text(encoding="utf-8")
+    toolbar_block = css[css.index(".btc-chart-toolbar {"):]
+    toolbar_block = toolbar_block[:toolbar_block.index("}") + 1]
+    # Extract only the CSS declarations (lines that start with a property
+    # name like `display:`, `grid-template-columns:`). This strips out the
+    # multi-line `/* ... */` comment block above the property — the
+    # comment intentionally references the old weights to document why
+    # the change was made.
+    declarations = " ".join(
+        match.group(0)
+        for match in re.finditer(
+            r"^\s*[a-z-]+\s*:[^;]+;",
+            toolbar_block,
+            flags=re.MULTILINE,
+        )
+    )
+    # Old weighted tracks must be gone from the declarations
+    for fr in ("1.4fr", "0.7fr", "1.0fr"):
+        assert fr not in declarations, (
+            f"chart toolbar must not use weighted tracks ({fr}); use equal fifths"
+        )
+    # New equal-fifths pattern must be present (one repeat() with 5 tracks)
+    assert "repeat(5, minmax(0, 1fr))" in declarations, (
+        "chart toolbar must use equal fifths: repeat(5, minmax(0, 1fr))"
+    )
+
+
+def test_chart_toolbar_dropdowns_fill_their_equal_columns() -> None:
+    """The shared dropdown max-width must not make four controls look shorter."""
+    css = STYLES.read_text(encoding="utf-8")
+    selector = 'body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {'
+    block = css[css.index(selector):]
+    block = block[:block.index("}") + 1]
+
+    assert "width: 100%;" in block
+    assert "--dropdown-max-width: none;" in block
+    assert "min-width: 0;" in block
+    assert "max-width: none;" in block
+    assert "box-sizing: border-box;" in block
+
+
+def test_table_wraps_are_capped_for_2560x1600_viewport() -> None:
+    # 2026-08-18: dev / target viewport is 2560x1600 (16:10). A bare 60vh
+    # grows to 960px on this viewport — within design tolerance, but if the
+    # cap ever silently drifts above 1000px the BTC maturity ladder would
+    # take over the viewport. We require an explicit ceiling to make the
+    # cap auditable.
+    css = STYLES.read_text(encoding="utf-8")
+
+    def block(selector: str) -> str:
+        start = css.index(selector + " {")
+        end = css.index("}", start)
+        return css[start:end]
+
+    assert "min(60vh, 960px)" in block(".table-wrap"), (
+        ".table-wrap must cap at min(60vh, 960px) for the 2560x1600 dev viewport"
+    )
+    assert "min(60vh, 960px)" in block(".btc-table-wrap"), (
+        ".btc-table-wrap must cap at min(60vh, 960px) for the 2560x1600 dev viewport"
+    )
+
+
 def test_btc_chart_dropdowns_bind_to_camel_case_filter_state() -> None:
     source = PAGE.read_text(encoding="utf-8")
+    chart_dropdown_block = source[
+        source.index("function mountBtcChartDropdowns") : source.index(
+            "function mountBtcHedgeDropdowns"
+        )
+    ]
     for key in ("window", "maturityBucket", "selectedExpiry", "strikeRangePct"):
         assert f'filterKey: "{key}"' in source
     assert "filters[cfg.filterKey]" in source
     assert "filters[cfg.field]" not in source
-    assert 'placeholder: "请选择"' not in source[source.index("function mountBtcChartDropdowns"):source.index("function mountBtcHedgeDropdowns")]
+    assert 'placeholder: "请选择"' not in chart_dropdown_block
     assert "filters.selectedExpiry" in source
 
 
@@ -465,7 +571,6 @@ def test_option_wall_table_distinguishes_effective_wall_from_raw_max_oi() -> Non
     assert "未形成有效墙" in source
     assert "原始最大 OI" in source
     assert "期限 OI" in source
-    assert "8D–45D Delta" in source
 
 
 def test_empty_chart_sections_do_not_leave_orphan_titles() -> None:

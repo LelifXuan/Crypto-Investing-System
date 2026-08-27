@@ -111,7 +111,16 @@ class MacroScoringEngine:
                 continue
             all_keys = {key, *(item.get("aliases") or [])}
             for raw_key in all_keys:
-                rules[canonical_macro_key(str(raw_key))] = dict(item)
+                canonical = canonical_macro_key(str(raw_key))
+                existing = rules.get(canonical)
+                if existing is not None and existing.get("formula_id") != "display_only":
+                    # A later alias reusing a canonical key (e.g. an alias
+                    # key registered with different thresholds) must not
+                    # silently overwrite the primary rule. Keep the first
+                    # scored rule so thresholds stay attached to the
+                    # intended indicator.
+                    continue
+                rules[canonical] = dict(item)
         for key, value in MacroScoringEngine.UNIT_SAFE_OVERRIDES.items():
             rules[key] = {**rules.get(key, {}), **value, "indicator_key": key}
         rules.setdefault(

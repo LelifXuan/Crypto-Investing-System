@@ -91,9 +91,9 @@ class TestGoldV5Governance:
     def test_governance_is_a_compact_source_ledger(self):
         src = _read(JS_PATH)
         css = _read(REPO_ROOT / "app" / "static" / "editorial.css")
-        assert 'class="card gold-governance"' in src
-        assert 'class="gold-governance-item"' in src
-        assert 'class="gold-governance-dot"' in src
+        assert 'class="card governance-ledger gold-governance"' in src
+        assert 'class="governance-ledger__item gold-governance-item"' in src
+        assert 'class="governance-ledger__dot gold-governance-dot"' in src
         assert "formatSourceAge" in src
         assert "governanceMiniCard" not in src
         assert 'body[data-page="gold-allocation"] .gold-governance {' in css
@@ -228,10 +228,25 @@ class TestGoldV5ApiWiring:
 
     def test_page_uses_api_gold_workbench_not_v3_adapter(self):
         src = _read(JS_PATH)
-        assert "api.getGoldWorkbench()" in src, (
+        assert "api.getGoldWorkbench({" in src, (
             "loadData() must call the workbench endpoint (rich V5 shape)"
         )
         assert "api.getGoldWorkbenchCharts(" in src
+
+    def test_page_progressively_loads_core_charts_and_derivatives(self):
+        src = _read(JS_PATH)
+        assert "loadDerivativesEnhancement" in src
+        assert "refreshGoldCore" in src
+        assert "waitForPrecomputeTask" in src
+        assert "renderGoldCharts(data, signal)" in src
+        assert 'document.querySelector(".gold-contract-ref")' in src
+
+    def test_page_background_work_is_abortable(self):
+        src = _read(JS_PATH)
+        assert "api.getGoldWorkbench({ force, signal" in src
+        assert "api.getGoldDerivatives({ signal" in src
+        assert "api.precomputeHint({" in src
+        assert "}, { signal });" in src
 
     def test_chart_grid_gated_on_chart_token(self):
         """Charts must only render when chart_series_or_chart_token carries a

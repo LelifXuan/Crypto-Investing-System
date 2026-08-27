@@ -251,7 +251,7 @@ def _key_level_axis_group(axis: Mapping[str, Any]) -> dict[str, Any]:
             }
         ]
     basis = [
-        f"{item['label']}：{item['explanation']}"
+        f"{item['label']} {item['explanation']}"
         for item in items
     ]
     return {

@@ -658,6 +658,14 @@ function baseOptions() {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
+    // 2026-08-17: Chart.js animations add visual noise + GPU compositor
+    // work on every data swap. For routine dashboard refreshes
+    // (background fetches, dropdown changes) the new data replaces the
+    // old in a single tick — animation makes the chart appear to "shake"
+    // rather than update. We keep animations opt-in for first-render
+    // pages by calling .update('show') only on initial mount; subsequent
+    // .update() calls inherit this default of zero duration.
+    animation: { duration: 0 },
     plugins: {
       legend: {
         labels: {

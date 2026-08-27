@@ -48,6 +48,10 @@
   --neutral-chip-ink: #59535f;
   --neutral-chip-surface: #ece9e4;
   --neutral-chip-border: #d9d3ca;
+  --translating-chip-ink: #8a5a1b;
+  --translating-chip-surface: #fdf2e0;
+  --translating-chip-border: #e8c89a;
+  --translating-dot: #d4942e;
   --border: #d9d3ca;
   --border-strong: #c8c0b6;
   --border-light: rgba(33, 29, 43, 0.08);
@@ -76,6 +80,17 @@
   --shadow-hover: 0 2px 4px rgba(33, 29, 43, 0.05), 0 16px 40px rgba(33, 29, 43, 0.07);
   --shadow-button: 0 1px 2px rgba(77, 59, 115, 0.12), 0 5px 14px rgba(77, 59, 115, 0.1);
   --shadow-button-hover: 0 2px 4px rgba(77, 59, 115, 0.14), 0 8px 20px rgba(77, 59, 115, 0.14);
+  /* Disclosure component tokens: semantic accent → component contract. */
+  --disclosure-bg: var(--accent-strong);
+  --disclosure-bg-hover: var(--accent-pressed);
+  --disclosure-fg: var(--white);
+  --disclosure-border: var(--accent-strong);
+  --disclosure-height: 40px;
+  --disclosure-min-width: 104px;
+  --disclosure-padding-inline: 14px;
+  --disclosure-radius: 6px;
+  --disclosure-font-size: 14px;
+  --disclosure-icon-size: 14px;
   --chart-grid-x: rgba(33, 29, 43, 0.035);
   --chart-grid-y: rgba(33, 29, 43, 0.055);
   --chart-axis: #6f6975;
@@ -242,6 +257,25 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
 .editorial-nav a:active { transform: scale(0.96); }
 .editorial-nav a.is-active { color: var(--accent-strong); background: var(--accent-soft); font-weight: 600; }
 .editorial-nav a.is-active::before { opacity: 1; transform: scaleY(1); }
+.editorial-nav a.is-pending {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-soft) 68%, transparent);
+}
+.editorial-nav a.is-pending::after {
+  content: "";
+  justify-self: end;
+  width: 6px;
+  height: 6px;
+  margin-left: -16px;
+  background: currentColor;
+  border-radius: 50%;
+  opacity: 0.7;
+  animation: navPendingPulse 900ms var(--ease-out) infinite alternate;
+}
+@keyframes navPendingPulse {
+  from { opacity: 0.35; transform: scale(0.75); }
+  to { opacity: 0.85; transform: scale(1); }
+}
 [data-nav-icon] { display: grid; place-items: center; }
 
 .app-sidebar-foot {
@@ -305,7 +339,11 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   box-shadow: 0 0 0 3px var(--info-soft);
 }
 
-.app-main { min-width: 0; }
+.app-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .app-topbar {
   position: sticky;
@@ -317,12 +355,24 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   align-items: center;
   min-height: var(--topbar-height);
   padding: 8px var(--canvas-gutter);
-  background: rgba(247, 245, 241, 0.94);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(12px);
+  background: var(--glass-bg-deep);
+  border-bottom: 1px solid var(--glass-border-outer);
+  box-shadow:
+    0 12px 30px rgba(31, 42, 58, 0.08),
+    inset 0 -1px 0 var(--glass-edge);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .app-page-identity { min-width: 0; }
+.app-page-identity.is-route-entering {
+  animation: pageIdentityIn 160ms var(--ease-out);
+  will-change: opacity, transform;
+}
+@keyframes pageIdentityIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .app-breadcrumb {
   display: block;
   color: var(--accent-strong);
@@ -391,6 +441,10 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   min-width: 0;
   margin: 0;
   padding: var(--canvas-gutter);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 #page-root[data-layout="reference"] > :where(section, article, div):first-child { margin-inline: auto; }
@@ -428,6 +482,11 @@ article[class*="-card"] {
 #page-root h1 { font-size: clamp(32px, 2.6vw, 40px); line-height: 1.1; }
 #page-root h2 { font-size: clamp(24px, 1.7vw, 28px); line-height: 1.2; }
 #page-root h3 { color: var(--ink); }
+#page-root .page-display-title {
+  font-size: clamp(32px, 2.6vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
 .subtle, .section-summary { color: var(--text-secondary); }
 
 button,
@@ -555,7 +614,7 @@ button:active,
 .btn:active { transform: scale(0.96); }
 
 .primary-button,
-button:not(.secondary):not(.ghost-button):not(.icon-button):not(.dropdown):not(.dropdown-item):not(.instrument-pill):not(.tab-button):not(.chip-button):not(.calendar-month-button):not(.page-guide-fab):not(.knowledge-page-refs-trigger) {
+button:not(.secondary):not(.ghost-button):not(.icon-button):not(.dropdown):not(.dropdown-item):not(.instrument-pill):not(.tab-button):not(.chip-button):not(.calendar-month-button):not(.page-guide-fab):not(.knowledge-page-refs-trigger):not(.scan-cell-btn) {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
   color: var(--white);
@@ -563,7 +622,7 @@ button:not(.secondary):not(.ghost-button):not(.icon-button):not(.dropdown):not(.
 }
 
 .primary-button:hover,
-button:not(.secondary):not(.ghost-button):not(.icon-button):not(.dropdown):not(.dropdown-item):not(.instrument-pill):not(.tab-button):not(.chip-button):not(.calendar-month-button):not(.page-guide-fab):not(.knowledge-page-refs-trigger):hover {
+button:not(.secondary):not(.ghost-button):not(.icon-button):not(.dropdown):not(.dropdown-item):not(.instrument-pill):not(.tab-button):not(.chip-button):not(.calendar-month-button):not(.page-guide-fab):not(.knowledge-page-refs-trigger):not(.scan-cell-btn):hover {
   background: var(--accent-pressed);
   color: var(--white);
   box-shadow: var(--shadow-button-hover);
@@ -666,6 +725,10 @@ body[data-page="market-events"] .events-context-actions {
    arrive in reading order, then remain as a stable skeleton until data lands. */
 body[data-page="market-events"] .events-feed-shell {
   position: relative;
+  /* `scrollIntoView({ block: "start" })` runs after the supply calendar is
+     collapsed. Keep the feed card below the sticky application topbar so its
+     eyebrow and heading remain visible instead of sliding underneath it. */
+  scroll-margin-top: calc(var(--topbar-height) + var(--space-card));
 }
 
 body[data-page="market-events"] .events-feed-loading {
@@ -708,7 +771,7 @@ body[data-page="market-events"] .event-stream-skeleton-row {
   border: 1px solid var(--border);
   border-radius: 10px;
   animation: eventStreamArrive var(--dur-elevate) var(--ease-out) backwards;
-  animation-delay: calc(var(--event-row) * 35ms);
+  animation-delay: calc(var(--event-row) * 28ms);
 }
 
 body[data-page="market-events"] .event-stream-skeleton-dot {
@@ -718,7 +781,7 @@ body[data-page="market-events"] .event-stream-skeleton-dot {
   background: var(--info);
   border-radius: 50%;
   animation: eventStreamSignal var(--dur-drawer) var(--ease-in-out) 2 alternate;
-  animation-delay: calc(var(--event-row) * 35ms);
+  animation-delay: calc(var(--event-row) * 28ms);
 }
 
 body[data-page="market-events"] .event-stream-skeleton-copy {
@@ -736,12 +799,99 @@ body[data-page="market-events"] .event-stream-skeleton-copy i {
      Note: row uses eventStreamArrive (entrance) and dot uses
      eventStreamSignal (×2 alternate) — those keep their own
      animation. Only the static text bars get the breathing. */
-  animation: skeletonShimmer 1.6s ease-in-out infinite;
+  animation: skeletonShimmer var(--dur-shimmer) ease-in-out infinite;
+  animation-delay: var(--skeleton-delay, 0ms);
 }
 
 body[data-page="market-events"] .event-stream-skeleton-copy i:nth-child(1) { width: 28%; }
 body[data-page="market-events"] .event-stream-skeleton-copy i:nth-child(2) { width: 84%; height: 12px; }
 body[data-page="market-events"] .event-stream-skeleton-copy i:nth-child(3) { width: 62%; }
+
+/* Gold uses the same unmistakable ingestion language as the market-event
+   feed, while retaining its own data-source copy and lifecycle. */
+body[data-page="gold-allocation"] .gold-data-loading {
+  min-height: clamp(430px, 66vh, 700px);
+  padding: 22px 24px;
+  overflow: hidden;
+}
+
+body[data-page="gold-allocation"] .gold-loading-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-card);
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+body[data-page="gold-allocation"] .gold-loading-head h2 { margin: 0; }
+
+body[data-page="gold-allocation"] .gold-loading-head > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+body[data-page="gold-allocation"] .gold-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-card);
+  padding-top: 18px;
+}
+
+body[data-page="gold-allocation"] .gold-loading-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 118px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  animation: eventStreamArrive var(--dur-elevate) var(--ease-out) backwards;
+}
+
+body[data-page="gold-allocation"] .gold-loading-row:nth-child(2) { animation-delay: 28ms; }
+body[data-page="gold-allocation"] .gold-loading-row:nth-child(3) { animation-delay: 56ms; }
+body[data-page="gold-allocation"] .gold-loading-row:nth-child(4) { animation-delay: 84ms; }
+body[data-page="gold-allocation"] .gold-loading-row:nth-child(5) { animation-delay: 112ms; }
+body[data-page="gold-allocation"] .gold-loading-row:nth-child(6) { animation-delay: 140ms; }
+
+body[data-page="gold-allocation"] .gold-loading-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  background: var(--info);
+  border-radius: 50%;
+  animation: eventStreamSignal var(--dur-drawer) var(--ease-in-out) 2 alternate;
+}
+
+body[data-page="gold-allocation"] .gold-loading-copy {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+body[data-page="gold-allocation"] .gold-loading-copy i {
+  display: block;
+  width: 84%;
+  height: 8px;
+  background: var(--surface-muted);
+  border-radius: 6px;
+  animation: skeletonShimmer var(--dur-shimmer) ease-in-out infinite;
+  animation-delay: var(--skeleton-delay, 0ms);
+}
+
+body[data-page="gold-allocation"] .gold-loading-copy i:nth-child(1) { width: 28%; }
+body[data-page="gold-allocation"] .gold-loading-copy i:nth-child(2) { height: 12px; }
+body[data-page="gold-allocation"] .gold-loading-copy i:nth-child(3) { width: 62%; }
+
+@media (max-width: 760px) {
+  body[data-page="gold-allocation"] .gold-loading-head {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  body[data-page="gold-allocation"] .gold-loading-grid { grid-template-columns: 1fr; }
+}
 
 body[data-page="market-events"] .events-feed-shell.is-syncing::before {
   position: absolute;
@@ -881,6 +1031,12 @@ body[data-page="market-events"] .events-feed-shell.is-syncing > .events-feed-car
   color: var(--neutral-chip-ink);
   background: var(--neutral-chip-surface);
   border-color: var(--neutral-chip-border);
+}
+
+.chip-translating {
+  color: var(--translating-chip-ink);
+  background: var(--translating-chip-surface);
+  border: 1px solid var(--translating-chip-border);
 }
 
 .impact-chip,
@@ -1232,16 +1388,37 @@ body[data-page="monitoring-overview"] .macro-indicator-card > * { min-width: 0; 
 body[data-page="monitoring-overview"] .macro-indicator-head { flex-wrap: wrap; }
 
 /* Analysis sample: the chart workspace receives the available screen width. */
+body[data-page="market-analysis"] {
+  --analysis-text-strong: #2f2939;
+  --analysis-text-body: #48404f;
+  --analysis-text-muted: #5a5361;
+}
 body[data-page="market-analysis"] #page-root { display: grid; gap: var(--space-card); }
 body[data-page="market-analysis"] .analysis-hero-grid { grid-template-columns: minmax(620px, 1fr) minmax(300px, 0.34fr); gap: var(--space-card); }
 body[data-page="market-analysis"] :is(.analysis-hero-grid, #analysis-signal-cards) { margin-bottom: 0; }
 body[data-page="market-analysis"] .status-mode-badge { margin-block: 0; }
 body[data-page="market-analysis"] .analysis-hero-card,
 body[data-page="market-analysis"] .realtime-card { box-shadow: var(--shadow-soft); }
-body[data-page="market-analysis"] .instrument-pill { min-width: 112px; border-radius: 8px; box-shadow: none; }
+body[data-page="market-analysis"] .instrument-pill { min-width: 112px; border-radius: 8px; box-shadow: none; color: var(--analysis-text-body); }
+body[data-page="market-analysis"] .instrument-pill span { color: inherit; }
 body[data-page="market-analysis"] .instrument-pill.is-active { color: var(--accent-strong); background: var(--accent-soft); border-color: rgba(102,84,142,0.35); }
 body[data-page="market-analysis"] #analysis-signal-cards { grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 0; overflow: hidden; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-soft); }
 body[data-page="market-analysis"] #analysis-signal-cards > * { min-height: 190px; margin: 0; padding: 20px; border: 0; border-right: 1px solid var(--border); border-radius: 0; box-shadow: none; background: transparent; }
+body[data-page="market-analysis"] #page-root :is(.live-price, .signal-value) {
+  color: var(--analysis-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+body[data-page="market-analysis"] :is(#analysis-summary, .signal-copy, .realtime-card .mini-card span) {
+  color: var(--analysis-text-body);
+  text-wrap: pretty;
+}
+body[data-page="market-analysis"] :is(.signal-label, .realtime-card .mini-card small) {
+  color: var(--analysis-text-muted);
+}
+body[data-page="market-analysis"] .realtime-card .mini-card strong {
+  color: var(--analysis-text-strong);
+  font-variant-numeric: tabular-nums;
+}
 body[data-page="market-analysis"] .analysis-chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 body[data-page="market-analysis"] .analysis-chart-grid > article { box-shadow: none; border-radius: 10px; }
 body[data-page="market-analysis"] .analysis-chart-ema { grid-column: 1; grid-row: 1; }
@@ -1314,6 +1491,204 @@ body[data-page="market-analysis"] .analysis-chart-rsi { grid-column: 2; grid-row
   background: var(--accent-ghost);
 }
 
+/* 2026-08-19: market-events-style context bar for macro calendar.
+   3-column grid: title | inline metrics | actions. Frosted card with
+   border-left separators on metrics, matching the design language. */
+/* 2026-08-19: 合并容器 — context bar + 日历网格 + 事件明细 → 单一卡片 */
+/* 2026-08-20: 双卡片容器 — 宏观日历 + 宏观事件明细，间距统一 --content-gap */
+body[data-page="macro-calendar"] #macro-calendar-container {
+  display: grid;
+  gap: var(--content-gap);
+}
+
+body[data-page="macro-calendar"] .macro-calendar-card {
+  display: grid;
+  gap: 0;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-card.is-collapsed .macro-calendar-head {
+  border-bottom: 0;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-body {
+  display: grid;
+  gap: 0;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-body[hidden] {
+  display: none !important;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-head {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.6fr) minmax(400px, 1.6fr) auto;
+  align-items: center;
+  gap: var(--space-section, 18px);
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+body[data-page="macro-calendar"] .macro-context-copy {
+  min-width: 0;
+}
+
+body[data-page="macro-calendar"] .macro-context-copy .eyebrow {
+  margin-bottom: 6px;
+}
+
+body[data-page="macro-calendar"] .macro-context-copy h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+body[data-page="macro-calendar"] .macro-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  align-self: stretch;
+  min-width: 0;
+  margin: 0;
+}
+
+body[data-page="macro-calendar"] .macro-inline-metric {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 16px;
+  border-left: 1px solid var(--border);
+}
+
+body[data-page="macro-calendar"] .macro-inline-metric:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+body[data-page="macro-calendar"] .macro-inline-metric dt {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-page="macro-calendar"] .macro-inline-metric dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+body[data-page="macro-calendar"] .macro-context-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 日历网格区域：左右 padding 与 head 对齐 */
+body[data-page="macro-calendar"] .calendar-head,
+body[data-page="macro-calendar"] .calendar-weekdays,
+body[data-page="macro-calendar"] .calendar-grid {
+  padding-inline: 22px;
+}
+
+/* 2026-08-19: 宏观事件明细独立卡片 */
+body[data-page="macro-calendar"] .macro-calendar-detail-card {
+  display: grid;
+  gap: 0;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-detail-card .section-head {
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-detail-card .section-head h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-detail-card .table-wrap {
+  position: relative;
+  isolation: isolate;
+  padding: 0 22px 22px;
+  overscroll-behavior: contain;
+  background: var(--surface-elevated);
+}
+
+/* The sticky release header sits inside its own scroll container. This fixed
+   glass veil covers the former 16px padding gap so rows fade out before they
+   reach the header instead of remaining legible above it. */
+body[data-page="macro-calendar"] #macro-calendar-detail .table-wrap::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: block;
+  height: 16px;
+  margin-bottom: -16px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(255, 255, 255, 0.82) 48%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+body[data-page="macro-calendar"] #macro-calendar-detail table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+body[data-page="macro-calendar"] #macro-calendar-detail thead {
+  position: sticky;
+  top: 16px;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.74);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow:
+    inset 0 -1px 0 rgba(66, 50, 96, 0.1),
+    0 12px 30px -24px rgba(31, 24, 48, 0.5);
+}
+
+body[data-page="macro-calendar"] #macro-calendar-detail thead th {
+  position: static;
+  z-index: auto;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 2026-08-19: 底栏状态条 */
+body[data-page="macro-calendar"] .macro-statusbar {
+  margin-top: 16px;
+}
+
+@media (max-width: 1180px) {
+  body[data-page="macro-calendar"] .macro-calendar-head {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  body[data-page="macro-calendar"] .macro-metrics-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  body[data-page="macro-calendar"] .macro-inline-metric:first-child {
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+  }
+  body[data-page="macro-calendar"] .macro-context-actions {
+    justify-content: flex-start;
+  }
+}
+
 body[data-page="macro-calendar"] #macro-calendar-detail .table-wrap :is(th, td) {
   height: 60px;
   vertical-align: middle;
@@ -1321,10 +1696,49 @@ body[data-page="macro-calendar"] #macro-calendar-detail .table-wrap :is(th, td) 
 
 body[data-page="macro-calendar"] #macro-calendar-detail .table-wrap th {
   height: 48px;
+  /* 2026-08-18: align all column headers to center for visual consistency
+     across `时间 / 实际 / 预期 / 前值 / 差值 / 状态`. Previously only the
+     `事件` column read as left-aligned while the short numeric columns
+     looked centered by accident of their width — explicit center removes
+     the inconsistency. */
+  text-align: center;
+}
+
+body[data-page="macro-calendar"] #macro-calendar-detail .table-wrap td {
+  text-align: center;
 }
 
 body[data-page="macro-calendar"] #macro-calendar-detail .table-wrap td:first-child {
   line-height: 1.35;
+  /* First column keeps the cell left-aligned so the multi-line event title
+     + event_key subline stack against the leading edge of the column,
+     matching how the header `<th>事件</th>` reads (centered) for visual
+     consistency with the table cell content (left). The user's intent
+     was to bring the *header* to center; cells containing only numbers
+     or chips are already centered. The title block on the first cell
+     remains anchored to the leading edge to avoid orphaned title text
+     floating in space when the cell width grows. */
+  text-align: left;
+}
+
+/* 宏观日历表头紧凑化：减少 eyebrow / h2 / summary 之间的间距 */
+body[data-page="macro-calendar"] #macro-calendar-detail > .section-head {
+  gap: 6px;
+  padding-bottom: 8px;
+}
+body[data-page="macro-calendar"] #macro-calendar-detail > .section-head > div:first-child {
+  gap: 2px;
+  display: flex;
+  flex-direction: column;
+}
+body[data-page="macro-calendar"] #macro-calendar-detail .eyebrow {
+  margin: 0;
+}
+body[data-page="macro-calendar"] #macro-calendar-detail h2 {
+  margin: 0;
+}
+body[data-page="macro-calendar"] #macro-calendar-detail .section-summary {
+  margin: 0;
 }
 
 /* Market events — one chronological research ledger replaces the repetitive
@@ -1365,46 +1779,6 @@ body[data-page="market-events"] .supply-calendar-filter {
 
 body[data-page="market-events"] .supply-calendar-filter .dropdown-arrow {
   color: var(--accent-strong);
-}
-
-body[data-page="market-events"] .supply-calendar-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 126px;
-  min-height: 40px;
-  height: 40px;
-  padding: 9px 14px;
-  color: var(--white);
-  background: var(--accent-strong);
-  border: 1px solid var(--accent-strong);
-  border-radius: 6px;
-  box-shadow: var(--shadow-button);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-body[data-page="market-events"] .supply-calendar-toggle:hover {
-  color: var(--white);
-  background: var(--accent-pressed);
-  border-color: var(--accent-pressed);
-}
-
-body[data-page="market-events"] .supply-calendar-toggle svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-  transition: transform var(--motion-fast);
-}
-
-body[data-page="market-events"] .supply-calendar-toggle[aria-expanded="false"] svg {
-  transform: rotate(-90deg);
 }
 
 body[data-page="market-events"] .supply-calendar-card .section-summary {
@@ -1726,7 +2100,7 @@ body[data-page="market-events"] :is(.supply-calendar-asset, .supply-calendar-amo
     width: 100%;
     max-width: none;
   }
-  body[data-page="market-events"] .supply-calendar-toggle {
+  body[data-page="market-events"] .supply-calendar-actions .disclosure-toggle {
     width: 100%;
   }
   body[data-page="market-events"] .supply-calendar-node {
@@ -1787,6 +2161,29 @@ body[data-page="ai-strategy"] :is(.scan-ranked-list, .empty-state, .loading-stat
 body[data-page="ai-strategy"] .scan-cell-btn {
   min-height: 52px;
   padding: 10px 12px;
+}
+
+/* The global primary-button selector is intentionally broad. Matrix cells
+   need stronger, state-specific selectors so unqualified candidates never
+   inherit the purple opportunity treatment. */
+body[data-page="ai-strategy"] .scan-cell-unqualified .scan-cell-btn,
+body[data-page="ai-strategy"] .scan-cell-pending .scan-cell-btn {
+  border: 1px dashed var(--border-light);
+  background: var(--surface-elevated);
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+body[data-page="ai-strategy"] .scan-cell[data-tone="bullish"] .scan-cell-btn {
+  background: var(--bullish-soft);
+  box-shadow: none;
+  color: var(--bullish-chip-ink, #285e4d);
+}
+
+body[data-page="ai-strategy"] .scan-cell[data-tone="bearish"] .scan-cell-btn {
+  background: var(--bearish-soft);
+  box-shadow: none;
+  color: var(--bearish-chip-ink, #843e4c);
 }
 
 body[data-page="ai-strategy"] .scan-matrix-table tbody tr {
@@ -1859,17 +2256,21 @@ body[data-page="ashare-etf"] .etf-equity-strategy-note {
 .tooltip-link { color: var(--accent-strong); }
 
 /* The guide is an editorial popover: its heading stays fixed while only the
-   reading body scrolls. Dismissal is handled by outside click or Escape. */
+   reading body scrolls. Dismissal is handled by outside click or Escape.
+   Frosted-glass surface (translucent tint + blur + layered highlight) is
+   applied in the consolidated .page-guide-panel / .tooltip-bubble block
+   near the end of this file; the prefers-reduced-transparency fallback
+   lives in the same block. */
 .page-guide-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(410px, calc(100vw - 48px));
+  /* 2026-08-18: widened from 410px to 615px (1.5x) so the panel occupies
+     less vertical space — wider columns wrap text on fewer lines. */
+  width: min(615px, calc(100vw - 48px));
   max-height: min(680px, calc(100vh - 112px));
   padding: 0;
   overflow: hidden;
   border-radius: 18px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .page-guide-panel .page-guide-panel-head {
@@ -1974,7 +2375,7 @@ body[data-page="knowledge-base"] .knowledge-hero .section-head {
   margin: 0;
 }
 
-body[data-page="knowledge-base"] .knowledge-hero h1 {
+body[data-page="knowledge-base"] .knowledge-hero .page-display-title {
   max-width: 760px;
   margin: 8px 0 10px;
 }
@@ -2017,7 +2418,14 @@ body[data-page="knowledge-base"] .knowledge-catalog-stats strong {
 
 body[data-page="knowledge-base"] .knowledge-workspace {
   display: grid;
-  grid-template-columns: 240px minmax(560px, var(--reading-measure)) minmax(240px, 300px);
+  /* 2026-08-18: middle column capped at min(560px, --reading-measure=800px)
+     = 560px on a 2560px viewport. With the term/guide cards inside running
+     `repeat(2, ...)` at 14px gap, each card landed at ~273px — visibly
+     cramped against the 240px left rail and 300px right rail. Loosen the
+     cap to min(720px, 1fr) so the middle column can actually grow on
+     wide viewports. The right READING GUIDE rail stays narrow (240-300px)
+     to keep the editorial-note column visually quiet. */
+  grid-template-columns: 240px minmax(720px, 1fr) minmax(240px, 300px);
   justify-content: space-between;
   align-items: start;
   gap: clamp(24px, 2vw, 40px);
@@ -2115,51 +2523,88 @@ body[data-page="knowledge-base"] .knowledge-toolbar .dropdown {
 
 body[data-page="knowledge-base"] .knowledge-content-column {
   width: 100%;
-  max-width: var(--reading-measure);
+  /* 2026-08-18: cap was var(--reading-measure)=800px — designed for paragraph
+     line-length, not card-grid columns. On a 2560px viewport it pinned the
+     middle column at 800px and made cards feel cramped against the side
+     rails. Cap at 1fr so the column can grow with the workspace. */
+  max-width: none;
   min-width: 0;
 }
 
 body[data-page="knowledge-base"] .knowledge-sections {
   display: grid;
-  gap: 40px;
+  gap: 14px;
 }
 
+/* Knowledge section cards use the canonical editorial surface tokens. Keeping
+   raw legacy indigo RGBA values here made this one component drift from the
+   final palette declared at the top of editorial.css. */
 body[data-page="knowledge-base"] .knowledge-section-card {
   margin: 0;
   padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  transition: box-shadow var(--motion-hover), border-color var(--motion-hover);
 }
 
-body[data-page="knowledge-base"] .knowledge-section-card > .section-head {
-  align-items: end;
-  margin-bottom: var(--space-control);
-  padding-bottom: var(--space-control);
-  border-bottom: 1px solid var(--border);
+body[data-page="knowledge-base"] .knowledge-section-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-card);
 }
 
-body[data-page="knowledge-base"] .knowledge-section-card h2 {
-  margin: 5px 0 6px;
+body[data-page="knowledge-base"] .knowledge-section-card.is-open {
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
-body[data-page="knowledge-base"] .knowledge-section-card .section-summary {
-  max-width: 620px;
+body[data-page="knowledge-base"] .knowledge-section-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 66px;
+  padding: 10px 14px 10px 18px;
+}
+
+body[data-page="knowledge-base"] .knowledge-section-heading {
+  min-width: 0;
+}
+
+body[data-page="knowledge-base"] .knowledge-section-heading .eyebrow {
   margin: 0;
+  font-size: 9px;
 }
+
+body[data-page="knowledge-base"] #page-root .knowledge-section-heading h2 {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+body[data-page="knowledge-base"] .knowledge-section-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 条目数与操作按钮固定组成右侧控制组；展开前后不改变控件位置。 */
 
 body[data-page="knowledge-base"] .knowledge-section-count {
-  display: grid;
-  justify-items: end;
-  gap: 1px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
   color: var(--text-tertiary);
+  white-space: nowrap;
 }
 
 body[data-page="knowledge-base"] .knowledge-section-count strong {
   color: var(--accent-strong);
-  font-size: 20px;
-  font-weight: 550;
+  font-size: 16px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2170,6 +2615,21 @@ body[data-page="knowledge-base"] .knowledge-section-count span {
 
 body[data-page="knowledge-base"] .knowledge-entry-list {
   display: block;
+  padding: 0 22px 22px;
+}
+
+body[data-page="knowledge-base"] .knowledge-section-card.is-open .knowledge-entry-list {
+  border-top: 1px solid var(--border-light);
+}
+
+/* 2026-08-18: 三层折叠 — `.knowledge-entry-list` 与 `.knowledge-guide-body`
+   在折叠态下带 `hidden` 属性(由 renderSectionsHtml / renderGuideCard 写入)。
+   这两条规则确保 `[hidden]` 始终胜过页面内联 `display: block/grid` — 否则
+   用户看到的"折叠态"还是把所有术语平铺出来。`:not([hidden])` 选择器天然
+   不带 !important,让 `.is-open` 仍能用更高优先级接管 display。 */
+body[data-page="knowledge-base"] .knowledge-entry-list[hidden],
+body[data-page="knowledge-base"] .knowledge-guide-body[hidden] {
+  display: none !important;
 }
 
 body[data-page="knowledge-base"] .knowledge-item-card {
@@ -2280,8 +2740,16 @@ body[data-page="knowledge-base"] .knowledge-body {
   margin-top: var(--space-card);
   padding: 18px 20px;
   color: var(--text-primary);
-  background: var(--surface-muted);
-  border-left: 3px solid var(--accent);
+  /* 2026-08-18: editorial.css :root redefines --surface-muted=#f0edf3 (light
+     lavender) and --accent=#66548e (mid purple), so the previous
+     `background: var(--surface-muted); border-left: 3px solid var(--accent)`
+     combo produced the lavender-with-purple-stripe look the user flagged
+     as AI-default "purple tile". Hard-code neutral cream surface + warm
+     border instead of the purple tokens — keeps the visual structure
+     (left accent stripe, contained body, slight surface tint) but
+     removes the indigo hue entirely. See docs/design-guidelines.md §9. */
+  background: rgba(255, 253, 249, 0.85);
+  border-left: 3px solid var(--border-strong);
   border-radius: 0 10px 10px 0;
 }
 
@@ -2849,7 +3317,7 @@ body[data-page="gold-allocation"] .gold-governance-head {
   display: grid;
   align-content: center;
   gap: 7px;
-  padding: 22px 24px;
+  padding: 16px 20px;
   background: var(--surface-muted);
   border-right: 1px solid var(--border);
 }
@@ -2887,10 +3355,10 @@ body[data-page="gold-allocation"] .gold-governance-grid {
 body[data-page="gold-allocation"] .gold-governance-item {
   display: grid;
   align-content: center;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
-  min-height: 112px;
-  padding: 18px 20px;
+  min-height: 72px;
+  padding: 12px 14px;
   border-left: 1px solid var(--border);
 }
 
@@ -2932,9 +3400,9 @@ body[data-page="gold-allocation"] .gold-governance-item[data-state="missing"] .g
 body[data-page="gold-allocation"] .gold-governance-item strong {
   overflow: hidden;
   color: var(--ink);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2942,8 +3410,8 @@ body[data-page="gold-allocation"] .gold-governance-item strong {
 body[data-page="gold-allocation"] .gold-governance-item small {
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 10px;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2980,7 +3448,7 @@ body[data-page="gold-allocation"] .gold-governance-snapshot strong {
   }
 
   body[data-page="gold-allocation"] .gold-governance-item {
-    min-height: 104px;
+    min-height: 80px;
     border-top: 1px solid var(--border);
   }
 
@@ -3141,6 +3609,14 @@ body[data-page="market-structure"] .structure-chart-meta {
     min-height: 34px;
     padding-block: 6px;
   }
+  /* The three-rail reference layout needs more horizontal room than the
+     application workspace has once the 216px sidebar is present. Collapse
+     the quiet reading rail before it can force document-level overflow. */
+  body[data-page="knowledge-base"] .knowledge-workspace {
+    grid-template-columns: 220px minmax(0, 1fr);
+    justify-content: center;
+  }
+  body[data-page="knowledge-base"] .knowledge-reference-rail { display: none; }
 }
 
 @media (max-width: 1279px) {
@@ -3165,10 +3641,11 @@ body[data-page="market-structure"] .structure-chart-meta {
   body[data-page="monitoring-overview"] .monitoring-topbar-grid { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
   body[data-page="monitoring-overview"] .monitoring-snapshot-grid-full { grid-template-columns: 1fr; }
   body[data-page="monitoring-overview"] .macro-indicator-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body[data-page="monitoring-overview"] .macro-group-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   body[data-page="market-analysis"] .analysis-hero-grid { grid-template-columns: 1fr; }
   body[data-page="market-analysis"] #analysis-signal-cards { grid-template-columns: repeat(3, 1fr); }
   body[data-page="knowledge-base"] .knowledge-workspace {
-    grid-template-columns: 220px minmax(0, var(--reading-measure));
+    grid-template-columns: 220px minmax(0, 1fr);
     justify-content: center;
   }
   body[data-page="knowledge-base"] .knowledge-reference-rail { display: none; }
@@ -3234,8 +3711,16 @@ body[data-page="market-structure"] .structure-chart-meta {
   body[data-page="knowledge-base"] .knowledge-toolbar {
     grid-template-columns: 1fr;
   }
-  body[data-page="knowledge-base"] .knowledge-section-card > .section-head {
-    align-items: start;
+  body[data-page="knowledge-base"] .knowledge-section-header {
+    gap: 8px;
+    min-height: 62px;
+    padding: 8px 10px 8px 12px;
+  }
+  body[data-page="knowledge-base"] #page-root .knowledge-section-heading h2 {
+    font-size: 16px;
+  }
+  body[data-page="knowledge-base"] .knowledge-section-controls {
+    gap: 6px;
   }
   body[data-page="knowledge-base"] .knowledge-item-card .list-card-head {
     grid-template-columns: 1fr;
@@ -3262,6 +3747,7 @@ body[data-page="market-structure"] .structure-chart-meta {
   body[data-page="monitoring-overview"] .monitoring-refresh { width: calc(100% - 32px); margin-block: 12px; }
   body[data-page="monitoring-overview"] .monitoring-source-pills { overflow-x: auto; flex-wrap: nowrap; }
   body[data-page="monitoring-overview"] .macro-indicator-grid { display: grid; grid-template-columns: 1fr; }
+  body[data-page="monitoring-overview"] .macro-group-cards { grid-template-columns: 1fr; }
   body[data-page="monitoring-overview"] .macro-indicator-card { min-height: 0; border: 1px solid var(--border); }
   body[data-page="market-analysis"] .instrument-switcher { display: flex; padding-bottom: 6px; overflow-x: auto; scroll-snap-type: x proximity; }
   body[data-page="market-analysis"] .instrument-pill { flex: 0 0 108px; min-width: 108px; scroll-snap-align: start; }
@@ -3277,4 +3763,223 @@ body[data-page="market-structure"] .structure-chart-meta {
   .editorial-nav a::before,
   .icon-button,
   .skip-link { transition-duration: 1ms !important; }
+}
+
+/* === Frosted-glass surfaces (page-guide-panel, tooltip-bubble) ===
+   Cool low-alpha tint + heavy backdrop blur + 4-layer box-shadow that
+   builds a visible floating edge (outer drop, soft halo, top highlight,
+   bottom reflection). The single frosted layer is on the panel itself;
+   inner sections become simple hairline dividers so we don't stack
+   frosted-on-frosted (which is the AI "card-in-card" tell per taste-skill
+   §15). Reduced-transparency drops the blur and reverts to the solid
+   --surface-elevated token so the panel still reads.
+   See docs/design-guidelines.md §14 and taste-skill §2.B. */
+.page-guide-panel,
+.tooltip-bubble,
+.strategy-detail-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border-outer);
+  outline: 1px solid var(--glass-edge);
+  outline-offset: -1px;
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+/* The strategy detail surface uses the same material as the page guide, but
+   keeps a drawer silhouette and a quieter scrim so page chroma can bleed
+   through the glass. Inner cards use a translucent fill without a second
+   backdrop-filter layer. */
+.strategy-detail-overlay {
+  background: rgba(31, 42, 58, 0.2);
+}
+
+.strategy-detail-panel {
+  border-radius: 18px 0 0 18px;
+}
+
+.strategy-detail-panel .strategy-detail-header {
+  background: var(--glass-bg-deep);
+  border-bottom-color: var(--glass-border);
+}
+
+.strategy-detail-panel .strategy-detail-body > .card {
+  background: var(--glass-bg-deep);
+  border-color: var(--glass-border);
+  box-shadow: none;
+}
+
+/* Inner sections inside the panel: no nested card. Use hairline dividers
+   and a near-transparent backdrop so the underlying frosted surface shows
+   through; the section text reads on top without adding another tint. */
+.page-guide-panel .knowledge-guide-body section {
+  background: var(--glass-tint);
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.page-guide-panel .knowledge-guide-body section:first-child {
+  border-top: 0;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-topbar,
+  .page-guide-panel,
+  .page-guide-panel .knowledge-guide-body section,
+  .tooltip-bubble,
+  .strategy-detail-panel,
+  .strategy-detail-panel .strategy-detail-header,
+  .strategy-detail-panel .strategy-detail-body > .card {
+    background: var(--surface-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: var(--shadow-card);
+  }
+  .app-topbar {
+    border-bottom-color: var(--border);
+    box-shadow: var(--shadow-soft);
+  }
+  .page-guide-panel .knowledge-guide-body section {
+    border-top-color: var(--border-light);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-guide-panel,
+  .page-guide-panel .knowledge-guide-body section,
+  .tooltip-bubble,
+  .strategy-detail-panel { transition-duration: 1ms !important; }
+}
+
+/* === Canonical disclosure controls =====================================
+   Section-level disclosure buttons use one component contract everywhere.
+   Page-specific classes may remain as event hooks, but must not own visual
+   properties. Inline disclosure is intentionally quieter because the whole
+   row, rather than a trailing action, is the trigger. */
+body .disclosure-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-action);
+  min-width: var(--disclosure-min-width);
+  height: var(--disclosure-height);
+  min-height: var(--disclosure-height);
+  padding: 0 var(--disclosure-padding-inline);
+  margin: 0;
+  color: var(--disclosure-fg) !important;
+  background: var(--disclosure-bg) !important;
+  background-image: none !important;
+  border: 1px solid var(--disclosure-border);
+  border-radius: var(--disclosure-radius);
+  box-shadow: var(--shadow-button);
+  font: inherit;
+  font-size: var(--disclosure-font-size);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-duration: var(--dur-hover), var(--dur-hover), var(--dur-hover), var(--dur-hover), var(--dur-press);
+  transition-timing-function: var(--ease-out);
+}
+
+body .disclosure-toggle:hover {
+  color: var(--disclosure-fg) !important;
+  background: var(--disclosure-bg-hover) !important;
+  border-color: var(--disclosure-bg-hover);
+  box-shadow: var(--shadow-button-hover);
+}
+
+body .disclosure-toggle:active {
+  transform: scale(0.96);
+}
+
+body .disclosure-toggle:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+body .disclosure-toggle:disabled,
+body .disclosure-toggle[aria-disabled="true"] {
+  color: var(--text-tertiary) !important;
+  background: var(--surface-muted) !important;
+  border-color: var(--border);
+  box-shadow: none;
+  cursor: wait;
+  opacity: 0.62;
+  transform: none;
+}
+
+.disclosure-toggle__label {
+  font: inherit;
+  font-weight: inherit;
+}
+
+.disclosure-toggle__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--disclosure-icon-size);
+  height: var(--disclosure-icon-size);
+  flex: 0 0 auto;
+}
+
+.disclosure-toggle__chevron svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(0deg);
+  transition: transform var(--dur-hover) var(--ease-out);
+}
+
+.disclosure-toggle[aria-expanded="false"] .disclosure-toggle__chevron svg {
+  transform: rotate(-90deg);
+}
+
+body .disclosure-toggle.disclosure-toggle--section-compact {
+  --disclosure-height: 36px;
+  --disclosure-min-width: 82px;
+  --disclosure-font-size: 12.5px;
+  --disclosure-padding-inline: 12px;
+}
+
+body .disclosure-toggle.disclosure-toggle--inline {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 44px;
+  justify-content: space-between;
+  padding: 10px 12px;
+  color: var(--ink) !important;
+  background: transparent !important;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+body .disclosure-toggle.disclosure-toggle--inline:hover {
+  color: var(--ink) !important;
+  background: var(--accent-ghost) !important;
+  border-color: var(--border-light);
+  box-shadow: none;
+}
+
+@media (pointer: coarse) {
+  body .disclosure-toggle {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .disclosure-toggle,
+  .disclosure-toggle__chevron svg {
+    transition-duration: 1ms !important;
+  }
 }

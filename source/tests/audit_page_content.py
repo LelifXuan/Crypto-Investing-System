@@ -127,7 +127,7 @@ REQUIRED_EVIDENCE = {
         ".etf-execution-table-card",
     ],
     "btc-derivatives": [
-        ".btc-decision-card", ".btc-evidence-layer", ".btc-maturity-ladder",
+        ".btc-decision-card", ".btc-evidence-grid", ".btc-maturity-ladder",
         ".btc-table-card table tbody tr",
     ],
     "ai-strategy": [
@@ -275,7 +275,7 @@ def audit_one_page(page: Page, page_id: str, route: str, wait_ms: int) -> dict:
                 ".events-feed-card", ".event-card.event-feed-item",
                 "#macro-summary-cards", "#macro-statusbar",
                 ".knowledge-metrics", ".knowledge-card-grid",
-                ".btc-decision-card", ".btc-evidence-layer",
+                ".btc-decision-card", ".btc-evidence-grid",
                 ".gold-workbench-card", ".gold-mini-card"]:
         try:
             loc = page.locator(sel)

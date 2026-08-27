@@ -77,7 +77,10 @@ def _compute_technical_indicators(candles: list) -> dict:
     closes = [c.close for c in candles]
     highs = [c.high for c in candles]
     lows = [c.low for c in candles]
-    typicals = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+    typicals = [
+        (high + low + close) / 3
+        for high, low, close in zip(highs, lows, closes, strict=True)
+    ]
 
     # ── RSI(14) ──
     rsi = _compute_rsi(closes, 14)
@@ -131,7 +134,9 @@ def _compute_ema(values: list[float], period: int) -> float | None:
     return ema
 
 
-def _compute_bollinger_pct_b(closes: list[float], period: int = 20, num_std: float = 2.0) -> float | None:
+def _compute_bollinger_pct_b(
+    closes: list[float], period: int = 20, num_std: float = 2.0
+) -> float | None:
     """Bollinger %B = (price - lower) / (upper - lower). 0 = at lower band, 1 = at upper band."""
     if len(closes) < period:
         return None
@@ -387,7 +392,10 @@ async def get_gold_v3_allocation(
         try:
             candles = [
                 item for item in (
-                    normalize_candle(c) for c in await repo.list_candles(XAUT_INSTRUMENT_ID, "1d", limit=260)
+                    normalize_candle(c)
+                    for c in await repo.list_candles(
+                        XAUT_INSTRUMENT_ID, "1d", limit=260
+                    )
                 ) if item
             ]
         except Exception:
@@ -652,19 +660,12 @@ async def get_gold_workbench(
     policy = await policy_repo.latest(user.tenant_id, user.user_id) if policy_repo else None
 
     macro_payload = await _macro_payload(repo)
-    # GoldDerivativesService.build_snapshot() fans out to 6 perp endpoints
-    # across Bybit + OKX + Binance plus a CFTC weekly pull. The perp layer
-    # is concurrent (``asyncio.gather``) so the worst-case wall time is
-    # the slowest single venue (~10s) plus the COT request (~20s). Bound
-    # the wait so a slow/unreachable network cannot block the workbench
-    # response; fall back to ``{}`` on timeout/exception (governance shows
-    # the derivatives row as missing).
-    try:
-        derivatives = await asyncio.wait_for(
-            GoldDerivativesService().build_snapshot(), timeout=15.0
-        )
-    except Exception:
-        derivatives = {}
+    # Keep the critical XAUT/policy path independent from optional derivatives.
+    # A cold derivatives snapshot fans out to six venue endpoints plus CFTC and
+    # can take 10-20 seconds. The aggregate endpoint therefore reads memory/disk
+    # LKG only; the frontend refreshes /gold/derivatives in parallel and patches
+    # that card when the enhancement arrives.
+    derivatives = GoldDerivativesService().read_cached_snapshot()
 
     # Load XAUT_USDT 1d candles for both the indicators and the chart
     # snapshot. build_xaut_market_state_from_candles() only returns computed

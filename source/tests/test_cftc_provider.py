@@ -1,14 +1,18 @@
 """Tests for CFTC COT provider."""
+import io
+import zipfile
 from datetime import datetime, timezone
 
+# Official CFTC fixture rows intentionally preserve their full CSV width.
+# ruff: noqa: E501
 import pytest
 
 from app.services.macro.providers.cftc import (
     CotSnapshot,
     _compute_percentile,
     _parse_cot_csv,
+    _parse_cot_history_zip,
 )
-
 
 # Sample CFTC disaggregated COT report with gold line
 _SAMPLE_COT_CSV = """\
@@ -41,6 +45,17 @@ class TestParseCotCsv:
 
     def test_returns_none_for_empty_csv(self):
         assert _parse_cot_csv("") is None
+
+    def test_parses_official_annual_zip(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("f_year.txt", _SAMPLE_COT_CSV)
+
+        snapshots = _parse_cot_history_zip(buffer.getvalue())
+
+        assert len(snapshots) == 1
+        assert snapshots[0].report_date == datetime(2026, 7, 14, tzinfo=timezone.utc)
+        assert snapshots[0].managed_money_net == 137862
 
 
 class TestPercentile:

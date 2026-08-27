@@ -28,6 +28,8 @@ from app.db.models.market import (
     TranslationCache,
     TranslationJob,
     TranslationTextCache,
+    VolatilityFeatureObservation,
+    VolatilityResearchSnapshot,
 )
 
 __all__ = [
@@ -64,4 +66,6 @@ __all__ = [
     "TranslationCache",
     "TranslationJob",
     "TranslationTextCache",
+    "VolatilityFeatureObservation",
+    "VolatilityResearchSnapshot",
 ] 
