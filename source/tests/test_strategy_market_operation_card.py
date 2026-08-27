@@ -45,9 +45,10 @@ def test_grid_five_is_fixed_three_cols():
 
 def test_grid_five_responsive_fallback():
     src = _read(STYLES)
-    assert "@media (max-width: 960px)" in src and \
+    # 2026-08-27 §13.2 #7: 960 → 900 (tablet tier).
+    assert "@media (max-width: 900px)" in src and \
         "grid-template-columns: repeat(2, minmax(0, 1fr))" in src, \
-        "960px breakpoint must fall back to 2 cols"
+        "tablet 900px breakpoint must fall back to 2 cols"
     assert "@media (max-width: 560px)" in src, \
         "560px breakpoint must collapse to 1 col"
 

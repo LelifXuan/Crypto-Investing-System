@@ -51,8 +51,8 @@ def test_editorial_tokens_and_responsive_breakpoints_are_locked() -> None:
         "--reading-measure: 800px",
         "--accent: #66548e",
         "--info: #3e6f9f",
-        "@media (max-width: 1279px)",
-        "@media (max-width: 767px)",
+        "@media (max-width: 1180px)",
+        "@media (max-width: 720px)",
     }
     for fragment in required:
         assert fragment in EDITORIAL

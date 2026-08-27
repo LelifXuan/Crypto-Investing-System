@@ -14,6 +14,7 @@ def test_monitoring_sources_use_four_columns_on_wide_screens() -> None:
 
 
 def test_monitoring_sources_collapse_responsively() -> None:
-    assert "@media (max-width: 1279px)" in EDITORIAL
+    # 2026-08-27 §13.2 #7: 1279 → 1180, 640 → 720 (mobile-l).
+    assert "@media (max-width: 1180px)" in EDITORIAL
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in EDITORIAL
-    assert "@media (max-width: 640px)" in EDITORIAL
+    assert "@media (max-width: 720px)" in EDITORIAL

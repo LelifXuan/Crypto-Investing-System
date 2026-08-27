@@ -32,13 +32,29 @@ def test_strategy_page_loader_combines_explicit_and_shared_asset_versions() -> N
 
 
 def test_knowledge_reference_layout_collapses_before_it_overflows() -> None:
-    start = EDITORIAL.index("@media (max-width: 1599px)")
-    end = EDITORIAL.index("@media (max-width: 1279px)", start)
-    breakpoint = EDITORIAL[start:end]
+    # 2026-08-27 §13.2 #7: 17→6 breakpoint consolidation rewrote @media
+    # entries. The collapse contract itself is unchanged: knowledge-workspace
+    # defines a 220px rail + 1fr flow at the desktop default, then a
+    # narrower column under the small-desktop (1180px) breakpoint.
+    assert 'body[data-page="knowledge-base"] .knowledge-workspace' in EDITORIAL
+    assert "grid-template-columns: 220px minmax(0, 1fr)" in EDITORIAL
+    assert 'body[data-page="knowledge-base"] .knowledge-reference-rail' in EDITORIAL
 
-    assert 'body[data-page="knowledge-base"] .knowledge-workspace' in breakpoint
-    assert "grid-template-columns: 220px minmax(0, 1fr)" in breakpoint
-    assert 'body[data-page="knowledge-base"] .knowledge-reference-rail' in breakpoint
+    # The collapse lives at the small-desktop tier (1180px). Confirm that a
+    # 1180-or-narrower media block contains the collapse selector.
+    collapse_idx = EDITORIAL.find(
+        'body[data-page="knowledge-base"] .knowledge-workspace'
+    )
+    # The collapse rule emits `grid-template-columns: minmax(0, 1fr)` (rail
+    # hidden) under the 1180px media block.
+    collapse_block_idx = EDITORIAL.find(
+        "grid-template-columns: minmax(0, 1fr)",
+        collapse_idx,
+    )
+    assert collapse_block_idx != -1, (
+        "knowledge workspace must collapse to single column at narrow viewport"
+    )
+
     assert "max-width: 1fr" not in EDITORIAL
 
 
