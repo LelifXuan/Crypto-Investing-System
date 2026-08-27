@@ -95,16 +95,19 @@ def test_v31_section_13_2_8_marked_closed() -> None:
 def test_v31_has_section_14_5_remaining_debts() -> None:
     source = _read(SOURCE_DOC)
     assert "## 14.5" in source, (
-        "V3.1 should include §14.5 V3.2 remaining debts"
+        "V3.1 should include §14.5 (V3.2 / V3.3 remaining debts)"
     )
     section_14_5 = re.search(
         r"## 14\.5.*?(?=\n##\s|\Z)", source, re.DOTALL
     )
     assert section_14_5 is not None
     body = section_14_5.group(0)
-    assert "H1→H2" in body or "H1" in body and "H2" in body
-    assert "UI_UX_AUDIT" in body or "UI/UX_AUDIT" in body, (
-        "§14.5 must list UI_UX_AUDIT path-split debt"
+    # V3.3 has fully cleared V3.2's debts; §14.5 must reflect that.
+    # Either form is acceptable: (a) "已收敛" marker + "§13.2 #2"
+    # (historical, recommended), or (b) explicit empty-list claim.
+    closed_marker = re.search(r"已收敛|已结清|§13\.2 全部", body)
+    assert closed_marker is not None, (
+        "§14.5 must carry a V3.3 closure marker (e.g. 已收敛 / §13.2 全部)"
     )
 
 
@@ -151,16 +154,22 @@ def test_no_path_split_to_legacy_audit_or_spec() -> None:
     root path of any docs/ file that was migrated to source/docs/ in V2.2
     (commit f6a937e). The audit notes that V2.2's R100 rename of the
     `docs/` subtree to `source/docs/` was not followed up by code-comment
-    updates; this guard prevents re-introduction."""
-    # Patterns we now reject (must always reference the source/docs/ path).
-    # Use negative-lookbehind so `source/docs/...` (the canonical path)
-    # does not match. A bare `docs/UI_UX_AUDIT_2026-07-31.md` (with no
-    # preceding path or after whitespace / punctuation) is the failure
-    # mode we want to catch.
-    bad_patterns = [
-        r"(?<!source/)docs/UI_UX_AUDIT_2026-07-31\.md",
-        r"(?<!source/)docs/superpowers/specs/2026-07-31-dropdown-revision-design\.md",
-        r"(?<!source/)docs/research/btc_volatility/CURRENT_VOLATILITY_BASELINE_AUDIT\.md",
+    updates; this guard prevents re-introduction.
+
+    Two pattern forms are forbidden:
+      (a) `source/...docs/X.md` — already-correct canonical paths
+          are exempt (we strip them before scanning).
+      (b) `ROOT / "docs/X.md"` Python Path-builder strings — ROOT in
+          test layouts already points at source/, so these resolve
+          correctly. We strip them too.
+
+    Remaining bare `docs/X.md` references are the actual regression
+    mode we want to catch.
+    """
+    legacy_substrings = [
+        "docs/UI_UX_AUDIT_2026-07-31.md",
+        "docs/superpowers/specs/2026-07-31-dropdown-revision-design.md",
+        "docs/research/btc_volatility/CURRENT_VOLATILITY_BASELINE_AUDIT.md",
     ]
 
     # Skip the meta-zones that legitimately mention the legacy path:
@@ -185,9 +194,15 @@ def test_no_path_split_to_legacy_audit_or_spec() -> None:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
-        for pat in bad_patterns:
-            if re.search(pat, text):
-                offenders.append(f"{path}: {pat}")
+
+        # Strip canonical-path mentions (already correct form).
+        scrubbed = re.sub(r"source/docs/[^\s\"')\]]+", "", text)
+        # Strip Python Path-builder strings ROOT / "docs/...".
+        scrubbed = re.sub(r"ROOT\s*/\s*\"docs/[^\"]+\"", "ROOT_/_PATH_BUILDER", scrubbed)
+
+        for legacy in legacy_substrings:
+            if legacy in scrubbed:
+                offenders.append(f"{path}: {legacy}")
 
     assert not offenders, (
         "Path-split references to migrated docs/ found:\n  " + "\n  ".join(offenders[:20])
