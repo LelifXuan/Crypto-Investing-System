@@ -17,7 +17,7 @@
 
 1. 根目录 `AGENTS.md` 的工程、验证、数据正确性和可访问性约束；
 2. 本手册的视觉语言、组件模式和页面结构；
-3. `source/docs/design-guidelines.md` 中未与前两项冲突的交互工程细则；
+3. `source/docs/design-guidelines-legacy.md`（2026-08-27 V3.2 归档）中的旧工程细则；本节起以本手册为唯一权威；
 4. 页面局部样式。
 
 修改 UI 时必须先确认本手册是否已有对应模式。没有模式时，先补充组件规范，再新增实现；不要从单个页面复制一套近似组件。
@@ -566,12 +566,24 @@ backdrop-filter: blur(var(--glass-blur));
 4. **图表色散落在 JS**：技术指标、形态结构、衍生品和黄金页面存在大量硬编码 series 色。应统一到 chart palette token，并为每个序列定义用途。
 5. **知识百科横向溢出**：1280×720 浏览器抽查发现 document 宽度超过 viewport。优先检查 1279px 下 `knowledge-workspace` 的 220px + `--reading-measure` 组合、工具栏和长内容的 `min-width`。
 6. **局部组件仍覆盖全局视觉**：知识章节卡仍使用旧 `rgba(99,102,241,...)` 色值，与当前 `#66548e` editorial accent 不完全一致，应改用 token。
+   *2026-08-27 V3.2*：已收敛。`styles.css` 中 91 处 `rgba(99,102,241,α)` 全部迁入 `editorial.css :root` 的 20 个 `--info-*` token（base + sub-tier），保留 indigo hue 不变；详见 §3.2 与 `tests/test_local_component_color_tokens.py`。
 7. **断点过多**：当前存在 1500、1279、1180、1100、980、900、780、767、720、700、640、560 等近邻断点。后续应收敛为壳层、内容层和移动层三组，而不是继续新增。
+   *2026-08-27 V3.2*：已收敛。17 个 width 值收为 6 组：`560` (mobile-s) / `720` (mobile-l) / `900` (tablet) / `1180` (small-desktop) / 默认 (desktop, 2560×1440 基线) / `1500` (wide-desktop)；`520` 作为 mobile-s 内部 extreme sub-tier 保留作扩展点；详见 §11 与 `tests/test_responsive_breakpoints_consolidated.py`。
 8. **文档分叉**：根手册与 `source/docs/design-guidelines.md` 曾出现调色板和 2560×1600/1440 视口冲突。后续应以本手册为视觉基线，并逐步把旧文件收敛为工程检查清单。
+   *2026-08-27 V3.2*：已收敛。`source/docs/design-guidelines.md` 重命名为 `source/docs/design-guidelines-legacy.md` 并加废弃 banner；本章末新增 §14.5 列出本轮剩余债务。
 
-已治理：区块级折叠控件已收敛到共享 `disclosure` 组件；知识指南和 AI 详情保留为明确的 `inline` 层级，不再与区块操作混用。
+已治理：区块级折叠控件已收敛到共享 `disclosure` 组件；知识指南和 AI 详情保留为明确的 `inline` 层级，不再与区块操作混用。2026-08-27 V3.2 同步治理 §13.2 #3（governance ledger 共享基类 + 5 个 variant 修饰符）与 §13.2 #4（chart series token 化，21 个 `--series-*` 加 getSeriesColor/getPatternFill API）。
 
 这些债务是后续迭代清单，不授权一次性全站重构。每次只处理一个共享组件或一个页面家族，并保留全量验证。
+
+---
+
+## 14.5 V3.2 本轮剩余债务（2026-08-27 状态）
+
+仅记录 V3.2 仍未处理、需在 V3.3 推进的债务项；其余债务参见 §13.2。
+
+- **§13.2 #2 页面标题语义不一致**：`gold_v5.js:156` 的 `.gold-page-h1` 残留类，以及 BTC 衍生品 / AI 策略 / 知识百科内容区仍存在的额外 H1 结构。需统一为 display class + H2。
+- **`source/docs/UI_UX_AUDIT_2026-07-31.md` 路径分叉**：8 处代码注释指向 `docs/UI_UX_AUDIT_2026-07-31.md`（根路径），但文件实际位于 `source/docs/UI_UX_AUDIT_2026-07-31.md`。属于 #8 文档分叉的同类问题，V3.2 范围内未处理；建议要么复制一份到根 `docs/`，要么批量改 8 处引用指向 `source/docs/`。
 
 ---
 

@@ -1,10 +1,6 @@
-# 设计纪律 — Crypto Investing Terminal 〔**已废弃 — 2026-08-27 V3.2**〕
+# 设计纪律 — Crypto Investing Terminal
 
-> ⚠️ **已废弃 2026-08-27（V3.2 归档）。** 当前规范以仓库根目录 `docs/design-guidelines.md` 为准。本文件保留供历史追溯与 git archeology，**不允许新增内容**。如需修改工程规范，请直接在根手册 V3.1+ 追加。
->
-> 同名留底 `source/docs/design-guidelines-legacy.md` 承载本文件 2026-08-24 之前的完整 316 行内容；本文件以下正文同此快照，仅在章节级追加「已迁入根手册 §X」注释，不再维护内容本身。
->
-> 详见根手册 V3.1 §0 第 3 条（已修订为引用 `legacy` 文件）、§13.2 #8（标记已收敛）、§14.5（本轮剩余债务清单）。
+> 历史工程检查附录。视觉 token、共享组件和页面布局的唯一规范以仓库根目录 `docs/design-guidelines.md` 为准；本文件只保留尚未迁移的工程细则，冲突时不得覆盖根手册。
 
 ## 0. 文件性质
 
@@ -13,7 +9,6 @@
 - 与现有 token（`source/app/static/styles.css` `:root` 区）的冲突一律以本文件为准；token 是实现层，本文件是规范层。
 
 ## 1. 资料来源
-<!-- migrated to docs/design-guidelines.md 附录 A (2026-08-27 V3.2) -->
 
 | 来源 | 定位 | 本文件取其 |
 |---|---|---|
@@ -136,7 +131,6 @@
 - 长动效用 spring（Motion / Framer Motion 的 `useSpring`），让手势中断平滑反转。本仓库目前未引入 Motion，但保留升级通道。
 
 ## 7. 排版
-<!-- migrated to docs/design-guidelines.md §4.1 字符级规范 (2026-08-27 V3.2) -->
 
 - **省略号**：`…`（U+2026）非三连点 `...`。
 - **引号**：弯引号 `" "` `' '`。
@@ -160,7 +154,6 @@
 行高：1.5（正文）/ 1.3（标题）/ 1.2（display）。
 
 ## 8. 表单
-<!-- migrated to docs/design-guidelines.md §10 表单规则 (2026-08-27 V3.2) -->
 
 - 输入有 `autocomplete` + 语义化 `name`。
 - 正确 `type` + `inputmode`（`email`/`tel`/`url`/`number`）。
@@ -265,7 +258,6 @@
 ```
 
 ## 13. 按钮微交互（emil-design-eng）
-<!-- migrated to docs/design-guidelines.md §7.2 按钮 — 注意根手册为 scale(0.96)，本节为 scale(0.97)，以根手册为准 (2026-08-27 V3.2) -->
 
 - `:active` 给 `transform: scale(0.97)` + 160ms ease-out；scale 范围 0.95–0.98。
 - `:hover` 比常态对比度更高（不只换颜色，加深或提亮）。
@@ -273,7 +265,6 @@
 - 按钮内容变化时（如 "保存" → "保存中…" → "已保存"），中间过渡加 `filter: blur(2px); opacity: 0.7` 掩盖跳变（保持 < 20px blur，Safari 性能考虑）。
 
 ## 14. 弹层 / Popover / Drawer
-<!-- migrated to docs/design-guidelines.md §9 末尾 微交互扩展 (2026-08-27 V3.2) -->
 
 - `transform-origin: var(--transform-origin)` 跟随触发器。**Modal 例外**（无锚点，居中放大）。
 - 不从 `scale(0)` 开始；从 `scale(0.9)` + `opacity: 0` 进入（"现实世界没有从无到有的东西"）。
@@ -284,7 +275,6 @@
 - 全屏 modal/drawer 加 `overscroll-behavior: contain` 防止滚动穿透。
 
 ## 15. 反模式清单（Vercel + taste-skill + 本仓库沉淀）
-<!-- migrated to docs/design-guidelines.md §14 评审清单 (2026-08-27 V3.2) -->
 
 按发现即标 FAIL：
 
