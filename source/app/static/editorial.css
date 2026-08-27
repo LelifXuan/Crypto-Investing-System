@@ -3373,7 +3373,7 @@ body[data-page="gold-allocation"] .gold-hero .card-head-inline {
   align-items: center;
 }
 
-body[data-page="gold-allocation"] .gold-cockpit-header .gold-page-h1 {
+body[data-page="gold-allocation"] .gold-cockpit-header .page-display-title {
   margin: 2px 0 3px;
   font-size: clamp(28px, 2vw, 34px);
   line-height: 1.12;

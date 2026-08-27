@@ -154,7 +154,7 @@ function renderHero(data) {
         <div class="card-head-inline">
           <div>
             <p class="eyebrow">GOLD ALLOCATION</p>
-            <h2 class="page-display-title gold-page-h1">黄金配置 Workbench</h2>
+            <h2 class="page-display-title">黄金配置 Workbench</h2>
             <p class="gold-page-sub">${escapeHtml(subtitle)}</p>
             ${
               shock

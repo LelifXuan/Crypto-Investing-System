@@ -12237,12 +12237,6 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   gap: 16px;
   align-items: flex-end;
 }
-.gold-page-h1 {
-  font-size: 34px;
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  color: var(--ink, #1f1b16);
-}
 .gold-page-sub {
   font-size: 14px;
   color: var(--text-secondary, #6b6357);
