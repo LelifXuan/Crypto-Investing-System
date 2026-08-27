@@ -194,7 +194,7 @@ function renderContextBar(items, isCalendarCollapsed) {
     <div class="macro-calendar-head">
       <div class="macro-context-copy">
         <p class="eyebrow">CALENDAR</p>
-        <h2>宏观日历</h2>
+        <h2 class="page-display-title">宏观日历</h2>
       </div>
       <dl class="macro-metrics-grid">
         <div class="macro-inline-metric">
@@ -235,7 +235,7 @@ function renderCalendarSkeleton() {
     <section id="macro-calendar-container">
       <article class="card macro-calendar-card is-collapsed">
         <div class="macro-calendar-head">
-          <div class="macro-context-copy"><p class="eyebrow">CALENDAR</p><h2>宏观日历</h2></div>
+          <div class="macro-context-copy"><p class="eyebrow">CALENDAR</p><h2 class="page-display-title">宏观日历</h2></div>
           <dl class="macro-metrics-grid">
             <div class="skeleton-cell" style="width:64px;height:32px"></div>
             <div class="skeleton-cell" style="width:64px;height:32px"></div>

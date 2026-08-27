@@ -772,7 +772,7 @@ function heroTemplate() {
         <div class="analysis-hero-top">
           <div>
             <p class="eyebrow">MARKET ANALYSIS</p>
-            <h2>行情与指标一体视图</h2>
+            <h2 class="page-display-title">行情与指标一体视图</h2>
             <p class="section-summary" id="analysis-summary"></p>
           </div>
           <div class="toolbar compact-toolbar">
