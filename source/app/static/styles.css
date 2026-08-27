@@ -715,7 +715,7 @@ textarea {
   background: rgba(255, 253, 249, 0.68);
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .macro-month-toolbar {
     flex-direction: column;
     align-items: stretch;
@@ -797,7 +797,7 @@ table thead th {
   box-shadow: inset 0 -1px 0 rgba(175, 154, 123, 0.16);
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   table thead th {
     position: static;
   }
@@ -1705,7 +1705,7 @@ main:has(.tooltip-anchor:focus-within) {
   justify-self: start;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1180px) {
   .monitoring-observation-grid {
     grid-template-columns: 1fr;
   }
@@ -1818,7 +1818,7 @@ body[data-page="macro-calendar"] #macro-calendar-detail {
     linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(247, 243, 236, 0.94));
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .monitoring-category-grid,
   .monitoring-list-technical,
   .monitoring-list-onchain {
@@ -1895,7 +1895,7 @@ body[data-page="macro-calendar"] .monitoring-side-card {
   z-index: 1;
 }
 
-@media (min-width: 1400px) {
+@media (min-width: 1500px) {
   .metric strong {
     font-size: 36px;
   }
@@ -1921,7 +1921,7 @@ body[data-page="macro-calendar"] .monitoring-side-card {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .cols-2,
   .cols-3,
   .cols-4 {
@@ -3073,7 +3073,7 @@ tr.is-supply-event td {
   background: rgba(255, 247, 237, 0.72);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1180px) {
   .analysis-hero-grid,
   .analysis-chart-grid,
   .monitoring-observation-grid,
@@ -3595,7 +3595,7 @@ tr.is-supply-event td {
   justify-self: start;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .monitoring-hero-grid {
     grid-template-columns: 1fr;
   }
@@ -5260,7 +5260,7 @@ button:hover,
   text-align: right;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1500px) {
   .analysis-signal-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -5304,7 +5304,7 @@ button:hover,
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .structure-layout,
   .structure-overview-grid,
   .structure-diagnostics-grid,
@@ -5322,7 +5322,7 @@ button:hover,
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .hero-card {
     padding: 18px;
   }
@@ -5583,7 +5583,7 @@ body[data-page="ai-strategy"] main {
   margin: 8px 0 0;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .strategy-compact-toolbar,
   .strategy-primary-card .strategy-decision-head {
     align-items: stretch;
@@ -6206,7 +6206,7 @@ body[data-page="ai-strategy"] main {
   margin: 12px 0;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 720px) {
   .etf-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6492,7 +6492,7 @@ body[data-page="ai-strategy"] main {
   margin-right: 4px;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .knowledge-toolbar,
   .knowledge-card-grid {
     grid-template-columns: 1fr;
@@ -6521,7 +6521,7 @@ body[data-page="ai-strategy"] main {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .etf-dashboard-head,
   .etf-dashboard-bottom {
     align-items: stretch;
@@ -6572,7 +6572,7 @@ body[data-page="ai-strategy"] main {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .strategy-toolbar,
   .strategy-decision-head {
     align-items: stretch;
@@ -6679,13 +6679,13 @@ body[data-page="ai-strategy"] main {
   color: #a44c1d;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .macro-contribution-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .macro-contribution-list {
     grid-template-columns: 1fr;
   }
@@ -7466,13 +7466,13 @@ ul.terminal-summary-watch li {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .monitoring-snapshot-grid {
     grid-template-columns: 1fr;
   }
 }
 
-@media (min-width: 1181px) and (max-width: 1500px) {
+@media (min-width: 1180px) and (max-width: 1500px) {
   .monitoring-topbar-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -7520,7 +7520,7 @@ ul.terminal-summary-watch li {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .monitoring-snapshot-grid,
   .macro-mini-metrics,
   .macro-indicator-grid,
@@ -7615,7 +7615,7 @@ ul.terminal-summary-watch li {
   font-size: 12px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .strategy-divergence-grid,
   .strategy-divergence-conditions {
     grid-template-columns: 1fr;
@@ -7995,7 +7995,7 @@ ul.terminal-summary-watch li {
 .strategy-review-warnings { padding: 8px 0; }
 .strategy-review-warnings p { margin: 2px 0; font-size: 0.84rem; }
 
-@media (max-width: 768px) {
+@media (max-width: 720px) {
   .strategy-trigger-grid { grid-template-columns: 1fr; }
   .strategy-plan-board { grid-template-columns: 1fr; }
   .monitoring-snapshot-grid { grid-template-columns: 1fr; }
@@ -8113,13 +8113,13 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   color: var(--bearish);
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .btc-provider-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .btc-provider-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -8813,7 +8813,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   white-space: nowrap;
 }
 
-@media (min-width: 1181px) and (max-width: 1500px) {
+@media (min-width: 1180px) and (max-width: 1500px) {
   .strategy-overview-main h2 {
     max-width: 14ch;
     font-size: clamp(2.5rem, 4vw, 3rem);
@@ -9616,7 +9616,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   }
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1180px) {
   .btc-card-span-8,
   .btc-card-span-6,
   .btc-card-span-4 {
@@ -9644,7 +9644,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   }
 }
 
-@media (max-width: 780px) {
+@media (max-width: 720px) {
   .btc-derivatives-hero,
   .btc-section-heading {
     align-items: stretch;
@@ -9922,7 +9922,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-@media (max-width: 960px) {
+@media (max-width: 900px) {
   .strategy-v2-grid.five {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -11112,7 +11112,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .gold-text-muted { color: var(--text-tertiary); }
 
 
-@media (max-width: 800px) {
+@media (max-width: 720px) {
   .gold-signal-grid { grid-template-columns: 1fr; }
   .gold-workbench { grid-template-columns: 1fr; }
 /* ------------------------------------------------------------------ */
@@ -11594,7 +11594,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   transform: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 720px) {
   .strategy-detail-build-flow {
     grid-template-columns: 1fr;
   }
@@ -11808,13 +11808,13 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   background: var(--surface-glass);
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .strategy-supply-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 720px) {
   .strategy-supply-grid,
   .strategy-supply-conditions {
     grid-template-columns: 1fr;
@@ -12713,7 +12713,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   /* 5 columns get crowded below 980px — collapse to 2-up so each card
    * keeps readable typography. (1180–980 stays at 3-up.) */
   .etf-equity-stats {
