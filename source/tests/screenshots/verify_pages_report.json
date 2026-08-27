@@ -6,12 +6,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 208.8,
+      "duration_ms": 121.4,
       "state": "found:.analysis-hero-grid",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
       "screenshot": "tests\\screenshots\\market-analysis.png",
-      "long_task_max_ms": 89.0,
+      "long_task_max_ms": 105.0,
       "failed_responses": []
     },
     {
@@ -20,7 +20,7 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 73.4,
+      "duration_ms": 77.9,
       "state": "found:#monitoring-topbar",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
@@ -34,7 +34,7 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 70.1,
+      "duration_ms": 73.5,
       "state": "found:.structure-page",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
@@ -48,7 +48,7 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 123.0,
+      "duration_ms": 104.8,
       "state": "found:.events-feed-shell",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
@@ -62,7 +62,7 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 110.6,
+      "duration_ms": 30.2,
       "state": "found:#macro-statusbar",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
@@ -76,7 +76,7 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 73.9,
+      "duration_ms": 106.2,
       "state": "found:.strategy-scan-page",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
@@ -90,12 +90,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 23.5,
+      "duration_ms": 148.2,
       "state": "found:.knowledge-hero",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
       "screenshot": "tests\\screenshots\\knowledge-base.png",
-      "long_task_max_ms": 0.0,
+      "long_task_max_ms": 57.0,
       "failed_responses": []
     },
     {
@@ -104,12 +104,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 96.5,
+      "duration_ms": 107.1,
       "state": "found:#etf-overview",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
       "screenshot": "tests\\screenshots\\ashare-etf.png",
-      "long_task_max_ms": 55.0,
+      "long_task_max_ms": 59.0,
       "failed_responses": []
     },
     {
@@ -118,12 +118,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 86.0,
+      "duration_ms": 85.5,
       "state": "found:.btc-derivatives-page",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
       "screenshot": "tests\\screenshots\\btc-derivatives.png",
-      "long_task_max_ms": 107.0,
+      "long_task_max_ms": 126.0,
       "failed_responses": []
     },
     {
@@ -132,12 +132,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 549.3,
+      "duration_ms": 82.0,
       "state": "found:.strategy-scan-page",
       "data_integrity_ok": true,
       "data_integrity_state": "ok",
       "screenshot": "tests\\screenshots\\ai-strategy.png",
-      "long_task_max_ms": 65.0,
+      "long_task_max_ms": 74.0,
       "failed_responses": []
     },
     {
@@ -146,12 +146,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 115.1,
+      "duration_ms": 302.5,
       "state": "found:.gold-workbench-grid",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
       "screenshot": "tests\\screenshots\\gold-allocation.png",
-      "long_task_max_ms": 172.0,
+      "long_task_max_ms": 174.0,
       "failed_responses": []
     }
   ],
@@ -159,70 +159,70 @@
     {
       "page_id": "market-analysis",
       "ok": true,
-      "duration_ms": 3.4,
+      "duration_ms": 4.2,
       "state": "found:.analysis-hero-grid",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "monitoring-overview",
       "ok": true,
-      "duration_ms": 142.1,
+      "duration_ms": 130.5,
       "state": "found:#monitoring-topbar",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "market-structure",
       "ok": true,
-      "duration_ms": 559.9,
+      "duration_ms": 558.6,
       "state": "found:.structure-page",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "market-events",
       "ok": true,
-      "duration_ms": 140.8,
+      "duration_ms": 119.7,
       "state": "found:.events-feed-shell",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "macro-calendar",
       "ok": true,
-      "duration_ms": 176.3,
+      "duration_ms": 183.6,
       "state": "found:#macro-statusbar",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "knowledge-base",
       "ok": true,
-      "duration_ms": 145.8,
-      "state": "found:.knowledge-sections",
+      "duration_ms": 149.4,
+      "state": "found:.knowledge-hero",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "ashare-etf",
       "ok": true,
-      "duration_ms": 160.3,
+      "duration_ms": 156.5,
       "state": "found:#etf-overview",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "btc-derivatives",
       "ok": true,
-      "duration_ms": 313.8,
+      "duration_ms": 294.6,
       "state": "found:.btc-derivatives-page",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "ai-strategy",
       "ok": true,
-      "duration_ms": 128.6,
+      "duration_ms": 125.9,
       "state": "found:.strategy-scan-page",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "gold-allocation",
       "ok": true,
-      "duration_ms": 305.6,
+      "duration_ms": 368.8,
       "state": "found:.gold-workbench-grid",
       "long_task_max_ms": 0.0
     }

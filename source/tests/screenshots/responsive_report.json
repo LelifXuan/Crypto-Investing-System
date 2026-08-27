@@ -225,18 +225,12 @@
           "viewport": "mobile-s",
           "width": 375,
           "height": 667,
-          "scroll_width": 387,
+          "scroll_width": 375,
           "client_width": 375,
-          "has_overflow": true,
+          "has_overflow": false,
           "content_visible": true,
-          "findings": [
-            {
-              "check": "horizontal-overflow",
-              "severity": "FAIL",
-              "detail": "scrollWidth=387px > viewport=375px"
-            }
-          ],
-          "verdict": "FAIL",
+          "findings": [],
+          "verdict": "PASS",
           "screenshot": "tests\\screenshots\\responsive\\market-structure_375x667.png"
         },
         {
@@ -324,13 +318,9 @@
           "screenshot": "tests\\screenshots\\responsive\\market-structure_2560x1440.png"
         }
       ],
-      "overflow_viewports": [
-        "mobile-s"
-      ],
-      "fail_viewports": [
-        "mobile-s"
-      ],
-      "verdict": "FAIL"
+      "overflow_viewports": [],
+      "fail_viewports": [],
+      "verdict": "PASS"
     },
     {
       "page_id": "market-events",
@@ -1063,7 +1053,7 @@
   ],
   "summary": {
     "total_pages": 10,
-    "pages_with_fails": 1,
-    "total_overflow_viewports": 1
+    "pages_with_fails": 0,
+    "total_overflow_viewports": 0
   }
 }
