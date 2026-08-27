@@ -3499,7 +3499,7 @@ tr.is-supply-event td {
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-  background: var(--neutral-soft, var(--info-ghost));
+  background: var(--neutral-soft);
   border-radius: 999px;
 }
 
@@ -8518,7 +8518,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   padding: 0 12px;
   border: 1px solid rgba(31, 42, 58, 0.1);
   border-radius: 14px;
-  background: var(--accent-ghost, var(--info-tint-em));
+  background: var(--accent-ghost);
   color: var(--ink);
   font-size: 13px;
   font-weight: 700;
