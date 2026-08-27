@@ -24,7 +24,8 @@ import {
   skeletonPhaseStyle,
 } from "../core/dom.js";
 import { waitForAbortableDelay, waitForPrecomputeTask } from "../core/precompute.js";
-import { barDataset, destroyChartsForPage, lineDataset, renderChart } from "../ui/charts.js";
+import { barDataset, destroyChartsForPage, getSeriesColor, lineDataset, renderChart } from "../ui/charts.js";
+import { renderGovernanceLedger } from "../ui/governanceLedger.js";
 
 const CHART_PREFIX = "gold-chart-";
 
@@ -382,30 +383,23 @@ function formatSourceAge(seconds) {
 function governanceSourceItem(manifest, label, sourceKey) {
   const entry = (manifest || []).find((s) => s?.source_key === sourceKey);
   const state = entry?.freshness_state || "missing";
-  return `
-    <article class="governance-ledger__item gold-governance-item" data-state="${escapeHtml(state)}">
-      <div class="governance-ledger__label gold-governance-label">
-        <span class="governance-ledger__dot gold-governance-dot" aria-hidden="true"></span>
-        <span>${escapeHtml(label)}</span>
-      </div>
-      <strong>${escapeHtml(entry ? labelForFreshness(state) : "未配置")}</strong>
-      <small>${escapeHtml(entry ? formatSourceAge(entry.age_seconds) : "尚未接入数据源")}</small>
-    </article>
-  `;
+  return {
+    label,
+    value: entry ? labelForFreshness(state) : "未配置",
+    detail: entry ? formatSourceAge(entry.age_seconds) : "尚未接入数据源",
+    state,
+  };
 }
 
 function governanceSnapshotItem(observed) {
   const ready = !!observed && observed !== "—";
-  return `
-    <article class="governance-ledger__item governance-ledger__snapshot gold-governance-item gold-governance-snapshot" data-state="${ready ? "fresh" : "missing"}">
-      <div class="governance-ledger__label gold-governance-label">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>
-        <span>快照时间</span>
-      </div>
-      <strong>${escapeHtml(ready ? observed : "等待快照")}</strong>
-      <small>${ready ? "UTC · 当前研究快照" : "尚未生成有效快照"}</small>
-    </article>
-  `;
+  return {
+    label: "快照时间",
+    value: ready ? observed : "等待快照",
+    detail: ready ? "UTC · 当前研究快照" : "尚未生成有效快照",
+    state: ready ? "fresh" : "missing",
+    slot: "snapshot",
+  };
 }
 
 function renderGovernance(data) {
@@ -415,21 +409,18 @@ function renderGovernance(data) {
   const readyCount = sourceKeys.filter((sourceKey) => (
     manifest.find((entry) => entry?.source_key === sourceKey)?.freshness_state === "fresh"
   )).length;
-  return `
-    <section class="card governance-ledger gold-governance" aria-labelledby="gold-governance-title">
-      <div class="governance-ledger__head gold-governance-head">
-        <p class="eyebrow">DATA GOVERNANCE</p>
-        <h2 id="gold-governance-title">数据就绪与快照</h2>
-        <p><strong>${readyCount}/${sourceKeys.length}</strong> 个数据源当前可用</p>
-      </div>
-      <div class="governance-ledger__grid gold-governance-grid">
-        ${governanceSourceItem(manifest, "策略配置", "gold_policy")}
-        ${governanceSourceItem(manifest, "XAUT 行情", "gold_spot_quote")}
-        ${governanceSourceItem(manifest, "衍生品", "gold_derivatives")}
-        ${governanceSnapshotItem(observed)}
-      </div>
-    </section>
-  `;
+  const items = [
+    governanceSourceItem(manifest, "策略配置", "gold_policy"),
+    governanceSourceItem(manifest, "XAUT 行情", "gold_spot_quote"),
+    governanceSourceItem(manifest, "衍生品", "gold_derivatives"),
+    governanceSnapshotItem(observed),
+  ];
+  return renderGovernanceLedger({
+    variant: "gold",
+    readyCount,
+    totalCount: items.length,
+    items,
+  });
 }
 
 // ----- Top-level render ----------------------------------------------------
@@ -676,10 +667,10 @@ async function renderGoldCharts(data, signal) {
     data: {
       labels,
       datasets: [
-        lineDataset("XAUT", priceSeries, "#1f1b16", { borderWidth: 1.6 }),
-        lineDataset("MA50", maSeries(candles, 50), "#5b8a83", { borderWidth: 1.2, borderDash: [4, 3] }),
-        lineDataset("SMA200", maSeries(candles, 200), "#b07558", { borderWidth: 1.2, borderDash: [6, 3] }),
-        lineDataset("EMA20", emaSeries(candles, 20), "#7c5fb0", { borderWidth: 1.2, borderDash: [2, 2] }),
+        lineDataset("XAUT", priceSeries, getSeriesColor("XAUT"), { borderWidth: 1.6 }),
+        lineDataset("MA50", maSeries(candles, 50), getSeriesColor("MA50"), { borderWidth: 1.2, borderDash: [4, 3] }),
+        lineDataset("SMA200", maSeries(candles, 200), getSeriesColor("SMA200"), { borderWidth: 1.2, borderDash: [6, 3] }),
+        lineDataset("EMA20", emaSeries(candles, 20), getSeriesColor("EMA20-Gold"), { borderWidth: 1.2, borderDash: [2, 2] }),
       ],
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } },
@@ -690,11 +681,11 @@ async function renderGoldCharts(data, signal) {
     data: {
       labels,
       datasets: [
-        lineDataset("XAUT", priceSeries, "#1f1b16", { borderWidth: 1.2 }),
-        lineDataset("快轨 144", emaSeries(candles, 144), "#5b8a83", { borderWidth: 1.8 }),
-        lineDataset("快轨 169", emaSeries(candles, 169), "#5b8a83", { fill: "-1", backgroundColor: "rgba(91, 138, 131, 0.10)", borderWidth: 1.8 }),
-        lineDataset("慢轨 576", emaSeries(candles, 576), "#7c5fb0", { borderDash: [7, 4], borderWidth: 1.7 }),
-        lineDataset("慢轨 676", emaSeries(candles, 676), "#7c5fb0", { fill: "-1", backgroundColor: "rgba(124, 95, 176, 0.08)", borderDash: [7, 4], borderWidth: 1.7 }),
+        lineDataset("XAUT", priceSeries, getSeriesColor("XAUT"), { borderWidth: 1.2 }),
+        lineDataset("快轨 144", emaSeries(candles, 144), getSeriesColor("MA50"), { borderWidth: 1.8 }),
+        lineDataset("快轨 169", emaSeries(candles, 169), getSeriesColor("MA50"), { fill: "-1", backgroundColor: "rgba(91, 138, 131, 0.10)", borderWidth: 1.8 }),
+        lineDataset("慢轨 576", emaSeries(candles, 576), getSeriesColor("EMA20-Gold"), { borderDash: [7, 4], borderWidth: 1.7 }),
+        lineDataset("慢轨 676", emaSeries(candles, 676), getSeriesColor("EMA20-Gold"), { fill: "-1", backgroundColor: "rgba(124, 95, 176, 0.08)", borderDash: [7, 4], borderWidth: 1.7 }),
       ],
     },
     options: { responsive: true, maintainAspectRatio: false },
@@ -707,8 +698,8 @@ async function renderGoldCharts(data, signal) {
       labels,
       datasets: [
         barDataset("柱状图", macd.hist, macd.hist.map((value) => value >= 0 ? "rgba(91, 138, 131, 0.55)" : "rgba(176, 117, 88, 0.48)"), { borderRadius: 2 }),
-        lineDataset("MACD", macd.line, "#5b8a83", { borderWidth: 1.8 }),
-        lineDataset("信号线", macd.signal, "#b8924a", { borderDash: [6, 4], borderWidth: 1.6 }),
+        lineDataset("MACD", macd.line, getSeriesColor("MA50"), { borderWidth: 1.8 }),
+        lineDataset("信号线", macd.signal, getSeriesColor("SMA200"), { borderDash: [6, 4], borderWidth: 1.6 }),
       ],
     },
     options: { responsive: true, maintainAspectRatio: false },
@@ -727,7 +718,7 @@ async function renderGoldCharts(data, signal) {
     axisProfile: "ratio",
     data: {
       labels,
-      datasets: [lineDataset("%B", bollingerPctB(candles, 20, 2), "#b07558", { borderWidth: 1.2 })],
+      datasets: [lineDataset("%B", bollingerPctB(candles, 20, 2), getSeriesColor("%B"), { borderWidth: 1.2 })],
     },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: -0.2, max: 1.2 } } },
   });
@@ -736,7 +727,7 @@ async function renderGoldCharts(data, signal) {
     axisProfile: "oscillator",
     data: {
       labels,
-      datasets: [lineDataset("RSI14", rsiSeries(candles, 14), "#5b8a83", { borderWidth: 1.4 })],
+      datasets: [lineDataset("RSI14", rsiSeries(candles, 14), getSeriesColor("RSI14"), { borderWidth: 1.4 })],
     },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } },
   });

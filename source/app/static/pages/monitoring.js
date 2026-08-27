@@ -13,6 +13,7 @@ import { judgementMeta } from "../core/judgement.js";
 import { rangeStateLabel, rangeStateTone } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
 import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
+import { renderGovernanceLedger } from "../ui/governanceLedger.js";
 
 let activeController = null;
 let refreshInFlight = false;
@@ -1011,38 +1012,34 @@ function renderMonitoringGovernanceBar(data) {
   // 构建网格项：信源 + 缺数据
   const gridItems = sourceRows.map((s) => {
     const meta = sourceMeta(s.status);
-    return `
-      <article class="monitoring-governance-item" data-state="${meta.tone === "live" ? "fresh" : meta.tone === "stale" ? "stale" : "missing"}">
-        <div class="monitoring-governance-label">
-          <span class="monitoring-governance-dot" data-tone="${meta.tone === "live" ? "info" : meta.tone === "stale" ? "warning" : "danger"}" aria-hidden="true"></span>
-          <span>${escapeHtml(s.label)}</span>
-        </div>
-        <strong>${escapeHtml(meta.label)}</strong>
-      </article>`;
-  }).join("");
+    const state = meta.tone === "live" ? "fresh" : meta.tone === "stale" ? "stale" : "missing";
+    const tone = meta.tone === "live" ? "info" : meta.tone === "stale" ? "warning" : "danger";
+    return {
+      label: s.label,
+      value: meta.label,
+      detail: "",
+      state,
+      tone,
+    };
+  });
 
   // 缺数据计数作为最后一个网格项
-  const missingItem = problematic.length ? `
-    <article class="monitoring-governance-item" data-state="missing">
-      <div class="monitoring-governance-label">
-        <span class="monitoring-governance-dot" data-tone="warning" aria-hidden="true"></span>
-        <span>缺数据</span>
-      </div>
-      <strong>${problematic.length} 项</strong>
-    </article>` : "";
+  if (problematic.length) {
+    gridItems.push({
+      label: "缺数据",
+      value: `${problematic.length} 项`,
+      detail: "",
+      state: "missing",
+      tone: "warning",
+    });
+  }
 
-  return `
-    <section class="card monitoring-governance">
-      <div class="monitoring-governance-head">
-        <p class="eyebrow">DATA GOVERNANCE</p>
-        <h2>数据源状态</h2>
-        <p><strong>${freshSources}/${sourceRows.length}</strong> 个数据源当前可用</p>
-      </div>
-      <div class="monitoring-governance-grid">
-        ${gridItems}${missingItem}
-      </div>
-    </section>
-  `;
+  return renderGovernanceLedger({
+    variant: "monitoring",
+    readyCount: freshSources,
+    totalCount: sourceRows.length,
+    items: gridItems,
+  });
 }
 
 // V1.5.4 C11: diff update. On the first render, build a stable shell

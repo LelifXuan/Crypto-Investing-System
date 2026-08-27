@@ -13,6 +13,7 @@ import { api, invalidateCache } from "../core/api.js";
 import { appState, getInstrumentMeta, persistState } from "../core/state.js";
 import { rangeStateLabel } from "../core/rangeState.js";
 import { mountDropdown } from "../ui/dropdown.js";
+import { getSeriesColor, getPatternFill } from "../ui/charts.js";
 
 const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
 const SYSTEMS = [
@@ -1011,28 +1012,28 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
       if (role === "swing_backbone" || role === "swing_zigzag" || item.kind === "swing_zigzag") {
         opacity = 0.48;
         strokeWidth = CHART_SERIES.swing.width;
-        strokeColor = "#2563eb";
+        strokeColor = getSeriesColor("swing");
         strokeDash = CHART_SERIES.swing.dash;
       } else if (role === "swing_live_leg" || item.kind === "swing_live_leg") {
         opacity = 0.36;
         strokeWidth = 1.5;
-        strokeColor = "#3b82f6";
+        strokeColor = getSeriesColor("swing_live_leg");
         strokeDash = "3 8";
       } else if (role === "neckline") {
-        strokeColor = "#e67e22";
+        strokeColor = getSeriesColor("neckline");
         strokeWidth = 2.5;
         strokeDash = "6,3";
       } else if (role === "upper_boundary" || role === "resistance") {
-        strokeColor = "#e74c3c";
+        strokeColor = getSeriesColor("upper_boundary");
         strokeWidth = 2.2;
         strokeDash = "5,3";
       } else if (role === "lower_boundary" || role === "support") {
-        strokeColor = "#27ae60";
+        strokeColor = getSeriesColor("lower_boundary");
         strokeWidth = 2.2;
         strokeDash = "5,3";
       } else       if (role === "pattern_zone" || item.kind === "zone") {
         opacity = 0.15;
-        strokeColor = "#6366f1";
+        strokeColor = getSeriesColor("pattern_zone");
       }
 
       if (isCandidate) {
@@ -1045,13 +1046,17 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
         const fillToken = meta.fill_token || "patternNeutral";
         const fillAlpha = Number(meta.fill_alpha ?? 0.12);
         const boundaryAlpha = Number(meta.boundary_alpha ?? 0.85);
-        const fillColors = {
-          patternBullish: `rgba(39,174,96,${fillAlpha})`,
-          patternBearish: `rgba(231,76,60,${fillAlpha})`,
-          patternNeutral: `rgba(99,102,241,${fillAlpha})`,
-          patternMixed: `rgba(230,126,34,${fillAlpha})`,
+        // 2026-08-27 §13.2 #4: pattern fills now derive from --pattern-fill-*
+        // tokens via getPatternFill(tokenKey, alpha). fillToken labels from
+        // upstream payload keep their legacy CamelCase strings; we map them
+        // to CHART_SERIES keys for lookup.
+        const fillTokenKeyMap = {
+          patternBullish: "pattern_bullish_base",
+          patternBearish: "pattern_bearish_base",
+          patternNeutral: "pattern_neutral_base",
+          patternMixed: "pattern_mixed_base",
         };
-        const fillColor = fillColors[fillToken] || fillColors.patternNeutral;
+        const fillColor = getPatternFill(fillTokenKeyMap[fillToken] || "pattern_neutral_base", fillAlpha);
         const points = getGeometryPoints(item);
         const polyPoints = points
           .map((point) => {

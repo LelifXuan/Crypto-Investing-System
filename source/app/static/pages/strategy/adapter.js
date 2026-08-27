@@ -1,3 +1,5 @@
+import { renderGovernanceLedger } from "../../ui/governanceLedger.js";
+
 const DEFAULT_STATE = {
   code: "DATA_DEGRADED",
   label: "数据质量不足",
@@ -317,34 +319,26 @@ function buildDataDegradedFooter(model) {
   const endpoints = ensureArray(model.data_access_endpoints);
   if (endpoints.length === 0) return "";
   const readyCount = endpoints.filter((item) => item.status === "ok").length;
-  return `
-    <section class="strategy-governance" aria-labelledby="strategy-governance-title">
-      <div class="strategy-governance-head">
-        <p class="eyebrow">DATA ACCESS</p>
-        <h2 id="strategy-governance-title">数据源接入状态</h2>
-        <p><strong>${readyCount}/${endpoints.length}</strong> 个数据源当前可用</p>
-      </div>
-      <div class="strategy-governance-grid">
-        ${endpoints.map((item) => {
-          const state = governanceEndpointState(item);
-          const tone = governanceEndpointTone(state);
-          const ageText = item.status === "ok"
-            ? formatEndpointAge(item.detail)
-            : escapeHtmlSafe(item.detail || "数据源不可用");
-          return `
-            <article class="strategy-governance-item" data-state="${state}">
-              <div class="strategy-governance-label">
-                <span class="strategy-governance-dot" data-tone="${tone}" aria-hidden="true"></span>
-                <span>${escapeHtmlSafe(item.label || item.name)}</span>
-              </div>
-              <strong>${escapeHtmlSafe(item.status_label || state)}</strong>
-              <small>${ageText}</small>
-            </article>
-          `;
-        }).join("")}
-      </div>
-    </section>
-  `;
+  const items = endpoints.map((item) => {
+    const state = governanceEndpointState(item);
+    const tone = governanceEndpointTone(state);
+    const ageText = item.status === "ok"
+      ? formatEndpointAge(item.detail)
+      : escapeHtmlSafe(item.detail || "数据源不可用");
+    return {
+      label: item.label || item.name,
+      value: escapeHtmlSafe(item.status_label || state),
+      detail: ageText,
+      state,
+      tone,
+    };
+  });
+  return renderGovernanceLedger({
+    variant: "strategy",
+    readyCount,
+    totalCount: endpoints.length,
+    items,
+  });
 }
 
 function escapeHtmlSafe(value) {

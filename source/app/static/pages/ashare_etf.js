@@ -9,6 +9,7 @@ import {
 } from "../core/dom.js";
 import { destroyChartsForPage, lineDataset, renderChart } from "../ui/charts.js";
 import { mountDropdown } from "../ui/dropdown.js";
+import { renderGovernanceLedger, defaultToneForState } from "../ui/governanceLedger.js";
 
 // §Monet palette lock — read from CSS so the equity-curve chart and the
 // 0-axis baseline stay aligned with the rest of the site even if the
@@ -212,18 +213,15 @@ function renderShell() {
 // Mirrors the gold-allocation DATA GOVERNANCE layout: a header column with
 // muted background + bordered-right, and a 3–4 column item grid showing
 // the quote source, equity-curve source, cache state, and plan status.
-function governanceSourceItem(label, entry, { dotTone = "info" } = {}) {
+function governanceSourceItem(label, entry, { dotTone } = {}) {
   const state = entry?.state || "missing";
-  return `
-    <article class="governance-ledger__item etf-governance-item" data-state="${escapeHtml(state)}">
-      <div class="governance-ledger__label etf-governance-label">
-        <span class="governance-ledger__dot etf-governance-dot" data-tone="${dotTone}" aria-hidden="true"></span>
-        <span>${escapeHtml(label)}</span>
-      </div>
-      <strong>${escapeHtml(entry?.value || "未配置")}</strong>
-      <small>${escapeHtml(entry?.detail || "—")}</small>
-    </article>
-  `;
+  return {
+    label,
+    value: entry?.value || "未配置",
+    detail: entry?.detail || "—",
+    state,
+    tone: dotTone || defaultToneForState(state),
+  };
 }
 
 function renderGovernance() {
@@ -259,41 +257,36 @@ function renderGovernance() {
   const snapshotAt = updatedAt || eqFetchedAt;
   const snapshotState = snapshotAt ? "fresh" : "missing";
 
+  const items = [
+    governanceSourceItem("行情数据源", { value: sourceLabel, detail: quoteAge, state: quoteState }, { dotTone: quoteState === "fresh" ? "info" : quoteState === "degraded" ? "warning" : "danger" }),
+    governanceSourceItem("净值数据", { value: eqSourceState === "fresh" ? eqSource : "等待数据", detail: eqAge ? eqAge : "尚未拉取", state: eqSourceState }, { dotTone: eqSourceState === "fresh" ? "info" : "warning" }),
+    governanceSourceItem("执行计划", { value: planState === "fresh" ? "计划已生成" : "等待计划", detail: planState === "fresh" ? `${(latestPlan?.orders || []).length} 笔指令` : "输入持仓后生成", state: planState }, { dotTone: planState === "fresh" ? "info" : "warning" }),
+    governanceSnapshotItem(snapshotAt),
+  ];
+
   // Count ready sources for the header summary
   const readyCount = [quoteState === "fresh", eqSourceState === "fresh", planState === "fresh"].filter(Boolean).length;
   const totalSources = 3;
 
-  return `
-    <section class="card governance-ledger etf-governance" aria-labelledby="etf-governance-title">
-      <div class="governance-ledger__head etf-governance-head">
-        <p class="eyebrow">DATA GOVERNANCE</p>
-        <h2 id="etf-governance-title">数据就绪与快照</h2>
-        <p><strong>${readyCount}/${totalSources}</strong> 个数据源当前可用</p>
-      </div>
-      <div class="governance-ledger__grid etf-governance-grid">
-        ${governanceSourceItem("行情数据源", { value: sourceLabel, detail: quoteAge, state: quoteState }, { dotTone: quoteState === "fresh" ? "info" : quoteState === "degraded" ? "warning" : "danger" })}
-        ${governanceSourceItem("净值数据", { value: eqSourceState === "fresh" ? eqSource : "等待数据", detail: eqAge ? eqAge : "尚未拉取", state: eqSourceState }, { dotTone: eqSourceState === "fresh" ? "info" : "warning" })}
-        ${governanceSourceItem("执行计划", { value: planState === "fresh" ? "计划已生成" : "等待计划", detail: planState === "fresh" ? `${(latestPlan?.orders || []).length} 笔指令` : "输入持仓后生成", state: planState }, { dotTone: planState === "fresh" ? "info" : "warning" })}
-        ${governanceSnapshotItem(snapshotAt)}
-      </div>
-    </section>
-  `;
+  return renderGovernanceLedger({
+    variant: "ashare_etf",
+    readyCount,
+    totalCount: items.length,
+    items,
+  });
 }
 
 // 参考 gold-allocation 的 governanceSnapshotItem
 function governanceSnapshotItem(snapshotAt) {
   const ready = !!snapshotAt;
   const observed = ready ? formatDateTime(snapshotAt) : "—";
-  return `
-    <article class="governance-ledger__item governance-ledger__snapshot etf-governance-item etf-governance-snapshot" data-state="${ready ? "fresh" : "missing"}">
-      <div class="governance-ledger__label etf-governance-label">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>
-        <span>快照时间</span>
-      </div>
-      <strong>${escapeHtml(observed)}</strong>
-      <small>${ready ? "UTC · 当前研究快照" : "尚未生成有效快照"}</small>
-    </article>
-  `;
+  return {
+    label: "快照时间",
+    value: observed,
+    detail: ready ? "UTC · 当前研究快照" : "尚未生成有效快照",
+    state: ready ? "fresh" : "missing",
+    slot: "snapshot",
+  };
 }
 
 function formatAgeShort(seconds) {
@@ -783,11 +776,8 @@ const REBALANCE_LINE_COLORS = {
 // still produces a sensible colour.
 const EQUITY_COLORS = {
   primary:        _monetToken("--accent", "#5b8a83"),           // --bullish / --accent
-  primarySoft:    _monetToken("--bullish-soft", "rgba(91, 138, 131, 0.18)"),
   bearish:        _monetToken("--bearish", "#b07558"),          // --bearish
-  bearishSoft:    _monetToken("--bearish-soft", "rgba(176, 117, 88, 0.18)"),
   neutral:        _monetToken("--neutral", "#7d8893"),          // --neutral
-  neutralSoft:    _monetToken("--neutral-soft", "rgba(125, 136, 147, 0.14)"),
   // Fill colour for the strategy-market-value area UNDER the curve
   // (changed 2026-08-07 from --bullish-soft to a neutral tone so the
   // weekly contrast bars sit on a non-tinted canvas; with a teal fill,
@@ -925,7 +915,7 @@ function _renderEquityChart(data, mode) {
       lineDataset(
         "一次性投入 权益",
         lumpSumValue,
-        _monetToken("--info", "#6b86a8"),
+        _monetToken("--info", "#3e6f9f"),
         {
           borderDash: [8, 5],
           borderWidth: 2.4,

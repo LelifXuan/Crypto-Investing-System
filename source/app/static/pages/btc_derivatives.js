@@ -12,67 +12,28 @@ import {
 import {
   barDataset,
   destroyChartsForPage,
+  getSeriesColor,
   lineDataset,
   renderChart,
 } from "../ui/charts.js";
+import { renderGovernanceLedger } from "../ui/governanceLedger.js";
 import { judgementMeta } from "../core/judgement.js?v=semantic-v3";
 import { rangeStateLabel } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
 import { mountDropdown } from "../ui/dropdown.js";
 import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 
-// Semantic color lock — same series always wears the same color regardless
-// of which chart it appears in. Canonical palette shared with analysis.js + structure.js.
-// Monet-aligned: pale + muted, sat 25-50%. Within each period-family:
-//   short period = brighter + thinner (active, fleeting reference),
-//   long period  = deeper + thicker  (stable long-term anchor).
-// Combine this with the lineDataset borderWidth choices in analysis.js.
-const CHART_COLORS = {
-  "BTC 价格": "#2c3849",
-  "Spot": "#2c3849",
-  "收盘价": "#2c3849",
-  "EMA12": "#dcb09a",
-  "EMA20": "#cba071",
-  "EMA30": "#a89569",
-  "EMA50": "#7ba39d",
-  "EMA60": "#6a8fa0",
-  "EMA120": "#4d6485",
-  "EMA200": "#3a5170",
-  "VWAP20": "#d5c8e0",
-  "VWAP50": "#a594c2",
-  "VWAP100": "#5d4e7e",
-  "OI": "#6a8fa0",
-  "聚合 OI": "#6a8fa0",
-  "Open Interest": "#6a8fa0",
-  "OI 24h变化": "#6a8fa0",
-  "Funding Z": "#8a86b5",
-  "Funding": "#8a86b5",
-  "Funding Rate": "#8a86b5",
-  "Basis": "#b8924a",
-  "年化 Basis": "#b8924a",
-  "ATM IV": "#9686b9",
-  "IV": "#9686b9",
-  "Call IV": "#9686b9",
-  "Put IV": "#9686b9",
-  "Call OI": "#8eb098",
-  "Put OI": "#c2725a",
-  "Call Wall": "#8eb098",
-  "Put Wall": "#c2725a",
-  "Max Pain": "#5a6a7c",
-  "25D Skew": "#9686b9",
-  "Put/Call OI": "#7ba39d",
-  "Put/Call Volume": "#b8924a",
-  "Call 保护成本": "#8eb098",
-  "Put 保护成本": "#c2725a",
-  "借记价差成本": "#5a6a7c",
-  "成交量": "#b8924a",
-  "Volume": "#b8924a",
-  "RSI": "#a896c8",
-  "MACD": "#7ba39d",
-  "信号线": "#dcbe88",
-};
-const FALLBACK_PALETTE = [
-  "#6e9b94", "#c2725a", "#7ba39d", "#9686b9", "#b8924a", "#5a6a7c",
+// 2026-08-27 §13.2 #4 cleanup: chart series colors now resolve through
+//   getSeriesColor(label) → ui/charts.js → --series-* tokens in
+//   editorial.css. The previous 43-entry CHART_COLORS map lived only in
+//   this file and was mirrored (often with drift) in analysis.js and
+//   gold_v5.js. See docs/design-guidelines.md §7.9 for the chart palette
+//   contract. Six-label rotation covers the rare case where a dataset's
+//   label isn't registered in CHART_SERIES (e.g. legacy alias not yet
+//   routed) so the fallback still reads as a series token, not a literal
+//   hex.
+const FALLBACK_PALETTE_LABELS = [
+  "MACD", "Put Wall", "EMA50", "IV", "Basis", "Max Pain",
 ];
 const FALLBACK_CHART_IDS = [
   "leverage_pressure_timeline",
@@ -1163,18 +1124,13 @@ const PROVIDER_LABELS = {
 
 function governanceProviderItem(label, entry, { snapshot = false } = {}) {
   const state = entry?.state || "missing";
-  return `
-    <article class="governance-ledger__item btc-governance-item${snapshot ? " governance-ledger__snapshot btc-governance-snapshot" : ""}" data-state="${escapeHtml(state)}">
-      <div class="governance-ledger__label btc-governance-label">
-        ${snapshot
-          ? '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5v3.8l2.4 1.4"/></svg>'
-          : '<span class="governance-ledger__dot btc-governance-dot" aria-hidden="true"></span>'}
-        <span>${escapeHtml(label)}</span>
-      </div>
-      <strong>${escapeHtml(entry?.value || "未配置")}</strong>
-      <small>${escapeHtml(entry?.detail || "—")}</small>
-    </article>
-  `;
+  return {
+    label,
+    value: entry?.value || "未配置",
+    detail: entry?.detail || "—",
+    state,
+    slot: snapshot ? "snapshot" : undefined,
+  };
 }
 
 function summarizeProviderGroup(items, { emptyValue = "尚未接入" } = {}) {
@@ -1235,25 +1191,21 @@ function renderGovernanceGroup() {
   const readyCount = providers.filter((item) => sourceConnectivity(item.status) === "ok").length;
   const totalCount = providers.length;
 
-  return `
-    <section class="card governance-ledger btc-governance" aria-labelledby="btc-governance-title">
-      <div class="governance-ledger__head btc-governance-head">
-        <p class="eyebrow">DATA GOVERNANCE</p>
-        <h2 id="btc-governance-title">数据就绪与快照</h2>
-        <p><strong>${readyCount}/${totalCount}</strong> 个数据源当前可用</p>
-      </div>
-      <div class="governance-ledger__grid btc-governance-grid">
-        ${governanceProviderItem("期权行情", optionSummary)}
-        ${governanceProviderItem("永续合约", perpetualSummary)}
-        ${governanceProviderItem("接口覆盖", {
-          value: endpointTotal ? `${endpointSuccess}/${endpointTotal} 端点` : "等待统计",
-          detail: `${providers.length} 个数据源已配置`,
-          state: coverageState,
-        })}
-        ${snapshotItem}
-      </div>
-    </section>
-  `;
+  return renderGovernanceLedger({
+    variant: "btc",
+    readyCount,
+    totalCount: providers.length,
+    items: [
+      governanceProviderItem("期权行情", optionSummary),
+      governanceProviderItem("永续合约", perpetualSummary),
+      governanceProviderItem("接口覆盖", {
+        value: endpointTotal ? `${endpointSuccess}/${endpointTotal} 端点` : "等待统计",
+        detail: `${providers.length} 个数据源已配置`,
+        state: coverageState,
+      }),
+      snapshotItem,
+    ],
+  });
 }
 
 function renderPageShell(banner = "", freshness = "") {
@@ -1380,7 +1332,7 @@ function renderAggregateOiSingleChart() {
   if (!oiSeries || !Array.isArray(oiSeries.data) || !labels.length) return;
   const canvas = document.getElementById("btc-chart-aggregate_oi_90d");
   if (!canvas) return;
-  const color = CHART_COLORS["聚合 OI"] ?? FALLBACK_PALETTE[0];
+  const color = getSeriesColor("聚合 OI");
   const dataset = lineDataset(
     "聚合 OI",
     oiSeries.data,
@@ -1470,7 +1422,10 @@ function renderSingleChart(chartId, riskView = null) {
   const datasets = expanded.datasets
     .filter((dataset) => datasetVisibleInRiskView(dataset.label, riskView))
     .flatMap((dataset, index) => {
-    const color = CHART_COLORS[dataset.label] ?? FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
+    const color = getSeriesColor(
+      dataset.label,
+      FALLBACK_PALETTE_LABELS[index % FALLBACK_PALETTE_LABELS.length],
+    );
     const extra = {
       yAxisID: dataset.y_axis_id || "y",
       valueFormat: dataset.value_format,

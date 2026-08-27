@@ -180,6 +180,48 @@
   /* Strong chip/border tones used by strategy operation card headings. */
   --bullish-strong: var(--bullish-chip-ink);
   --bearish-strong: var(--bearish-chip-ink);
+
+  /* === Chart series palette (single source of truth) =================
+     2026-08-27 §13.2 #4 cleanup: every chart line/bar series color used
+     across pages must declare its value here. Page JS reads these via
+     `getSeriesColor(label)` (source/app/static/ui/charts.js) so that no
+     page re-hardcodes the same hex. The fallback constant lives next to
+     the readers (SERIES_FALLBACK) so SSR and unit tests still resolve to
+     the same value without a real :root.
+     See docs/design-guidelines.md §7.9 (charts) for the chart palette
+     contract. */
+  --series-price:           #2c3849;     /* 收盘价 / Spot / BTC 价格 (analysis + btc-derivatives) */
+  --series-ema-short:       #dcb09a;     /* EMA12 (analysis + btc-derivatives) */
+  --series-ema-mid:         #a89569;     /* EMA20 / EMA30 (analysis + btc-derivatives) */
+  --series-ema-mid-alt:     #cba071;     /* EMA20 btc-derivatives 用 (区别于 analysis EMA20) */
+  --series-ema-long:        #6a8fa0;     /* EMA60 / EMA120 (analysis + btc-derivatives) */
+  --series-ema-long-deep:   #4d6485;     /* EMA120 deep (btc-derivatives) */
+  --series-ema-long-deepest:#3a5170;    /* EMA200 (btc-derivatives) */
+  --series-vwap-light:      #d5c8e0;     /* VWAP20 (btc-derivatives) */
+  --series-vwap-mid:        #a594c2;     /* VWAP50 (analysis + btc-derivatives) */
+  --series-vwap-deep:       #5d4e7e;     /* VWAP100 (analysis + btc-derivatives) */
+  --series-rsi:             #a896c8;     /* RSI (analysis + btc-derivatives) */
+  --series-funding:         #8a86b5;     /* Funding / Funding Rate / Funding Z (btc-derivatives) */
+  --series-iv:              #9686b9;     /* ATM IV / Call IV / Put IV / Skew (btc-derivatives) */
+  --series-call-wall:       #8eb098;     /* Call OI / Call Wall / Call 保护成本 (btc-derivatives) */
+  --series-put-wall:        #c2725a;     /* Put OI / Put Wall / Put 保护成本 (btc-derivatives) */
+  --series-max-pain:        #5a6a7c;     /* Max Pain / 借记价差成本 (btc-derivatives) */
+  --series-xaut:            #1f1b16;     /* XAUT 暖深棕 (gold-allocation 专属,非 BTC 蓝灰) */
+  --series-classic:         #b8924a;     /* 经典图形 (market-structure),等同 --warning 调色板 */
+  --series-profile:         #9686b9;     /* 成交量 / 市场轮廓 (market-structure),等同 --series-iv */
+  --series-swing:           #2563eb;     /* 摆动主轴 (market-structure 专属,保留页面差异) */
+  --series-swing-live:      #3b82f6;     /* 摆动活跃腿 (market-structure 派生) */
+  --series-fused:           #6a7587;     /* 综合判断 (market-structure) */
+  --series-pattern-neckline:    #e67e22; /* 颈线 (market-structure 形态专属) */
+  --series-pattern-resistance: #e74c3c;  /* 阻力 / 上边 (market-structure 形态专属) */
+  --series-pattern-support:     #27ae60; /* 支撑 / 下边 (market-structure 形态专属) */
+  --series-pattern-zone:        #6366f1; /* 形态填充区边框 (market-structure 形态专属) */
+  /* Pattern fill alpha templates: alpha 由运行时 fillAlpha 控制(默认 0.12),
+     JS 端用 getPatternFill(token, alpha) 替换 ${fillAlpha} 占位。 */
+  --pattern-fill-bullish:   rgba(39, 174, 96, 0.12);   /* 多头形态填充 */
+  --pattern-fill-bearish:   rgba(231, 76, 60, 0.12);   /* 空头形态填充 */
+  --pattern-fill-neutral:   rgba(99, 102, 241, 0.12);  /* 中性形态填充 */
+  --pattern-fill-mixed:     rgba(230, 126, 34, 0.12);  /* 混合形态填充 */
 }
 
 html {
@@ -3383,167 +3425,6 @@ body[data-page="gold-allocation"] .gold-cockpit-header .gold-price-value {
   }
 }
 
-/* Gold data governance is one compact ledger, not a title floating beside
-   four unrelated cards. The shared frame establishes hierarchy while quiet
-   dividers keep source comparison fast and space-efficient. */
-body[data-page="gold-allocation"] .gold-governance {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 3fr);
-  align-items: stretch;
-  gap: 0;
-  margin-top: var(--space-section);
-  padding: 0;
-  overflow: hidden;
-}
-
-body[data-page="gold-allocation"] .gold-governance-head {
-  display: grid;
-  align-content: center;
-  gap: 7px;
-  padding: 16px 20px;
-  background: var(--surface-muted);
-  border-right: 1px solid var(--border);
-}
-
-body[data-page="gold-allocation"] .gold-governance-head .eyebrow,
-body[data-page="gold-allocation"] .gold-governance-head h2,
-body[data-page="gold-allocation"] .gold-governance-head p {
-  margin: 0;
-}
-
-body[data-page="gold-allocation"] .gold-governance-head h2 {
-  font-size: 20px;
-  line-height: 1.2;
-}
-
-body[data-page="gold-allocation"] .gold-governance-head p:last-child {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-body[data-page="gold-allocation"] .gold-governance-head p:last-child strong {
-  color: var(--accent-strong);
-  font-size: 15px;
-  font-variant-numeric: tabular-nums;
-}
-
-body[data-page="gold-allocation"] .gold-governance-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  min-width: 0;
-  margin: 0;
-}
-
-body[data-page="gold-allocation"] .gold-governance-item {
-  display: grid;
-  align-content: center;
-  gap: 5px;
-  min-width: 0;
-  min-height: 72px;
-  padding: 12px 14px;
-  border-left: 1px solid var(--border);
-}
-
-body[data-page="gold-allocation"] .gold-governance-item:first-child {
-  border-left: 0;
-}
-
-body[data-page="gold-allocation"] .gold-governance-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-}
-
-body[data-page="gold-allocation"] .gold-governance-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  background: var(--info);
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px var(--info-soft);
-}
-
-body[data-page="gold-allocation"] .gold-governance-item[data-state="stale"] .gold-governance-dot,
-body[data-page="gold-allocation"] .gold-governance-item[data-state="degraded"] .gold-governance-dot {
-  background: var(--warning);
-  box-shadow: 0 0 0 3px var(--warning-soft);
-}
-
-body[data-page="gold-allocation"] .gold-governance-item[data-state="missing"] .gold-governance-dot {
-  background: var(--text-tertiary);
-  box-shadow: 0 0 0 3px var(--surface-muted);
-}
-
-body[data-page="gold-allocation"] .gold-governance-item strong {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-body[data-page="gold-allocation"] .gold-governance-item small {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-body[data-page="gold-allocation"] .gold-governance-snapshot svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  fill: none;
-  stroke: var(--info);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.35;
-}
-
-body[data-page="gold-allocation"] .gold-governance-snapshot strong {
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 1180px) {
-  body[data-page="gold-allocation"] .gold-governance {
-    grid-template-columns: 1fr;
-  }
-
-  body[data-page="gold-allocation"] .gold-governance-head {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-}
-
-@media (max-width: 720px) {
-  body[data-page="gold-allocation"] .gold-governance-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  body[data-page="gold-allocation"] .gold-governance-item {
-    min-height: 80px;
-    border-top: 1px solid var(--border);
-  }
-
-  body[data-page="gold-allocation"] .gold-governance-item:nth-child(odd) {
-    border-left: 0;
-  }
-
-  body[data-page="gold-allocation"] .gold-governance-item:nth-child(-n + 2) {
-    border-top: 0;
-  }
-}
-
 /* Structure workspace: one persistent context rail keeps instrument/timeframe
    controls reachable while the reader studies the full-height chart. */
 body[data-page="market-structure"] .structure-page-compact {
@@ -4066,3 +3947,240 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
     transition-duration: 1ms !important;
   }
 }
+
+/* === §13.2 #3 — Governance ledger (shared base + variants) ===========
+   2026-08-27 cleanup: the data-governance footer / panel that previously
+   lived as five near-duplicate CSS blocks across styles.css
+   (.gold-governance / .etf-governance / .btc-governance /
+   .strategy-governance / .monitoring-governance) and the matching JSX
+   templates now share this single base + variant layer. Per-page
+   micro-differences (grid column density, head background, h2 font-size,
+   snapshot support) live under .governance-ledger--{variant}.
+   
+   See docs/design-guidelines.md §7.7 (governance ledger) for the
+   canonical structure and docs/source/tests/test_governance_ledger_unified.py
+   for the regression guard. */
+
+.governance-ledger {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 3fr);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-elevated);
+}
+
+.governance-ledger__head {
+  background: var(--surface-muted);
+  padding: 20px 22px;
+  border-right: 1px solid var(--border);
+}
+.governance-ledger__head .eyebrow {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+.governance-ledger__head h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.governance-ledger__head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.governance-ledger__head p:last-child strong {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.governance-ledger__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+
+.governance-ledger__item {
+  min-height: 72px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+  border-left: 1px solid var(--border);
+}
+.governance-ledger__item:first-child {
+  border-left: 0;
+}
+
+.governance-ledger__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.governance-ledger__label svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.governance-ledger__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--info);
+  box-shadow: 0 0 0 3px var(--info-soft);
+}
+.governance-ledger__item[data-state="fresh"] .governance-ledger__dot {
+  background: var(--info);
+  box-shadow: 0 0 0 3px var(--info-soft);
+}
+.governance-ledger__item[data-state="degraded"] .governance-ledger__dot,
+.governance-ledger__item[data-state="stale"] .governance-ledger__dot {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-soft);
+}
+.governance-ledger__item[data-state="missing"] .governance-ledger__dot,
+.governance-ledger__item[data-state="unknown"] .governance-ledger__dot {
+  background: var(--text-tertiary);
+  box-shadow: 0 0 0 3px var(--neutral-soft);
+}
+.governance-ledger__item[data-state="danger"] .governance-ledger__dot,
+.governance-ledger__item[data-state="error"] .governance-ledger__dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+.governance-ledger__item strong {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.governance-ledger__item small {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+.governance-ledger__snapshot strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+.governance-ledger__snapshot svg {
+  color: var(--accent-strong);
+}
+
+/* === Per-variant modifiers =========================================== */
+
+.governance-ledger--gold .governance-ledger__head {
+  background: var(--surface-muted);
+}
+.governance-ledger--gold .governance-ledger__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.governance-ledger--ashare_etf .governance-ledger__head {
+  background: var(--surface-muted);
+}
+.governance-ledger--ashare_etf .governance-ledger__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.governance-ledger--btc {
+  grid-template-columns: minmax(200px, 0.6fr) minmax(0, 3.4fr);
+}
+.governance-ledger--btc .governance-ledger__head {
+  background: transparent;
+  border-right: 1px solid var(--border);
+}
+.governance-ledger--btc .governance-ledger__grid {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.governance-ledger--strategy {
+  grid-template-columns: minmax(180px, auto) repeat(4, minmax(0, 1fr));
+}
+.governance-ledger--strategy .governance-ledger__head {
+  background: none;
+  border-right: 1px solid var(--border-light);
+}
+.governance-ledger--strategy .governance-ledger__head h2 {
+  font-size: 15px;
+  font-weight: 700;
+}
+.governance-ledger--strategy .governance-ledger__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 24px;
+}
+.governance-ledger--strategy .governance-ledger__item {
+  min-height: 92px;
+  padding: 14px 18px;
+}
+
+.governance-ledger--monitoring .governance-ledger__head {
+  background: var(--surface-muted);
+}
+.governance-ledger--monitoring .governance-ledger__grid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+/* === Responsive collapse ============================================== */
+
+@media (max-width: 1180px) {
+  .governance-ledger {
+    grid-template-columns: 1fr;
+  }
+  .governance-ledger__head {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .governance-ledger--btc,
+  .governance-ledger--strategy {
+    grid-template-columns: 1fr;
+  }
+  .governance-ledger--btc .governance-ledger__grid,
+  .governance-ledger--monitoring .governance-ledger__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .governance-ledger__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .governance-ledger--btc .governance-ledger__grid,
+  .governance-ledger--monitoring .governance-ledger__grid,
+  .governance-ledger--strategy .governance-ledger__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* 2026-08-27 §13.2 #5 — narrow-viewport toolbar override.
+   The default 6-column .toolbar-grid has a minimum width ≈ 702px
+   (3×138 + 180 + 108 + auto), which exceeds the 375–768px viewport
+   range and forces horizontal overflow at the document level
+   (scrollWidth ≈ 795-799). The override MUST live at the end of
+   editorial.css so it wins against the base rule at line ~3460 in
+   the same file (cascade: later declaration with equal specificity
+   wins). */
+@media (max-width: 980px) {
+  body[data-page="market-structure"] .structure-toolbar-card .toolbar-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

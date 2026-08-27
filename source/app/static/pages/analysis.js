@@ -20,6 +20,7 @@ let chartSkeleton;
 let barDataset;
 let candleDataset;
 let destroyChartsForPage;
+let getSeriesColor;
 let lineDataset;
 let renderChart;
 let sanitizeChartSeries;
@@ -66,6 +67,7 @@ async function ensureDeps() {
     barDataset,
     candleDataset,
     destroyChartsForPage,
+    getSeriesColor,
     lineDataset,
     renderChart,
     sanitizeChartSeries,
@@ -1454,13 +1456,13 @@ async function loadAll(force = false, token = activeRenderToken) {
         data: {
           labels,
           datasets: [
-            lineDataset("收盘价", analysis.closes, "#2c3849", { borderWidth: 2.4 }),
+            lineDataset("收盘价", analysis.closes, getSeriesColor("收盘价"), { borderWidth: 2.4 }),
             // Short EMA = bright + thin; Long EMA = deep + thick (stable anchor).
-            lineDataset("EMA30", analysis.ema30, "#dcbe88", { borderWidth: 1.6 }),
-            lineDataset("EMA60", analysis.ema60, "#a89569", { borderWidth: 2.0 }),
-            lineDataset("EMA120", analysis.ema120, "#5a7d8e", { borderWidth: 2.6 }),
-            lineDataset("VWAP50", analysis.vwapValues.vwap50, "#a594c2", { borderDash: [2, 4], borderWidth: 1.5 }),
-            lineDataset("VWAP100", analysis.vwapValues.vwap100, "#5d4e7e", { borderDash: [10, 5], borderWidth: 2.4 }),
+            lineDataset("EMA30", analysis.ema30, getSeriesColor("EMA30"), { borderWidth: 1.6 }),
+            lineDataset("EMA60", analysis.ema60, getSeriesColor("EMA60"), { borderWidth: 2.0 }),
+            lineDataset("EMA120", analysis.ema120, getSeriesColor("EMA120"), { borderWidth: 2.6 }),
+            lineDataset("VWAP50", analysis.vwapValues.vwap50, getSeriesColor("VWAP50"), { borderDash: [2, 4], borderWidth: 1.5 }),
+            lineDataset("VWAP100", analysis.vwapValues.vwap100, getSeriesColor("VWAP100"), { borderDash: [10, 5], borderWidth: 2.4 }),
           ],
         },
       }],
@@ -1471,11 +1473,11 @@ async function loadAll(force = false, token = activeRenderToken) {
           labels,
           datasets: [
             // EMA12 = bright + thin (active 12-period crossover signal).
-            lineDataset("EMA12", analysis.ema12, "#dcb09a", { borderWidth: 1.6 }),
-            lineDataset("快轨", analysis.vegasFastLow, "#6e9b94", { borderWidth: 2.6 }),
-            lineDataset("快轨", analysis.vegasFastHigh, "#6e9b94", { fill: "-1", backgroundColor: "rgba(110,155,148,0.12)", borderWidth: 2.6 }),
-            lineDataset("慢轨", analysis.vegasSlowLow, "#5d4e7e", { borderDash: [8, 5], borderWidth: 2.6 }),
-            lineDataset("慢轨", analysis.vegasSlowHigh, "#5d4e7e", { fill: "-1", backgroundColor: "rgba(93,78,126,0.10)", borderDash: [8, 5], borderWidth: 2.6 }),
+            lineDataset("EMA12", analysis.ema12, getSeriesColor("EMA12"), { borderWidth: 1.6 }),
+            lineDataset("快轨", analysis.vegasFastLow, getSeriesColor("Vegas_Fast"), { borderWidth: 2.6 }),
+            lineDataset("快轨", analysis.vegasFastHigh, getSeriesColor("Vegas_Fast"), { fill: "-1", backgroundColor: "rgba(110,155,148,0.12)", borderWidth: 2.6 }),
+            lineDataset("慢轨", analysis.vegasSlowLow, getSeriesColor("Vegas_Slow"), { borderDash: [8, 5], borderWidth: 2.6 }),
+            lineDataset("慢轨", analysis.vegasSlowHigh, getSeriesColor("Vegas_Slow"), { fill: "-1", backgroundColor: "rgba(93,78,126,0.10)", borderDash: [8, 5], borderWidth: 2.6 }),
           ],
         },
         options: {
@@ -1554,7 +1556,7 @@ async function loadAll(force = false, token = activeRenderToken) {
         data: {
           labels,
           datasets: [
-            lineDataset("RSI", analysis.rsiValues, "#a896c8", { borderWidth: 2.0 }),
+            lineDataset("RSI", analysis.rsiValues, getSeriesColor("RSI"), { borderWidth: 2.0 }),
           ],
         },
         options: {
@@ -1580,8 +1582,8 @@ async function loadAll(force = false, token = activeRenderToken) {
           labels,
           datasets: [
             barDataset("柱状图", analysis.macdValues.hist, analysis.macdValues.hist.map((value) => value >= 0 ? "rgba(124,155,138,0.55)" : "rgba(194,114,90,0.55)")),
-            lineDataset("MACD", analysis.macdValues.line, "#6e9b94", { borderWidth: 2.0 }),
-            lineDataset("信号线", analysis.macdValues.signal, "#b8924a", { borderDash: [7, 4], borderWidth: 1.8 }),
+            lineDataset("MACD", analysis.macdValues.line, getSeriesColor("MACD"), { borderWidth: 2.0 }),
+            lineDataset("信号线", analysis.macdValues.signal, getSeriesColor("信号线"), { borderDash: [7, 4], borderWidth: 1.8 }),
           ],
         },
       }],

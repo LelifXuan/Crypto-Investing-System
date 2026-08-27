@@ -71,6 +71,225 @@ if (typeof globalThis !== "undefined") {
   globalThis.__CHART_THEME__ = CHART_THEME;
 }
 
+/* === §13.2 #4 — Series palette (single source of truth) ==========
+   2026-08-27: chart series colors used to be hardcoded inside every page
+   (analysis.js, gold_v5.js, structure.js, btc_derivatives.js). They now
+   declare their values in editorial.css (:root) as `--series-*` tokens.
+   Page JS must call `getSeriesColor(label)` instead of writing the hex
+   inline. The fallback below mirrors the editorial values verbatim so
+   SSR / unit tests can resolve without a live :root.
+
+   Key → token mapping is exposed via SERIES_LABELS so a Chinese/English
+   label from any page (e.g. "BTC 价格", "EMA12", "XAUT", "MA50",
+   "swing_backbone") resolves to the same hex without per-page code.
+
+   Audit reference: docs/design-guidelines.md §7.9 (charts) and §13.2 #4
+   (token-ownership debt closed). */
+const SERIES_FALLBACK = Object.freeze({
+  // Generic price series (analysis + btc-derivatives)
+  price:               "#2c3849",
+  spot:                "#2c3849",
+  "BTC 价格":          "#2c3849",
+  收盘价:              "#2c3849",
+  // EMA family
+  EMA12:               "#dcb09a",
+  EMA20:               "#a89569",
+  EMA20_Alt:           "#cba071",  // btc-derivatives 用,区别于 analysis EMA20
+  EMA30:               "#a89569",
+  EMA50:               "#7ba39d",
+  EMA60:               "#6a8fa0",
+  EMA120:              "#4d6485",
+  EMA200:              "#3a5170",
+  // VWAP family
+  VWAP20:              "#d5c8e0",
+  VWAP50:              "#a594c2",
+  VWAP100:             "#5d4e7e",
+  // Oscillators
+  RSI:                 "#a896c8",
+  MACD:                "#7ba39d",
+  "MACD柱":            "#6e9b94",  // analysis 用
+  "MACD柱_正":         "rgba(124, 155, 138, 0.55)",
+  "MACD柱_负":         "rgba(194, 114, 90, 0.55)",
+  "信号线":            "#dcbe88",
+  // Funding / IV / basis (btc-derivatives)
+  Funding:             "#8a86b5",
+  "Funding Z":         "#8a86b5",
+  "Funding Rate":      "#8a86b5",
+  Basis:               "#b8924a",
+  "年化 Basis":        "#b8924a",
+  IV:                  "#9686b9",
+  "ATM IV":            "#9686b9",
+  "Call IV":           "#9686b9",
+  "Put IV":            "#9686b9",
+  "25D Skew":          "#9686b9",
+  "Put/Call OI":       "#7ba39d",
+  "Put/Call Volume":   "#b8924a",
+  // OI / walls (btc-derivatives)
+  OI:                  "#6a8fa0",
+  "聚合 OI":           "#6a8fa0",
+  "Open Interest":     "#6a8fa0",
+  "OI 24h变化":        "#6a8fa0",
+  "Call OI":           "#8eb098",
+  "Put OI":            "#c2725a",
+  "Call Wall":         "#8eb098",
+  "Put Wall":          "#c2725a",
+  "Call 保护成本":     "#8eb098",
+  "Put 保护成本":      "#c2725a",
+  "借记价差成本":      "#5a6a7c",
+  "Max Pain":          "#5a6a7c",
+  // Volume
+  "成交量":            "#b8924a",
+  Volume:              "#b8924a",
+  // Vegas fast/slow (analysis + gold_v5)
+  Vegas_Fast:          "#6e9b94",
+  Vegas_Slow:          "#5d4e7e",
+  // Gold-allocation 专属
+  XAUT:                "#1f1b16",
+  MA50:                "#5b8a83",
+  SMA200:              "#b07558",
+  "EMA20-Gold":        "#7c5fb0",  // gold 专属紫
+  "%B":                "#b07558",
+  RSI14:               "#5b8a83",
+  // Market-structure 基础(CHART_SERIES 已 token 化,这里保留 alias)
+  swing:               "#2563eb",
+  classic:             "#b8924a",
+  profile:             "#9686b9",
+  fused:               "#6a7587",
+  // Market-structure 派生
+  swing_live_leg:      "#3b82f6",
+  neckline:            "#e67e22",
+  upper_boundary:      "#e74c3c",
+  resistance:          "#e74c3c",
+  lower_boundary:      "#27ae60",
+  support:             "#27ae60",
+  pattern_zone:        "#6366f1",
+  // Pattern fill base alphas (alpha 由 fill_alpha 控制)
+  pattern_bullish_base:   "rgba(39, 174, 96, 0.12)",
+  pattern_bearish_base:   "rgba(231, 76, 60, 0.12)",
+  pattern_neutral_base:   "rgba(99, 102, 241, 0.12)",
+  pattern_mixed_base:     "rgba(230, 126, 34, 0.12)",
+});
+
+const CHART_SERIES = Object.freeze({
+  price:               _readCssVar("--series-price",               SERIES_FALLBACK.price),
+  spot:                _readCssVar("--series-price",               SERIES_FALLBACK.spot),
+  "BTC 价格":          _readCssVar("--series-price",               SERIES_FALLBACK["BTC 价格"]),
+  收盘价:              _readCssVar("--series-price",               SERIES_FALLBACK.收盘价),
+  EMA12:               _readCssVar("--series-ema-short",           SERIES_FALLBACK.EMA12),
+  EMA20:               _readCssVar("--series-ema-mid",             SERIES_FALLBACK.EMA20),
+  EMA20_Alt:           _readCssVar("--series-ema-mid-alt",         SERIES_FALLBACK.EMA20_Alt),
+  EMA30:               _readCssVar("--series-ema-mid",             SERIES_FALLBACK.EMA30),
+  EMA50:               _readCssVar("--series-ema-long",            SERIES_FALLBACK.EMA50),
+  EMA60:               _readCssVar("--series-ema-long",            SERIES_FALLBACK.EMA60),
+  EMA120:              _readCssVar("--series-ema-long-deep",       SERIES_FALLBACK.EMA120),
+  EMA200:              _readCssVar("--series-ema-long-deepest",    SERIES_FALLBACK.EMA200),
+  VWAP20:              _readCssVar("--series-vwap-light",          SERIES_FALLBACK.VWAP20),
+  VWAP50:              _readCssVar("--series-vwap-mid",            SERIES_FALLBACK.VWAP50),
+  VWAP100:             _readCssVar("--series-vwap-deep",           SERIES_FALLBACK.VWAP100),
+  RSI:                 _readCssVar("--series-rsi",                 SERIES_FALLBACK.RSI),
+  MACD:                SERIES_FALLBACK.MACD,        /* shared across btc + analysis + gold; varies by page, kept in fallback */
+  Funding:             _readCssVar("--series-funding",             SERIES_FALLBACK.Funding),
+  "Funding Z":         _readCssVar("--series-funding",             SERIES_FALLBACK["Funding Z"]),
+  "Funding Rate":      _readCssVar("--series-funding",             SERIES_FALLBACK["Funding Rate"]),
+  Basis:               _readCssVar("--series-basis",               SERIES_FALLBACK.Basis),
+  IV:                  _readCssVar("--series-iv",                  SERIES_FALLBACK.IV),
+  "ATM IV":            _readCssVar("--series-iv",                  SERIES_FALLBACK["ATM IV"]),
+  "Call IV":           _readCssVar("--series-iv",                  SERIES_FALLBACK["Call IV"]),
+  "Put IV":            _readCssVar("--series-iv",                  SERIES_FALLBACK["Put IV"]),
+  "25D Skew":          _readCssVar("--series-iv",                  SERIES_FALLBACK["25D Skew"]),
+  "Call OI":           _readCssVar("--series-call-wall",           SERIES_FALLBACK["Call OI"]),
+  "Put OI":            _readCssVar("--series-put-wall",            SERIES_FALLBACK["Put OI"]),
+  "Call Wall":         _readCssVar("--series-call-wall",           SERIES_FALLBACK["Call Wall"]),
+  "Put Wall":          _readCssVar("--series-put-wall",            SERIES_FALLBACK["Put Wall"]),
+  "Call 保护成本":     _readCssVar("--series-call-wall",           SERIES_FALLBACK["Call 保护成本"]),
+  "Put 保护成本":      _readCssVar("--series-put-wall",            SERIES_FALLBACK["Put 保护成本"]),
+  "借记价差成本":      _readCssVar("--series-max-pain",            SERIES_FALLBACK["借记价差成本"]),
+  "Max Pain":          _readCssVar("--series-max-pain",            SERIES_FALLBACK["Max Pain"]),
+  OI:                  _readCssVar("--series-ema-long",            SERIES_FALLBACK.OI),
+  "聚合 OI":           _readCssVar("--series-ema-long",            SERIES_FALLBACK["聚合 OI"]),
+  "Open Interest":     _readCssVar("--series-ema-long",            SERIES_FALLBACK["Open Interest"]),
+  "OI 24h变化":        _readCssVar("--series-ema-long",            SERIES_FALLBACK["OI 24h变化"]),
+  "Put/Call OI":       _readCssVar("--series-ema-long",            SERIES_FALLBACK["Put/Call OI"]),
+  "Put/Call Volume":   SERIES_FALLBACK["Put/Call Volume"],
+  "成交量":            SERIES_FALLBACK["成交量"],
+  Volume:              SERIES_FALLBACK.Volume,
+  Vegas_Fast:          SERIES_FALLBACK.Vegas_Fast,   /* page-specific; kept in fallback */
+  Vegas_Slow:          SERIES_FALLBACK.Vegas_Slow,   /* page-specific; kept in fallback */
+  XAUT:                _readCssVar("--series-xaut",                SERIES_FALLBACK.XAUT),
+  MA50:                SERIES_FALLBACK.MA50,         /* gold-v5 warm green; not editorial semantic */
+  SMA200:              SERIES_FALLBACK.SMA200,       /* gold-v5 warm brown */
+  "EMA20-Gold":        SERIES_FALLBACK["EMA20-Gold"], /* gold-v5 violet */
+  "%B":                SERIES_FALLBACK["%B"],
+  RSI14:               SERIES_FALLBACK.RSI14,        /* gold-v5 warm green */
+  swing:               _readCssVar("--series-swing",               SERIES_FALLBACK.swing),
+  classic:             _readCssVar("--series-classic",             SERIES_FALLBACK.classic),
+  profile:             _readCssVar("--series-profile",             SERIES_FALLBACK.profile),
+  fused:               _readCssVar("--series-fused",               SERIES_FALLBACK.fused),
+  swing_live_leg:      _readCssVar("--series-swing-live",          SERIES_FALLBACK.swing_live_leg),
+  neckline:            _readCssVar("--series-pattern-neckline",    SERIES_FALLBACK.neckline),
+  upper_boundary:      _readCssVar("--series-pattern-resistance",  SERIES_FALLBACK.upper_boundary),
+  resistance:          _readCssVar("--series-pattern-resistance",  SERIES_FALLBACK.resistance),
+  lower_boundary:      _readCssVar("--series-pattern-support",     SERIES_FALLBACK.lower_boundary),
+  support:             _readCssVar("--series-pattern-support",     SERIES_FALLBACK.support),
+  pattern_zone:        _readCssVar("--series-pattern-zone",        SERIES_FALLBACK.pattern_zone),
+  pattern_bullish_base:  _readCssVar("--pattern-fill-bullish",     SERIES_FALLBACK.pattern_bullish_base),
+  pattern_bearish_base:  _readCssVar("--pattern-fill-bearish",     SERIES_FALLBACK.pattern_bearish_base),
+  pattern_neutral_base:  _readCssVar("--pattern-fill-neutral",     SERIES_FALLBACK.pattern_neutral_base),
+  pattern_mixed_base:    _readCssVar("--pattern-fill-mixed",       SERIES_FALLBACK.pattern_mixed_base),
+});
+
+// expose for test runs (readback probe in tests/test_chart_series_token_consistency.py)
+if (typeof globalThis !== "undefined") {
+  globalThis.__CHART_SERIES__ = CHART_SERIES;
+}
+
+const SERIES_FALLBACK_COLOR = "#5a6a7c";  /* neutral gray, matches --series-max-pain */
+
+export function getSeriesColor(label, rotationFallback = null) {
+  if (!label || typeof label !== "string") {
+    return rotationFallback
+      ? (SERIES_FALLBACK[rotationFallback] || SERIES_FALLBACK_COLOR)
+      : SERIES_FALLBACK_COLOR;
+  }
+  if (CHART_SERIES[label]) return CHART_SERIES[label];
+  if (SERIES_FALLBACK[label]) return SERIES_FALLBACK[label];
+  if (rotationFallback && SERIES_FALLBACK[rotationFallback]) {
+    return SERIES_FALLBACK[rotationFallback];
+  }
+  return SERIES_FALLBACK_COLOR;
+}
+
+/**
+ * Build a rgba fill by composing a token's rgb prefix with a runtime alpha.
+ * Used by market-structure page for pattern fills (alpha varies per draw).
+ *
+ * @param {"pattern_bullish_base" | "pattern_bearish_base" | "pattern_neutral_base" | "pattern_mixed_base"} tokenKey
+ * @param {number} alpha - 0..1, will be clamped to that range
+ * @returns {string} rgba(...) string; falls back to token value if the
+ *   stored string is already a non-comma-prefixed color.
+ */
+export function getPatternFill(tokenKey, alpha) {
+  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0.12));
+  const base = CHART_SERIES[tokenKey] || SERIES_FALLBACK[tokenKey] || SERIES_FALLBACK.pattern_bullish_base;
+  // Extract rgb(r, g, b) or rgba(r, g, b, a) prefix; if the token is a hex,
+  // convert via a one-shot rgb regex. This keeps pattern fills fully
+  // token-driven without leaking the legacy `rgba(...,${fillAlpha})`
+  // template string.
+  const rgbMatch = base.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${safeAlpha})`;
+  }
+  const hexMatch = base.match(/^#([0-9a-fA-F]{6})$/);
+  if (hexMatch) {
+    const v = hexMatch[1];
+    const r = parseInt(v.slice(0, 2), 16);
+    const g = parseInt(v.slice(2, 4), 16);
+    const b = parseInt(v.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${safeAlpha})`;
+  }
+  return base;
+}
+
 function finiteChartNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
