@@ -66,6 +66,12 @@ DEFAULT_VIEWPORTS = [
     {"name": "mobile-s", "width": 375, "height": 667},
     {"name": "mobile-l", "width": 414, "height": 896},
     {"name": "tablet", "width": 768, "height": 1024},
+    # 2026-08-27: 1280x720 is one of the breakpoints the design handbook §11.1
+    # lists as required. Knowledge-base three-rail grid is exactly 240+720+240
+    # + 2x40 gap = 1280px, so a 1280-wide viewport is the natural regression
+    # point for the §13.2 #5 overflow debt. Inserted between tablet and laptop
+    # so the default suite still climbs monotonically.
+    {"name": "laptop-1280", "width": 1280, "height": 720},
     {"name": "laptop", "width": 1366, "height": 900},
     {"name": "desktop", "width": 1920, "height": 1080},
     # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440 (16:9).
@@ -184,6 +190,29 @@ def scan_page(page_id: str, route: str, viewports: list[dict]) -> dict:
     }
 
 
+def check_knowledge_overflow_at_1280(page_results: dict) -> dict | None:
+    """Dedicated 1280x720 guard for the §13.2 #5 knowledge-base overflow debt.
+
+    The .knowledge-workspace three-rail grid measures exactly
+    240 + 720 + 240 + 2x40 gap = 1280px, which is the natural
+    regression point. We surface a single WARN line whenever the
+    default responsive scan also catches it, but we do NOT upgrade
+    to FAIL — that would expand this gate beyond the §13.2 #1
+    (token ownership) scope of the current change. Fixing the
+    overflow itself is scheduled for the next UI round.
+    """
+    for vp in page_results.get("viewports", []):
+        if vp.get("width") == 1280 and vp.get("height") == 720:
+            return {
+                "viewport": vp["viewport"],
+                "scroll_width": vp["scroll_width"],
+                "client_width": vp["client_width"],
+                "has_overflow": vp["has_overflow"],
+                "note": "design handbook §13.2 #5 — fix scheduled next round",
+            }
+    return None
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description="Responsive check — multi-viewport overflow + content visibility")
     p.add_argument(
@@ -236,6 +265,24 @@ def main(argv: list[str]) -> int:
     print("=" * 60)
     print(f"responsive: {page_fails} pages with overflow, {total_overflow} total overflow viewports")
     print("=" * 60)
+
+    # Dedicated guard: knowledge-base @ 1280x720. WARN only, not FAIL — fixing
+    # the underlying overflow is part of the §13.2 #5 debt scheduled for the
+    # next UI round. We surface the finding so the regression cannot silently
+    # come back, but we don't block the current token-ownership change on it.
+    kb_result = next(
+        (r for r in report["per_page"] if r["page_id"] == "knowledge-base"),
+        None,
+    )
+    if kb_result is not None:
+        guard = check_knowledge_overflow_at_1280(kb_result)
+        if guard is not None and guard["has_overflow"]:
+            print(
+                f"[KB-1280] knowledge-base overflows at 1280x720 "
+                f"(scrollWidth={guard['scroll_width']}px > viewport={guard['client_width']}px) "
+                f"— {guard['note']}"
+            )
+            report.setdefault("kb_1280_overflow", []).append(guard)
 
     out_log = SCREENSHOT_DIR / "responsive_report.json"
     out_log.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

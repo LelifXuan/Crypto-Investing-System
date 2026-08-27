@@ -1,158 +1,18 @@
-:root {
-  /* === Monet-aligned palette (v1.x UI upgrade) ===
-     Pale, muted, atmospheric. Inspired by Water Lilies / Haystacks / Impression Sunrise.
-     Sat 25-50% / Light 60-80%. Avoids saturated primaries (red/green/blue) except for
-     directional signal cues (candlestick wicks). */
-  --bg: #f3ece1;
-  --bg-strong: #e8dcc8;
-  --surface: rgba(248, 243, 232, 0.82);
-  --surface-elevated: rgba(252, 247, 238, 0.94);
-  --surface-muted: rgba(238, 241, 236, 0.82);
-  --panel: rgba(248, 242, 233, 0.82);
-  --panel-strong: rgba(250, 245, 237, 0.96);
-  --panel-accent: rgba(232, 238, 228, 0.92);
-  --text-primary: #1f2a3a;
-  --text-secondary: #5b6675;
-  --text-tertiary: #7e8896;
-  --ink: #1f2a3a;
-  --muted: #7b8693;
-  --muted-strong: #5e6a78;
-  /* 2026-08-11: accent shifted from teal-green → indigo/blue-purple (方案 A demo) */
-  --accent: #6366f1;
-  --accent-strong: #4f46e5;
-  --accent-soft: #e0e7ff;
-  --accent-ghost: rgba(99, 102, 241, 0.12);
-  --bullish: #6366f1;
-  --bullish-soft: rgba(99, 102, 241, 0.18);
-  --bearish: #8b5cf6;
-  --bearish-soft: rgba(139, 92, 246, 0.18);
-  --neutral: #7d8893;
-  --neutral-soft: rgba(125, 136, 147, 0.14);
-  --warning: #f97316;
-  --warning-soft: rgba(249, 115, 22, 0.16);
-  --warm: #f97316;
-  --warm-soft: rgba(249, 115, 22, 0.14);
-  --info: #3b82f6;
-  --info-soft: rgba(59, 130, 246, 0.16);
-  --danger: #a46850;
-  --danger-soft: rgba(164, 104, 80, 0.16);
-  --border: rgba(160, 140, 108, 0.22);
-  --border-strong: rgba(120, 108, 88, 0.24);
-  --shadow-soft: 0 18px 40px rgba(31, 42, 58, 0.07);
-  --shadow-card: 0 22px 56px rgba(31, 42, 58, 0.1);
-  --shadow-hover: 0 26px 70px rgba(31, 42, 58, 0.14);
-
-  /* === Frosted-glass tokens for hover panels (page-guide, tooltip) ===
-     Neutral transparent glass with NO color tint so the underlying page
-     shows through verbatim and backdrop-filter has real chroma to blur.
-     Edge + highlight rings provide the "physical" glass edge.
-     Solid token fallback under prefers-reduced-transparency. */
-  --glass-bg: rgba(255, 255, 255, 0.18);
-  --glass-bg-deep: rgba(255, 255, 255, 0.32);
-  --glass-tint: rgba(255, 255, 255, 0.10);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-border-outer: rgba(31, 42, 58, 0.14);
-  --glass-edge: rgba(255, 255, 255, 0.85);
-  --glass-highlight: rgba(255, 255, 255, 0.85);
-  --glass-blur: 28px;
-  --glass-blur-deep: 16px;
-  --glass-shadow: 0 32px 80px rgba(31, 42, 58, 0.22), 0 12px 28px rgba(31, 42, 58, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(31, 42, 58, 0.08);
-  --radius: 24px;
-  --radius-sm: 16px;
-  --shell-width: min(1720px, calc(100vw - 72px));
-  --content-gap: 24px;
-  --section-gap: 28px;
-  --card-padding: 28px;
-  --chart-height: clamp(430px, 43vh, 560px);
-  --font-sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-
-  /* Glassmorphism system tokens — Monet-tinted glass surfaces */
-  --surface-glass: rgba(248, 243, 232, 0.74);
-  --surface-glass-strong: rgba(252, 247, 238, 0.88);
-  --surface-glass-soft: rgba(238, 241, 236, 0.58);
-  --border-glass: rgba(160, 140, 108, 0.22);
-  --border-glass-soft: rgba(160, 140, 108, 0.14);
-  --shadow-button: 0 6px 14px rgba(99, 102, 241, 0.10);
-  --shadow-button-hover: 0 10px 22px rgba(99, 102, 241, 0.18);
-  --shadow-card-hover: 0 18px 36px rgba(31, 42, 58, 0.12);
-  --radius-card: 18px;
-  --radius-pill: 999px;
-  --blur-soft: blur(10px);
-  --blur-card: blur(16px);
-  --hover-tint: rgba(99, 102, 241, 0.10);
-  --hover-tint-strong: rgba(99, 102, 241, 0.18);
-  --transition-hover: 180ms ease;
-
-  /* === Motion tokens (Emil Kowalski bar) =============================
-     Custom curves: built-in CSS easings are too weak for deliberate UI motion.
-     --ease-out is the workhorse (entrances, presses, hovers).
-     --ease-drawer is the iOS-style curve (panels, sheets, modals).
-     --ease-in-out is for on-screen morphs (toggles, color blends).
-     --dur-press < --dur-hover < --dur-elevate < --dur-drawer — keep the ladder.
-     Aliases (--motion-fast / --motion-hover) make call sites one line. */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --dur-press: 120ms;
-  --dur-hover: 180ms;
-  --dur-elevate: 220ms;
-  --dur-drawer: 240ms;
-  --motion-fast: var(--dur-press) var(--ease-out);
-  --motion-hover: var(--dur-hover) var(--ease-out);
-
-  /* Directional signals — only place where saturated Tailwind primaries remain.
-     Candlestick wicks use these so up/down stay unambiguous in dense price charts. */
-  --direction-up: #16a34a;
-  --direction-down: #dc2626;
-
-  /* === Undeclared-but-consumed token aliases (audit 2026-07-31 §16 A.1) ===
-     These were referenced by selectors but never defined, causing CSS
-     `var(--<name>)` to invalidate entire declarations (e.g. borders,
-     background-color, color) at consumption sites. Re-binding them here
-     restores expected visual output. Each alias maps to an existing semantic
-     token; no new color value is introduced. */
-  --line: var(--border);
-  --text: var(--ink);
-  --bg-surface: var(--panel-strong);
-  --bg-hover: rgba(99, 102, 241, 0.10);
-  --danger-strong: #7a4630;
-  --info-strong: #1d4ed8;
-  --border-light: rgba(160, 140, 108, 0.14);
-  --line-soft: rgba(160, 140, 108, 0.10);
-  --card-bg: var(--surface-elevated);
-  --ink-muted: #5e6a78;
-  --white: #ffffff;
-
-  /* === §16.C — Chart-only tokens ===========================
-     Read by app/static/ui/charts.js via `getComputedStyle(:root)`.
-     Each token below maps to the previous hardcoded fallback
-     (`ui/charts.js:482-540`) so charts render identically even
-     if `getComputedStyle` fails (e.g. SSR / tests). The fallback
-     constants live alongside their consumer sites so a future
-     refactor can move the truth into one place.
-     Audit reference: docs/UI_UX_AUDIT_2026-07-31.md §16.C */
-  --chart-legend: #4b5961;
-  --chart-tooltip-bg: rgba(21, 35, 42, 0.92);
-  --chart-tooltip-border: rgba(255, 255, 255, 0.06);
-  --chart-tooltip-fg-1: #f8fafc;
-  --chart-tooltip-fg-2: #e2e8f0;
-  --chart-axis: #627078;
-  --chart-grid-x: rgba(23, 34, 39, 0.042);
-  --chart-grid-y: rgba(23, 34, 39, 0.05);
-  --chart-reference-line: rgba(83, 99, 108, 0.72);
-  --chart-reference-label: #53636c;
-  --chart-expiry-line: rgba(83, 99, 108, 0.45);
-  --chart-expiry-label: rgba(48, 84, 130, 0.85);
-  --chart-dot-put-wall: #c2725a;
-  --chart-dot-max-pain: #5a6a7c;
-  --chart-dot-call-wall: #8eb098;
-  --chart-dot-stroke: #ffffff;
-  --chart-up-stroke: #16a34a;
-  --chart-down-stroke: #dc2626;
-  --chart-up-fill: rgba(124, 155, 138, 0.32);
-  --chart-down-fill: rgba(194, 114, 90, 0.30);
-}
+/* ============================================================
+   Legacy application stylesheet.
+   ------------------------------------------------------------
+   All visual baseline tokens (palette, typography, motion,
+   glass, chart framework, layout dimensions, compatibility
+   aliases) are owned by editorial.css which loads *after* this
+   file. This file is intentionally token-free at :root and only
+   carries page/component-level rules plus the few local-scoped
+   declarations that need to live next to the selector using
+   them (e.g. .btc-chart-height variants). Any future token work
+   must happen in editorial.css, not here.
+   Reference: docs/design-guidelines.md §2.1 (token ownership)
+   and §13.2 #1 (the styles.css ↔ editorial.css dual-source
+   debt that this comment block finally closes).
+   ============================================================ */
 
 * {
   box-sizing: border-box;
@@ -7820,15 +7680,9 @@ ul.terminal-summary-watch li {
   from { opacity: 0.55; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
-:root {
-  --dur-route-exit: 72ms;
-  --dur-route-skeleton: 120ms;
-  --dur-route-enter: 160ms;
-  --dur-shimmer: 1.6s;
-}
 @keyframes pageFadeOut {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(-2px); }
 }
 @keyframes pageSkeletonIn {
   from { opacity: 0; }

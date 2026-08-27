@@ -8,6 +8,12 @@ DOM = (STATIC / "core" / "dom.js").read_text(encoding="utf-8")
 MAIN = (STATIC / "main.js").read_text(encoding="utf-8")
 STYLES = (STATIC / "styles.css").read_text(encoding="utf-8")
 EDITORIAL = (STATIC / "editorial.css").read_text(encoding="utf-8")
+# 2026-08-27: token-ownership cleanup moved route motion tokens (--dur-route-*)
+# and skeleton-related selectors into editorial.css. The browser sees the
+# concatenation, so CSS-level assertions look at CSS_STACK, while negative
+# assertions ("must not contain X") still scan styles.css alone because that
+# is the *legacy* file where stale selectors would live if re-introduced.
+CSS_STACK = STYLES + "\n" + EDITORIAL
 ANALYSIS = (STATIC / "pages" / "analysis.js").read_text(encoding="utf-8")
 STRUCTURE = (STATIC / "pages" / "structure.js").read_text(encoding="utf-8")
 EVENTS = (STATIC / "pages" / "market_events.js").read_text(encoding="utf-8")
@@ -29,8 +35,8 @@ def test_reveal_stagger_is_bounded_and_cleans_repeated_runs() -> None:
 
 def test_route_handoff_never_starts_from_a_blank_frame() -> None:
     assert "revealStagger(pageRoot);" in MAIN
-    assert "--dur-route-enter: 160ms" in STYLES
-    assert "from { opacity: 0.55; transform: translateY(3px); }" in STYLES
+    assert "--dur-route-enter: 160ms" in CSS_STACK
+    assert "from { opacity: 0.55; transform: translateY(3px); }" in CSS_STACK
     assert "from { opacity: 0; transform: translateY(4px); }" not in STYLES
 
 
@@ -39,7 +45,7 @@ def test_skeletons_join_a_document_wide_negative_phase() -> None:
     assert "performance.now()" in DOM
     assert "--skeleton-delay: -${Math.round(elapsed)}ms" in DOM
     assert "skeletonPhaseStyle(-i, { periodMs: 2400, stepMs: 70 })" in DOM
-    assert "animation-delay: var(--skeleton-delay, 0ms)" in STYLES
+    assert "animation-delay: var(--skeleton-delay, 0ms)" in CSS_STACK
     assert "--candle-index" not in STYLES
 
 

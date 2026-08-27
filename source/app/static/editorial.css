@@ -57,7 +57,7 @@
   --border-light: rgba(33, 29, 43, 0.08);
   --border-glass: #d9d3ca;
   --border-glass-soft: rgba(33, 29, 43, 0.08);
-  --line: #d9d3ca;
+  --line: var(--border);
   --line-soft: rgba(33, 29, 43, 0.08);
   --white: #fff;
   --sidebar-width: 216px;
@@ -97,6 +97,89 @@
   --chart-legend: #514b59;
   --chart-reference-line: rgba(62, 111, 159, 0.62);
   --chart-reference-label: #3e6f9f;
+  /* Chart framework: tooltip, expiry anchors, wall dots, direction strokes.
+     Legacy values preserved so charts.js (CHART_THEME_FALLBACK) keeps parity. */
+  --chart-tooltip-bg: rgba(21, 35, 42, 0.92);
+  --chart-tooltip-border: rgba(255, 255, 255, 0.06);
+  --chart-tooltip-fg-1: #f8fafc;
+  --chart-tooltip-fg-2: #e2e8f0;
+  --chart-expiry-line: rgba(83, 99, 108, 0.45);
+  --chart-expiry-label: rgba(48, 84, 130, 0.85);
+  --chart-dot-put-wall: #c2725a;
+  --chart-dot-max-pain: #5a6a7c;
+  --chart-dot-call-wall: #8eb098;
+  --chart-dot-stroke: #ffffff;
+  --chart-up-stroke: #16a34a;
+  --chart-down-stroke: #dc2626;
+  --chart-up-fill: rgba(124, 155, 138, 0.32);
+  --chart-down-fill: rgba(194, 114, 90, 0.30);
+  /* Directional signals: only place where saturated Tailwind primaries remain.
+     Used for candlestick wicks so up/down stay unambiguous in dense price charts. */
+  --direction-up: #16a34a;
+  --direction-down: #dc2626;
+  /* Layout dimensions: shell max width and component sizes. */
+  --shell-width: min(1720px, calc(100vw - 72px));
+  --content-gap: 24px;
+  --section-gap: 28px;
+  --card-padding: 28px;
+  --chart-height: clamp(430px, 43vh, 560px);
+  --radius-pill: 999px;
+  /* Typography stacks (mirror editorial font policy in §4.1 of the handbook). */
+  --font-sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  /* Motion ladder: --dur-press < --dur-hover < --dur-elevate < --dur-drawer.
+     --ease-out is the workhorse; --ease-drawer is the iOS-style curve. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 120ms;
+  --dur-hover: 180ms;
+  --dur-elevate: 220ms;
+  --dur-drawer: 240ms;
+  --motion-fast: var(--dur-press) var(--ease-out);
+  --motion-hover: var(--dur-hover) var(--ease-out);
+  /* Route transitions & skeleton shimmer (used by .page-transition-* and skeletonShimmer). */
+  --dur-route-exit: 72ms;
+  --dur-route-skeleton: 120ms;
+  --dur-route-enter: 160ms;
+  --dur-shimmer: 1.6s;
+  /* Frosted glass: neutral transparent panels used by topbar / page-guide / tooltip.
+     Solid fallback under prefers-reduced-transparency. */
+  --glass-bg: rgba(255, 255, 255, 0.18);
+  --glass-bg-deep: rgba(255, 255, 255, 0.32);
+  --glass-tint: rgba(255, 255, 255, 0.10);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-border-outer: rgba(31, 42, 58, 0.14);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass-highlight: rgba(255, 255, 255, 0.85);
+  --glass-blur: 28px;
+  --glass-blur-deep: 16px;
+  --glass-shadow: 0 32px 80px rgba(31, 42, 58, 0.22), 0 12px 28px rgba(31, 42, 58, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(31, 42, 58, 0.08);
+  --surface-glass: rgba(248, 243, 232, 0.74);
+  --surface-glass-strong: rgba(252, 247, 238, 0.88);
+  --surface-glass-soft: rgba(238, 241, 236, 0.58);
+  --blur-soft: blur(10px);
+  --blur-card: blur(16px);
+  /* Hover tint + transition shorthand (legacy indigo-tinted hover, preserved). */
+  --hover-tint: rgba(99, 102, 241, 0.10);
+  --hover-tint-strong: rgba(99, 102, 241, 0.18);
+  --transition-hover: 180ms ease;
+  /* Card hover shadow used by pressable cards; same family as --shadow-card but with extra lift. */
+  --shadow-card-hover: 0 18px 36px rgba(31, 42, 58, 0.12);
+  /* Compatibility aliases: re-export primitives so legacy selectors referencing
+     --text / --bg-surface / --bg-hover / --danger-strong / --info-strong / --ink-muted /
+     --card-bg / --surface-primary resolve without falling back to empty. */
+  --text: var(--ink);
+  --bg-surface: var(--panel-strong);
+  --bg-hover: rgba(99, 102, 241, 0.10);
+  --danger-strong: #7a4630;
+  --info-strong: #2e577e;
+  --ink-muted: #5f5968;
+  --card-bg: var(--surface-elevated);
+  --surface-primary: var(--surface-elevated);
+  /* Strong chip/border tones used by strategy operation card headings. */
+  --bullish-strong: var(--bullish-chip-ink);
+  --bearish-strong: var(--bearish-chip-ink);
 }
 
 html {

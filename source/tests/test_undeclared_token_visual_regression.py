@@ -16,6 +16,11 @@ It is intentionally *static* — it does not depend on Playwright or a
 running backend. It catches only the structural regression; visual
 verification remains with `tests/verify_pages.py` and the visual evidence
 matrix in the audit document §13.
+
+2026-08-27 update: the §13.2 #1 token-ownership cleanup removed styles.css's
+:root block entirely and consolidated every visual baseline token in
+editorial.css. This guard now reads editorial.css, where every alias the
+audit required is declared with its current editorial-palette value.
 """
 from __future__ import annotations
 
@@ -24,7 +29,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STYLES = ROOT / "app" / "static" / "styles.css"
+# 2026-08-27: post-token-migration, editorial.css owns all visual baseline
+# tokens (palette, typography, motion, glass, chart framework, layout, and
+# the audit's undeclared-but-consumed aliases). styles.css no longer has a
+# :root block; reading it would always fail this guard. We point at the
+# single source of truth instead.
+STYLES = ROOT / "app" / "static" / "editorial.css"
 
 # 10 tokens added by the audit fix (see audit 2026-07-31 §6.1 + A.1 commit).
 # The audit also lists `--surface-muted`, but that one was already declared
@@ -33,21 +43,26 @@ STYLES = ROOT / "app" / "static" / "styles.css"
 #
 # 2026-08-13: values aligned with the indigo accent re-theme (`--accent` now
 # `#6366f1`); `--card-bg` is consumed again by the restored alert-chip styles.
+#
+# 2026-08-27: after the editorial palette re-theme the visual baseline moved
+# to `--info-strong: #2e577e` (editorial) and `--surface-muted: #f0edf3`
+# (editorial). We pin those values here so any future regression to the
+# indigo / cream legacy hex is caught by CI.
 EXPECTED_ALIASES = {
     "--line": "var(--border)",
     "--text": "var(--ink)",
     "--bg-surface": "var(--panel-strong)",
     "--bg-hover": "rgba(99, 102, 241, 0.10)",
     "--danger-strong": "#7a4630",
-    "--info-strong": "#1d4ed8",
-    "--border-light": "rgba(160, 140, 108, 0.14)",
-    "--line-soft": "rgba(160, 140, 108, 0.10)",
+    "--info-strong": "#2e577e",
+    "--border-light": "rgba(33, 29, 43, 0.08)",
+    "--line-soft": "rgba(33, 29, 43, 0.08)",
     "--card-bg": "var(--surface-elevated)",
-    "--ink-muted": "#5e6a78",
+    "--ink-muted": "#5f5968",
 }
 
 PREEXISTING_ALIASES = {
-    "--surface-muted": "rgba(238, 241, 236, 0.82)",
+    "--surface-muted": "#f0edf3",
 }
 
 
@@ -76,28 +91,36 @@ def _declaration_in(block: str, name: str) -> str | None:
 
 
 def _consumers_outside_root(source: str, name: str) -> list[tuple[int, int]]:
-    """Find each `var(<name>)` consumer and return (line_no, col)."""
+    """Find each `var(<name>)` consumer and return (line_no, col).
+
+    2026-08-27: post-token-migration, the audit aliases live in editorial.css
+    while most consumer sites remain in styles.css. We therefore scan both
+    files for `var(<name>)` references. The first :root in editorial.css is
+    skipped so the alias's own declaration is not counted as a consumer.
+    """
     var_pattern = re.compile(rf"var\(\s*{re.escape(name)}\s*[,)]")
     consumers: list[tuple[int, int]] = []
-    # Skip past the closing brace of the first :root block (the same approach
-    # used by `_root_block`), then scan the remaining source.
-    root_match = re.search(r":root\s*\{", source)
-    assert root_match
-    scan_start = root_match.end()
-    depth = 1
-    i = scan_start
-    while i < len(source) and depth > 0:
-        if source[i] == "{":
-            depth += 1
-        elif source[i] == "}":
-            depth -= 1
-        i += 1
-    scan_target = source[i:]
-    for m in var_pattern.finditer(scan_target):
-        absolute = i + m.start()
-        line_no = source.count("\n", 0, absolute) + 1
-        col = absolute - (source.rfind("\n", 0, absolute) + 1)
-        consumers.append((line_no, col))
+    sibling_styles = ROOT / "app" / "static" / "styles.css"
+    sources: list[tuple[str, str]] = [(source, "editorial.css")]
+    if sibling_styles.exists():
+        sources.append((sibling_styles.read_text(encoding="utf-8", errors="replace"), "styles.css"))
+    for body, _label in sources:
+        root_match = re.search(r":root\s*\{", body)
+        if not root_match:
+            scan_target = body
+        else:
+            depth = 1
+            i = root_match.end()
+            while i < len(body) and depth > 0:
+                if body[i] == "{":
+                    depth += 1
+                elif body[i] == "}":
+                    depth -= 1
+                i += 1
+            scan_target = body[i:]
+        for m in var_pattern.finditer(scan_target):
+            line_no = scan_target.count("\n", 0, m.start()) + 1
+            consumers.append((line_no, m.start()))
     return consumers
 
 

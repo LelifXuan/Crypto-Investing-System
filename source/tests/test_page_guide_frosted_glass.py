@@ -11,7 +11,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 EDITORIAL = REPO / "app" / "static" / "editorial.css"
-STYLES = REPO / "app" / "static" / "styles.css"
+# 2026-08-27: §13.2 #1 cleanup moved glass tokens out of styles.css :root and
+# into editorial.css. Tests that look up token declarations now point at the
+# single source of truth.
+STYLES = REPO / "app" / "static" / "editorial.css"
 
 
 def _read(path: Path) -> str:

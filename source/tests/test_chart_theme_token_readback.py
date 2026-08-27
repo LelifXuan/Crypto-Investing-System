@@ -15,7 +15,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHARTS_JS = ROOT / "app" / "static" / "ui" / "charts.js"
-STYLES = ROOT / "app" / "static" / "styles.css"
+# 2026-08-27: the §13.2 #1 token-ownership cleanup moved chart tokens out of
+# styles.css :root and into editorial.css. This test still asserts that the
+# chart tokens are * present somewhere in the cascade chain; editorial.css
+# loads after styles.css and is the single source of truth.
+STYLES = ROOT / "app" / "static" / "editorial.css"
 
 EXPECTED_TOKEN_KEYS = {
     "legend":         "--chart-legend",
