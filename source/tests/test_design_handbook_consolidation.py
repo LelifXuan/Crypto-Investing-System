@@ -143,3 +143,52 @@ def test_v31_no_obsolete_viewport_baseline() -> None:
     assert promotion is None, (
         "V3.1 §11.1 must not promote 2560×1600 as the main baseline"
     )
+
+
+def test_no_path_split_to_legacy_audit_or_spec() -> None:
+    """2026-08-27 §13.2 #8 follow-up: after V3.2 design-guidelines split
+    and V3.3 sed consolidation, no code comment may reference the legacy
+    root path of any docs/ file that was migrated to source/docs/ in V2.2
+    (commit f6a937e). The audit notes that V2.2's R100 rename of the
+    `docs/` subtree to `source/docs/` was not followed up by code-comment
+    updates; this guard prevents re-introduction."""
+    # Patterns we now reject (must always reference the source/docs/ path).
+    # Use negative-lookbehind so `source/docs/...` (the canonical path)
+    # does not match. A bare `docs/UI_UX_AUDIT_2026-07-31.md` (with no
+    # preceding path or after whitespace / punctuation) is the failure
+    # mode we want to catch.
+    bad_patterns = [
+        r"(?<!source/)docs/UI_UX_AUDIT_2026-07-31\.md",
+        r"(?<!source/)docs/superpowers/specs/2026-07-31-dropdown-revision-design\.md",
+        r"(?<!source/)docs/research/btc_volatility/CURRENT_VOLATILITY_BASELINE_AUDIT\.md",
+    ]
+
+    # Skip the meta-zones that legitimately mention the legacy path:
+    # - docs/ trees (legacy handbook is itself a docs/ file with a banner)
+    # - source/docs/ trees (active spec & audit locations)
+    # - .zcode/ (agent plan notes that quote the original §14.5 text)
+    # - this test file (it embeds the patterns as regex literals)
+    skip_dirs = {"docs", "source/docs", ".zcode"}
+    skip_files = {Path(__file__).resolve()}
+    repo_root = ROOT.parent
+    offenders: list[str] = []
+    for path in repo_root.rglob("*"):
+        if not path.is_file():
+            continue
+        if any(part in skip_dirs for part in path.parts):
+            continue
+        if path.resolve() in skip_files:
+            continue
+        if path.suffix not in {".js", ".css", ".py", ".md"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for pat in bad_patterns:
+            if re.search(pat, text):
+                offenders.append(f"{path}: {pat}")
+
+    assert not offenders, (
+        "Path-split references to migrated docs/ found:\n  " + "\n  ".join(offenders[:20])
+    )

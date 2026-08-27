@@ -23,6 +23,55 @@ def test_application_shell_owns_the_only_page_h1() -> None:
         assert "page-display-title" in source, source_path
 
 
+def test_gold_page_h1_legacy_class_is_fully_removed() -> None:
+    """2026-08-27 §13.2 #2: the legacy `.gold-page-h1` class must not appear
+    in CSS, JS, or page sources. Display styling falls back to the shared
+    `page-display-title` class (see editorial.css §7.1)."""
+    offenders: list[str] = []
+
+    css_files = [
+        ROOT / "app/static/styles.css",
+        ROOT / "app/static/editorial.css",
+    ]
+    for css in css_files:
+        text = css.read_text(encoding="utf-8")
+        # Allow comments mentioning the legacy class as historical note.
+        # Strip /* ... */ comments for a code-only check.
+        import re as _re
+        code = _re.sub(r"/\*.*?\*/", "", text, flags=_re.DOTALL)
+        if "gold-page-h1" in code:
+            offenders.append(str(css))
+
+    page_sources = [
+        PAGES / "gold_v5.js",
+        PAGES / "btc_derivatives.js",
+        PAGES / "knowledge.js",
+        PAGES / "strategy/index.js",
+    ]
+    for source_path in page_sources:
+        text = source_path.read_text(encoding="utf-8")
+        if "gold-page-h1" in text:
+            offenders.append(str(source_path))
+
+    assert not offenders, (
+        f"`.gold-page-h1` legacy class still present in: {offenders}"
+    )
+
+
+def test_macro_calendar_and_analysis_use_page_display_title() -> None:
+    """2026-08-27 §13.2 #2: hero H2 in macro_calendar and analysis must
+    adopt the shared `page-display-title` class to align with the other
+    pages (btc-derivatives, ai-strategy, knowledge-base, gold-allocation)."""
+    for page_name, expected_phrase in [
+        ("macro_calendar.js", "page-display-title"),
+        ("analysis.js", "page-display-title"),
+    ]:
+        text = (PAGES / page_name).read_text(encoding="utf-8")
+        assert expected_phrase in text, (
+            f"{page_name} should reference {expected_phrase} for the hero H2"
+        )
+
+
 def test_strategy_page_loader_combines_explicit_and_shared_asset_versions() -> None:
     source = (ROOT / "app/static/main.js").read_text(encoding="utf-8")
 

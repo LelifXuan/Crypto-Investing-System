@@ -578,12 +578,19 @@ backdrop-filter: blur(var(--glass-blur));
 
 ---
 
-## 14.5 V3.2 本轮剩余债务（2026-08-27 状态）
+## 14.5 V3.2 / V3.3 剩余债务（2026-08-27 状态）
 
-仅记录 V3.2 仍未处理、需在 V3.3 推进的债务项；其余债务参见 §13.2。
+仅记录 V3.2 / V3.3 仍未处理、需在 V3.4+ 推进的债务项；其余债务参见 §13.2。
 
-- **§13.2 #2 页面标题语义不一致**：`gold_v5.js:156` 的 `.gold-page-h1` 残留类，以及 BTC 衍生品 / AI 策略 / 知识百科内容区仍存在的额外 H1 结构。需统一为 display class + H2。
-- **`source/docs/UI_UX_AUDIT_2026-07-31.md` 路径分叉**：8 处代码注释指向 `docs/UI_UX_AUDIT_2026-07-31.md`（根路径），但文件实际位于 `source/docs/UI_UX_AUDIT_2026-07-31.md`。属于 #8 文档分叉的同类问题，V3.2 范围内未处理；建议要么复制一份到根 `docs/`，要么批量改 8 处引用指向 `source/docs/`。
+### V3.3 已收敛（2026-08-27）
+
+- **§13.2 #2 页面标题语义不一致**：`gold_v5.js:157` 的 `.gold-page-h1` 残留类已下线（HTML class 与 2 段 CSS 一并删除，`page-display-title` 接管）；`macro_calendar.js:197/238` 与 `analysis.js:775` 三处 H2 补 `page-display-title` display class；BTC 衍生品 / AI 策略 / 知识百科内容区从 V2.x 起已是 H2 + `page-display-title`。
+- **`source/docs/UI_UX_AUDIT_2026-07-31.md` 路径分叉**：10 处引用（7 处代码注释 + 2 处设计手册 prose + 1 处 `UPDATES_V2.1.md`）已 sed 改为 `source/docs/UI_UX_AUDIT_2026-07-31.md`；新增 `tests/test_design_handbook_consolidation.py::test_no_path_split_to_legacy_audit_or_spec` 静态守卫防回归。
+- **次生路径分叉**：`dropdown` spec 4 处 + `volatility_research` audit 2 处同样 sed 收敛；新加的路径分叉守卫已覆盖全部 3 类。
+
+### 仍未处理（V3.4+）
+
+- *(本轮已清空所有 V3.2 登记项；§13.2 全部 8 项债务已治理完毕)*
 
 ---
 
