@@ -4078,11 +4078,16 @@ article.card:hover,
   text-align: center;
 }
 
+/* 2026-09-04 (ui-audit P1#3): SVG 以 JS 计算的 width/height 属性渲染
+   (随容器宽度变化,窄屏自动紧凑轴刻度),不再强制 width:100% 造成
+   整体缩小、轴标签只剩 ~3.3px。 */
 .structure-chart-svg {
   display: block;
-  width: 100%;
-  height: clamp(320px, 42vh, 460px);
-  min-height: 320px;
+  /* 2026-09-04 (P1#3): rendered size comes from the inline style set in
+     renderChart() (container-width aware). No CSS width so the measurement
+     and the render can never diverge. */
+  height: auto;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -4940,10 +4945,7 @@ button:hover,
   padding: 16px 18px;
 }
 
-.structure-chart-svg {
-  height: clamp(360px, 45vh, 520px);
-  min-height: 360px;
-}
+/* 2026-09-04 (P1#3): height now driven by inline render size; legacy clamp removed. */
 
 .structure-chart-meta {
   padding-top: 2px;
@@ -5001,10 +5003,7 @@ button:hover,
   align-content: stretch;
 }
 
-.structure-chart-svg {
-  height: 100%;
-  min-height: 520px;
-}
+
 
 .structure-chart-meta {
   gap: 8px 14px;
@@ -5332,7 +5331,7 @@ button:hover,
   }
 
   .structure-chart-svg {
-    min-height: 320px;
+    min-height: 280px;
   }
 
   .event-feed-item strong {

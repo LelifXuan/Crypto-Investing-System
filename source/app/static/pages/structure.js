@@ -249,8 +249,11 @@ function formatAxisTime(value, timeframe) {
   return formatted.slice(0, 5);
 }
 
-function buildChartScale(candles, width, height, minPrice, maxPrice) {
-  const margin = { top: 42, right: 28, bottom: 58, left: 78 };
+function buildChartScale(candles, width, height, minPrice, maxPrice, { compactAxis = false } = {}) {
+  // 窄容器时压缩刻度边距,给绘图区留出空间;字号保持 CSS 像素不变。
+  const margin = compactAxis
+    ? { top: 34, right: 14, bottom: 50, left: 52 }
+    : { top: 42, right: 28, bottom: 58, left: 78 };
   const plot = {
     x: margin.left,
     y: margin.top,
@@ -283,9 +286,10 @@ function buildLinePath(points, scale) {
     .join(" ");
 }
 
-function buildAxisMarkup(candles, scale) {
-  const yTicks = Array.from({ length: 5 }, (_, index) => scale.minPrice + ((scale.maxPrice - scale.minPrice) * index) / 4);
-  const xTickCount = Math.min(6, candles.length);
+function buildAxisMarkup(candles, scale, { compactAxis = false } = {}) {
+  const yTickCount = compactAxis ? 3 : 5;
+  const yTicks = Array.from({ length: yTickCount }, (_, index) => scale.minPrice + ((scale.maxPrice - scale.minPrice) * index) / Math.max(yTickCount - 1, 1));
+  const xTickCount = Math.min(compactAxis ? 3 : 6, candles.length);
   const xTicks = Array.from({ length: xTickCount }, (_, index) => Math.round(((candles.length - 1) * index) / Math.max(xTickCount - 1, 1)));
   const yMarkup = yTicks
     .map((tick) => {
@@ -1238,9 +1242,31 @@ function renderChart(snapshot, candles) {
   const prices = [...candlePrices, ...overlayPrices];
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  const width = 1040;
-  const height = 520;
-  const scale = buildChartScale(visibleCandles, width, height, minPrice, maxPrice);
+  // 2026-09-04 (ui-audit P1#3): SVG 尺寸随容器实际宽度重算,不再固定
+  // 1040×520 后整体缩小(390px 视口下 0.275 倍缩放,轴标签只剩 ~3.3px,
+  // §7.9 图表可读性)。窄宽度下减少 x 轴标签数量并压缩左右边距,保持
+  // 屏幕字号恒定。
+  // Measure the inner content box (clientWidth includes padding; the SVG
+  // lives inside it). When the panel still carries its loading text the
+  // measurement falls back to the card, then to a sane desktop default.
+  const measureHost = chartPanel?.isConnected
+    ? chartPanel
+    : document.getElementById("structure-chart-panel");
+
+  const hostCS = measureHost ? getComputedStyle(measureHost) : null;
+  const innerWidth = measureHost && hostCS
+    ? measureHost.clientWidth
+      - (parseFloat(hostCS.paddingLeft) || 0)
+      - (parseFloat(hostCS.paddingRight) || 0)
+    : 0;
+  const containerWidth = Math.max(
+    280,
+    Math.min(1280, Math.round(innerWidth || 1040)),
+  );
+  const width = containerWidth;
+  const height = Math.round(Math.max(360, Math.min(520, width * 0.5)));
+  const compactAxis = width < 640;
+  const scale = buildChartScale(visibleCandles, width, height, minPrice, maxPrice, { compactAxis });
   const pricePath = buildLinePath(visibleCandles, scale);
   const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale, priceGuide);
   const profileMarkup = buildMarketProfileMarkup(visibleGeometry, scale, priceGuide);
@@ -1252,8 +1278,8 @@ function renderChart(snapshot, candles) {
 
   chartPanel.className = "structure-chart-panel";
   chartPanel.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg" role="img" aria-label="形态结构图">
-      ${buildAxisMarkup(visibleCandles, scale)}
+    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg${compactAxis ? " is-compact" : ""}" style="width: ${width}px; height: ${height}px;" role="img" aria-label="形态结构图">
+      ${buildAxisMarkup(visibleCandles, scale, { compactAxis })}
       ${buildLegendMarkup(availability)}
       <path d="${pricePath}" fill="none" stroke="${CHART_SERIES.price.color}" stroke-width="${CHART_SERIES.price.width}" stroke-linecap="round" stroke-linejoin="round"></path>
       ${profileMarkup}
@@ -1424,6 +1450,20 @@ function renderFromBundle(bundle) {
   };
   document.getElementById("structure-chart-panel").dataset.snapshotState = "ready";
   renderChart(safeSnapshot, candles);
+  // 2026-09-04 (P1#3): first render can measure the panel while it still
+  // carries the loading-shell width. Once this frame lays out, re-render
+  // once if the real inner width diverges from the rendered SVG width.
+  requestAnimationFrame(() => {
+    const panel = document.getElementById("structure-chart-panel");
+    const svg = panel?.querySelector(".structure-chart-svg");
+    if (!panel || !svg) return;
+    const cs = getComputedStyle(panel);
+    const inner = panel.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const rendered = svg.viewBox.baseVal.width;
+    if (inner >= 280 && Math.abs(inner - rendered) > 1) {
+      renderChart(safeSnapshot, candles);
+    }
+  });
   renderSummary(safeSnapshot);
   const lastCandleTs = candles[candles.length - 1]?.ts_open;
   const scopeLabel = state.selectedSystem === "all" ? "综合判断" : labelFor(SYSTEM_LABELS, state.selectedSystem);

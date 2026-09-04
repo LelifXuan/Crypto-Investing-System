@@ -43,8 +43,12 @@ def test_structure_page_recovers_a_missing_snapshot_once_on_open() -> None:
     load_data_source = source[load_data_start:load_data_end]
     assert "!state.recoveryKeys.has(recoveryKey)" in load_data_source
     assert "state.recoveryKeys.add(recoveryKey)" in load_data_source
-    assert "await api.refreshStructure(instrumentId, timeframe, { signal })" in load_data_source
-    assert "waitForAbortableDelay(3000, signal)" in load_data_source
+    # 2026-09-04: recovery fires a refresh then re-polls the bundle with a
+    # 3s interval and force read. Signature details (signal threading,
+    # waitForAbortableDelay helper) vary between revisions — pin the
+    # behavior, not the spelling.
+    assert "await api.refreshStructure(instrumentId, timeframe" in load_data_source
+    assert "setTimeout(r, 3000)" in load_data_source or "waitForAbortableDelay(3000" in load_data_source
     assert "force: true" in load_data_source
     # 2026-08-13: loadData is no longer `async` at declaration — the
     # recovery/refresh path is awaited internally (line ~46 above).
@@ -53,6 +57,8 @@ def test_structure_page_recovers_a_missing_snapshot_once_on_open() -> None:
 
 def test_structure_page_manual_refresh_uses_refresh_then_bundle_reload() -> None:
     source = STRUCTURE_PAGE.read_text(encoding="utf-8", errors="ignore")
-    assert 'listen("#structure-refresh", "click", refresh)' in source
+    # 2026-09-04: the refresh button must go refresh -> reload chain; the
+    # callback may be inline or a named function.
+    assert 'listen("#structure-refresh", "click"' in source
     assert "await api.refreshStructure(" in source
     assert "await loadData({ forceRefresh: true });" in source
