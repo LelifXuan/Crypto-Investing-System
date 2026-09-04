@@ -11349,11 +11349,13 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .strategy-detail-panel {
   position: fixed;
-  top: 0;
+  /* 2026-09-04 (ui-audit P1#2): 顶栏(64px)保持最高层级,抽屉从顶栏下方
+     开始,返回入口不再被遮挡(§5.2 顶栏避让)。 */
+  top: var(--topbar-height, 64px);
   right: 0;
   width: 75vw;
   max-width: 75vw;
-  height: 100vh;
+  height: calc(100vh - var(--topbar-height, 64px));
   box-sizing: border-box;
   /* 2026-08-20: 磨砂玻璃质感优化 — 参考 page-guide-panel 的 frosted-glass 设计。
      降低 blur 从 28px → 16px，提升背景不透明度从 0.82 → 0.92，减少"乳白模糊感"，
@@ -11407,6 +11409,20 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   flex-direction: column;
   gap: 16px;
   background: transparent;
+}
+
+/* 2026-09-04 (ui-audit P1#2): 详情内容不产生横向溢出 — 长提示句换行,
+   执行/审计表格在自身滚动区内横向滚动,scrollWidth 收敛到 clientWidth。 */
+.strategy-detail-body {
+  overflow-x: clip;
+  min-width: 0;
+}
+.strategy-detail-body :is(p, span, div) {
+  overflow-wrap: anywhere;
+}
+.strategy-detail-body .table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 /* 2026-07-25: prominent banner shown at the top of the detail panel

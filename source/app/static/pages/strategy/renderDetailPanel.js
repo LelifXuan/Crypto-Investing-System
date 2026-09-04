@@ -176,6 +176,33 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     overlay.classList.add("is-visible");
   });
 
+  // 2026-09-04 (ui-audit P1#2): aria-modal 的对话框必须实现焦点生命周期
+  // (§10) — 打开后焦点进入面板,Tab/Shift+Tab 循环约束在面板内,关闭时
+  // 由 close() 恢复 focusOrigin。
+  const backBtn = panel.querySelector("#strategy-detail-close");
+  (backBtn || panel).focus({ preventScroll: true });
+
+  function tabHandler(e) {
+    if (!isTopOverlay(panel)) return;
+    if (e.key !== "Tab") return;
+    const focusables = panel.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const visible = [...focusables].filter((el) => !el.disabled && el.offsetParent !== null);
+    if (!visible.length) return;
+    const first = visible[0];
+    const last = visible[visible.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !panel.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (active === last || !panel.contains(active))) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+  document.addEventListener("keydown", tabHandler);
+
   // 2026-07-25: Track panel mounted + latest model so async rebuild
   // responses don't fight with a stale close timer.
   let mountedAt = Date.now();
@@ -287,6 +314,7 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     overlay.remove();
     layer?.destroy(); layer = null;
     document.removeEventListener("keydown", escHandler);
+    document.removeEventListener("keydown", tabHandler);
     document.removeEventListener("pointerdown", outsidePointerHandler, true);
     if (dismissActiveDetailPanel === close) dismissActiveDetailPanel = null;
     if (onClose) onClose();

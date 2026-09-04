@@ -2379,6 +2379,34 @@ body[data-page="ai-strategy"] .scan-cell-btn {
   padding: 10px 12px;
 }
 
+/* 2026-09-04 (ui-audit P1#1): 窄屏机会扫描单列堆叠。两栏半宽时单元格仅
+   ~41px,"等待确认"逐字换行(§7.8/§11 禁止逐字换行/窄屏收敛列数)。
+   矩阵表格保持屏幕字号,通过 .table-wrap 局部横向滚动;空排序面板按
+   内容高度展示,不占半屏。 */
+@media (max-width: 900px) {
+  body[data-page="ai-strategy"] .strategy-scan-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  body[data-page="ai-strategy"] :is(#strategy-scan-matrix-section, #strategy-scan-ranked-section) {
+    flex: none;
+    width: 100%;
+  }
+  body[data-page="ai-strategy"] #strategy-scan-ranked-section {
+    min-height: 240px;
+    max-height: 60vh;
+  }
+  body[data-page="ai-strategy"] .scan-matrix-table {
+    min-width: 560px;
+  }
+  body[data-page="ai-strategy"] #strategy-scan-matrix .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* The global primary-button selector is intentionally broad. Matrix cells
    need stronger, state-specific selectors so unqualified candidates never
    inherit the purple opportunity treatment. */
