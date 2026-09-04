@@ -471,8 +471,8 @@ export const api = {
       timeoutMs: options.timeoutMs ?? 5000,
     });
   },
-  syncMarketEvents() {
-    return requestJson("/market-events/sync", { method: "POST" });
+  syncMarketEvents(options = {}) {
+    return requestJson("/market-events/sync", { method: "POST", signal: options.signal });
   },
   getMarketEventTranslationStatus() {
     return requestJson("/market-events/translations/status", { ttl: 3, force: true });
@@ -550,21 +550,21 @@ export const api = {
       params: { instrument_id: instrumentId, timeframe },
     });
   },
-    refreshMacro() {
+    refreshMacro(options = {}) {
       invalidateCache("/macro");
       invalidateCache("/monitoring/macro-overview");
       invalidateCache("/monitoring/dashboard");
       invalidateCache("monitoring:macro_overview");
       invalidateCache("monitoring_dashboard");
-      return requestJson("/macro/sync", { method: "POST" });
+      return requestJson("/macro/sync", { method: "POST", signal: options.signal });
     },
   refreshOnchain() {
     invalidateCache("monitoring:observations");
     return requestJson("/onchain/sync", { method: "POST" });
   },
-  getMacroCalendar(limit = 200) {
+  getMacroCalendar(limit = 200, options = {}) {
     // 宏观日历是计划性事件（未来日程），5 分钟内数据不会变化
-    return requestJson("/macro/calendar", { params: { limit }, ttl: 300 });
+    return requestJson("/macro/calendar", { params: { limit }, ttl: 300, signal: options.signal });
   },
   getAlertEvents(limit = 100) {
     return requestJson("/alerts/events", { params: { limit }, ttl: 20 });
@@ -663,7 +663,7 @@ export const api = {
       retry: 1,
     });
   },
-  refreshStructure(instrumentId, timeframe) {
+  refreshStructure(instrumentId, timeframe, options = {}) {
     invalidateCache("/analysis/bundle");
     invalidateCache("/alerts/bundle");
     invalidateCache("/monitoring/dashboard");
@@ -673,6 +673,7 @@ export const api = {
     return requestJson("/structure/tab/refresh", {
       method: "POST",
       params: { instrument_id: instrumentId, timeframe },
+      signal: options.signal,
     });
   },
   getStrategyBundle(instrumentId, timeframe, options = {}) {

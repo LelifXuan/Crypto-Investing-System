@@ -1,4 +1,4 @@
-export async function renderPage() {
+export async function renderPage(context = {}) {
   const assetVersion = window.__ASSET_VERSION__
     ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}`
     : "";
@@ -6,7 +6,7 @@ export async function renderPage() {
   let cleanup = null;
   return {
     async mount() {
-      cleanup = await module.renderStructure();
+      cleanup = await module.renderStructure(context);
     },
     async pause() {},
     async resume() {},

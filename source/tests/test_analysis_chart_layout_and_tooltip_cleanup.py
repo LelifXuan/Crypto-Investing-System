@@ -46,3 +46,33 @@ def test_market_regime_rail_uses_shared_section_spacing() -> None:
     assert root_rule in EDITORIAL
     assert ':is(.analysis-hero-grid, #analysis-signal-cards) { margin-bottom: 0; }' in EDITORIAL
     assert '.status-mode-badge { margin-block: 0; }' in EDITORIAL
+
+
+def test_mark_snapshot_returns_to_compact_right_rail_proportion() -> None:
+    assert (
+        '.analysis-hero-grid { grid-template-columns: minmax(620px, 1fr) '
+        'minmax(300px, 0.34fr);'
+    ) in EDITORIAL
+    assert (
+        '@media (max-width: 1180px)' in EDITORIAL
+        and '.analysis-hero-grid { grid-template-columns: 1fr; }' in EDITORIAL
+    )
+
+
+def test_indicator_cards_use_balanced_rows_and_aligned_content_tracks() -> None:
+    assert "grid-template-columns: repeat(20, minmax(0, 1fr))" in EDITORIAL
+    assert "#analysis-signal-cards > :nth-child(n + 6) { grid-column: span 5; }" in EDITORIAL
+    assert "grid-template-rows: auto minmax(52px, auto)" in EDITORIAL
+
+
+def test_vwap_interpretation_uses_formula_not_prose_comparison() -> None:
+    assert "现价 > VWAP50 > VWAP100；VWAP50 斜率 > 0" in PAGE
+    assert "现价 < VWAP50 < VWAP100；VWAP50 斜率 < 0" in PAGE
+    assert "价格位于 VWAP50 上方" not in PAGE
+
+
+def test_analysis_status_does_not_render_inert_regime_buttons() -> None:
+    assert "analysis-regime-objects" not in PAGE
+    assert "analysis-regime-objects" not in EDITORIAL
+    assert 'analysis:volatility-phase' not in PAGE
+    assert 'analysis:directional-bias' not in PAGE

@@ -1,41 +1,65 @@
 {
   "viewports_tested": [
+    "operator-sheet",
+    "operator-drawer",
+    "operator-desktop",
     "mobile-s",
-    "mobile-l",
     "tablet",
     "laptop-1280",
-    "laptop",
-    "desktop",
-    "desktop-2k-1600",
-    "desktop-2k"
+    "desktop-2k",
+    "desktop-2k-1600"
   ],
   "per_page": [
     {
-      "page_id": "market-analysis",
+      "page_id": "monitoring-overview",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -47,7 +71,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -59,43 +83,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -107,7 +95,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-analysis_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\monitoring-overview_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -115,31 +115,55 @@
       "verdict": "PASS"
     },
     {
-      "page_id": "monitoring-overview",
+      "page_id": "market-analysis",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -151,7 +175,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -163,43 +187,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -211,7 +199,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\monitoring-overview_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-analysis_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -222,28 +222,52 @@
       "page_id": "market-structure",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -255,7 +279,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -267,43 +291,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -315,7 +303,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-structure_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-structure_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -326,28 +326,52 @@
       "page_id": "market-events",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -359,7 +383,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -371,43 +395,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -419,7 +407,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\market-events_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\market-events_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -430,28 +430,52 @@
       "page_id": "macro-calendar",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -463,7 +487,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -475,43 +499,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -523,7 +511,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\macro-calendar_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\macro-calendar_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -534,28 +534,52 @@
       "page_id": "knowledge-base",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -567,7 +591,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -579,43 +603,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -627,7 +615,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\knowledge-base_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\knowledge-base_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -638,28 +638,52 @@
       "page_id": "ashare-etf",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -671,7 +695,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -683,43 +707,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -731,7 +719,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ashare-etf_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ashare-etf_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -742,28 +742,52 @@
       "page_id": "btc-derivatives",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -775,7 +799,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -787,43 +811,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -835,7 +823,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\btc-derivatives_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\btc-derivatives_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -846,28 +846,52 @@
       "page_id": "ai-strategy",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -879,7 +903,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -891,43 +915,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -939,7 +927,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\ai-strategy_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\ai-strategy_2560x1600.png"
         }
       ],
       "overflow_viewports": [],
@@ -950,28 +950,52 @@
       "page_id": "gold-allocation",
       "viewports": [
         {
-          "viewport": "mobile-s",
-          "width": 375,
-          "height": 667,
-          "scroll_width": 375,
-          "client_width": 375,
+          "viewport": "operator-sheet",
+          "width": 800,
+          "height": 900,
+          "scroll_width": 800,
+          "client_width": 800,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_375x667.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_800x900.png"
         },
         {
-          "viewport": "mobile-l",
-          "width": 414,
-          "height": 896,
-          "scroll_width": 414,
-          "client_width": 414,
+          "viewport": "operator-drawer",
+          "width": 1100,
+          "height": 800,
+          "scroll_width": 1100,
+          "client_width": 1100,
           "has_overflow": false,
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_414x896.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_1100x800.png"
+        },
+        {
+          "viewport": "operator-desktop",
+          "width": 1500,
+          "height": 900,
+          "scroll_width": 1500,
+          "client_width": 1500,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_1500x900.png"
+        },
+        {
+          "viewport": "mobile-s",
+          "width": 390,
+          "height": 844,
+          "scroll_width": 390,
+          "client_width": 390,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_390x844.png"
         },
         {
           "viewport": "tablet",
@@ -983,7 +1007,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_768x1024.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_768x1024.png"
         },
         {
           "viewport": "laptop-1280",
@@ -995,43 +1019,7 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_1280x720.png"
-        },
-        {
-          "viewport": "laptop",
-          "width": 1366,
-          "height": 900,
-          "scroll_width": 1366,
-          "client_width": 1366,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_1366x900.png"
-        },
-        {
-          "viewport": "desktop",
-          "width": 1920,
-          "height": 1080,
-          "scroll_width": 1920,
-          "client_width": 1920,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_1920x1080.png"
-        },
-        {
-          "viewport": "desktop-2k-1600",
-          "width": 2560,
-          "height": 1600,
-          "scroll_width": 2560,
-          "client_width": 2560,
-          "has_overflow": false,
-          "content_visible": true,
-          "findings": [],
-          "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_2560x1600.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_1280x720.png"
         },
         {
           "viewport": "desktop-2k",
@@ -1043,7 +1031,19 @@
           "content_visible": true,
           "findings": [],
           "verdict": "PASS",
-          "screenshot": "tests\\screenshots\\responsive\\gold-allocation_2560x1440.png"
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_2560x1440.png"
+        },
+        {
+          "viewport": "desktop-2k-1600",
+          "width": 2560,
+          "height": 1600,
+          "scroll_width": 2560,
+          "client_width": 2560,
+          "has_overflow": false,
+          "content_visible": true,
+          "findings": [],
+          "verdict": "PASS",
+          "screenshot": "C:\\Users\\h2278\\AppData\\Local\\Temp\\cis-ui2-final-1dcf372e6eed408c84f7ad4e6d4c733f\\responsive-final\\gold-allocation_2560x1600.png"
         }
       ],
       "overflow_viewports": [],

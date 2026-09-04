@@ -3157,6 +3157,8 @@ tr.is-supply-event td {
   min-width: 0;
 }
 
+/* Per-page status bars removed — status now shown only in global sidebar footer */
+
 .hero-card {
   padding: var(--card-padding);
   border-radius: var(--radius);
@@ -3219,13 +3221,14 @@ tr.is-supply-event td {
 .status-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-radius: 18px;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
   border: 1px solid rgba(175, 154, 123, 0.16);
   background: rgba(255, 255, 255, 0.76);
   color: var(--muted-strong);
-  line-height: 1.55;
+  line-height: 1.4;
+  font-size: 12px;
 }
 
 .status-banner.status-info {
@@ -4914,16 +4917,8 @@ button:hover,
   font-size: 11px;
 }
 
-.structure-overview-grid {
-  grid-template-columns: minmax(0, 1.72fr) minmax(380px, 0.84fr);
-  gap: 22px;
-}
-
 .structure-toolbar-card {
   padding: 24px 28px;
-  background:
-    radial-gradient(circle at top left, var(--info-tint-em), transparent 22%),
-    linear-gradient(180deg, rgba(255, 252, 247, 0.88), rgba(245, 240, 232, 0.76));
 }
 
 .toolbar-grid {
@@ -4936,16 +4931,6 @@ button:hover,
   letter-spacing: 0.03em;
 }
 
-.toolbar-grid .field select {
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-}
-
-.structure-summary-card {
-  gap: 14px;
-  padding: 22px;
-}
-
 .structure-summary-grid {
   gap: 14px;
 }
@@ -4953,11 +4938,6 @@ button:hover,
 .structure-summary-tile {
   gap: 12px;
   padding: 16px 18px;
-}
-
-.structure-main-card {
-  gap: 18px;
-  padding: 26px;
 }
 
 .structure-chart-svg {
@@ -4998,7 +4978,6 @@ button:hover,
 }
 
 .structure-overview-grid {
-  grid-template-columns: minmax(0, 1.9fr) minmax(320px, 0.66fr);
   gap: 18px;
 }
 
@@ -11726,10 +11705,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 
 .page-guide-panel[hidden] {
-  display: block;         /* override browser default `display:none` so transition works */
-  opacity: 0;
-  transform: translateY(8px);
-  pointer-events: none;
+  /* A closed guide must leave both layout and the accessibility tree. */
+  display: none;
 }
 
 .page-guide-panel header {

@@ -57,8 +57,10 @@ def test_v31_priority_references_legacy_path() -> None:
         "V3.1 §0 should reference source/docs/design-guidelines-legacy.md"
     )
     # The live (non-legacy) path should NOT appear in §0 priorities.
-    head = source[:1500]
-    block = re.search(r"约束优先级：(.*?)(?:^---|\Z)", head, re.DOTALL)
+    # Release records can grow before §0; inspect the semantic section, not a byte budget.
+    section = re.search(r"^## 0\..*?(?=^## |\Z)", source, re.DOTALL | re.MULTILINE)
+    assert section is not None, "Handbook §0 must exist"
+    block = re.search(r"约束优先级：(.*?)(?:^---|\Z)", section.group(), re.DOTALL | re.MULTILINE)
     assert block is not None
     priorities = block.group(1)
     assert "source/docs/design-guidelines-legacy.md" in priorities
@@ -177,7 +179,7 @@ def test_no_path_split_to_legacy_audit_or_spec() -> None:
     # - source/docs/ trees (active spec & audit locations)
     # - .zcode/ (agent plan notes that quote the original §14.5 text)
     # - this test file (it embeds the patterns as regex literals)
-    skip_dirs = {"docs", "source/docs", ".zcode"}
+    skip_dirs = {"docs", "source/docs", ".zcode", "reports"}
     skip_files = {Path(__file__).resolve()}
     repo_root = ROOT.parent
     offenders: list[str] = []

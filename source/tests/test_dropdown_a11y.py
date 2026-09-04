@@ -11,11 +11,14 @@ Asserts:
 
 Audit reference: source/docs/superpowers/specs/2026-07-31-dropdown-revision-design.md
 """
+
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DROPDOWN_JS = ROOT / "app" / "static" / "ui" / "dropdown.js"
@@ -60,15 +63,14 @@ def test_aria_activedescendant_set_by_sync_highlight():
         src,
     )
     if not block:
-        # fallback: just search the whole source for setAttribute aria-activedescendant inside syncHighlight scope
+        # Fallback: search for aria-activedescendant inside syncHighlight scope.
         block = re.search(
             r"function\s+syncHighlight[\s\S]+?\n\s*\}\s*\n",
             src,
         )
     assert block, "syncHighlight body not found"
     body = block.group(0)
-    assert "aria-activedescendant" in body, \
-        "syncHighlight must reference aria-activedescendant"
+    assert "aria-activedescendant" in body, "syncHighlight must reference aria-activedescendant"
 
 
 def test_clear_highlight_removes_aria_activedescendant():
@@ -79,8 +81,7 @@ def test_clear_highlight_removes_aria_activedescendant():
         'removeAttribute("aria-activedescendant"' in src
         or "removeAttribute('aria-activedescendant'" in src
     )
-    assert has_remove, \
-        "clearHighlight (or equivalent) must remove aria-activedescendant on root"
+    assert has_remove, "clearHighlight (or equivalent) must remove aria-activedescendant on root"
 
 
 def test_no_document_level_keydown_capture_added():
@@ -89,8 +90,9 @@ def test_no_document_level_keydown_capture_added():
         r"document\.addEventListener\(\s*['\"]keydown['\"][^,]*,\s*[^,]+,\s*true\s*\)",
         src,
     )
-    assert not bad, \
+    assert not bad, (
         "Document-level capturing keydown listener detected; type-ahead must remain root-scoped"
+    )
 
 
 def test_destroy_removes_every_listener():
@@ -107,16 +109,20 @@ def test_destroy_removes_every_listener():
     i = start
     while i < len(src) and depth > 0:
         c = src[i]
-        if c == "{": depth += 1
-        elif c == "}": depth -= 1
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
         i += 1
-    body = src[start:i-1]
+    body = src[start : i - 1]
     for kind in ("click", "keydown"):
-        assert "removeEventListener" in body and kind in body, \
+        assert "removeEventListener" in body and kind in body, (
             f"destroy() must removeEventListener for {kind}"
+        )
     # popover.detach: popover.remove() or popover.removeChild(parent)
-    assert "popover.remove()" in body or ".remove()" in body, \
+    assert "popover.remove()" in body or ".remove()" in body, (
         "destroy() must remove popover from DOM"
+    )
 
 
 if __name__ == "__main__":

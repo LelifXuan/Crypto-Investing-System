@@ -1,7 +1,7 @@
 from pathlib import Path
 
-
-PAGE = Path("app/static/pages/analysis.js")
+ROOT = Path(__file__).resolve().parents[2]
+PAGE = ROOT / "source/app/static/pages/analysis.js"
 
 
 def test_boll_chart_uses_editorial_theme_roles() -> None:

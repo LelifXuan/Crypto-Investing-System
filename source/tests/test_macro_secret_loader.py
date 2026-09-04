@@ -41,7 +41,7 @@ def test_usd_cny_provider_keys_have_config_fields() -> None:
     a valid key. These fields must stay declared so the fallback chain can
     reach the configured providers."""
     for field_name in ("twelvedata_api_key", "alpha_vantage_api_key", "openexchangerates_app_id"):
-        assert field_name in settings.model_fields, (
+        assert field_name in type(settings).model_fields, (
             f"Settings.{field_name} missing — usd_cny fallback providers "
             "cannot read their .env keys"
         )

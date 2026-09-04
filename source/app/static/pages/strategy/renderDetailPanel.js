@@ -7,6 +7,7 @@ import { renderMarketOperation } from "./renderMarketOperation.js?v=decision-tex
 import { renderRiskPanel } from "./renderRiskPanel.js?v=compact-v3";
 import { renderEventWatch } from "./renderEventWatch.js?v=compact-v3";
 import { buildDataDegradedCard } from "./adapter.js?v=trade-4h-v1";
+import { registerOverlay, LAYER, isTopOverlay } from "../../ui/overlayCoordinator.js";
 
 const helpers = {
   escapeHtml,
@@ -132,6 +133,8 @@ function renderPendingDetail(model) {
  * @param {Function} onClose - callback when panel is dismissed
  */
 export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) {
+  const focusOrigin = document.activeElement;
+  let layer = null;
   // Close through the registered lifecycle so listeners from the previous
   // drawer cannot survive a rapid switch between matrix cells.
   dismissActiveDetailPanel?.();
@@ -282,10 +285,12 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     // matrix click during rapid research workflows.
     panel.remove();
     overlay.remove();
+    layer?.destroy(); layer = null;
     document.removeEventListener("keydown", escHandler);
     document.removeEventListener("pointerdown", outsidePointerHandler, true);
     if (dismissActiveDetailPanel === close) dismissActiveDetailPanel = null;
     if (onClose) onClose();
+    if (focusOrigin?.isConnected) focusOrigin.focus({ preventScroll: true });
   };
 
   overlay.addEventListener("click", close);
@@ -295,15 +300,18 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
   // pointer before their handlers run so every click outside the drawer
   // dismisses it without swallowing the user's intended navigation click.
   function outsidePointerHandler(event) {
+    if (!isTopOverlay(panel)) return;
     if (!panel.contains(event.target)) close();
   }
   document.addEventListener("pointerdown", outsidePointerHandler, true);
 
   function escHandler(e) {
+    if (!isTopOverlay(panel)) return;
     if (e.key === "Escape") close();
   }
   document.addEventListener("keydown", escHandler);
   dismissActiveDetailPanel = close;
+  layer = registerOverlay({ element: panel, priority: LAYER.dialog, modal: true, close });
 
   // Load and render strategy
   loadStrategy(instrumentId, timeframe)

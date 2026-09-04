@@ -16,10 +16,11 @@ Scope selection:
   4. (可选) 截图存档到 tests/screenshots/<page>.png
 
 使用:
-  python tests/verify_pages.py                 # 跑 9 个 page
+  python tests/verify_pages.py                 # 跑 11 个路由（10 个 SPA 导航页 + alerts 兼容路由）
   python tests/verify_pages.py --pages monitoring,analysis  # 只跑指定
   python tests/verify_pages.py --baseline      # 把当前截图入库为 baseline
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,7 +38,7 @@ from playwright.sync_api import sync_playwright
 
 # ----- 仓库根 + 截图目录 -----
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCREENSHOT_DIR = REPO_ROOT / "tests" / "screenshots"
+SCREENSHOT_DIR = Path(os.getenv("VERIFY_SCREENSHOT_DIR", str(REPO_ROOT / "tests" / "screenshots")))
 SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 BASELINE_DIR = SCREENSHOT_DIR / "baseline"
 BASELINE_DIR.mkdir(parents=True, exist_ok=True)
@@ -136,9 +137,7 @@ def attach_collectors(page: Page, collectors: dict) -> None:
 
     def on_response(resp) -> None:
         if resp.status >= 400:
-            collectors["failed_responses"].append(
-                f"{resp.status} {resp.request.method} {resp.url}"
-            )
+            collectors["failed_responses"].append(f"{resp.status} {resp.request.method} {resp.url}")
 
     page.on("console", on_console)
     page.on("pageerror", on_pageerror)
@@ -215,22 +214,18 @@ def verify_ai_strategy_data(page: Page) -> tuple[bool, str]:
             timeout=15_000,
         )
 
-        operation_cards = page.locator(
-            "#strategy-detail-panel .strategy-operation-card"
-        ).count()
+        operation_cards = page.locator("#strategy-detail-panel .strategy-operation-card").count()
         missing_status_cards = page.locator(
             "#strategy-detail-panel .strategy-operation-card",
             has_text="置信 数据不足",
         ).count()
-        used_evidence = page.locator(
-            "#strategy-detail-panel .strategy-audit-list li"
-        ).count()
-        cross_rows = page.locator(
-            "#strategy-detail-panel .strategy-decision-audit tbody"
-        ).first.locator("tr").count()
-        audit_text = page.locator(
-            "#strategy-detail-panel .strategy-decision-audit"
-        ).inner_text()
+        used_evidence = page.locator("#strategy-detail-panel .strategy-audit-list li").count()
+        cross_rows = (
+            page.locator("#strategy-detail-panel .strategy-decision-audit tbody")
+            .first.locator("tr")
+            .count()
+        )
+        audit_text = page.locator("#strategy-detail-panel .strategy-decision-audit").inner_text()
 
         # A published workbench may legitimately be in a degraded/warming
         # state. In that state semantic sections are present but intentionally
@@ -295,7 +290,7 @@ def verify_one_page(page: Page, page_id: str, route: str, baseline: bool) -> dic
     out_path = out_dir / f"{page_id}.png"
     try:
         page.screenshot(path=str(out_path), full_page=True)
-        result["screenshot"] = str(out_path.relative_to(REPO_ROOT))
+        result["screenshot"] = str(out_path)
     except Exception as e:
         result["pageerrors"].append(f"screenshot-failed:{e}")
 
@@ -304,11 +299,7 @@ def verify_one_page(page: Page, page_id: str, route: str, baseline: bool) -> dic
     result["failed_responses"] = collectors["failed_responses"]
     try:
         result["long_task_max_ms"] = round(
-            float(
-                page.evaluate(
-                    "() => Math.max(0, ...(window.__verifyLongTasks || []))"
-                )
-            ),
+            float(page.evaluate("() => Math.max(0, ...(window.__verifyLongTasks || []))")),
             1,
         )
     except Exception:
@@ -368,11 +359,7 @@ def verify_spa_switch(page: Page, page_ids: list[str]) -> list[dict]:
                 "duration_ms": round(dur, 1),
                 "state": state,
                 "long_task_max_ms": round(
-                    float(
-                        page.evaluate(
-                            "() => Math.max(0, ...(window.__verifyLongTasks || []))"
-                        )
-                    ),
+                    float(page.evaluate("() => Math.max(0, ...(window.__verifyLongTasks || []))")),
                     1,
                 ),
             }
@@ -441,8 +428,12 @@ def _check_diff_inline(page_id: str) -> dict:
         from PIL import Image, ImageChops
         import numpy as np
 
-        img_a = Image.open(baseline_path).convert("RGB").resize((2560, 1600), Image.Resampling.LANCZOS)
-        img_b = Image.open(current_path).convert("RGB").resize((2560, 1600), Image.Resampling.LANCZOS)
+        img_a = (
+            Image.open(baseline_path).convert("RGB").resize((2560, 1440), Image.Resampling.LANCZOS)
+        )
+        img_b = (
+            Image.open(current_path).convert("RGB").resize((2560, 1440), Image.Resampling.LANCZOS)
+        )
 
         diff = ImageChops.difference(img_a, img_b)
         diff_arr = np.array(diff, dtype=np.float64)
@@ -469,7 +460,7 @@ def main(argv: list[str]) -> int:
     p.add_argument(
         "--pages",
         default=",".join(PAGE_ROUTES.keys()),
-        help="comma-separated page_id list (default: all 9)",
+        help="comma-separated page_id list (default: all 11 routes / 10 SPA pages)",
     )
     p.add_argument(
         "--baseline",
@@ -493,9 +484,11 @@ def main(argv: list[str]) -> int:
     )
     p.add_argument(
         "--viewport",
-        # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440.
-        default="2560x1600",
-        help="viewport as WxH (e.g. 375x667, 2560x1600)",
+        # AGENTS.md §六.1 and docs/design-guidelines.md §11 define
+        # 2560x1440 as the canonical visual baseline. 2560x1600 remains a
+        # responsive cross-check, but must not silently replace the baseline.
+        default="2560x1440",
+        help="viewport as WxH (e.g. 375x667, 2560x1440)",
     )
     p.add_argument(
         "--a11y",
@@ -520,15 +513,20 @@ def main(argv: list[str]) -> int:
         vp_w, vp_h = args.viewport.lower().split("x")
         viewport = {"width": int(vp_w), "height": int(vp_h)}
     except Exception:
-        print(f"invalid viewport: {args.viewport} (expected WxH, e.g. 2560x1600)", file=sys.stderr)
+        print(f"invalid viewport: {args.viewport} (expected WxH, e.g. 2560x1440)", file=sys.stderr)
         return 2
 
-    report = {"per_page": [], "spa_switches": [], "summary": {}, "options": {
-        "viewport": viewport,
-        "diff": args.diff,
-        "a11y": args.a11y,
-        "perf": args.perf,
-    }}
+    report = {
+        "per_page": [],
+        "spa_switches": [],
+        "summary": {},
+        "options": {
+            "viewport": viewport,
+            "diff": args.diff,
+            "a11y": args.a11y,
+            "perf": args.perf,
+        },
+    }
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
 
@@ -644,9 +642,9 @@ def main(argv: list[str]) -> int:
     print(f"spa:      {sp_fail} / {len(report['spa_switches'])} failed, {sp_slow} slow (>= 3s)")
     print("=" * 60)
 
-    out_log = REPO_ROOT / "tests" / "screenshots" / "verify_pages_report.json"
+    out_log = SCREENSHOT_DIR / "verify_pages_report.json"
     out_log.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"report saved: {out_log.relative_to(REPO_ROOT)}")
+    print(f"report saved: {out_log}")
 
     if pp_fail or sp_fail:
         return 1

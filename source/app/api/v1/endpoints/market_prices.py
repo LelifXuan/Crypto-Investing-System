@@ -53,11 +53,17 @@ async def get_latest_mark(
 ) -> MarkPrice | None:
     repo = MarketRepository(session)
     service = MarketService(repo, EventRepository(session))
-    return await service.get_best_mark(
+    mark = await service.get_best_mark(
         instrument_id=instrument_id,
         prefer_live=prefer_live,
         persist_live=persist_live,
     )
+    # Read-only live quotes have no database identity. Match the existing WS
+    # cache transport convention (mark_id=0), without inserting a fake fact
+    # or changing MarkPriceRead. Never assign this sentinel on a write path.
+    if mark is not None and mark.mark_id is None and not persist_live:
+        mark.mark_id = 0
+    return mark
 
 
 @router.post("/candles", response_model=CandleRead)

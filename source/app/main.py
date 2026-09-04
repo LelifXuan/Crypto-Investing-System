@@ -109,7 +109,9 @@ def _should_start_worker(name: str) -> bool:
     if profile in {"none", "off", "disabled"}:
         return False
     if profile == "desktop_light":
-        enabled = {"indicator_monitor", "precompute", "market_event_translation", "market_events_feed"}
+        enabled = {
+            "indicator_monitor", "precompute", "market_event_translation", "market_events_feed"
+        }
         return name in enabled
     if profile == "desktop_full":
         enabled = {
@@ -316,7 +318,11 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
 
     @app.middleware("http")
     async def daily_first_page_prewarm(request, call_next):
-        if settings.precompute_enabled and request.method == "GET" and request.url.path in MAIN_PAGE_PATHS:
+        if (
+            settings.precompute_enabled
+            and request.method == "GET"
+            and request.url.path in MAIN_PAGE_PATHS
+        ):
             today = datetime.now(timezone.utc).date().isoformat()
             if app.state.daily_prewarm_utc_day != today:
                 app.state.daily_prewarm_utc_day = today
@@ -326,16 +332,9 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
                 )
         return await call_next(request)
 
-    @app.middleware("http")
-    async def static_cache_control(request, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/static/"):
-            # The ?v=<mtime> query string already changes when a file's
-            # mtime changes, so a long max-age is safe. The browser
-            # revalidates with If-Modified-Since after the max-age and
-            # gets 304 if the file is unchanged.
-            response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
-        return response
+    from app.core.http_cache import revalidate_frontend
+
+    app.middleware("http")(revalidate_frontend)
 
     app.mount("/static", StaticFiles(directory=str(app_paths.static_dir)), name="static")
 

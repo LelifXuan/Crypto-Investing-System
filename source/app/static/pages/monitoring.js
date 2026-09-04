@@ -14,10 +14,26 @@ import { rangeStateLabel, rangeStateTone } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
 import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 import { renderGovernanceLedger } from "../ui/governanceLedger.js";
+import { createWorkbenchState } from "../core/workbenchState.js?v=operator-core-1";
+import { mountWorkbenchUrlState } from "../core/workbenchUrlState.js";
+import { mountContextRail } from "../ui/contextRail.js";
+import { mountInspector } from "../ui/inspector.js?v=operator-core-1";
+import { markWorkbenchRelations } from "../ui/semanticMotion.js?v=operator-core-1";
+import { animateStateChange, animateValueChange } from "../ui/semanticMotion.js?v=operator-core-1";
 
 let activeController = null;
 let refreshInFlight = false;
+let pageController = null;
+const boundRefreshButtons = new WeakSet();
 let lastRenderedBundle = null;
+let workbenchState = null;
+let workbenchUrl = null;
+let contextRail = null;
+let inspector = null;
+let interactionController = null;
+let workbenchUnsubscribe = null;
+let previousWorkbenchValues = new Map();
+const inspectionRegistry = new Map();
 const queuedKeys = new Set();
 const macroGroupCollapsed = new Map();
 let macroGroupOrder = [];
@@ -26,6 +42,161 @@ const DASH = "-";
 const MONITORING_TECH_INSTRUMENT_ID = "btc-usdt-perp";
 const MONITORING_TECH_TIMEFRAME = "1d";
 const MONITORING_SNAPSHOT_STORAGE_KEY = "monitoring.dashboard.lastSnapshot.v1";
+
+function workbenchId(...parts) {
+  return parts
+    .filter(Boolean)
+    .map((part) => normalizeKey(part).replace(/[^a-z0-9\u4e00-\u9fff_-]+/g, "-"))
+    .join(":");
+}
+
+function sourceInspectionRows(data) {
+  return getSourceStatus(data).map((source) => {
+    const state = sourceMeta(source.status).tone;
+    return {
+      name: source.label,
+      status: state === "live" ? "live" : state === "stale" ? "stale" : state === "offline" ? "degraded" : "unavailable",
+      updatedAt: source.updatedAt || null,
+    };
+  });
+}
+
+function actualMacroScore(macro) {
+  const raw = macro?.total_score ?? macro?.score;
+  return raw === null || raw === undefined || raw === "" ? null : numeric(raw);
+}
+
+function actualMacroRegime(macro) {
+  const raw = macro?.score_band || macro?.regime_label_cn || macro?.operation_bias || macro?.direction_label;
+  return raw === null || raw === undefined || raw === "" ? null : readableText(raw, "");
+}
+
+function monitoringMarketTone(raw) {
+  const meta = macroBiasMeta(raw);
+  if (meta.className.includes("bullish")) return "bullish";
+  if (meta.className.includes("bearish")) return "bearish";
+  return "neutral";
+}
+
+function monitoringTimestamp(data) {
+  return data?.updated_at || data?.snapshot_at || data?.data_ts || data?.source_updated_at || null;
+}
+
+function monitoringFreshnessStatus(data) {
+  const state = normalizeKey(data?.freshness_state || data?.cache_state || data?.status);
+  if (["fresh", "live", "ok", "ready"].includes(state)) return "live";
+  if (["stale", "cached", "stale_revalidating"].includes(state)) return "stale";
+  if (["error", "failed", "degraded"].includes(state)) return "degraded";
+  return "unavailable";
+}
+
+function inspectionAttrs(item) {
+  if (!item?.id) return "";
+  inspectionRegistry.set(item.id, item);
+  return `data-workbench-id="${escapeHtml(item.id)}" data-workbench-selectable tabindex="0" role="button" aria-label="查看 ${escapeHtml(item.title)} 的上下文"`;
+}
+
+function macroInspection(data, macro) {
+  const layerIds = getMacroLayers(macro).map((layer) => workbenchId("monitoring", "layer", layer.layer_key || layer.key || layer.label));
+  const score = actualMacroScore(macro);
+  const regime = actualMacroRegime(macro);
+  return {
+    id: "monitoring:macro",
+    type: "macro-state",
+    title: "宏观环境",
+    current: score === null ? null : {
+      label: "宏观总分",
+      value: formatNumber(score, 0),
+      marketTone: monitoringMarketTone(regime),
+    },
+    interpretation: regime ? `当前宏观状态为${regime}；置信度为${macroConfidence(macro)}。` : "",
+    evidence: getMacroLayers(macro).flatMap((layer) => {
+      const raw = layer.score ?? layer.contribution;
+      const value = raw === null || raw === undefined || raw === "" ? null : numeric(raw);
+      if (value === null) return [];
+      return [{
+        id: workbenchId("monitoring", "layer", layer.layer_key || layer.key || layer.label),
+        label: readableText(layer.label_cn || layer.label || LAYER_LABELS[layer.layer_key || layer.key], "宏观层"),
+        value: formatNumber(value, 0),
+        relatedIds: ["monitoring:terminal:macro"],
+      }];
+    }),
+    impacts: [{ label: "终端摘要", summary: "作为全局市场摘要的宏观输入之一。" }],
+    sources: sourceInspectionRows(data),
+    updatedAt: monitoringTimestamp(data),
+    relatedIds: ["monitoring:terminal:macro", ...layerIds],
+  };
+}
+
+function updateMonitoringContext(data, macro) {
+  const sourceRows = getSourceStatus(data);
+  const freshCount = sourceRows.filter((source) => sourceMeta(source.status).tone === "live").length;
+  const timestamp = monitoringTimestamp(data);
+  const freshnessStatus = monitoringFreshnessStatus(data);
+  contextRail?.update({
+    instrument: "BTC",
+    timeframe: "1D",
+    regime: actualMacroRegime(macro),
+    freshness: {
+      value: timestamp ? formatDateTime(timestamp) : freshnessStatus === "degraded" ? "降级" : "后台准备中",
+      detail: timestamp && freshnessStatus === "stale" ? "最近可用快照" : "",
+      status: freshnessStatus,
+    },
+    sourceSummary: {
+      value: `${freshCount}/${sourceRows.length || 0} 在线`,
+      status: freshCount === sourceRows.length && sourceRows.length ? "live" : freshCount ? "stale" : "unavailable",
+    },
+  });
+}
+
+function ensureMonitoringWorkbench(root) {
+  if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "monitoring-overview" });
+  contextRail?.destroy();
+  inspector?.destroy();
+  contextRail = mountContextRail(root.querySelector("#monitoring-context-rail"));
+  inspector = mountInspector(root.querySelector("#monitoring-inspector"), {
+    state: workbenchState,
+    returnFocus: () => root.querySelector(".monitoring-refresh"),
+  });
+  if (interactionController) interactionController.abort();
+  workbenchUnsubscribe?.();
+  interactionController = new AbortController();
+  const { signal } = interactionController;
+  const selectable = (target) => target instanceof Element ? target.closest("[data-workbench-selectable]") : null;
+  root.addEventListener("pointerover", (event) => {
+    const element = selectable(event.target);
+    const item = element && inspectionRegistry.get(element.dataset.workbenchId);
+    if (item) workbenchState.preview(item);
+  }, { signal });
+  root.addEventListener("pointerout", (event) => {
+    const element = selectable(event.target);
+    if (element && !element.contains(event.relatedTarget)) workbenchState.clearPreview();
+  }, { signal });
+  root.addEventListener("focusin", (event) => {
+    const element = selectable(event.target);
+    const item = element && inspectionRegistry.get(element.dataset.workbenchId);
+    if (item) workbenchState.preview(item);
+  }, { signal });
+  root.addEventListener("focusout", (event) => {
+    const element = selectable(event.target);
+    if (element && !element.contains(event.relatedTarget)) workbenchState.clearPreview();
+  }, { signal });
+  const commit = (element) => {
+    const item = element && inspectionRegistry.get(element.dataset.workbenchId);
+    if (item) workbenchState.select(item, { trigger: element });
+  };
+  root.addEventListener("click", (event) => commit(selectable(event.target)), { signal });
+  root.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const element = selectable(event.target);
+    if (!element) return;
+    event.preventDefault();
+    commit(element);
+  }, { signal });
+  workbenchUnsubscribe = workbenchState.subscribe((snapshot) => {
+    markWorkbenchRelations(root, snapshot);
+  });
+}
 // The FOMC event-window observation remains part of macro scoring and the
 // terminal summary. It is intentionally omitted from the detailed indicator
 // ledger because that layer contains only one item and duplicates the event
@@ -544,33 +715,54 @@ function missingTone(item) {
   return "neutral";
 }
 
-function renderShellFallback(message, pending = false) {
+function renderShellFallback(message) {
   return `
-    <div id="monitoring-topbar">
-      <div class="monitoring-progress-banner" role="status">${statusBanner(message, pending ? "loading" : "warning")}</div>
-      <section class="monitoring-surface monitoring-topbar is-warming" aria-busy="${pending}">
-        <div class="monitoring-topbar-grid">
-          <article class="monitoring-topbar-item monitoring-topbar-context wide">
-            <span class="monitoring-context-status" data-status-tone="${pending ? "pending" : "neutral"}">${pending ? '<span class="monitoring-cold-spinner" aria-hidden="true"></span>正在读取最近快照' : '快照暂不可用'}</span>
-            <small>监控总览</small>
-            <strong>${pending ? "后台准备中" : "等待重新加载"}</strong>
-          </article>
+    <div id="monitoring-context-rail"></div>
+    <div class="workbench-page-layout monitoring-workbench-layout">
+      <div class="workbench-primary">
+        <div id="monitoring-topbar">
+          <div class="monitoring-progress-banner">${statusBanner(message, "warning")}</div>
+          <section class="monitoring-surface monitoring-topbar">
+            <div class="monitoring-topbar-grid">
+              <article class="monitoring-topbar-item monitoring-topbar-context wide">
+                <span class="monitoring-context-status" data-status-tone="pending">正在读取最近快照</span>
+                <small>监控总览</small>
+                <strong>后台准备中</strong>
+              </article>
+            </div>
+          </section>
         </div>
-      </section>
-    </div>
-    <section class="monitoring-surface monitoring-summary-surface">
-      <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
-        <div id="monitoring-macro-panel"></div>
-        <div id="monitoring-terminal-summary">
-          <div class="monitoring-cold-content">
-          <p class="section-summary">${escapeHtml(message)}</p>
-          ${pending ? '<div class="monitoring-cold-placeholder" aria-hidden="true"><span></span><span></span><span></span></div>' : ''}
+        <section class="monitoring-surface monitoring-summary-surface">
+          <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
+            <div id="monitoring-macro-panel"></div>
+            <div id="monitoring-terminal-summary">
+              <p class="section-summary">正在读取最近快照；可刷新或稍后自动更新。</p>
+            </div>
           </div>
-        </div>
+        </section>
+        <div id="monitoring-macro-grid"></div>
+        <div id="monitoring-governance"></div>
       </div>
-    </section>
-    <div id="monitoring-macro-grid"></div>
+      <aside class="workbench-inspector" id="monitoring-inspector" hidden></aside>
+    </div>
   `;
+}
+
+function attachMonitoringShell(root) {
+  if (!root) return;
+  root._monitoringSections = {
+    topbar: root.querySelector("#monitoring-topbar"),
+    "monitoring-macro-panel": root.querySelector("#monitoring-macro-panel"),
+    "monitoring-terminal-summary": root.querySelector("#monitoring-terminal-summary"),
+    "monitoring-macro-grid": root.querySelector("#monitoring-macro-grid"),
+    "monitoring-governance": root.querySelector("#monitoring-governance"),
+  };
+  ensureMonitoringWorkbench(root);
+  contextRail?.update({
+    instrument: "BTC",
+    timeframe: "1D",
+    freshness: { value: "后台准备中", status: "unavailable" },
+  });
 }
 
 function hasRenderedMonitoringShell() {
@@ -640,28 +832,54 @@ function renderTopbar(data, macro) {
 function renderLayerChip(layer) {
   const key = layer.layer_key || layer.key;
   const label = readableText(layer.label_cn || layer.label || LAYER_LABELS[key], "宏观层");
-  const score = numeric(layer.score) ?? numeric(layer.contribution) ?? 0;
+  const rawScore = layer.score ?? layer.contribution;
+  const score = rawScore === null || rawScore === undefined || rawScore === "" ? null : numeric(rawScore);
+  const rawContribution = layer.contribution;
+  const contribution = rawContribution === null || rawContribution === undefined || rawContribution === ""
+    ? null
+    : numeric(rawContribution);
   const count = layer.effective_count ?? layer.scored_count ?? 0;
   const total = layer.total_count ?? layer.indicator_count ?? 0;
   const coverage = total ? `评分 ${count}/${total}` : "无指标";
   const coverageTip =
     "该层 " + total + " 个指标中 " + count + " 个计入总分；其余为展示型指标，数据已获取但暂无评分阈值，仅展示不计分。";
+  const id = workbenchId("monitoring", "layer", key || label);
+  const item = {
+    id,
+    type: "macro-layer",
+    title: label,
+    current: score === null ? null : { label: "层评分", value: formatNumber(score, 0) },
+    interpretation: contribution === null ? coverage : `${coverage}，当前对宏观总分贡献 ${formatNumber(contribution, 2)}。`,
+    evidence: [{ id: `${id}:coverage`, label: "计入评分", value: total ? `${count}/${total}` : "无指标", relatedIds: ["monitoring:macro"] }],
+    impacts: [{ label: "宏观环境", summary: "该层参与宏观总分与终端摘要。" }],
+    relatedIds: ["monitoring:macro", "monitoring:terminal:macro"],
+  };
   return `
-    <article class="macro-layer-card">
+    <article class="macro-layer-card" ${inspectionAttrs(item)}>
       <strong>${escapeHtml(label)}</strong>
-      <b>${escapeHtml(formatNumber(score, 0))}</b>
-      <small title="${escapeHtml(coverageTip)}">贡献 ${escapeHtml(formatNumber(layer.contribution ?? 0, 2))} · ${escapeHtml(coverage)}</small>
-      <span class="macro-layer-bar"><i style="width:${Math.max(0, Math.min(100, score))}%"></i></span>
+      <b>${escapeHtml(score === null ? DASH : formatNumber(score, 0))}</b>
+      <small title="${escapeHtml(coverageTip)}">${contribution === null ? "" : `贡献 ${escapeHtml(formatNumber(contribution, 2))} · `}${escapeHtml(coverage)}</small>
+      <span class="macro-layer-bar"><i style="width:${score === null ? 0 : Math.max(0, Math.min(100, score))}%"></i></span>
     </article>
   `;
 }
 
 function renderMacroPanel(data, macro) {
   const layers = getMacroLayers(macro);
+  const score = actualMacroScore(macro);
+  const actualRegime = actualMacroRegime(macro);
+  if (score === null && !actualRegime && !layers.length) {
+    return `
+      <article class="monitoring-panel macro is-availability-only">
+        <div class="monitoring-panel-head"><div><p class="eyebrow">MACRO</p><h2>宏观环境</h2></div></div>
+        <p class="monitoring-empty-note">宏观数据正在准备；当前不生成市场方向或风险判断。</p>
+      </article>
+    `;
+  }
   const bias = macroBiasLabel(macro);
   const biasChip = signalMeta(bias);
   return `
-    <article class="monitoring-panel macro">
+    <article class="monitoring-panel macro" ${inspectionAttrs(macroInspection(data, macro))}>
       <div class="monitoring-panel-head">
         <div>
           <p class="eyebrow">MACRO</p>
@@ -670,7 +888,7 @@ function renderMacroPanel(data, macro) {
         ${chip(bias, biasChip.className)}
       </div>
       <div class="macro-score-block">
-        <strong>${escapeHtml(formatNumber(macroScore(macro), 0))}</strong>
+        <strong>${escapeHtml(score === null ? DASH : formatNumber(score, 0))}</strong>
         <div class="macro-score-copy">
           <strong class="macro-bias-label">${escapeHtml(bias)}</strong>
         </div>
@@ -744,8 +962,24 @@ function renderTerminalSummary(data) {
       const meta = signalMeta(item.impact || item.state);
       const score = numeric(item.score) !== null ? formatNumber(item.score, 0) : DASH;
       const evidence = moduleEvidence[key];
+      const id = workbenchId("monitoring", "terminal", key);
+      const relatedIds = key === "macro"
+        ? ["monitoring:macro", ...getMacroLayers(getMacroPayload(data)).map((layer) => workbenchId("monitoring", "layer", layer.layer_key || layer.key || layer.label))]
+        : [];
+      const inspection = {
+        id,
+        type: "terminal-module",
+        title: moduleLabels[key] || key,
+        current: { label: "模块评分", value: score, marketTone: key.includes("risk") ? "neutral" : undefined },
+        interpretation: readableText(item.state, "当前模块状态待确认。"),
+        evidence: evidence ? [{ id: `${id}:evidence`, label: "输入指标", value: evidence, relatedIds }] : [],
+        impacts: [{ label: "全局市场摘要", summary: "该模块参与终端摘要与置信度计算。" }],
+        sources: sourceInspectionRows(data),
+        updatedAt: monitoringTimestamp(data),
+        relatedIds,
+      };
       return `
-        <article class="terminal-summary-vote">
+        <article class="terminal-summary-vote" ${inspectionAttrs(inspection)}>
           <div class="terminal-summary-vote-head">
             <span>${escapeHtml(moduleLabels[key] || key)}</span>
             <small class="terminal-summary-vote-score">${escapeHtml(score)}</small>
@@ -801,8 +1035,27 @@ function renderMacroIndicatorCard(item) {
   const source = readableText(item.source_provider || item.source || item.provider, "宏观");
   const time = item.observation_ts || item.updated_at || item.timestamp;
   const layer = readableText(item.layer_label || item.layer || item.category, "宏观");
+  const id = workbenchId("monitoring", "indicator", item.indicator_key || item.key || item.label);
+  const layerId = workbenchId("monitoring", "layer", item.layer_key || item.layer || item.layer_label || item.category);
+  const inspection = {
+    id,
+    type: "macro-indicator",
+    title: macroTitle(item),
+    current: { label: "当前值", value: macroDisplayValue(item) },
+    interpretation: readableText(item.comment || item.rule || item.hint || item.direction_label, `${bias.label}影响。`),
+    evidence: [{ id: `${id}:source`, label: "指标层 / 来源", value: `${layer} · ${source}`, relatedIds: [layerId] }],
+    impacts: [{ label: "宏观环境", summary: `${bias.label}；作为 ${layer} 层输入。` }],
+    sources: [{
+      name: source,
+      status: ["ok", "live", "ready"].includes(normalizeKey(item.status)) ? "live" : ["cached", "stale"].includes(normalizeKey(item.status)) ? "stale" : "degraded",
+      updatedAt: time || null,
+    }],
+    updatedAt: time || null,
+    relatedIds: [layerId, "monitoring:macro", "monitoring:terminal:macro"],
+  };
+  const sourceDetailId = `${id}-source-detail`;
   return `
-    <article class="macro-indicator-card">
+    <article class="macro-indicator-card" ${inspectionAttrs(inspection)}>
       <div class="macro-indicator-head">
         <strong>${escapeHtml(macroTitle(item))}</strong>
         ${chip(bias.label, bias.className)}
@@ -811,6 +1064,22 @@ function renderMacroIndicatorCard(item) {
       <div class="macro-indicator-foot">
         <span>${escapeHtml(layer)} · ${escapeHtml(source)}</span>
         <time>${escapeHtml(time ? formatDateOnly(time) : DASH)}</time>
+      </div>
+      <div class="macro-indicator-source">
+        ${renderDisclosureToggle({
+          controls: sourceDetailId,
+          expanded: false,
+          expandLabel: "查看来源",
+          collapseLabel: "收起来源",
+          variant: "inline",
+          className: "macro-indicator-source-toggle",
+          data: { indicatorKey: item.indicator_key || item.key || "" },
+        })}
+        <dl id="${sourceDetailId}" class="macro-indicator-source-detail" hidden>
+          <dt>来源</dt><dd>${escapeHtml(source)}</dd>
+          <dt>更新时间</dt><dd>${escapeHtml(time ? formatDateTime(time) : DASH)}</dd>
+          <dt>状态</dt><dd>${escapeHtml(item.status || DASH)}</dd>
+        </dl>
       </div>
     </article>
   `;
@@ -957,7 +1226,7 @@ function renderMacroIndicatorGrid(macro, data) {
           <p class="eyebrow">MACRO DETAIL</p>
           <h2>宏观指标明细</h2>
         </div>
-        <button class="primary-button monitoring-refresh button compact" type="button">刷新监控</button>
+        <button id="monitoring-refresh" class="primary-button monitoring-refresh button compact" type="button">刷新监控</button>
       </div>
       <div class="macro-indicator-grid">
         ${gridContent}
@@ -1058,7 +1327,6 @@ const MONITORING_SECTION_IDS = [
   "monitoring-macro-panel",
   "monitoring-terminal-summary",
   "monitoring-macro-grid",
-  "monitoring-governance-bar",
 ];
 
 function applyMonitoringDiff(data, options = {}) {
@@ -1068,39 +1336,42 @@ function applyMonitoringDiff(data, options = {}) {
     return;
   }
   if (!hasRenderedMonitoringShell()) {
-    root.innerHTML = `
-      <div id="monitoring-topbar"></div>
-      <section class="monitoring-surface monitoring-summary-surface">
-        <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
-          <div id="monitoring-macro-panel"></div>
-          <div id="monitoring-terminal-summary"></div>
-        </div>
-      </section>
-      <div id="monitoring-macro-grid"></div>
-      <div id="monitoring-governance-bar"></div>
-    `;
-    root._monitoringSections = {
-      topbar: root.querySelector("#monitoring-topbar"),
-      "monitoring-macro-panel": root.querySelector("#monitoring-macro-panel"),
-      "monitoring-terminal-summary": root.querySelector("#monitoring-terminal-summary"),
-      "monitoring-macro-grid": root.querySelector("#monitoring-macro-grid"),
-      "monitoring-governance-bar": root.querySelector("#monitoring-governance-bar"),
-    };
+    root.innerHTML = renderShellFallback("正在读取最近快照");
+    attachMonitoringShell(root);
   }
   const macro = getMacroPayload(data);
   const sections = root._monitoringSections;
+  inspectionRegistry.clear();
   sections.topbar.innerHTML = renderTopbar(data, macro);
   sections["monitoring-macro-panel"].innerHTML = renderMacroPanel(data, macro);
   sections["monitoring-terminal-summary"].innerHTML = renderTerminalSummary(data);
   sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro, data);
-  sections["monitoring-governance-bar"].innerHTML = renderMonitoringGovernanceBar(data);
+  sections["monitoring-governance"].innerHTML = renderMonitoringGovernanceBar(data);
+  updateMonitoringContext(data, macro);
+  inspectionRegistry.forEach((item, id) => {
+    const next = { value: item.current?.value, state: item.current?.marketTone };
+    const previous = previousWorkbenchValues.get(id);
+    const element = root.querySelector(`[data-workbench-id="${CSS.escape(id)}"]`);
+    if (previous && element) {
+      animateValueChange(element, previous.value, next.value, { signal: pageController?.signal });
+      animateStateChange(element, previous.state, next.state, { signal: pageController?.signal });
+    }
+    previousWorkbenchValues.set(id, next);
+  });
+  const selectedId = workbenchState?.getSnapshot().selection?.id;
+  if (selectedId) {
+    const nextSelection = inspectionRegistry.get(selectedId);
+    const nextTrigger = root.querySelector(`[data-workbench-id="${CSS.escape(selectedId)}"]`);
+    if (nextSelection) workbenchState.select(nextSelection, { trigger: nextTrigger });
+    else {
+      workbenchState.clearSelection({ restoreFocus: false });
+      (root.querySelector(".monitoring-refresh") || root).focus?.({ preventScroll: true });
+    }
+  }
   bindMacroGroupToggles();
   bindMonitoringMissingToggle();
-  updatePageContext({
-    instrument: "BTC · 1d",
-    status: data?.status === "error" ? "数据降级" : "快照可用",
-    updatedAt: data?.updated_at ? formatDateTime(data.updated_at) : "",
-  });
+  updatePageContext({});
+  workbenchUrl?.dataReady({ terminal: !data?.refresh_enqueued });
   if (options.skeleton) {
     // noop: skeleton handled by the caller
   }
@@ -1146,36 +1417,50 @@ async function applyCompletedMonitoringTask(bundle, controller, instrumentId, ti
     console.warn("monitoring background refresh failed", error);
     if (activeController === controller) {
       showMonitoringBanner("后台更新未完成，已保留上一份可用快照。", "warning");
+      workbenchUrl?.dataReady();
     }
   }
 }
 
 function bindRefreshButton() {
   const button = document.querySelector(".monitoring-refresh");
-  if (!button) return;
-  button.addEventListener("click", async () => {
+  if (!button || boundRefreshButtons.has(button)) return;
+  boundRefreshButtons.add(button);
+  button.addEventListener("click", refreshMonitoring, { signal: pageController?.signal });
+}
+
+async function refreshMonitoring() {
+    const controller = pageController;
+    if (!controller || controller.signal.aborted) return;
+    const button = document.querySelector(".monitoring-refresh");
     if (refreshInFlight) return;
     refreshInFlight = true;
     button.disabled = true;
     button.textContent = "刷新中";
     const { instrumentId, timeframe } = currentSelection();
     try {
-      await api.refreshMacro().catch(() => null);
-      await api.refreshMonitoringDashboard(instrumentId, timeframe, { timeoutMs: 30000 }).catch(() => null);
+      await api.refreshMacro({ signal: controller.signal }).catch(() => null);
+      if (controller.signal.aborted || pageController !== controller) return;
+      await api.refreshMonitoringDashboard(instrumentId, timeframe, { timeoutMs: 30000, signal: controller.signal }).catch(() => null);
+      if (controller.signal.aborted || pageController !== controller) return;
       const [bundle, macro] = await Promise.all([
         api.getMonitoringDashboard(instrumentId, timeframe, {
           force: true,
           timeoutMs: 30000,
+          signal: controller.signal,
         }),
         api.getMacroOverview({
           force: true,
           timeoutMs: 30000,
+          signal: controller.signal,
         }).catch(() => null),
       ]);
+      if (controller.signal.aborted || pageController !== controller) return;
       applyMonitoringDiff(mergeMacroIntoBundle(bundle, macro));
       bindRefreshButton();
       queueWarmup();
     } catch (error) {
+      if (controller.signal.aborted || pageController !== controller) return;
       console.warn("monitoring refresh failed", error);
       const page = document.querySelector(".monitoring-surface");
       if (page) {
@@ -1185,14 +1470,12 @@ function bindRefreshButton() {
         );
       }
     } finally {
-      refreshInFlight = false;
+      if (pageController === controller) refreshInFlight = false;
       if (button.isConnected) {
         button.disabled = false;
         button.textContent = "刷新监控";
       }
     }
-  });
-
 }
 
 // 2026-08-15: helper that clears the dim class on the five stable section
@@ -1211,10 +1494,12 @@ async function loadDashboard() {
         showMonitoringBanner("正在读取最近快照", "loading");
       } catch (error) {
         console.warn("monitoring stored snapshot render failed", error);
-        setRoot(renderShellFallback("正在读取最近快照", true));
+        setRoot(renderShellFallback("正在读取最近快照"));
+        attachMonitoringShell(document.getElementById("page-root"));
       }
     } else {
-      setRoot(renderShellFallback("正在读取最近快照", true));
+      setRoot(renderShellFallback("正在读取最近快照"));
+      attachMonitoringShell(document.getElementById("page-root"));
     }
   } else {
     showMonitoringBanner("正在读取最近快照", "loading");
@@ -1240,15 +1525,18 @@ async function loadDashboard() {
       return;
     }
     console.warn("monitoring snapshot fetch failed", error);
+    workbenchUrl?.dataReady();
     if (hasRenderedMonitoringShell()) {
       showMonitoringBanner("监控快照读取失败，已保留上一份可用快照。", "warning");
     } else {
       setRoot(renderShellFallback("监控快照暂不可用；可刷新或稍后自动更新。"));
+      attachMonitoringShell(document.getElementById("page-root"));
     }
     return;
   }
 
   try {
+    if (controller.signal.aborted || activeController !== controller) return;
     applyMonitoringDiff(bundle);
     lastRenderedBundle = bundle;
     rememberMonitoringBundle(bundle, instrumentId, timeframe);
@@ -1277,11 +1565,20 @@ async function loadDashboard() {
       showMonitoringBanner("页面更新异常，已保留上一份可用快照。", "warning");
     } else {
       setRoot(renderShellFallback("页面渲染异常；可刷新或稍后自动更新。"));
+      attachMonitoringShell(document.getElementById("page-root"));
     }
   }
 }
 
-export async function renderMonitoring() {
+export async function renderMonitoring({ commands } = {}) {
+  if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "monitoring-overview" });
+  workbenchUrl = mountWorkbenchUrlState(workbenchState, inspectionRegistry, { fallbackId: "monitoring-refresh" });
+  pageController?.abort();
+  pageController = new AbortController();
+  refreshInFlight = false;
+  commands?.register({ id: "monitoring:refresh", label: "刷新当前监控", enabled: () => !refreshInFlight, run: refreshMonitoring });
+  commands?.register({ id: "monitoring:inspect-macro", label: "打开宏观研究对象", enabled: () => inspectionRegistry.has("monitoring:macro"), run: () => workbenchState.select(inspectionRegistry.get("monitoring:macro"), { trigger: document.querySelector('[data-workbench-id="monitoring:macro"]') }) });
+  commands?.register({ id: "monitoring:close-inspector", label: "关闭当前 Inspector", enabled: () => Boolean(workbenchState?.getSnapshot().selection), run: () => workbenchState.clearSelection() });
   const loadPromise = loadDashboard().catch((error) => {
     console.error("monitoring:load:error", error);
   });
@@ -1290,9 +1587,25 @@ export async function renderMonitoring() {
   const guideFab = mountPageGuide("monitoring-overview");
   return {
     async unmount() {
+      pageController?.abort();
+      pageController = null;
       guideFab.unmount();
       activeController?.abort();
       activeController = null;
+      interactionController?.abort();
+      interactionController = null;
+      workbenchUnsubscribe?.();
+      workbenchUnsubscribe = null;
+      inspector?.destroy();
+      inspector = null;
+      contextRail?.destroy();
+      contextRail = null;
+      workbenchUrl?.destroy();
+      workbenchUrl = null;
+      workbenchState?.destroy();
+      workbenchState = null;
+      previousWorkbenchValues.clear();
+      inspectionRegistry.clear();
       void loadPromise.catch(() => null);
     },
     async pause() {},
@@ -1317,6 +1630,26 @@ function bindMacroGroupToggles() {
       group.classList.toggle("is-collapsed", !wasCollapsed);
       body.hidden = !wasCollapsed;
       setDisclosureState(btn, wasCollapsed);
+    });
+  });
+  document.querySelectorAll(".macro-indicator-source-toggle").forEach((btn) => {
+    if (btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    const detailId = btn.getAttribute("aria-controls");
+    if (!detailId) return;
+    const detail = document.getElementById(detailId);
+    if (!detail) return;
+    btn.addEventListener("click", () => {
+      const expanded = btn.getAttribute("aria-expanded") === "true";
+      const next = !expanded;
+      btn.setAttribute("aria-expanded", String(next));
+      detail.hidden = !next;
+      const label = btn.querySelector("[data-disclosure-label]");
+      if (label) {
+        label.textContent = next
+          ? btn.dataset.disclosureCollapseLabel || "收起来源"
+          : btn.dataset.disclosureExpandLabel || "查看来源";
+      }
     });
   });
 }

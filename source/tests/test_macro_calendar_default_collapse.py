@@ -17,7 +17,9 @@ def test_calendar_defaults_to_collapsed_and_exposes_an_accessible_toggle() -> No
 
 
 def test_calendar_toggle_updates_the_existing_dom_without_rerendering_page() -> None:
-    assert "isCalendarCollapsed = !isCalendarCollapsed;" in PAGE
+    assert "expandCalendar = (expanded) =>" in PAGE
+    assert "isCalendarCollapsed = !expanded;" in PAGE
+    assert "expandCalendar(isCalendarCollapsed)" in PAGE
     assert "body.hidden = isCalendarCollapsed" in PAGE
     assert "setDisclosureState(button, !isCalendarCollapsed)" in PAGE
 

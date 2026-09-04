@@ -415,6 +415,90 @@ export function statusBanner(message, tone = "neutral") {
   return `<div class="status-banner status-${escapeHtml(tone)}">${escapeHtml(message)}</div>`;
 }
 
+// Animation constants for status bar enter/exit. 200ms matches the project's
+// --motion-fast drawer pace; the easing curve is the same --ease-out used by
+// dropdowns and panels so motion feels consistent across the terminal.
+const STATUSBAR_DUR = 200;
+const STATUSBAR_EASING = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+
+// Animate a status bar in (visible=true) or out (visible=false) using WAAPI.
+//  - mode "block"  : height + opacity slide (for banner-style bars)
+//  - mode "chip"   : max-width + padding-inline + opacity collapse (for flex-row chips)
+// Honours prefers-reduced-motion (instant toggle) and supports AbortSignal.
+//
+// Rapid-toggle safety: a generation counter ensures that only the LATEST request's
+// final state is applied. If an exit animation completes after a newer enter was
+// requested, its no-op onfinish is ignored (gen mismatch), so the element ends up
+// in the state matching the most recent call — no stuck-visible chips.
+export function animateStatusbar(el, visible, { mode = "block", signal } = {}) {
+  if (!el) return;
+  // If already at target state with no animation in flight, skip
+  if (el._statusbarTarget === visible && !el._statusbarAnim) return;
+  // Cancel any in-flight animation before starting a new one
+  if (el._statusbarAnim) { el._statusbarAnim.cancel(); el._statusbarAnim = null; }
+  // Record this request as the latest target
+  const gen = (el._statusbarGen || 0) + 1;
+  el._statusbarGen = gen;
+  el._statusbarTarget = visible;
+  // Reduced motion: instant toggle, no animation
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    el.hidden = !visible;
+    el.style.height = "";
+    el.style.maxWidth = "";
+    return;
+  }
+  const cleanup = () => { el.style.overflow = ""; el._statusbarAnim = null; };
+  el.style.overflow = "hidden";
+  if (visible) {
+    // ENTER: unhide, measure natural size, animate from collapsed → natural.
+    el.hidden = false;
+    const h = el.scrollHeight;
+    const w = mode === "chip" ? el.scrollWidth : null;
+    const keyframe = mode === "chip"
+      ? [{ maxWidth: "0px", paddingInline: "0px", opacity: "0" },
+         { maxWidth: `${w}px`, paddingInline: "12px", opacity: "1" }]
+      : [{ height: "0px", opacity: "0" },
+         { height: `${h}px`, opacity: "1" }];
+    el._statusbarAnim = el.animate(keyframe, { duration: STATUSBAR_DUR, easing: STATUSBAR_EASING });
+    el._statusbarAnim.onfinish = () => {
+      // Only clear styles if no newer request superseded this one
+      if (el._statusbarGen !== gen) return;
+      el.style.height = "";
+      el.style.maxWidth = "";
+      cleanup();
+    };
+  } else {
+    // EXIT: animate from natural → collapsed, then set hidden (if still the latest)
+    const h = el.scrollHeight;
+    const w = mode === "chip" ? el.scrollWidth : null;
+    const keyframe = mode === "chip"
+      ? [{ maxWidth: `${w}px`, paddingInline: "12px", opacity: "1" },
+         { maxWidth: "0px", paddingInline: "0px", opacity: "0" }]
+      : [{ height: `${h}px`, opacity: "1" },
+         { height: "0px", opacity: "0" }];
+    el._statusbarAnim = el.animate(keyframe, { duration: STATUSBAR_DUR, easing: STATUSBAR_EASING });
+    el._statusbarAnim.onfinish = () => {
+      // Only hide if no newer request superseded this exit
+      if (el._statusbarGen !== gen) return;
+      el.hidden = true;
+      el.style.height = "";
+      el.style.maxWidth = "";
+      cleanup();
+    };
+  }
+  if (signal) signal.addEventListener("abort", () => { el._statusbarAnim?.cancel(); }, { once: true });
+}
+
+// Unified ready-state rule for page status bars: hide the bar when data is
+// fully ready (tone "success", or "neutral" with available===true); show it
+// during loading / warning / error. Uses animateStatusbar so the transition
+// is a smooth height/opacity slide instead of an abrupt collapse.
+export function syncStatusbarReadyState(el, tone = "neutral", available = true, { mode = "block", signal } = {}) {
+  if (!el) return;
+  const shouldShow = !(tone === "success" || (available && tone === "neutral"));
+  animateStatusbar(el, shouldShow, { mode, signal });
+}
+
 // 2026-07-23: the btc-derivatives page calls this after setRoot() to
 // replace knowledge-tooltip placeholders with real tooltips. The
 // knowledge.js page module has its own hydration path; for non-knowledge

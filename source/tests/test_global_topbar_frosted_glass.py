@@ -1,8 +1,9 @@
-"""Static guards for the shared application topbar glass surface."""
+"""Static guards for the quiet shared application topbar surface."""
 
 from pathlib import Path
 
-EDITORIAL = Path("app/static/editorial.css")
+ROOT = Path(__file__).resolve().parents[2]
+EDITORIAL = ROOT / "source/app/static/editorial.css"
 
 
 def _css() -> str:
@@ -11,20 +12,20 @@ def _css() -> str:
 
 def _block(css: str, selector: str) -> str:
     start = css.index(f"{selector} {{")
-    return css[start:css.index("}", start) + 1]
+    return css[start : css.index("}", start) + 1]
 
 
-def test_shared_topbar_uses_existing_glass_tokens_without_layout_changes() -> None:
+def test_shared_topbar_uses_quiet_solid_surface_without_layout_changes() -> None:
     block = _block(_css(), ".app-topbar")
 
     assert "position: sticky" in block
     assert "top: 0" in block
     assert "min-height: var(--topbar-height)" in block
-    assert "background: var(--glass-bg-deep)" in block
-    assert "border-bottom: 1px solid var(--glass-border-outer)" in block
-    assert "backdrop-filter: blur(var(--glass-blur))" in block
-    assert "-webkit-backdrop-filter: blur(var(--glass-blur))" in block
-    assert "inset 0 -1px 0 var(--glass-edge)" in block
+    assert "background: color-mix(in srgb, var(--surface-elevated) 96%, transparent)" in block
+    assert "border-bottom: 1px solid var(--border)" in block
+    assert "box-shadow: none" in block
+    assert "backdrop-filter: none" in block
+    assert "-webkit-backdrop-filter: none" in block
 
 
 def test_shared_topbar_has_solid_reduced_transparency_fallback() -> None:

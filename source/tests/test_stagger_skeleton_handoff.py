@@ -50,14 +50,13 @@ def test_skeletons_join_a_document_wide_negative_phase() -> None:
 
 
 def test_key_pages_reveal_only_when_async_content_lands() -> None:
-    assert 'revealStagger(document.getElementById("analysis-signal-cards"))' in ANALYSIS
-    assert 'revealStagger(canvas.closest(".chart-wrap"))' in ANALYSIS
-
-    network_render = STRUCTURE.index("renderFromBundle(bundle);")
-    chart_reveal = STRUCTURE.index(
-        'revealStagger(document.getElementById("structure-chart-panel"))'
-    )
-    assert network_render < chart_reveal
+    # V2.3: Workbench refreshes do not replay whole-panel entrance effects.
+    # Analysis decorates existing leaf nodes and skips unchanged chart data.
+    assert "workbench.chartConfig(key, config)" in ANALYSIS
+    assert "if (prepared) renderChart(key, canvas, prepared)" in ANALYSIS
+    assert 'revealStagger(canvas.closest(".chart-wrap"))' not in ANALYSIS
+    assert 'revealStagger(document.getElementById("structure-chart-panel"))' not in STRUCTURE
+    assert "renderFromBundle(bundle);" in STRUCTURE
     assert "renderFromBundle(state.bundle);\n        revealStagger" not in STRUCTURE
 
     assert EVENTS.count('revealStagger(document.getElementById("events-feed")') == 2

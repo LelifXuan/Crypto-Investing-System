@@ -1,7 +1,28 @@
 # 交易系统研究终端设计手册
 
-> 版本 3.1 · 2026-08-24 组件治理基线  
+## UI 2.0 P1 — ACCEPTED / FROZEN
+
+2026-08-30：四页为 Monitoring、BTC、Events、Macro；P1 共享合同冻结，后续扩展须带回归测试。
+验证：改动 JS `node --check`、改动 Python `py_compile`；Workbench/UI2/P1 合同 28 passed；
+`python tests/verify_pages.py`：11/11 冷启动、10/10 SPA 通过，pageerror/console error/失败响应为 0。
+截图由 `VERIFY_SCREENSHOT_DIR` / `WORKBENCH_SCREENSHOT_DIR` 输出到独立目录，不覆盖基准。
+首次验证暴露的 BTC abort 后旧页面重绘与 timer 重启已修复并补测试，随后全量重跑通过。
+P2 操作核心按 Command → Pin → Resize → URL 验收；这条记录描述 P1 冻结批次，V2.3 页面范围见下方迁移基线。
+
+> 版本 3.4 · UI 2.0 页面迁移基线（H0–H4 软件验收冻结，2026-08-31）  
 > 适用范围：`source/app/templates/page.html`、`source/app/static/styles.css`、`source/app/static/editorial.css`、`source/app/static/ui/` 与 `source/app/static/pages/`。
+
+### V2.3 页面迁移基线（2026-08-31）
+
+H0–H4 及最终同版软件门禁已通过：1986 passed、6 既有 skip、5 warnings，11/11 冷启动、10/10 SPA、8/8 压力场景。便携包独立验证与敏感清理状态见 `docs/ui2-page-migration-acceptance.md` 指向的外部交付记录。
+当前 Workbench 页面为 Monitoring、BTC、Events、Macro、Analysis、Structure。
+Analysis 保留指标意图跨上下文恢复；Structure 身份采用形态类型与 UTC 起始锚点，冲突拒绝独立选择。
+Strategy 采用 ADR 0023：保留完整 Detail Panel，仅增加四个页面命令，不加入 Inspector/URL 恢复。
+ETF、Gold 不迁移；Knowledge 保持 reference layout。不是完整 P2 Complete。
+静态子模块使用协商缓存；旧版首次升级执行 Ctrl+Shift+R 一次。UI 发布 V2.3 与应用版本 1.8.1 分开记录。
+主基线 2560×1440，2560×1600 仅高屏复核；Inspector ≤1180px drawer、≤900px bottom sheet 不变。
+静态 Structure 图表 surface 禁止 hover 位移；鼠标 click 与 PointerEvent 使用相同 CSS 像素口径，布局重排不能把静止鼠标解释为新的 preview 意图。
+2026-08-31 发布卫生补验：2013 passed、4 skip、0 warnings；11/11 冷启动、10/10 SPA 与 8/8 压力场景通过。指南关闭必须以 `hidden` 配合 `display:none` 离开布局及可访问树，不以透明度代替隐藏。详见 `docs/ui23-release-hygiene.md`；不扩大页面范围或业务计算。
 
 ---
 
@@ -222,7 +243,7 @@ Component：组件特例，如 --topbar-height、--glass-shadow
 - 高度固定为 `--topbar-height: 64px`。
 - `position: sticky; top: 0; z-index: 1000`，任何页面内容不得覆盖它。
 - 结构顺序：移动端导航按钮 → 面包屑/页面标题 → 页面上下文 chip → 全局数据质量。
-- 当前材质：`--glass-bg-deep` + `blur(28px)` + 轻量底部阴影。
+- 当前材质：Quiet Shell 高不透明 neutral surface、hairline divider，`box-shadow: none`、`backdrop-filter: none`。Glass 仅用于确有需要的 floating surfaces，不用于 Topbar 装饰。
 - 尊重用户的透明度偏好；在 `prefers-reduced-transparency` 下提供实色降级。
 - 程序化定位到区块时使用 `scroll-margin-top: calc(var(--topbar-height) + var(--space-card))`，避免标题被遮挡。
 
@@ -604,6 +625,29 @@ backdrop-filter: blur(var(--glass-blur));
 
 - *(本轮已清空所有 V3.2 登记项；§13.2 全部 8 项债务已治理完毕)*
 
+### UI 2.0 首轮（Workbench interaction layer）
+
+- 视觉方向固定为 **Quiet Shell + Living Data**：外壳保持安静，变化、来源与证据关系由语义状态表达。
+- `editorial.css :root` 继续作为唯一 canonical token 源；禁止新增第三层全局 override 或新的 palette 文件。
+- Surface 仅分为 canvas、section、panel、floating；明显 elevation 与 blur 只允许用于真正浮层。
+- 首轮 pilot 为 Monitoring Overview 与 BTC Derivatives，共享 Context Rail、Context Inspector、显式 linked selection 与 semantic motion。
+- Market Events 与 Macro Calendar 作为 pilot 稳定后的首批迁移页面，只消费已有事件、指标、来源与时间字段。
+- 首轮正式 Workbench 页面限定为 Monitoring Overview、BTC Derivatives、Market Events 与 Macro Calendar；其余页面在具备真实 inspection adapter 前不得挂载空壳 Context Rail 或 Inspector。
+- 市场方向、系统可用性与用户选择分别使用独立语义，不得互相借色。
+- P1 冻结时不含操作核心；P2 Operator Core 按下方分阶段合同开放 Command Palette、Inspector pin/resize 和 URL selection recovery。跨页内容搜索、任意布局与额外页面迁移仍不在本轮范围。
+
+### P2 Operator Core（不等于完整 P2 页面迁移）
+
+- Command：单一 app registry；十个 canonical 导航页加四页的页面操作；scope 卸载释放。Palette 只搜索 registry，关闭后再导航/聚焦，IME composing 不执行 Enter。
+- 浮层：Palette > 最上层 modal/detail/sidebar > responsive Inspector > desktop dock；Escape 一次关闭一层，modal 共享所有者滚动锁。
+- Pin：仅当前页面 committed selection，可继续 preview 关联；点击替换、同 ID 刷新保留 pin，clear/失效/unmount 解除。不写存储。
+- Resize：仅 >1180px；默认 `clamp(328px, 21vw, 400px)`，用户范围 320px 至 `min(520px, 42vw)`。左拖扩大，键盘 8px/Shift 32px，Home/End 边界。仅持久化 `cis.workbench.inspector.width.v1`，窄屏不覆盖桌面偏好。
+- URL：仅 `inspect` 对象 ID；保留 query/hash/history state，preview 不写入，冷读等待，最新 adapter registry/LKG resolve，失效给出轻量提示。上下文切换清除，destroy 不改新路由。
+- 视觉延续 canonical surface/token；只增加必要层级、手柄和状态控件，无运行时 `<style>`。
+
+阶段记录（2026-08-30）：Command 的 registry/浏览器/边界 10 passed，11/11 路由 + 10/10 SPA；Pin 的四宽度行为 4 passed + store 合同，全量路由通过；Resize 的合同/浏览器 6 passed，全量路由通过。URL 与同版最终门禁见本手册文末 2026-08-31 验收记录；便携包另做解压空库启动验证。
+- 视觉验证以 2560×1440 为主基线；2560×1600 仅作高屏 cross-check。
+
 ---
 
 ## 14. 新增或修改 UI 的评审清单
@@ -650,3 +694,24 @@ backdrop-filter: blur(var(--glass-blur));
 |---|---|---|
 | 2026-08-24 | 3.1 | 新增 disclosure 组件唯一入口、三种层级、完整状态与可访问性规范；统一活动页面的区块级折叠按钮。 |
 | 2026-08-20 | 3.0 | 对十个页面、全局外壳、当前生效 token 与共享组件进行审查；纠正旧手册中调色板、卡片圆角、间距、字体层级和视口基线与实际实现不一致的问题；新增设计债务与治理顺序。 |
+
+---
+
+## UI 2.0 P2 Operator Core — ACCEPTED（2026-08-31）
+
+交付状态为 **P1 Accepted/Frozen + P2 Operator Core Complete**，不是完整 P2 页面迁移。
+本节记录 Operator Core 初次验收时的四页白名单；最新页面范围由本手册开头的 V2.3 迁移基线覆盖。Strategy、ETF、Gold 不新增 Inspector，Knowledge 保持 reference layout。
+
+- Batch 3B / 续作：URL 冷缓存等待、任务失败、LKG 恢复、上下文清除和恢复中切页已验收；图表选择刷新、pin、resize 重排及拖拽中卸载均有行为守卫。
+- 同版最终门禁：18 个改动 JS 语法检查、32 个改动 Python 编译与 Ruff 通过；`python -m pytest tests/ -q -rs --tb=short` 为 **1915 passed、6 skipped、0 failed**。
+- `python tests/verify_pages.py`：**11/11 冷启动、10/10 SPA**，无 pageerror、console error、失败响应或慢切页；`python tests/stress_test.py --pages monitoring-overview,btc-derivatives,market-events,macro-calendar` 为 **4 PASS、0 WARN、0 FAIL**。
+- 确定性四页行为矩阵覆盖 click/Enter/Space、preview/committed/pin、浮层 Escape 优先级、焦点与滚动锁、同值刷新、失效对象和卸载；Palette 连续开关 20 次与命令 scope 切页已通过。
+- 响应式：10 页 × 8 视口共 **80 项通过**。主视口 2560×1440，补充 1500×900、1280×720、1100×800、800×900、768×1024、390×844；2560×1600 仅高屏复核。
+- 140 张 Workbench fullPage 状态截图独立留存，覆盖关闭、打开、pin、resize 两端、drawer、bottom sheet、Palette 与 linked highlight；没有更新截图基准。复核 shell、Context Rail、主次层级、surface、Inspector、关联提示、字体及响应式。
+- 本轮修复：BTC 刷新失败保留 LKG/selection；延迟保护规划响应遵守页面代际；修复 CSS 媒体查询范围导致的隐藏指南/详情浮层定位；技术指标旧测试改用 canonical 路由和确定性状态，禁止访问 404 后空通过。
+
+验收环境：自建 8002、`WORKER_PROFILE=none`、`LOCAL_BOOTSTRAP_WARMUP_ENABLED=false`，仅 23.4 MiB 精简库（157 份有效已发布快照）。Windows 测试设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`，避免子进程 UTF-8/GBK 解码分叉。截图输出使用 `VERIFY_SCREENSHOT_DIR`、`WORKBENCH_SCREENSHOT_DIR`、`RESPONSIVE_OUTPUT_DIR`；报告另存，不作为基准。
+
+已知遗留：全量 Ruff 为 235 项项目问题 + 4893 项内置运行库问题，改动范围为 0；内置 Python `pip check` 无依赖冲突。6 项 skip 分别为 chip_structure 缺少旧导出（1）、旧知识指南用例待迁移至 FAB（2）、缺少可选 pandas-ta（1）/TA-Lib（2），均非后端未启动。5 条 warning 来自旧 Pydantic 用法及测试用短 HMAC key。Eastmoney ETF 现有上游降级告警保留；provider 请求未修改，direct/proxy 门禁不适用。
+
+便携交付须独立验证解压后的 `start.bat`、内置 Python、空库和浏览器加载；包内 `.env` 原样保留，标记“未加密、含密钥、仅限授权内部使用”。数据库、运行缓存、日志、临时截图、`nul` 不入包，`app/cache` 业务源码及随仓库发布的 CFTC 基础数据保留。

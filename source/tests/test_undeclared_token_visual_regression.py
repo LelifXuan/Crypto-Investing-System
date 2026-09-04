@@ -22,11 +22,14 @@ matrix in the audit document §13.
 editorial.css. This guard now reads editorial.css, where every alias the
 audit required is declared with its current editorial-palette value.
 """
+
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 # 2026-08-27: post-token-migration, editorial.css owns all visual baseline
@@ -136,9 +139,8 @@ def test_styles_root_declares_all_audit_aliases():
         elif actual.replace(" ", "") != expected_value.replace(" ", ""):
             wrong_value.append((alias, expected_value, actual))
     assert not missing, f"Missing token declarations in :root: {missing}"
-    assert not wrong_value, (
-        "Token value drift in :root: "
-        + ", ".join(f"{a} want={w!r} got={g!r}" for a, w, g in wrong_value)
+    assert not wrong_value, "Token value drift in :root: " + ", ".join(
+        f"{a} want={w!r} got={g!r}" for a, w, g in wrong_value
     )
 
 
@@ -165,8 +167,7 @@ def test_audit_aliases_still_have_consumer_sites():
         if not _consumers_outside_root(source, alias):
             no_consumer.append(alias)
     assert not no_consumer, (
-        "Audit aliases without consumer sites (alias added but unused): "
-        + ", ".join(no_consumer)
+        "Audit aliases without consumer sites (alias added but unused): " + ", ".join(no_consumer)
     )
 
 

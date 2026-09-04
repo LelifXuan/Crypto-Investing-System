@@ -7,11 +7,14 @@ non-empty colors.
 
 Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.C
 """
+
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHARTS_JS = ROOT / "app" / "static" / "ui" / "charts.js"
@@ -22,26 +25,26 @@ CHARTS_JS = ROOT / "app" / "static" / "ui" / "charts.js"
 STYLES = ROOT / "app" / "static" / "editorial.css"
 
 EXPECTED_TOKEN_KEYS = {
-    "legend":         "--chart-legend",
-    "tooltipBg":      "--chart-tooltip-bg",
-    "tooltipBorder":  "--chart-tooltip-border",
-    "tooltipFg1":     "--chart-tooltip-fg-1",
-    "tooltipFg2":     "--chart-tooltip-fg-2",
-    "axis":           "--chart-axis",
-    "gridX":          "--chart-grid-x",
-    "gridY":          "--chart-grid-y",
-    "referenceLine":  "--chart-reference-line",
+    "legend": "--chart-legend",
+    "tooltipBg": "--chart-tooltip-bg",
+    "tooltipBorder": "--chart-tooltip-border",
+    "tooltipFg1": "--chart-tooltip-fg-1",
+    "tooltipFg2": "--chart-tooltip-fg-2",
+    "axis": "--chart-axis",
+    "gridX": "--chart-grid-x",
+    "gridY": "--chart-grid-y",
+    "referenceLine": "--chart-reference-line",
     "referenceLabel": "--chart-reference-label",
-    "expiryLine":     "--chart-expiry-line",
-    "expiryLabel":    "--chart-expiry-label",
-    "dotPutWall":     "--chart-dot-put-wall",
-    "dotMaxPain":     "--chart-dot-max-pain",
-    "dotCallWall":    "--chart-dot-call-wall",
-    "dotStroke":      "--chart-dot-stroke",
-    "upStroke":       "--chart-up-stroke",
-    "downStroke":     "--chart-down-stroke",
-    "upFill":         "--chart-up-fill",
-    "downFill":       "--chart-down-fill",
+    "expiryLine": "--chart-expiry-line",
+    "expiryLabel": "--chart-expiry-label",
+    "dotPutWall": "--chart-dot-put-wall",
+    "dotMaxPain": "--chart-dot-max-pain",
+    "dotCallWall": "--chart-dot-call-wall",
+    "dotStroke": "--chart-dot-stroke",
+    "upStroke": "--chart-up-stroke",
+    "downStroke": "--chart-down-stroke",
+    "upFill": "--chart-up-fill",
+    "downFill": "--chart-down-fill",
 }
 
 
@@ -76,7 +79,8 @@ def test_charts_declares_THEME_with_all_keys():
     assert "CHART_THEME_FALLBACK" in source, "CHART_THEME_FALLBACK missing"
     fallback_block = re.search(
         r"const\s+CHART_THEME_FALLBACK\s*=\s*Object\.freeze\(\{(.+?)\}\);",
-        source, re.S,
+        source,
+        re.S,
     )
     assert fallback_block, "CHART_THEME_FALLBACK not declared as Object.freeze"
     body = fallback_block.group(1)
@@ -118,11 +122,20 @@ def test_no_consumer_side_hardcoded_palette_outside_fallback():
     rest = slice_out(rest, "const SERIES_FALLBACK = Object.freeze({")
     rest = slice_out(rest, 'const SERIES_FALLBACK_COLOR = "#5a6a7c"')
     palette_fragments = [
-        '"#4b5961"', '"#f8fafc"', '"#e2e8f0"', '"#627078"',
-        '"rgba(21, 35, 42, 0.92)"', '"rgba(23, 34, 39, 0.042)"',
-        '"rgba(23, 34, 39, 0.05)"', '"rgba(83, 99, 108, 0.72)"',
-        '"#53636c"', '"rgba(83, 99, 108, 0.45)"', '"rgba(48, 84, 130, 0.85)"',
-        '"#c2725a"', '"#5a6a7c"', '"#8eb098"',
+        '"#4b5961"',
+        '"#f8fafc"',
+        '"#e2e8f0"',
+        '"#627078"',
+        '"rgba(21, 35, 42, 0.92)"',
+        '"rgba(23, 34, 39, 0.042)"',
+        '"rgba(23, 34, 39, 0.05)"',
+        '"rgba(83, 99, 108, 0.72)"',
+        '"#53636c"',
+        '"rgba(83, 99, 108, 0.45)"',
+        '"rgba(48, 84, 130, 0.85)"',
+        '"#c2725a"',
+        '"#5a6a7c"',
+        '"#8eb098"',
         'dataset.upStrokeColor || "#16a34a"',
         'dataset.downStrokeColor || "#dc2626"',
         'dataset.upColor || "rgba(124,155,138,0.32)"',

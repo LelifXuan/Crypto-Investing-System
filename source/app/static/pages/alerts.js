@@ -490,7 +490,6 @@ export async function renderAlerts() {
   let activeController = null;
   if (!isMounted) {
     setRoot(`
-    <section id="alerts-statusbar"></section>
     <section id="alerts-chip-structure"></section>
     <section id="alerts-chip-appendix"></section>
     <section class="card divergence-alert-card alert-block">
@@ -542,8 +541,8 @@ export async function renderAlerts() {
   }
 
   const renderStatus = (message, tone = "neutral") => {
-    const el = document.getElementById("alerts-statusbar");
-    if (el) el.innerHTML = statusBanner(message, tone);
+    // Status bar removed — alerts page no longer shows a persistent status/banner.
+    // Call sites are kept as no-ops so loading/error paths need no individual edits.
   };
 
   async function load({ allowAutoRefresh = true } = {}) {

@@ -3,11 +3,9 @@ Responsive check — multi-viewport rendering, overflow detection, content visib
 
 Capability: P2-A (Responsive Testing)
 Tests each page at multiple viewport sizes:
-  - Mobile S: 375x667
-  - Mobile L: 414x896
-  - Tablet: 768x1024
-  - Laptop: 1366x900 (default)
-  - Desktop: 1920x1080
+  - Main acceptance: 2560x1440; 2560x1600 high-screen cross-check only
+  - Operator breakpoints: 1500x900, 1280x720, 1100x800, 800x900
+  - Mobile/tablet: 390x844, 768x1024
 
 Checks per viewport:
   1. No horizontal overflow (scrollWidth <= viewport width)
@@ -18,6 +16,7 @@ Usage:
   python tests/responsive_check.py --pages all
   python tests/responsive_check.py --pages monitoring-overview --viewports 375,768,1920
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +30,7 @@ from playwright.sync_api import sync_playwright
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCREENSHOT_DIR = REPO_ROOT / "tests" / "screenshots"
-RESPONSIVE_DIR = SCREENSHOT_DIR / "responsive"
+RESPONSIVE_DIR = Path(os.getenv("RESPONSIVE_OUTPUT_DIR", str(SCREENSHOT_DIR / "responsive")))
 RESPONSIVE_DIR.mkdir(parents=True, exist_ok=True)
 
 PAGE_ROUTES = {
@@ -63,7 +62,10 @@ REAL_CONTENT_SELECTORS = {
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
 
 DEFAULT_VIEWPORTS = [
-    {"name": "mobile-s", "width": 375, "height": 667},
+    {"name": "operator-sheet", "width": 800, "height": 900},
+    {"name": "operator-drawer", "width": 1100, "height": 800},
+    {"name": "operator-desktop", "width": 1500, "height": 900},
+    {"name": "mobile-s", "width": 390, "height": 844},
     {"name": "mobile-l", "width": 414, "height": 896},
     {"name": "tablet", "width": 768, "height": 1024},
     # 2026-08-27: 1280x720 is one of the breakpoints the design handbook §11.1
@@ -74,11 +76,10 @@ DEFAULT_VIEWPORTS = [
     {"name": "laptop-1280", "width": 1280, "height": 720},
     {"name": "laptop", "width": 1366, "height": 900},
     {"name": "desktop", "width": 1920, "height": 1080},
-    # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440 (16:9).
-    # desktop-2k stays as the second default for cross-checking; desktop-2k-1600
-    # is the priority.
-    {"name": "desktop-2k-1600", "width": 2560, "height": 1600},
+    # 2560x1440 is the canonical visual baseline. The 1600-high viewport is
+    # retained immediately after it as a high-screen cross-check.
     {"name": "desktop-2k", "width": 2560, "height": 1440},
+    {"name": "desktop-2k-1600", "width": 2560, "height": 1600},
 ]
 
 
@@ -92,11 +93,13 @@ def check_viewport(page, page_id: str, viewport: dict) -> dict:
     has_overflow = scroll_width > client_width + 1  # 1px tolerance
 
     if has_overflow:
-        findings.append({
-            "check": "horizontal-overflow",
-            "severity": "FAIL",
-            "detail": f"scrollWidth={scroll_width}px > viewport={client_width}px",
-        })
+        findings.append(
+            {
+                "check": "horizontal-overflow",
+                "severity": "FAIL",
+                "detail": f"scrollWidth={scroll_width}px > viewport={client_width}px",
+            }
+        )
 
     # Check real content visibility
     selectors = REAL_CONTENT_SELECTORS.get(page_id, [".card", "section"])
@@ -114,11 +117,13 @@ def check_viewport(page, page_id: str, viewport: dict) -> dict:
             pass
 
     if not content_visible:
-        findings.append({
-            "check": "content-visible",
-            "severity": "WARN",
-            "detail": "Real content selector not visible at this viewport",
-        })
+        findings.append(
+            {
+                "check": "content-visible",
+                "severity": "WARN",
+                "detail": "Real content selector not visible at this viewport",
+            }
+        )
 
     fail_count = sum(1 for f in findings if f["severity"] == "FAIL")
     warn_count = sum(1 for f in findings if f["severity"] == "WARN")
@@ -169,8 +174,16 @@ def scan_page(page_id: str, route: str, viewports: list[dict]) -> dict:
 
             # Screenshot
             screenshot_path = RESPONSIVE_DIR / f"{page_id}_{vp['width']}x{vp['height']}.png"
-            page.screenshot(path=str(screenshot_path), full_page=False)
-            vp_result["screenshot"] = str(screenshot_path.relative_to(REPO_ROOT))
+            # Playwright's async path writer intermittently raises EINVAL on
+            # Windows/Python 3.14 after writing large full-page PNGs. Keep
+            # capture and filesystem I/O separate so the verification result
+            # is deterministic and the bytes are written by pathlib.
+            screenshot_path.write_bytes(page.screenshot(full_page=True))
+            try:
+                screenshot_display_path = screenshot_path.relative_to(REPO_ROOT)
+            except ValueError:
+                screenshot_display_path = screenshot_path
+            vp_result["screenshot"] = str(screenshot_display_path)
 
             results.append(vp_result)
             ctx.close()
@@ -214,7 +227,9 @@ def check_knowledge_overflow_at_1280(page_results: dict) -> dict | None:
 
 
 def main(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(description="Responsive check — multi-viewport overflow + content visibility")
+    p = argparse.ArgumentParser(
+        description="Responsive check — multi-viewport overflow + content visibility"
+    )
     p.add_argument(
         "--pages",
         default=",".join(PAGE_ROUTES.keys()),
@@ -223,7 +238,7 @@ def main(argv: list[str]) -> int:
     p.add_argument(
         "--viewports",
         default=",".join(v["name"] for v in DEFAULT_VIEWPORTS),
-        help="comma-separated viewport names (default: all 5)",
+        help="comma-separated viewport names (default: all configured viewports)",
     )
     args = p.parse_args(argv)
 
@@ -248,8 +263,11 @@ def main(argv: list[str]) -> int:
         for vp in result["viewports"]:
             tag = vp["verdict"]
             overflow = "OVERFLOW" if vp["has_overflow"] else "ok"
-            print(f"  [{tag}] {vp['viewport']:>10} {vp['width']}x{vp['height']}  "
-                  f"scrollW={vp['scroll_width']} content={'Y' if vp['content_visible'] else 'N'} {overflow}")
+            print(
+                f"  [{tag}] {vp['viewport']:>10} {vp['width']}x{vp['height']}  "
+                f"scrollW={vp['scroll_width']} "
+                f"content={'Y' if vp['content_visible'] else 'N'} {overflow}"
+            )
         report["per_page"].append(result)
 
     # Summary
@@ -263,7 +281,9 @@ def main(argv: list[str]) -> int:
 
     print()
     print("=" * 60)
-    print(f"responsive: {page_fails} pages with overflow, {total_overflow} total overflow viewports")
+    print(
+        f"responsive: {page_fails} pages with overflow, {total_overflow} total overflow viewports"
+    )
     print("=" * 60)
 
     # Dedicated guard: knowledge-base @ 1280x720. WARN only, not FAIL — fixing
@@ -284,9 +304,19 @@ def main(argv: list[str]) -> int:
             )
             report.setdefault("kb_1280_overflow", []).append(guard)
 
-    out_log = SCREENSHOT_DIR / "responsive_report.json"
+    out_log = Path(
+        os.getenv(
+            "RESPONSIVE_REPORT_PATH",
+            str(SCREENSHOT_DIR / "responsive_report.json"),
+        )
+    )
+    out_log.parent.mkdir(parents=True, exist_ok=True)
     out_log.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"report saved: {out_log.relative_to(REPO_ROOT)}")
+    try:
+        display_path = out_log.relative_to(REPO_ROOT)
+    except ValueError:
+        display_path = out_log
+    print(f"report saved: {display_path}")
 
     return 1 if page_fails > 0 else 0
 

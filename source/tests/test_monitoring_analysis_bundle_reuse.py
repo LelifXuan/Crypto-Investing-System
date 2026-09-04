@@ -9,6 +9,11 @@ import pytest
 from app.services import monitoring_dashboard
 from app.services.monitoring_dashboard import MonitoringDashboardService
 
+ROOT = Path(__file__).resolve().parents[2]
+_MONITORING_PAGE = ROOT / "source/app/static/pages/monitoring.js"
+_GOVERNANCE_LEDGER = ROOT / "source/app/static/ui/governanceLedger.js"
+_STYLES = ROOT / "source/app/static/styles.css"
+
 BAD_TEXT_TOKENS = ("????", "\ufffd", "\u951f", "\u934b", "\u7039", "\u93c6")
 
 
@@ -27,7 +32,7 @@ class FakeAnalysisBundleService:
                 SimpleNamespace(
                     ts_open=datetime(2026, 5, 14, tzinfo=UTC),
                     close=100,
-                )
+                ),
             ],
             core_indicator_series={
                 "ema_20": [None, 95],
@@ -113,9 +118,8 @@ def test_monitoring_source_status_is_structured_and_has_no_glassnode() -> None:
 
 
 def test_monitoring_frontend_layout_and_copy_are_clean() -> None:
-    source = Path("app/static/pages/monitoring.js")
-    content = source.read_text(encoding="utf-8")
-    shared = Path("app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
+    content = _MONITORING_PAGE.read_text(encoding="utf-8")
+    shared = _GOVERNANCE_LEDGER.read_text(encoding="utf-8")
 
     assert "monitoring-surface" in content
     # 2026-08-27 §13.2 #3: the "数据源状态" h2 now lives in
@@ -177,7 +181,7 @@ def test_monitoring_technical_observations_use_timeframe_aware_freshness() -> No
 
 
 def test_monitoring_frontend_trusts_backend_technical_observations() -> None:
-    content = Path("app/static/pages/monitoring.js").read_text(encoding="utf-8")
+    content = _MONITORING_PAGE.read_text(encoding="utf-8")
 
     assert "TECH_OBSERVATION_MAX_AGE_MS" not in content
     assert "isFreshTechnicalObservation" not in content
@@ -189,19 +193,21 @@ def test_monitoring_frontend_uses_full_width_macro_then_terminal_layout() -> Non
     summary full-width (no left/right columns), and the standalone technical
     panel is gone — technical evidence is folded into the terminal summary as
     '证据：…' annotations on the trend / momentum / volatility sub-modules."""
-    content = Path("app/static/pages/monitoring.js").read_text(encoding="utf-8")
-    css = Path("app/static/styles.css").read_text(encoding="utf-8")
+    content = _MONITORING_PAGE.read_text(encoding="utf-8")
+    css = _STYLES.read_text(encoding="utf-8")
 
     render_block = content.split("function renderDashboard", 1)[1].split(
         "const MONITORING_SECTION_IDS",
         1,
     )[0]
-    shell_block = content.split("root.innerHTML = `", 1)[1].split("`;", 1)[0]
+    shell_block = content.split("function renderShellFallback", 1)[1].split(
+        "function attachMonitoringShell",
+        1,
+    )[0]
 
     # The full-width grid class must be present in both blocks.
     assert "monitoring-snapshot-grid-full" in render_block, (
-        "renderDashboard must switch to the full-width snapshot grid "
-        "(no left/right stacks)"
+        "renderDashboard must switch to the full-width snapshot grid (no left/right stacks)"
     )
     assert "monitoring-snapshot-grid-full" in shell_block, (
         "the diff shell template must also use the full-width snapshot grid"
@@ -241,7 +247,7 @@ def test_monitoring_frontend_uses_full_width_macro_then_terminal_layout() -> Non
 
 
 def test_monitoring_dashboard_api_defaults_to_btc_daily() -> None:
-    content = Path("app/api/v1/endpoints/monitoring.py").read_text(encoding="utf-8")
+    content = Path(ROOT / "source/app/api/v1/endpoints/monitoring.py").read_text(encoding="utf-8")
 
     assert 'instrument_id: str = Query(default="btc-usdt-perp")' in content
     assert 'timeframe: str = Query(default="1d")' in content
@@ -253,7 +259,9 @@ def test_monitoring_dashboard_api_defaults_to_btc_daily() -> None:
 
 
 @pytest.mark.asyncio
-async def test_monitoring_dashboard_get_backfills_missing_technical_observations(monkeypatch) -> None:
+async def test_monitoring_dashboard_get_backfills_missing_technical_observations(
+    monkeypatch,
+) -> None:
     from app.services.cache_registry import monitoring_dashboard_cache_key
 
     now = datetime.now(UTC)

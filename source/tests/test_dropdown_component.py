@@ -1,10 +1,12 @@
 """Static guards for the unified dropdown component."""
+
 import re
 from pathlib import Path
 
 import pytest
 
-CSS_FILE = Path("app/static/styles.css")
+ROOT = Path(__file__).resolve().parents[2]
+CSS_FILE = ROOT / "source/app/static/styles.css"
 
 
 def _read_css() -> str:
@@ -46,7 +48,7 @@ def test_no_new_hex_colors_in_dropdown_rules():
     for b in blocks:
         for m in hex_colors.finditer(b):
             start = max(0, m.start() - 10)
-            window = css[start:m.end() + 10]
+            window = css[start : m.end() + 10]
             if "var(" not in window:
                 offenders.append((b.split("{")[0].strip(), m.group(0)))
     assert not offenders, f"dropdown rules introduced new hex colors: {offenders}"

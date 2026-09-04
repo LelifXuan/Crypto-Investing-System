@@ -84,8 +84,7 @@ def test_terminal_summary_spans_both_columns_in_render_dashboard() -> None:
     block = content[start:end]
 
     assert "renderTerminalSummary(data)" in block, (
-        "renderDashboard must still call renderTerminalSummary, got block: "
-        + block
+        "renderDashboard must still call renderTerminalSummary, got block: " + block
     )
     # The two-stack layout (left/right columns) must be gone.
     assert "monitoring-right-stack" not in block, (
@@ -148,15 +147,14 @@ def test_terminal_summary_vote_card_includes_evidence_field() -> None:
 
     # The vote card template ends with `</article>`. The evidence line lives
     # somewhere between the score <small> and that closing tag.
-    assert "<article class=\"terminal-summary-vote\">" in block, (
+    assert '<article class="terminal-summary-vote"' in block, (
         "per-module vote card class must remain 'terminal-summary-vote'"
     )
     # Evidence line must be inside that template. Look for the structural
     # pair: '证据' within the article block.
-    article_start = block.index("<article class=\"terminal-summary-vote\">")
+    article_start = block.index('<article class="terminal-summary-vote"')
     article_end = block.index("</article>", article_start)
     article = block[article_start:article_end]
     assert "证据" in article, (
-        "evidence annotation must live inside the per-module vote card; "
-        f"article was: {article}"
+        f"evidence annotation must live inside the per-module vote card; article was: {article}"
     )

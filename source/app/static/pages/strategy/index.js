@@ -33,7 +33,6 @@ function renderScanShell() {
           <button type="button" class="primary-button compact" id="strategy-scan-refresh">刷新扫描</button>
         </div>
       </section>
-      <div id="strategy-scan-status"></div>
       <section class="grid cols-2 strategy-scan-grid">
         <section class="card" id="strategy-scan-matrix-section">
           <div class="section-head">
@@ -63,7 +62,7 @@ function renderScanShell() {
 function renderScanResults(data) {
   scanData = data;
 
-  const status = document.getElementById("strategy-scan-status");
+  // Status bar removed — strategy page no longer shows a persistent status/banner.
   // Matrix is the canonical scan result. Deriving the ranked list and banner
   // from the same cells prevents stale cached `ranked` data from contradicting
   // the matrix shown beside it.
@@ -86,29 +85,6 @@ function renderScanResults(data) {
   const cellsPending = visibleMatrix.filter((item) =>
     ["missing", "warming", "error"].includes(item?.cache_state)
   ).length;
-
-  // 2026-07-24 v3: three-way banner. The previous "当前无明确交易机会"
-  // copy was misleading when data was still pending — users thought
-  // the system was broken.
-  let bannerText;
-  let bannerTone;
-  if (oppCount > 0) {
-    bannerText = `发现 ${oppCount} 个高确定性机会 / 共扫描 ${totalCells} 个周期组合 ${sourceLabel}`;
-    bannerTone = "success";
-  } else if (cellsPending > 0) {
-    bannerText = `数据补齐中（${cellsReady}/${totalCells} 已就绪），尚无高确定性机会 ${sourceLabel}`;
-    bannerTone = "info";
-  } else if (candidateCount > 0) {
-    bannerText = `发现 ${candidateCount} 个方向候选，暂无信号通过高确定性门禁 ${sourceLabel}`;
-    bannerTone = "neutral";
-  } else {
-    bannerText = `全部数据已就绪，当前无高确定性交易机会 ${sourceLabel}`;
-    bannerTone = "neutral";
-  }
-
-  if (status) {
-    status.innerHTML = statusBanner(bannerText, bannerTone);
-  }
 
   const matrixEl = document.getElementById("strategy-scan-matrix");
   if (matrixEl) {
@@ -138,9 +114,7 @@ function renderScanLoading() {
 // regular loading dots so the user knows the system is warming caches
 // (not stuck).
 function renderWarmingStatus(message) {
-  const text = message || "首次访问，正在后台预热数据缓存，预计 5-10 秒后出结果";
-  const status = document.getElementById("strategy-scan-status");
-  if (status) status.innerHTML = statusBanner(text, "info");
+  // Status bar removed — keep loading states for matrix/ranked only.
   const matrixEl = document.getElementById("strategy-scan-matrix");
   if (matrixEl) matrixEl.innerHTML = loadingState("正在预热数据缓存...");
   const rankedEl = document.getElementById("strategy-scan-ranked");
@@ -310,9 +284,12 @@ async function pollWhileWarming(attempt = 0) {
   // loadScan already rendered real data or the error banner.
 }
 
-export async function renderStrategy() {
+export async function renderStrategy({ commands } = {}) {
   mounted = true;
   renderScanShell();
+  const commandDisposers = [];
+  const commandLifetime = new AbortController();
+  let refreshBusy = false;
 
   // 2026-08-17: delayed warming placeholder. When the scan cache is
   // fresh the backend responds in <500ms and we should render results
@@ -339,13 +316,32 @@ export async function renderStrategy() {
   // only fire this once per page module load (avoids precompute queue spam).
   await tryPrewarm();
 
-  document.getElementById("strategy-scan-refresh")?.addEventListener("click", () => {
+  async function refreshScan() {
+    if (!mounted || commandLifetime.signal.aborted || refreshBusy) return;
+    refreshBusy = true;
+    const button = document.getElementById("strategy-scan-refresh");
+    if (button) button.disabled = true;
     // Manual refresh always shows loading state — user expects feedback.
     if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
     warmingVisible = true;
     renderScanLoading();
-    loadScan(true);
-  });
+    try { await loadScan(true); }
+    finally {
+      refreshBusy = false;
+      if (!commandLifetime.signal.aborted && button?.isConnected) button.disabled = false;
+    }
+  }
+  document.getElementById("strategy-scan-refresh")?.addEventListener("click", refreshScan, { signal: commandLifetime.signal });
+  const focusSection = (id) => () => {
+    const element = document.getElementById(id);
+    if (element) { element.tabIndex = -1; element.focus({ preventScroll: false }); }
+  };
+  for (const command of [
+    { id: "strategy:refresh-scan", label: "刷新策略扫描", enabled: () => !refreshBusy, run: refreshScan },
+    { id: "strategy:focus-matrix", label: "聚焦策略矩阵", run: focusSection("strategy-scan-matrix-section") },
+    { id: "strategy:focus-ranked", label: "聚焦策略排名", run: focusSection("strategy-scan-ranked-section") },
+    { id: "strategy:close-detail", label: "关闭策略详情", enabled: () => Boolean(activeDetailPanelClose), run: () => activeDetailPanelClose?.() },
+  ]) if (commands) commandDisposers.push(commands.register(command));
 
   const guideFab = mountPageGuide("ai-strategy");
 
@@ -382,6 +378,8 @@ export async function renderStrategy() {
       }
     },
     unmount: async () => {
+      commandLifetime.abort();
+      commandDisposers.forEach((dispose) => dispose());
       guideFab.unmount();
       mounted = false;
       if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }

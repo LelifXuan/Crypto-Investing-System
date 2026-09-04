@@ -30,13 +30,17 @@ let rangeStateLabel;
 let mountDropdown;
 let activeRangeClassification = null;
 let activeDirectionalBias = null;
+let mountAnalysisWorkbench;
+let observeChartsForPage;
+let workbench = null;
+let pageController = null;
 
 async function ensureDeps() {
   if (api && appState && renderChart) {
     return;
   }
   const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
-  const [apiModule, stateModule, domModule, chartModule, precomputeModule, rangeModule, dropdownModule] = await Promise.all([
+  const [apiModule, stateModule, domModule, chartModule, precomputeModule, rangeModule, dropdownModule, workbenchModule] = await Promise.all([
     import(`../core/api.js${assetVersion}`),
     import(`../core/state.js${assetVersion}`),
     import(`../core/dom.js${assetVersion}`),
@@ -44,6 +48,7 @@ async function ensureDeps() {
     import(`../core/precompute.js${assetVersion}`),
     import(`../core/rangeState.js${assetVersion}`),
     import(`../ui/dropdown.js${assetVersion}`),
+    import('./analysisWorkbench.js'),
   ]);
   ({ api, invalidateCache } = apiModule);
   ({ appState, getWindowProfile, persistState } = stateModule);
@@ -60,6 +65,7 @@ async function ensureDeps() {
     skeletonPhaseStyle,
     statusBanner,
     statusChip,
+    syncStatusbarReadyState,
     updatePageContext,
     chartSkeleton,
   } = domModule);
@@ -71,10 +77,12 @@ async function ensureDeps() {
     lineDataset,
     renderChart,
     sanitizeChartSeries,
+    observeChartsForPage,
   } = chartModule);
   ({ scheduleAnalysisMatrixWarmup, waitForPrecomputeTask } = precomputeModule);
   ({ rangeStateLabel } = rangeModule);
   ({ mountDropdown } = dropdownModule);
+  ({ mountAnalysisWorkbench } = workbenchModule);
 }
 
 const MIN_ANALYSIS_CANDLES = {
@@ -559,13 +567,13 @@ function vwapInterpretation(close, vwap50, vwap100, slope10, spreadPct) {
   const has100 = Number.isFinite(vwap100);
   if (!has50 || !has100) return "中性，VWAP 样本不足，等待更多成交量数据。";
   if (close > vwap50 && vwap50 > vwap100 && slope10 > 0) {
-    return "偏多，价格位于 VWAP50 上方，且 VWAP50 高于 VWAP100。";
+    return "偏多：现价 > VWAP50 > VWAP100；VWAP50 斜率 > 0。";
   }
   if (close < vwap50 && vwap50 < vwap100 && slope10 < 0) {
-    return "偏空，价格位于 VWAP50 下方，且 VWAP50 低于 VWAP100。";
+    return "偏空：现价 < VWAP50 < VWAP100；VWAP50 斜率 < 0。";
   }
-  if (spreadPct >= 0.5) return "中性偏多，VWAP50 高于 VWAP100，但价格仍需确认。";
-  if (spreadPct <= -0.5) return "中性偏空，VWAP50 低于 VWAP100，反弹质量需观察。";
+  if (spreadPct >= 0.5) return "中性偏多：VWAP50 > VWAP100；现价关系尚未确认。";
+  if (spreadPct <= -0.5) return "中性偏空：VWAP50 < VWAP100；现价关系尚未确认。";
   return "中性，价格接近 VWAP 成本区，方向优势不足。";
 }
 
@@ -819,10 +827,10 @@ function heroTemplate() {
       <article class="card realtime-card">
         <div class="card-head-inline">
           <div>
-            <p class="eyebrow">REAL-TIME MARK</p>
+            <p class="eyebrow">MARK SNAPSHOT</p>
             <h2>实时标记价 ${knowledgeTooltip("Mark / Index / Deviation", "tone-bullish", "5 分钟自动刷新，切回页面时会立即补读。", { extra: "页面中的实时标记价 5 分钟自动刷新，切回页面时会立即补读。" })}</h2>
           </div>
-          ${statusChip("Live", "chip-bullish")}
+          <span class="chip chip-neutral">报价快照</span>
         </div>
         <p class="live-price" id="analysis-mark-price">-</p>
         <div class="status-grid">
@@ -839,7 +847,6 @@ function heroTemplate() {
         </div>
       </article>
     </section>
-    <section id="analysis-statusbar"></section>
     <section class="grid cols-3" id="analysis-signal-cards"></section>
     <section class="analysis-chart-grid">
       <article class="card analysis-chart-card analysis-chart-ema">
@@ -1077,14 +1084,8 @@ export function buildUserTradeGuidance(phase, direction, mode = null) {
 }
 
 function renderAnalysisStatus(message, tone = "neutral", mode = null, secondarySeries = null, directionalBias = activeDirectionalBias) {
-  const el = document.getElementById("analysis-statusbar");
-  if (!el) return;
-  const badge = renderModeBadge(mode, secondarySeries, directionalBias);
-  if (!badge) {
-    el.innerHTML = statusBanner(message, tone);
-    return;
-  }
-  el.innerHTML = `${statusBanner(message, tone)}${badge}`;
+  // Status bar removed — analysis page no longer shows a persistent status/banner.
+  // Call sites are kept as no-ops so loading/error paths need no individual edits.
 }
 
 function renderModeBadge(mode, secondarySeries = null, directionalBias = activeDirectionalBias) {
@@ -1177,7 +1178,7 @@ function setRefreshBusy(isBusy, label = "刷新分析") {
   if (!button) return;
   button.setAttribute("aria-busy", isBusy ? "true" : "false");
   button.dataset.busy = isBusy ? "true" : "false";
-  button.setAttribute("aria-label", isBusy ? `${label}，可重新提交刷新` : "刷新分析");
+  button.setAttribute("aria-label", isBusy ? `${label}，请稍候` : "刷新分析");
   // Keep the stable action label while work is running. The current task phase
   // is rendered in the status strip; changing this text made the otherwise
   // usable toolbar button disappear from text-based navigation and tests.
@@ -1210,6 +1211,9 @@ function analysisLoadingCards() {
 }
 
 function beginAnalysisTransition(message = "正在准备目标标的与周期") {
+  const instrument = appState.instruments.find((item) => item.id === appState.selectedInstrumentId);
+  workbench?.beginContext(analysisContextKey(), { instrument: instrument?.code || appState.selectedInstrumentId, timeframe: appState.selectedTimeframe });
+  if (workbench?.hasData()) { renderAnalysisStatus(message, "loading"); return; }
   const root = document.getElementById("page-root");
   root?.classList.add("analysis-is-transitioning");
   destroyChartsForPage?.("analysis-");
@@ -1244,7 +1248,7 @@ function beginAnalysisTransition(message = "正在准备目标标的与周期") 
 
 function restoreAnalysisCanvas(id) {
   const wrap = document.querySelector(`[data-analysis-chart-id="${id}"]`);
-  if (wrap) wrap.innerHTML = `<canvas id="${id}"></canvas>`;
+  if (wrap && !wrap.querySelector("canvas")) wrap.innerHTML = `<canvas id="${id}"></canvas>`;
   return document.getElementById(id);
 }
 
@@ -1254,7 +1258,14 @@ function finishAnalysisTransition() {
 }
 
 function nextAnimationFrame() {
-  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  const signal = pageController?.signal;
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(); return; }
+    let frame;
+    const finish = () => { cancelAnimationFrame(frame); signal?.removeEventListener("abort", finish); resolve(); };
+    frame = requestAnimationFrame(finish);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
 }
 
 async function renderChartBatch(defs, token = activeRenderToken) {
@@ -1263,8 +1274,8 @@ async function renderChartBatch(defs, token = activeRenderToken) {
     for (const [key, , config] of defs.slice(index, index + 2)) {
       const canvas = restoreAnalysisCanvas(`${key}-chart`);
       if (!canvas?.isConnected) continue;
-      renderChart(key, canvas, config);
-      revealStagger(canvas.closest(".chart-wrap"));
+      const prepared = workbench ? workbench.chartConfig(key, config) : config;
+      if (prepared) renderChart(key, canvas, prepared);
     }
     if (index + 2 < defs.length) await nextAnimationFrame();
   }
@@ -1272,8 +1283,6 @@ async function renderChartBatch(defs, token = activeRenderToken) {
 
 async function loadAll(force = false, token = activeRenderToken) {
   if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
-  const profile = getWindowProfile(appState.selectedTimeframe, appState.selectedViewWindow);
-  const minCandles = minCandlesFor(appState.selectedTimeframe);
   let bundleMode = null;
   let bundleSecondary = null;
   activeRangeClassification = null;
@@ -1285,15 +1294,20 @@ async function loadAll(force = false, token = activeRenderToken) {
   try {
     abortController?.abort();
     abortController = new AbortController();
+    const requestSignal = abortController.signal;
     let bundle = await api.getAnalysisBundle(
       appState.selectedInstrumentId,
       appState.selectedTimeframe,
       appState.selectedViewWindow,
-      { force: true, signal: abortController.signal },
+      { force: true, signal: requestSignal },
     );
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
 
     const needsRefresh = force || ["missing", "stale", "refreshing", "error"].includes(bundle?.status);
+    if (needsRefresh && bundle?.candles?.length) {
+      await publishAnalysisBundle(bundle, token);
+      if (!isRunActive(token)) return { status: "aborted" };
+    }
     if (needsRefresh) {
       let taskKey = force ? null : bundle?.refresh_task_key;
       if (!taskKey) {
@@ -1307,28 +1321,74 @@ async function loadAll(force = false, token = activeRenderToken) {
           reason: force ? "analysis_manual_reload" : "analysis_bundle_read",
           priority: force ? 2 : 3,
         }, {
-          signal: abortController.signal,
+          signal: requestSignal,
           timeoutMs: 10000,
         });
+        if (!isRunActive(token)) return { status: "aborted" };
         taskKey = receipt?.queued_keys?.[0] || null;
       }
       if (!taskKey) throw new Error("后台未返回可跟踪的分析任务");
       renderAnalysisStatus(force ? "正在刷新当前分析快照" : "当前快照准备中", "loading");
       setRefreshBusy(true, force ? "刷新中" : "计算中");
       await waitForPrecomputeTask(taskKey, {
-        signal: abortController.signal,
+        signal: requestSignal,
         intervalMs: 1000,
         maxAttempts: 90,
       });
+      if (!isRunActive(token)) return { status: "aborted" };
       invalidateCache("/analysis/bundle");
       bundle = await api.getAnalysisBundle(
         appState.selectedInstrumentId,
         appState.selectedTimeframe,
         appState.selectedViewWindow,
-        { force: true, signal: abortController.signal },
+        { force: true, signal: requestSignal },
       );
     }
 
+    return await publishAnalysisBundle(bundle, token);
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return { status: "aborted", data: null, refreshed: false, error: null };
+    }
+    if (!isRunActive(token)) {
+      return { status: "aborted", data: null, refreshed: false, error: null };
+    }
+    workbench?.failed();
+    const errMsg = String(error?.message || error || "未知错误");
+    if (workbench?.hasData()) {
+      renderAnalysisStatus("刷新失败，保留最近有效分析快照", "warning");
+      finishAnalysisTransition();
+      return { status: "error", data: null, refreshed: false, error };
+    }
+    document.getElementById("analysis-summary").textContent = "拉取失败，可手动重试";
+    document.getElementById("analysis-mark-price").textContent = "-";
+    document.getElementById("analysis-mark-updated").textContent = "-";
+    document.getElementById("analysis-mark-next").textContent = "请手动刷新";
+    document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
+    for (const id of ANALYSIS_CHART_IDS) {
+      const wrap = document.querySelector(`[data-analysis-chart-id="${id}"]`);
+      if (wrap) wrap.innerHTML = '<div class="empty-state">分析快照暂不可用，请刷新重试。</div>';
+    }
+    for (const key of ["window", "vegas", "boll", "rsi", "volume", "macd"]) {
+      const copy = document.getElementById(`analysis-${key}-copy`);
+      if (copy) copy.textContent = "";
+    }
+    renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode, bundleSecondary);
+    finishAnalysisTransition();
+    return { status: "error", data: null, refreshed: false, error };
+  } finally {
+    if (isRunActive(token)) { analysisRequestPending = false; setRefreshBusy(false); }
+  }
+}
+
+function analysisContextKey() {
+  return `${appState.selectedInstrumentId}:${appState.selectedTimeframe}:${appState.selectedViewWindow}`;
+}
+async function publishAnalysisBundle(bundle, token) {
+  if (!isRunActive(token)) return { status: "aborted" };
+  const profile = getWindowProfile(appState.selectedTimeframe, appState.selectedViewWindow);
+  const minCandles = minCandlesFor(appState.selectedTimeframe);
+  let bundleMode, bundleSecondary;
     bundleMode = bundle?.mode ?? null;
     activeRangeClassification = bundle || null;
     bundleSecondary = bundle?.secondary_indicator_series || null;
@@ -1342,11 +1402,13 @@ async function loadAll(force = false, token = activeRenderToken) {
     const calcCandles = allCandles.slice(-profile.calcBars);
     const candles = calcCandles.slice(-profile.visibleBars);
     const cacheKey = `${appState.selectedInstrumentId}:${appState.selectedTimeframe}:${appState.selectedViewWindow}`;
-    let analysis = analysisCache.get(cacheKey);
+    const contentKey = JSON.stringify([bundle.candles, bundle.core_indicator_series, bundle.secondary_indicator_series]);
+    const cached = analysisCache.get(cacheKey);
+    let analysis = cached?.contentKey === contentKey ? cached.analysis : null;
     if (!analysis) {
       analysis = sliceAnalysisForDisplay(calcAnalysis(calcCandles, bundle), profile.visibleBars);
       if (analysisCache.size >= MAX_ANALYSIS_CACHE) analysisCache.delete(analysisCache.keys().next().value);
-      analysisCache.set(cacheKey, analysis);
+      analysisCache.set(cacheKey, { contentKey, analysis });
     }
     const labels = buildLabels(candles, appState.selectedTimeframe);
     const close = analysis.closes.at(-1) || 0;
@@ -1411,42 +1473,31 @@ async function loadAll(force = false, token = activeRenderToken) {
     document.getElementById("analysis-volume-copy").textContent = volumeInterpretation(analysis.volumes);
     document.getElementById("analysis-macd-copy").textContent = macdText;
 
-    document.getElementById("analysis-mark-price").textContent = formatNumber(markPayload?.mark_price ?? close);
+    document.getElementById("analysis-mark-price").textContent = finiteInputNumber(markPayload?.mark_price) === null ? "—" : formatNumber(markPayload.mark_price);
     document.getElementById("analysis-mark-updated").textContent = formatDateTime(markPayload?.ts_event);
     document.getElementById("analysis-mark-next").textContent = "5 分钟自动刷新";
     document.getElementById("analysis-mark-close").textContent = formatNumber(close);
     document.getElementById("analysis-mark-aux").textContent = latestCandle ? `${formatNumber(latestCandle.low)} - ${formatNumber(latestCandle.high)}` : "-";
 
-    document.getElementById("analysis-signal-cards").innerHTML = [
-      { eyebrow: "TREND", title: "趋势信号", value: formatNumber(analysis.ema30.at(-1)), label: "EMA 30", desc: trendText, tone: signalTone(trendText), toneLabel: signalLabel(trendText) },
-      { eyebrow: "TREND", title: "趋势强度", value: `${formatNumber(adxValue, 1)} / ${formatNumber(plusDiValue, 1)} / ${formatNumber(minusDiValue, 1)}`, label: "ADX / +DI / -DI", desc: adxText, tone: signalTone(adxText), toneLabel: signalLabel(adxText) },
-      { eyebrow: "MOMENTUM", title: "MACD 柱状值", value: formatNumber(analysis.macdValues.hist.at(-1)), label: "MACD", desc: macdText, tone: signalTone(macdText), toneLabel: signalLabel(macdText) },
-      { eyebrow: "MOMENTUM", title: "动量信号", value: formatNumber(analysis.rsiValues.at(-1)), label: "RSI", desc: rsiText, tone: signalTone(rsiText), toneLabel: signalLabel(rsiText) },
-      { eyebrow: "VOLATILITY", title: "波动信号", value: `${formatNumber(bollWidth)} / ${formatNumber(analysis.atrValues.at(-1))}`, label: "BOLL 宽度 / ATR", desc: volText, tone: signalTone(volText), toneLabel: signalLabel(volText) },
-      { eyebrow: "VOLUME", title: "VWAP 成本", value: `${formatNumber(vwap50)} / ${formatNumber(vwap100)}`, label: "VWAP 50 / 100", desc: vwapText, tone: signalTone(vwapText), toneLabel: signalLabel(vwapText) },
-      { eyebrow: "VOLUME", title: "OBV 量能", value: formatNumber(analysis.obvValues.at(-1), 0), label: "OBV", desc: obvText, tone: signalTone(obvText), toneLabel: signalLabel(obvText) },
-      { eyebrow: "MOMENTUM", title: "KDJ 动能", value: `${formatNumber(kValue, 1)} / ${formatNumber(dValue, 1)} / ${formatNumber(jValue, 1)}`, label: "K / D / J", desc: kdjText, tone: signalTone(kdjText), toneLabel: signalLabel(kdjText) },
-      { eyebrow: "MOMENTUM", title: "CCI 偏离", value: formatNumber(cciValue, 1), label: "CCI 20", desc: cciText, tone: signalTone(cciText), toneLabel: signalLabel(cciText) },
-    ].map((item) => `
-      <article class="card signal-card">
-        <p class="eyebrow">${item.eyebrow}</p>
-        <div class="card-head-inline">
-          <strong>${item.title}</strong>
-          ${impactChip(item.tone, "", item.toneLabel)}
-        </div>
-        <p class="signal-value">${item.value}</p>
-        <small class="signal-label">${item.label}</small>
-        <p class="signal-copy">${item.desc}</p>
-      </article>
-    `).join("");
-    revealStagger(document.getElementById("analysis-signal-cards"));
+    const cards = [
+      { key: "ema-trend", eyebrow: "TREND", title: "趋势信号", value: formatNumber(analysis.ema30.at(-1)), label: "EMA 30", desc: trendText, tone: signalTone(trendText), toneLabel: signalLabel(trendText) },
+      { key: "adx", eyebrow: "TREND", title: "趋势强度", value: `${formatNumber(adxValue, 1)} / ${formatNumber(plusDiValue, 1)} / ${formatNumber(minusDiValue, 1)}`, label: "ADX / +DI / -DI", desc: adxText, tone: signalTone(adxText), toneLabel: signalLabel(adxText) },
+      { key: "macd", eyebrow: "MOMENTUM", title: "MACD 柱状值", value: formatNumber(analysis.macdValues.hist.at(-1)), label: "MACD", desc: macdText, tone: signalTone(macdText), toneLabel: signalLabel(macdText) },
+      { key: "rsi", eyebrow: "MOMENTUM", title: "动量信号", value: formatNumber(analysis.rsiValues.at(-1)), label: "RSI", desc: rsiText, tone: signalTone(rsiText), toneLabel: signalLabel(rsiText) },
+      { key: "volatility", eyebrow: "VOLATILITY", title: "波动信号", value: `${formatNumber(bollWidth)} / ${formatNumber(analysis.atrValues.at(-1))}`, label: "BOLL 宽度 / ATR", desc: volText, tone: signalTone(volText), toneLabel: signalLabel(volText) },
+      { key: "vwap", eyebrow: "VOLUME", title: "VWAP 成本", value: `${formatNumber(vwap50)} / ${formatNumber(vwap100)}`, label: "VWAP 50 / 100", desc: vwapText, tone: signalTone(vwapText), toneLabel: signalLabel(vwapText) },
+      { key: "obv", eyebrow: "VOLUME", title: "OBV 量能", value: formatNumber(analysis.obvValues.at(-1), 0), label: "OBV", desc: obvText, tone: signalTone(obvText), toneLabel: signalLabel(obvText) },
+      { key: "kdj", eyebrow: "MOMENTUM", title: "KDJ 动能", value: `${formatNumber(kValue, 1)} / ${formatNumber(dValue, 1)} / ${formatNumber(jValue, 1)}`, label: "K / D / J", desc: kdjText, tone: signalTone(kdjText), toneLabel: signalLabel(kdjText) },
+      { key: "cci", eyebrow: "MOMENTUM", title: "CCI 偏离", value: formatNumber(cciValue, 1), label: "CCI 20", desc: cciText, tone: signalTone(cciText), toneLabel: signalLabel(cciText) },
+    ];
+    updateAnalysisCards(cards);
 
     const instrument = appState.instruments.find((item) => item.id === appState.selectedInstrumentId);
-    updatePageContext({
-      instrument: instrument?.code || appState.selectedInstrumentId,
-      timeframe: appState.selectedTimeframe,
-      status: activeDirectionalBias?.label || "等待方向",
-      updatedAt: markPayload?.ts_event ? formatDateTime(markPayload.ts_event) : "",
+    updatePageContext({ status: "" });
+    workbench?.update({ analysis, cards, bundle,
+      phase: classifyVolatilityPhase(bundleSecondary), direction: activeDirectionalBias,
+      descriptions: { vegas: vegasText, volume: volumeInterpretation(analysis.volumes) },
+      context: { instrument: instrument?.code || appState.selectedInstrumentId, timeframe: appState.selectedTimeframe },
     });
     if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
     await renderChartBatch([
@@ -1588,6 +1639,7 @@ async function loadAll(force = false, token = activeRenderToken) {
         },
       }],
     ], token);
+    if (!isRunActive(token)) return { status: "aborted" };
     renderAnalysisStatus(
       allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : "数据已就绪",
       allCandles.length < minCandles ? "warning" : "success",
@@ -1601,27 +1653,6 @@ async function loadAll(force = false, token = activeRenderToken) {
       refreshed: Boolean(bundle.refreshed),
       error: null,
     };
-  } catch (error) {
-    if (error?.name === "AbortError" || error?.name === "TimeoutError") {
-      return { status: "aborted", data: null, refreshed: false, error: null };
-    }
-    if (!isRunActive(token)) {
-      return { status: "aborted", data: null, refreshed: false, error: null };
-    }
-    console.error("analysis:load:error", error);
-    const errMsg = String(error?.message || error || "未知错误");
-    document.getElementById("analysis-summary").textContent = "拉取失败，可手动重试";
-    document.getElementById("analysis-mark-price").textContent = "-";
-    document.getElementById("analysis-mark-updated").textContent = "-";
-    document.getElementById("analysis-mark-next").textContent = "请手动刷新";
-    document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
-    renderAnalysisStatus("拉取失败：" + errMsg.substring(0, 40), "danger", bundleMode, bundleSecondary);
-    finishAnalysisTransition();
-    return { status: "error", data: null, refreshed: false, error };
-  } finally {
-    analysisRequestPending = false;
-    if (isRunActive(token)) setRefreshBusy(false);
-  }
 }
 
 async function enhanceLatestMark(token = activeRenderToken, { preferLive = false } = {}) {
@@ -1650,7 +1681,7 @@ async function enhanceLatestMark(token = activeRenderToken, { preferLive = false
 
 async function refreshMarkOnly() {
   const token = activeRenderToken;
-  if (document.hidden || !isRunActive(token)) return;
+  if (document.hidden || analysisRequestPending || !isRunActive(token)) return;
   invalidateCache("/market-prices/marks/latest");
   return enhanceLatestMark(token, { preferLive: true });
 }
@@ -1692,7 +1723,7 @@ function bindEventHandlers() {
       persistState();
       syncToolbarState();
       debouncedLoadAll();
-    });
+    }, { signal: pageController.signal });
   });
 
   const timeframeRoot = document.querySelector('.dropdown[data-dropdown-id="analysis-timeframe"]');
@@ -1726,20 +1757,51 @@ function bindEventHandlers() {
     });
   }
 
-  document.getElementById("analysis-refresh").addEventListener("click", async () => {
-    abortController?.abort();
-    const token = ++activeRenderToken;
-    beginAnalysisTransition("正在刷新当前分析快照");
-    await loadAll(true, token);
-  });
+  document.getElementById("analysis-refresh").addEventListener("click", refreshAnalysis, { signal: pageController.signal });
 }
 
-export async function renderAnalysis() {
+async function refreshAnalysis() {
+  if (analysisRequestPending || analysisDebounceTimer || !isMounted) return;
+  abortController?.abort();
+  const token = ++activeRenderToken;
+  beginAnalysisTransition("正在刷新当前分析快照");
+  return loadAll(true, token);
+}
+
+function updateAnalysisCards(cards) {
+  const container = document.getElementById("analysis-signal-cards");
+  if (container.querySelector(".analysis-skeleton-card") || !container.querySelector("[data-workbench-id]")) container.replaceChildren();
+  for (const item of cards) {
+    const id = `analysis:${item.key}`;
+    let card = container.querySelector(`[data-workbench-id="${id}"]`);
+    if (!card) {
+      card = document.createElement("article"); card.className = "card signal-card";
+      card.dataset.workbenchId = id;
+      card.innerHTML = '<p class="eyebrow"></p><div class="card-head-inline"><strong></strong><span data-signal-tone></span></div><p class="signal-value"></p><small class="signal-label"></small><p class="signal-copy"></p>';
+      container.append(card);
+    }
+    for (const [selector, value] of [[".eyebrow", item.eyebrow], ["strong", item.title], [".signal-value", item.value], [".signal-label", item.label], [".signal-copy", item.desc]]) {
+      const element = card.querySelector(selector); if (element.textContent !== value) element.textContent = value;
+    }
+    const tone = card.querySelector("[data-signal-tone]");
+    const html = impactChip(item.tone, "", item.toneLabel);
+    if (tone.innerHTML !== html) tone.innerHTML = html;
+  }
+}
+
+export async function renderAnalysis({ commands } = {}) {
   await ensureDeps();
   const token = ++activeRenderToken;
 
   if (!isMounted) {
     setRoot(heroTemplate());
+    pageController = new AbortController();
+    workbench = mountAnalysisWorkbench({ root: document.getElementById("page-root"), signal: pageController.signal,
+      commands, refresh: refreshAnalysis, busy: () => analysisRequestPending || Boolean(analysisDebounceTimer), observeCharts: observeChartsForPage });
+    for (const [copy, key] of [['window', 'ema-trend'], ['vegas', 'vegas'], ['boll', 'volatility'], ['rsi', 'rsi'], ['volume', 'volume'], ['macd', 'macd']]) {
+      const head = document.getElementById(`analysis-${copy}-copy`)?.closest('.section-head');
+      if (head) head.dataset.workbenchId = `analysis:${key}`;
+    }
     bindEventHandlers();
     markTimer = window.setInterval(refreshMarkOnly, 300000);
     document.addEventListener("visibilitychange", refreshMarkOnly);
@@ -1764,6 +1826,11 @@ export async function renderAnalysis() {
   return {
     async unmount() {
       activeRenderToken += 1;
+      pageController?.abort(); pageController = null;
+      workbench?.destroy(); workbench = null;
+      timeframeDropdown?.destroy(); timeframeDropdown = null;
+      windowDropdown?.destroy(); windowDropdown = null;
+      analysisRequestPending = false;
       if (analysisDebounceTimer) { window.clearTimeout(analysisDebounceTimer); analysisDebounceTimer = null; }
       abortController?.abort();
       abortController = null;

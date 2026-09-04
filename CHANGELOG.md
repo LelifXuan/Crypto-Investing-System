@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## V2.3（2026-08-31）
+
+- 发布卫生补验：2013 passed、4 既有 skip、0 warnings；11/11 冷启动、10/10 SPA、8/8 压力通过。指南 `[hidden]` 恢复真实隐藏语义；FAB 三页三视口操作链替换旧 Knowledge skip。
+- 增加 `pytest --acceptance` 后端预检与禁止缺后端 skip 的守卫；修复六个测试脚本入口导入、旧 Pydantic/JWT 测试警告和手册测试的固定字符窗口。本轮修复文件 Ruff 为 0，项目遗留降至 221；第三方源码未改。
+- 筹码结构无数据极端风险、legacy 权限与 freshness 的消费链已审计，业务语义留待专项修复。Hygiene 便携包单独校验，不覆盖原包；人工敏感副本清理状态见交付记录。
+
+- UI 发布版本 V2.3 与应用运行版本 1.8.1 分开记录；不改变后端接口或市场计算。
+- 保留 P1 四页及 P2 Operator Core：Command Palette、Inspector pin/resize、URL selection recovery 与浮层协调。
+- H0 改为 HTML/静态子模块协商缓存，旧版首次升级需 Ctrl+Shift+R；命令错误保留内部 cause，控制台仅输出脱敏诊断。
+- H0–H4 与最终同版软件门禁通过：1986 passed、6 既有 skip、5 warnings；11 个冷启动路由、10 个 SPA 页面及 8 个压力场景通过，详见迁移验收记录。
+- Structure 统一 click/PointerEvent 的 CSS 像素坐标，避免打开 Inspector 后静止鼠标误切 preview；静态图表 surface 不再继承卡片 hover 上浮。
+- 未落库标记价沿用既有临时报价 `mark_id=0` 标识，修复响应序列化 500；不新增 DTO、数据库写入或 provider 请求。
+- 压力测试覆盖同上下文刷新忙碌态，六页及 Strategy 使用确定性真实字段 fixture；包的独立验证结果由 ZIP SHA-256 绑定的外部验收记录提供。
+- 内部便携包包含 Python、依赖及授权的原样 `.env`，未加密；不是公开发行包。
+
 ## V2.2 (2026-08-25)
 
 ### 波动率研究与影子验证

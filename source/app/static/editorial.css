@@ -64,6 +64,13 @@
   --sidebar-collapsed-width: 64px;
   --canvas-gutter: clamp(20px, 1.5vw, 36px);
   --topbar-height: 64px;
+  --workbench-gap: 18px;
+  --context-rail-min-height: 66px;
+  --inspector-width: clamp(328px, 21vw, 400px);
+  --layer-shell: 1000;
+  --layer-inspector: 2000;
+  --layer-dialog: 3000;
+  --layer-command: 5000;
   --reading-measure: 800px;
   /* Spacing roles: icon/text 6, peer actions 8, controls 12,
      sibling cards 16, major page sections 24. */
@@ -335,25 +342,25 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   grid-template-columns: 36px minmax(0, 1fr) 40px;
   gap: 10px;
   align-items: center;
-  min-height: 48px;
-  padding: 0 4px 18px;
+  min-height: 44px;
+  padding: 0 4px 14px;
   border-bottom: 1px solid var(--border);
 }
 
 .app-sidebar-brand strong,
 .app-sidebar-brand span { display: block; }
-.app-sidebar-brand strong { color: var(--ink); font-size: 14px; letter-spacing: -0.02em; }
+.app-sidebar-brand strong { color: var(--ink); font-size: 13px; letter-spacing: -0.02em; }
 .app-sidebar-brand > div > span { color: var(--muted); font-size: 11px; }
 
 .app-mark {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   color: var(--white);
   background: var(--accent-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-button);
+  border-radius: 8px;
+  box-shadow: none;
 }
 
 .app-mark svg,
@@ -368,11 +375,11 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   stroke-linejoin: round;
 }
 
-.editorial-nav { display: grid; gap: 20px; padding: 22px 0; }
+.editorial-nav { display: grid; gap: 18px; padding: 20px 0; }
 .editorial-nav-group { display: grid; gap: 3px; }
 .editorial-nav-group h2 {
   margin: 0 10px 7px;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted) 82%, transparent);
   font-size: 10px;
   font-weight: 650;
   line-height: 1.2;
@@ -388,7 +395,7 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   align-items: center;
   min-height: 42px;
   padding: 8px 10px;
-  color: var(--text-secondary);
+  color: var(--muted);
   text-decoration: none;
   border-radius: 8px;
   transition: color var(--motion-hover), background-color var(--motion-hover), transform var(--motion-fast);
@@ -512,13 +519,11 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   align-items: center;
   min-height: var(--topbar-height);
   padding: 8px var(--canvas-gutter);
-  background: var(--glass-bg-deep);
-  border-bottom: 1px solid var(--glass-border-outer);
-  box-shadow:
-    0 12px 30px rgba(31, 42, 58, 0.08),
-    inset 0 -1px 0 var(--glass-edge);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-page-identity { min-width: 0; }
@@ -904,6 +909,9 @@ body[data-page="market-events"] .events-feed-actions {
 
 /* Market events use a feed-ingestion motion rather than a chart fade. Rows
    arrive in reading order, then remain as a stable skeleton until data lands. */
+body[data-page="market-events"] .events-workbench-layout {
+  margin-top: var(--workbench-gap);
+}
 body[data-page="market-events"] .events-feed-shell {
   position: relative;
   /* `scrollIntoView({ block: "start" })` runs after the supply calendar is
@@ -1109,36 +1117,31 @@ body[data-page="market-events"] .events-feed-shell.is-syncing > .events-feed-car
   100% { opacity: 0; transform: scaleX(1); }
 }
 
-@media (max-width: 1180px) {
-  body[data-page="market-events"] .events-context-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
+body[data-page="market-events"] .events-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 0;
+}
 
-  body[data-page="market-events"] .events-metrics-grid {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
+/* The translate + refresh buttons now live inside the feed-card
+   header (right slot of .section-head). 2026-09-01 — keeps the
+   actions visually bound to the panel they operate on. */
+body[data-page="market-events"] .events-feed-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1180px) {
+  .workbench-inspector-resize { display: none; }
 }
 
 @media (max-width: 720px) {
-  body[data-page="market-events"] .events-context-bar {
-    grid-template-columns: 1fr;
-    gap: var(--space-content);
-    padding: 18px;
-  }
-
-  body[data-page="market-events"] .events-metrics-grid,
-  body[data-page="market-events"] .events-context-actions {
-    grid-column: 1;
-    grid-row: auto;
-  }
-
-  body[data-page="market-events"] .events-metrics-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  body[data-page="market-events"] .events-inline-metric {
-    padding: 8px 12px;
+  body[data-page="market-events"] .events-actions-bar {
+    flex-wrap: wrap;
   }
 
   body[data-page="market-events"] .events-inline-metric:nth-child(odd) {
@@ -1448,10 +1451,15 @@ body[data-page="monitoring-overview"] #monitoring-terminal-summary { display: fl
 body[data-page="monitoring-overview"] #monitoring-macro-panel > .monitoring-panel,
 body[data-page="monitoring-overview"] #monitoring-terminal-summary > .terminal-summary-card { flex: 1 1 auto; }
 body[data-page="monitoring-overview"] .monitoring-panel,
-body[data-page="monitoring-overview"] .terminal-summary-card { border-radius: 14px; box-shadow: var(--shadow-soft); }
+body[data-page="monitoring-overview"] .terminal-summary-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 body[data-page="monitoring-overview"] .monitoring-panel.macro {
-  background: var(--surface-elevated);
-  border-color: var(--border);
+  background: transparent;
+  border-color: transparent;
 }
 body[data-page="monitoring-overview"] .macro-score-block {
   min-height: 104px;
@@ -1579,12 +1587,30 @@ body[data-page="market-analysis"] .analysis-hero-grid { grid-template-columns: m
 body[data-page="market-analysis"] :is(.analysis-hero-grid, #analysis-signal-cards) { margin-bottom: 0; }
 body[data-page="market-analysis"] .status-mode-badge { margin-block: 0; }
 body[data-page="market-analysis"] .analysis-hero-card,
-body[data-page="market-analysis"] .realtime-card { box-shadow: var(--shadow-soft); }
+body[data-page="market-analysis"] .realtime-card { box-shadow: none; backdrop-filter: none; }
 body[data-page="market-analysis"] .instrument-pill { min-width: 112px; border-radius: 8px; box-shadow: none; color: var(--analysis-text-body); }
 body[data-page="market-analysis"] .instrument-pill span { color: inherit; }
 body[data-page="market-analysis"] .instrument-pill.is-active { color: var(--accent-strong); background: var(--accent-soft); border-color: rgba(102,84,142,0.35); }
-body[data-page="market-analysis"] #analysis-signal-cards { grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 0; overflow: hidden; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-soft); }
-body[data-page="market-analysis"] #analysis-signal-cards > * { min-height: 190px; margin: 0; padding: 20px; border: 0; border-right: 1px solid var(--border); border-radius: 0; box-shadow: none; background: transparent; }
+body[data-page="market-analysis"] #analysis-signal-cards { grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 0; overflow: hidden; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 14px; box-shadow: none; }
+body[data-page="market-analysis"] #analysis-signal-cards > * {
+  display: grid;
+  grid-template-rows: auto minmax(52px, auto) minmax(58px, auto) 20px minmax(72px, 1fr);
+  align-content: start;
+  min-height: 250px;
+  margin: 0;
+  padding: 20px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+body[data-page="market-analysis"] #analysis-signal-cards > * { grid-column: span 4; }
+body[data-page="market-analysis"] #analysis-signal-cards > :nth-child(n + 6) { grid-column: span 5; }
+body[data-page="market-analysis"] #analysis-signal-cards > :nth-child(5n) { border-right: 0; }
+body[data-page="market-analysis"] #analysis-signal-cards > :last-child { border-right: 0; }
+body[data-page="market-analysis"] #analysis-signal-cards > :nth-last-child(-n + 4) { border-bottom: 0; }
 body[data-page="market-analysis"] #page-root :is(.live-price, .signal-value) {
   color: var(--analysis-text-strong);
   font-variant-numeric: tabular-nums;
@@ -1681,15 +1707,17 @@ body[data-page="macro-calendar"] #macro-calendar-container {
   display: grid;
   gap: var(--content-gap);
 }
+body[data-page="macro-calendar"] .macro-workbench-layout {
+  margin-top: 0;
+}
+body[data-page="macro-calendar"] .macro-calendar-detail-card {
+  min-width: 0;
+}
 
 body[data-page="macro-calendar"] .macro-calendar-card {
   display: grid;
   gap: 0;
   padding: 0;
-}
-
-body[data-page="macro-calendar"] .macro-calendar-card.is-collapsed .macro-calendar-head {
-  border-bottom: 0;
 }
 
 body[data-page="macro-calendar"] .macro-calendar-body {
@@ -1702,7 +1730,13 @@ body[data-page="macro-calendar"] .macro-calendar-body[hidden] {
   display: none !important;
 }
 
-body[data-page="macro-calendar"] .macro-calendar-head {
+/* 底栏：context bar 移至日历与明细下方 */
+/* 日历卡片头部：标题行 + 指标 + 展开/收起按钮，位于卡片顶部始终可见 */
+body[data-page="macro-calendar"] .macro-calendar-card-head {
+  margin-bottom: 8px;
+}
+
+body[data-page="macro-calendar"] .macro-calendar-card-head .macro-calendar-head {
   display: grid;
   grid-template-columns: minmax(200px, 0.6fr) minmax(400px, 1.6fr) auto;
   align-items: center;
@@ -1854,7 +1888,7 @@ body[data-page="macro-calendar"] #macro-calendar-detail thead th {
 /* macro-statusbar removed — status now shown only in global sidebar footer */
 
 @media (max-width: 1180px) {
-  body[data-page="macro-calendar"] .macro-calendar-head {
+  body[data-page="macro-calendar"] .macro-calendar-card-head .macro-calendar-head {
     grid-template-columns: 1fr;
     gap: 12px;
   }
@@ -2315,7 +2349,6 @@ body[data-page="market-analysis"] .realtime-card .mini-card + .mini-card {
 body[data-page="ai-strategy"] .strategy-scan-page {
   min-height: calc(100vh - var(--topbar-height) - (2 * var(--canvas-gutter)));
 }
-
 body[data-page="ai-strategy"] .strategy-scan-grid {
   flex: 1 1 auto;
   align-items: stretch;
@@ -3050,7 +3083,7 @@ body[data-page="btc-derivatives"] .btc-cockpit-header {
   border: 1px solid var(--line);
   border-radius: var(--radius-panel, 14px);
   background: var(--surface-elevated);
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 body[data-page="btc-derivatives"] .btc-cockpit-header > .btc-derivatives-hero,
@@ -3555,13 +3588,18 @@ body[data-page="market-structure"] .structure-chart-state {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  min-width: 0; /* allow flex item to collapse to 0 via max-width animation */
 }
+/* [hidden] beats display:flex — without this the chip stays visible via flex */
+body[data-page="market-structure"] .structure-chart-state[hidden] { display: none; }
 
 body[data-page="market-structure"] .structure-chart-state .status-chip {
-  min-height: 30px;
-  padding-inline: 12px;
+  min-height: 0;
+  padding-inline: 8px;
+  padding-block: 2px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.3;
 }
 
 body[data-page="market-structure"] .structure-chart-status:empty {
@@ -3569,14 +3607,14 @@ body[data-page="market-structure"] .structure-chart-status:empty {
 }
 
 body[data-page="market-structure"] .structure-chart-status .status-banner {
-  min-height: 36px;
-  padding: 8px 12px;
+  min-height: 0;
+  padding: 4px 8px;
   color: var(--text-secondary);
   background: var(--surface-muted);
   border: 1px solid var(--border-light);
   border-radius: 6px;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
 body[data-page="market-structure"] .structure-chart-status .status-warning {
@@ -3634,6 +3672,10 @@ body[data-page="market-structure"] .structure-chart-meta {
 }
 
 @media (max-width: 1180px) {
+  body[data-page="market-structure"]:not(.is-workbench-inspector-open) .workbench-primary .structure-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   body[data-page="market-structure"] .structure-chart-footer {
     align-items: flex-start;
     flex-direction: column;
@@ -3692,6 +3734,11 @@ body[data-page="market-structure"] .structure-chart-meta {
   body[data-page="monitoring-overview"] .macro-group-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   body[data-page="market-analysis"] .analysis-hero-grid { grid-template-columns: 1fr; }
   body[data-page="market-analysis"] #analysis-signal-cards { grid-template-columns: repeat(3, 1fr); }
+  body[data-page="market-analysis"] #analysis-signal-cards > * { grid-column: auto; }
+  body[data-page="market-analysis"] #analysis-signal-cards > :nth-child(5n) { border-right: 1px solid var(--border); }
+  body[data-page="market-analysis"] #analysis-signal-cards > :nth-child(3n) { border-right: 0; }
+  body[data-page="market-analysis"] #analysis-signal-cards > :nth-last-child(-n + 4) { border-bottom: 1px solid var(--border); }
+  body[data-page="market-analysis"] #analysis-signal-cards > :nth-last-child(-n + 3) { border-bottom: 0; }
   body[data-page="knowledge-base"] .knowledge-workspace {
     grid-template-columns: 220px minmax(0, 1fr);
     justify-content: center;
@@ -3800,7 +3847,8 @@ body[data-page="market-structure"] .structure-chart-meta {
   body[data-page="market-analysis"] .instrument-switcher { display: flex; padding-bottom: 6px; overflow-x: auto; scroll-snap-type: x proximity; }
   body[data-page="market-analysis"] .instrument-pill { flex: 0 0 108px; min-width: 108px; scroll-snap-align: start; }
   body[data-page="market-analysis"] #analysis-signal-cards { display: grid; grid-template-columns: 1fr; }
-  body[data-page="market-analysis"] #analysis-signal-cards > * { min-height: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  body[data-page="market-analysis"] #analysis-signal-cards > * { grid-column: auto; min-height: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  body[data-page="market-analysis"] #analysis-signal-cards > :last-child { border-bottom: 0; }
   body[data-page="market-analysis"] .analysis-chart-grid { grid-template-columns: 1fr; }
   body[data-page="market-analysis"] .analysis-chart-grid > article { grid-column: auto; grid-row: auto; }
 }
@@ -4063,7 +4111,7 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
 
 .governance-ledger__head {
   background: var(--surface-muted);
-  padding: 20px 22px;
+  padding: 10px 16px;
   border-right: 1px solid var(--border);
 }
 .governance-ledger__head .eyebrow {
@@ -4075,8 +4123,8 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
   text-transform: uppercase;
 }
 .governance-ledger__head h2 {
-  margin: 0 0 10px;
-  font-size: 20px;
+  margin: 0 0 4px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.2;
   color: var(--ink);
@@ -4182,11 +4230,24 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
 
 /* === Per-variant modifiers =========================================== */
 
+.governance-ledger--gold {
+  /* Head column shrinks to its own content width instead of claiming
+     0.72fr of the row, so the four items fill the remaining width
+     evenly. 2026-09-01 — closes the long empty band to the right of
+     "数据就绪与快照". margin-top now lives on the base class so it
+     applies to all page-level variants. */
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+}
 .governance-ledger--gold .governance-ledger__head {
   background: var(--surface-muted);
+  padding-right: 20px;
 }
 .governance-ledger--gold .governance-ledger__grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.governance-ledger--gold .governance-ledger__item {
+  min-height: 32px;
+  padding: 6px 12px;
 }
 
 .governance-ledger--ashare_etf .governance-ledger__head {

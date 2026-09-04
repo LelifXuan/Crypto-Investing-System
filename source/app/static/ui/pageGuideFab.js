@@ -1,5 +1,6 @@
 import { findKnowledgeTerm } from "../core/knowledge.js";
 import { readGuideExpanded, writeGuideExpanded } from "../core/state.js";
+import { overlayAllowsTarget } from "./overlayCoordinator.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -107,11 +108,13 @@ export function mountPageGuide(termId) {
   }
 
   function handleOutsidePointer(event) {
+    if (!overlayAllowsTarget(panel)) return;
     if (panel.hidden || panel.contains(event.target) || fab.contains(event.target)) return;
     closeGuide();
   }
 
   function handleKeydown(event) {
+    if (!overlayAllowsTarget(panel)) return;
     if (event.key === "Escape") closeGuide({ restoreFocus: true });
   }
 

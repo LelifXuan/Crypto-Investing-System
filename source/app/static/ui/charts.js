@@ -965,6 +965,39 @@ export function destroyChartsForPage(prefix) {
     .forEach((key) => destroyChart(key));
 }
 
+/** Keep responsive Chart.js canvases in sync when a docked inspector changes
+ * the workspace width without a window resize. The observer is page-scoped
+ * and must be disconnected from the page controller's unmount hook. */
+export function observeChartsForPage(container, prefix, { signal } = {}) {
+  if (!container || typeof ResizeObserver === "undefined") return { disconnect() {} };
+  if (signal?.aborted) return { disconnect() {} };
+  let frame = null;
+  let disconnected = false;
+  const disconnect = () => {
+    if (disconnected) return;
+    disconnected = true;
+    observer.disconnect();
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    signal?.removeEventListener("abort", disconnect);
+  };
+  const observer = new ResizeObserver(() => {
+    if (disconnected) return;
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      [...chartRegistry.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .forEach(([, chart]) => chart.resize());
+    });
+  });
+  observer.observe(container);
+  signal?.addEventListener("abort", disconnect, { once: true });
+  return {
+    disconnect,
+  };
+}
+
 export function renderChart(key, canvas, config) {
   if (!canvas) {
     console.error("chart:render:error", key, "canvas not found");

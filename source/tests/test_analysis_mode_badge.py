@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,40 @@ def base_url():
     return os.getenv("BASE_URL", "http://127.0.0.1:8002")
 
 
+def _open_analysis(page, base_url, query=""):
+    response = page.goto(f"{base_url}/indicators-page{query}", wait_until="domcontentloaded")
+    assert response.status == 200
+    page.locator(".analysis-hero-grid").wait_for()
+
+
+def _mock_mode_bundle(page, mode):
+    origin = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    candles = [
+        {
+            "ts_open": (origin + timedelta(hours=index)).isoformat(),
+            "open": str(100 + index),
+            "high": str(103 + index),
+            "low": str(99 + index),
+            "close": str(102 + index),
+            "volume": "1000",
+        }
+        for index in range(240)
+    ]
+    payload = {
+        "status": "ready",
+        "mode": mode,
+        "candles": candles,
+        "core_indicator_series": {},
+        "secondary_indicator_series": {"bbands_width": [10] * 239 + [2]},
+    }
+    page.route(
+        "**/api/v1/analysis/bundle**",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(payload)
+        ),
+    )
+
+
 def test_range_mode_badge_visible(base_url):
     """When the analysis payload reports mode='range', the status-bar badge is shown."""
     if not _backend_up():
@@ -40,17 +76,14 @@ def test_range_mode_badge_visible(base_url):
         browser = pw.chromium.launch(headless=True)
         ctx = browser.new_context(viewport={"width": 1366, "height": 900})
         page = ctx.new_page()
-        page.goto(f"{base_url}/market-analysis", wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
-
-        badge = page.locator(".status-mode-badge")
-        if badge.count() > 0:
-            assert badge.first.is_visible()
-            link = badge.first.locator("a.status-mode-link")
-            assert link.count() == 1
-            href = link.first.get_attribute("href")
-            assert href is not None
-            assert "/structure-page" in href or "/market-structure" in href
+        _mock_mode_bundle(page, "range")
+        _open_analysis(page, base_url)
+        badge = page.locator(".status-mode-badge.range-mode")
+        badge.wait_for()
+        assert badge.is_visible()
+        link = badge.locator("a.regime-action")
+        assert link.count() == 1
+        assert link.get_attribute("href") == "/structure-page"
 
         ctx.close()
         browser.close()
@@ -66,29 +99,18 @@ def test_transition_mode_badge_visible(base_url):
         browser = pw.chromium.launch(headless=True)
         ctx = browser.new_context(viewport={"width": 1366, "height": 900})
         page = ctx.new_page()
-        page.goto(f"{base_url}/market-analysis", wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
-
+        _mock_mode_bundle(page, "transition")
+        _open_analysis(page, base_url)
         badge = page.locator(".status-mode-badge.transition-mode")
-        if badge.count() > 0:
-            assert badge.first.is_visible()
-            text = badge.first.inner_text()
-            assert any(label in text for label in ("偏多", "偏空", "多空接近平衡"))
-            assert "vol_compression" not in text
-            assert "mt_compression" not in text
-
-            # Regression guard: the link target must be /indicators-page
-            # (the technical indicator page), NOT /market-analysis which
-            # would 404 and leave the user with a blank screen.
-            link = badge.first.locator("a.status-mode-link")
-            assert link.count() == 1
-            href = link.first.get_attribute("href")
-            assert href is not None
-            assert href.startswith("/indicators-page"), (
-                f"Expected transition-mode badge link to point at "
-                f"/indicators-page, got {href!r}"
-            )
-            assert "focus=breakout" in href
+        badge.wait_for()
+        assert badge.is_visible()
+        text = badge.inner_text()
+        assert any(label in text for label in ("偏多", "偏空", "区间震荡"))
+        assert "vol_compression" not in text
+        assert "mt_compression" not in text
+        # The compact transition badge is informational, with no obsolete
+        # self-link to the removed /market-analysis route.
+        assert badge.locator("a").count() == 0
 
         ctx.close()
         browser.close()
@@ -107,10 +129,7 @@ def test_focus_banner_removed_on_analysis_page(base_url):
         browser = pw.chromium.launch(headless=True)
         ctx = browser.new_context(viewport={"width": 1366, "height": 900})
         page = ctx.new_page()
-        page.goto(
-            f"{base_url}/market-analysis?focus=breakout",
-            wait_until="domcontentloaded",
-        )
+        _open_analysis(page, base_url, "?focus=breakout")
         page.wait_for_timeout(2000)
 
         banner = page.locator(".status-focus-banner")
@@ -138,7 +157,7 @@ def test_focus_banner_absent_without_param(base_url):
         browser = pw.chromium.launch(headless=True)
         ctx = browser.new_context(viewport={"width": 1366, "height": 900})
         page = ctx.new_page()
-        page.goto(f"{base_url}/market-analysis", wait_until="domcontentloaded")
+        _open_analysis(page, base_url)
         page.wait_for_timeout(2000)
 
         banner = page.locator(".status-focus-banner")
@@ -152,9 +171,7 @@ def test_mode_badge_markup_has_no_emoji_or_text_arrow():
     """Static guard: the redesigned regime badge must rely on inline SVG and
     three-zone DOM (`regime-icon` / `regime-info` / `regime-action`) instead
     of platform-dependent emoji and textual arrows."""
-    source = (ROOT / "app" / "static" / "pages" / "analysis.js").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "app" / "static" / "pages" / "analysis.js").read_text(encoding="utf-8")
     start = source.index("function renderModeBadge")
     end = source.index("function setRefreshBusy", start)
     badge_block = source[start:end]

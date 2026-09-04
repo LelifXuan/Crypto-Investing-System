@@ -7,11 +7,14 @@ Asserts:
   4. main.js boot() calls bindTooltipEscape(document).
   5. mobile breakpoint strips sticky to avoid horizontal-header collapse.
 """
+
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 STYLES = ROOT / "app" / "static" / "styles.css"
@@ -46,28 +49,29 @@ def test_styles_btc_table_wrap_overflow_y_auto():
     block = re.search(r"^\.btc-table-wrap\s*\{([^}]+)\}", source, re.S | re.M)
     assert block, ".btc-table-wrap block missing"
     body = block.group(1)
-    assert "overflow: auto" in body or "overflow-y: auto" in body, \
+    assert "overflow: auto" in body or "overflow-y: auto" in body, (
         ".btc-table-wrap needs vertical scroll"
+    )
 
 
 def test_styles_mobile_breakpoint_disables_sticky():
     """A common regression: sticky thead forces a 2-line wrap on narrow viewports
     because column headings can't truncate. Strip it under 980px."""
     source = _read(STYLES)
-    open_brace = "{"
-    close_brace = "}"
     pattern = re.compile(
         r"@media[^{]+\{\s*table\s+thead\s+th\s*\{[^}]*position:\s*static[^}]*\}",
         re.S,
     )
-    assert pattern.search(source), \
+    assert pattern.search(source), (
         "@media (max-width: 980px) override of table thead th position:static is missing"
+    )
 
 
 def test_dom_js_exports_bind_tooltip_escape():
     source = _read(DOM_JS)
-    assert re.search(r"export function bindTooltipEscape\b", source), \
+    assert re.search(r"export function bindTooltipEscape\b", source), (
         "bindTooltipEscape() not exported from core/dom.js"
+    )
 
 
 def test_main_js_calls_bind_tooltip_escape_in_boot():
@@ -76,8 +80,9 @@ def test_main_js_calls_bind_tooltip_escape_in_boot():
     # Find the boot() function and confirm it calls the helper.
     boot_block = re.search(r"async function boot\b[\s\S]*?^\}", source, re.M | re.S)
     assert boot_block, "boot() function not found"
-    assert "bindTooltipEscape(document)" in boot_block.group(0), \
+    assert "bindTooltipEscape(document)" in boot_block.group(0), (
         "boot() must call bindTooltipEscape(document)"
+    )
 
 
 def test_dom_js_marker_present():

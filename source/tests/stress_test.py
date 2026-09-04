@@ -6,9 +6,9 @@ issues. This script fires rapid clicks (100-200ms intervals) to reproduce the
 real-user experience of switching instruments, timeframes, and refreshing data.
 
 Usage:
-    python tests/stress_test.py --page market-structure
-    python tests/stress_test.py --page market-analysis
-    python tests/stress_test.py --page ai-strategy
+    python tests/stress_test.py --pages market-structure
+    python tests/stress_test.py --pages market-analysis
+    python tests/stress_test.py --pages ai-strategy
     python tests/stress_test.py  # all stress-testable pages
 
 Known issues (2026-08-11):
@@ -34,11 +34,9 @@ except ImportError:
 import os
 
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
-# 2026-08-18: dev / target viewport is 2560x1600 (16:10). 1440 was kept for
-# legacy CLI invocations but the new default flows through the --viewport
-# CLI flag below (default="2560x1600"). The Python constant here is used
-# only when stress_test.py is invoked as a module without a CLI.
-VIEWPORT = {"width": 2560, "height": 1600}
+# Canonical visual baseline. The CLI updates this module-level value so every
+# page context, including the pending-navigation regression, uses one viewport.
+VIEWPORT = {"width": 2560, "height": 1440}
 
 
 def stress_test_strategy_pending_navigation(browser) -> dict:
@@ -109,9 +107,8 @@ STRESS_PAGES = {
                 "label": "timeframe",
             },
         ],
-        "expected_canvas": False,  # structure uses <img> not <canvas>
-        "expected_img": "img[alt='形态结构图']",
-        "check_selector": "img[alt='形态结构图']",
+        "expected_canvas": False,  # Structure uses interactive SVG.
+        "check_selector": ".structure-chart-svg",
     },
     "market-analysis": {
         "route": "/indicators-page",
@@ -154,10 +151,70 @@ STRESS_PAGES = {
         "expected_canvas": False,
         "check_selector": "#strategy-detail-panel, [class*='operation'], [class*='strategy-card']",
     },
+    "monitoring-overview": {
+        "route": "/monitoring-page",
+        "description": "监控总览 — 快速选择证据与刷新后生命周期",
+        "actions": [
+            {
+                "type": "workbench-selectables",
+                "selector": "[data-workbench-selectable]",
+                "label": "linked-selection",
+            },
+        ],
+        "expected_canvas": False,
+        "check_selector": ".monitoring-workbench-layout",
+    },
+    "btc-derivatives": {
+        "route": "/btc-derivatives-page",
+        "description": "BTC 衍生品 — 快速切换窗口与证据选择",
+        "actions": [
+            {
+                "type": "dropdown",
+                "selector": "[data-dropdown-id='btc-window']",
+                "items_selector": "[role='listbox'] [role='option']",
+                "label": "window",
+            },
+            {
+                "type": "workbench-selectables",
+                "selector": "[data-workbench-selectable]",
+                "label": "linked-selection",
+            },
+        ],
+        "expected_canvas": True,
+        "check_selector": ".btc-workbench-layout",
+    },
+    "market-events": {
+        "route": "/market-events-page",
+        "description": "市场事件 — 快速选择事件与 Inspector 生命周期",
+        "actions": [
+            {
+                "type": "workbench-selectables",
+                "selector": ".event-card[data-workbench-selectable]",
+                "label": "event-selection",
+            },
+        ],
+        "expected_canvas": False,
+        "check_selector": ".events-workbench-layout",
+    },
+    "macro-calendar": {
+        "route": "/macro-calendar-page",
+        "description": "宏观日历 — 快速选择日期/事件与 Inspector 生命周期",
+        "actions": [
+            {
+                "type": "workbench-selectables",
+                "selector": "[data-workbench-id^='macro:'][data-workbench-selectable]",
+                "label": "macro-selection",
+            },
+        ],
+        "expected_canvas": False,
+        "check_selector": ".macro-workbench-layout",
+    },
 }
 
 
-def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10) -> dict:
+def stress_test_page(
+    browser, page_id: str, config: dict, rapid_clicks: int = 10, fixtures: bool = False
+) -> dict:
     """Run stress test on a single page."""
     result = {
         "page_id": page_id,
@@ -172,10 +229,38 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
     ctx = browser.new_context(viewport=VIEWPORT)
     page = ctx.new_page()
 
+    if fixtures and page_id == "market-analysis":
+        from test_analysis_workbench import install_fixture
+
+        install_fixture(page, {})
+        result["data_mode"] = "deterministic-api-fixture"
+    elif fixtures and page_id == "market-structure":
+        from test_structure_workbench import install_structure_fixture
+
+        install_structure_fixture(page, {})
+        result["data_mode"] = "deterministic-api-fixture"
+    elif fixtures and page_id == "ai-strategy":
+        from test_strategy_operator_commands import install_strategy_fixture
+
+        install_strategy_fixture(page)
+        result["data_mode"] = "deterministic-api-fixture"
+    elif fixtures:
+        from test_workbench_acceptance_matrix import four_page_fixture
+
+        page.route("**/api/v1/**", four_page_fixture)
+        result["data_mode"] = "deterministic-api-fixture"
+
     console_errors = []
     page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
     pageerrors = []
     page.on("pageerror", lambda err: pageerrors.append(str(err)))
+    failed_responses = []
+    page.on(
+        "response",
+        lambda response: (
+            failed_responses.append(response.status) if response.status >= 400 else None
+        ),
+    )
 
     try:
         # Load page and wait for initial content
@@ -196,6 +281,8 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
                 _rapid_buttons_click(page, action_cfg, rapid_clicks, result)
             elif action_cfg["type"] == "click":
                 _rapid_click(page, action_cfg, rapid_clicks, result)
+            elif action_cfg["type"] == "workbench-selectables":
+                _rapid_workbench_selection(page, action_cfg, rapid_clicks, result)
             elif action_cfg["type"] == "matrix-cells":
                 _rapid_matrix_cells(page, action_cfg, rapid_clicks, result)
 
@@ -207,10 +294,7 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
         # LOADING_STUCK / CHART_VANISHED assertions below.
         if page_id == "market-analysis":
             try:
-                page.wait_for_function(
-                    "document.querySelectorAll('.analysis-is-transitioning').length === 0",
-                    timeout=100_000,
-                )
+                _wait_for_analysis_settle(page)
             except PWTimeout:
                 pass
         else:
@@ -225,6 +309,13 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
 
         result["console_errors"] = console_errors[:10]
         result["pageerrors"] = pageerrors[:10]
+        result["failed_responses"] = failed_responses[:10]
+        if console_errors or pageerrors or failed_responses:
+            result["verdict"] = "FAIL"
+            result["issues"].append(
+                f"BROWSER_ERRORS: console={len(console_errors)}, page={len(pageerrors)}, "
+                f"HTTP={len(failed_responses)}"
+            )
 
     except Exception as e:
         result["verdict"] = "ERROR"
@@ -233,6 +324,16 @@ def stress_test_page(browser, page_id: str, config: dict, rapid_clicks: int = 10
         ctx.close()
 
     return result
+
+
+def _wait_for_analysis_settle(page, timeout=100_000):
+    # LKG refresh intentionally does not rebuild/transition the chart shell.
+    # Its busy button is the authoritative completion signal in that case.
+    page.wait_for_function(
+        "document.querySelectorAll('.analysis-is-transitioning').length === 0"
+        " && document.querySelector('#analysis-refresh')?.getAttribute('aria-busy') !== 'true'",
+        timeout=timeout,
+    )
 
 
 def _get_page_state(page, config: dict) -> dict:
@@ -245,8 +346,16 @@ def _get_page_state(page, config: dict) -> dict:
             var canvas = document.querySelectorAll('canvas').length;
             var checkEl = checkSel ? document.querySelector(checkSel) : null;
             var heading = document.querySelector('h2');
+            var root = document.getElementById('page-root');
+            var terminalUnavailable = root?.dataset.analysisAvailability === 'unavailable'
+                && !root.classList.contains('analysis-is-transitioning')
+                && !!root.querySelector('.analysis-recovery-note')
+                && root.querySelectorAll('.chart-wrap .empty-state').length === 6;
             return {
+                terminalUnavailable: terminalUnavailable,
                 loading: loading,
+                busy: document.querySelector('#analysis-refresh')
+                    ?.getAttribute('aria-busy') === 'true',
                 canvas: canvas,
                 checkVisible: checkEl ? checkEl.offsetParent !== null : null,
                 heading: heading ? heading.textContent.trim().substring(0, 40) : 'N/A'
@@ -384,13 +493,49 @@ def _rapid_click(page, action_cfg: dict, count: int, result: dict):
                     "ok": True,
                 }
             )
-        except Exception as e:
+        except Exception as error:
             result["actions"].append(
                 {
                     "label": f"{label}[{i}]",
                     "ok": False,
-                    "error": str(e)[:80],
+                    "error": str(error)[:80],
                 }
+            )
+
+
+def _rapid_workbench_selection(page, action_cfg: dict, count: int, result: dict):
+    """Cycle through visible research objects while the Inspector is open.
+
+    Empty/LKG snapshots may legitimately expose no selectable object. Record
+    that state once instead of converting it into repeated click failures.
+    """
+    selector = action_cfg["selector"]
+    label = action_cfg["label"]
+    elements = [item for item in page.query_selector_all(selector) if item.is_visible()]
+    if not elements:
+        result["actions"].append({"label": label, "status": "no-selectable-data"})
+        return
+
+    for i in range(count):
+        try:
+            elements = [item for item in page.query_selector_all(selector) if item.is_visible()]
+            if not elements:
+                result["actions"].append(
+                    {"label": f"{label}[{i}]", "status": "selection-no-longer-visible"}
+                )
+                return
+            target = elements[i % len(elements)]
+            target.scroll_into_view_if_needed(timeout=3000)
+            t0 = time.monotonic()
+            target.click(timeout=3000)
+            elapsed = (time.monotonic() - t0) * 1000
+            page.wait_for_timeout(80)
+            result["actions"].append(
+                {"label": f"{label}[{i}]", "ms": round(elapsed, 1), "ok": True}
+            )
+        except Exception as error:
+            result["actions"].append(
+                {"label": f"{label}[{i}]", "ok": False, "error": str(error)[:80]}
             )
 
 
@@ -480,10 +625,11 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
     """Detect known stress-test issues by comparing before/after states."""
     issues = []
 
-    # Issue 1: Loading stuck (loading count > 0 after 5s settle)
-    if after.get("loading", 0) > before.get("loading", 0):
+    # Issue 1: Loading/busy state persisted beyond the bounded settle wait.
+    if after.get("loading", 0) > before.get("loading", 0) or after.get("busy", False):
         issues.append(
-            f"LOADING_STUCK: loading={after['loading']} after 5s settle "
+            f"LOADING_STUCK: loading={after['loading']}, busy={after.get('busy', False)} "
+            "after settle "
             f"(was {before.get('loading', 0)} before stress test)"
         )
         result["verdict"] = "FAIL"
@@ -494,10 +640,16 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
         and after.get("canvas", 0) == 0
         and before.get("canvas", 0) > 0
     ):
-        issues.append(
-            f"CHART_VANISHED: canvas went from {before['canvas']} to 0 after rapid switching"
-        )
-        result["verdict"] = "FAIL"
+        if after.get("terminalUnavailable"):
+            # No worker is allowed in verification. An explicitly unavailable
+            # new context must not retain charts belonging to the old symbol.
+            # Ready-data chart retention is tested independently with --fixtures.
+            result["availability"] = "unavailable-with-explicit-terminal-ui"
+        else:
+            issues.append(
+                f"CHART_VANISHED: canvas went from {before['canvas']} to 0 after rapid switching"
+            )
+            result["verdict"] = "FAIL"
 
     # Issue 3: A previously visible stable element disappeared. Optional
     # surfaces such as a closed detail drawer are allowed to be absent both
@@ -506,6 +658,7 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
         config.get("check_selector")
         and before.get("checkVisible") is True
         and after.get("checkVisible") is False
+        and not after.get("terminalUnavailable")
     ):
         issues.append(
             f"CHECK_ELEMENT_HIDDEN: '{config['check_selector']}' not visible after stress test"
@@ -558,6 +711,7 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
 
 
 def main():
+    global VIEWPORT
     parser = argparse.ArgumentParser(
         description="Stress test — rapid-click simulation for interaction-heavy pages"
     )
@@ -565,8 +719,7 @@ def main():
         "--pages",
         default=",".join(STRESS_PAGES.keys()),
         help=(
-            "comma-separated page IDs (default: all). Available: "
-            + ", ".join(STRESS_PAGES.keys())
+            "comma-separated page IDs (default: all). Available: " + ", ".join(STRESS_PAGES.keys())
         ),
     )
     parser.add_argument(
@@ -576,11 +729,16 @@ def main():
         help="number of rapid clicks per action (default: 10)",
     )
     parser.add_argument(
+        "--fixtures",
+        action="store_true",
+        help="Use deterministic six-page Workbench and Strategy fixtures (workers disabled)",
+    )
+    parser.add_argument(
         "--viewport",
-        default="2560x1600",
-        # 2026-08-18: dev / target viewport is 2560x1600 (16:10), not 1440 (16:9).
-        # See docs/design-guidelines.md §11 and AGENTS.md §六.1.
-        help="viewport as WxH (default: 2560x1600)",
+        default="2560x1440",
+        # Canonical visual baseline from AGENTS.md §六.1 and the root design
+        # handbook. High-screen 2560x1600 is exercised by responsive_check.py.
+        help="viewport as WxH (default: 2560x1440)",
     )
     args = parser.parse_args()
 
@@ -600,6 +758,7 @@ def main():
     except ValueError:
         print(f"invalid viewport: {args.viewport}", file=sys.stderr)
         return 2
+    VIEWPORT = viewport
 
     report = {
         "viewport": viewport,
@@ -615,19 +774,19 @@ def main():
             config = STRESS_PAGES[pid]
             print(f"[stress] {pid}: {config['description']} ...", end=" ", flush=True)
 
-            result = stress_test_page(browser, pid, config, args.rapid_clicks)
+            result = stress_test_page(browser, pid, config, args.rapid_clicks, args.fixtures)
 
             tag = result["verdict"]
             issue_summary = ""
             if result["issues"]:
                 issue_summary = f" issues={len(result['issues'])}"
             action_count = len(result["actions"])
-            fail_count = len([a for a in result["actions"] if not a.get("ok")])
+            fail_count = len([a for a in result["actions"] if a.get("ok") is False])
 
             print(f"{tag}  actions={action_count} failed={fail_count}{issue_summary}")
 
             for issue in result["issues"]:
-                print(f"  ⚠ {issue}")
+                print(f"  !! {issue}")
 
             report["per_page"].append(result)
 

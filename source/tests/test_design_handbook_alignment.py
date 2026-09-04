@@ -38,6 +38,7 @@ def test_gold_page_h1_legacy_class_is_fully_removed() -> None:
         # Allow comments mentioning the legacy class as historical note.
         # Strip /* ... */ comments for a code-only check.
         import re as _re
+
         code = _re.sub(r"/\*.*?\*/", "", text, flags=_re.DOTALL)
         if "gold-page-h1" in code:
             offenders.append(str(css))
@@ -53,9 +54,7 @@ def test_gold_page_h1_legacy_class_is_fully_removed() -> None:
         if "gold-page-h1" in text:
             offenders.append(str(source_path))
 
-    assert not offenders, (
-        f"`.gold-page-h1` legacy class still present in: {offenders}"
-    )
+    assert not offenders, f"`.gold-page-h1` legacy class still present in: {offenders}"
 
 
 def test_macro_calendar_and_analysis_use_page_display_title() -> None:
@@ -91,9 +90,7 @@ def test_knowledge_reference_layout_collapses_before_it_overflows() -> None:
 
     # The collapse lives at the small-desktop tier (1180px). Confirm that a
     # 1180-or-narrower media block contains the collapse selector.
-    collapse_idx = EDITORIAL.find(
-        'body[data-page="knowledge-base"] .knowledge-workspace'
-    )
+    collapse_idx = EDITORIAL.find('body[data-page="knowledge-base"] .knowledge-workspace')
     # The collapse rule emits `grid-template-columns: minmax(0, 1fr)` (rail
     # hidden) under the 1180px media block.
     collapse_block_idx = EDITORIAL.find(
@@ -108,9 +105,7 @@ def test_knowledge_reference_layout_collapses_before_it_overflows() -> None:
 
 
 def test_knowledge_section_cards_use_editorial_tokens() -> None:
-    start = EDITORIAL.index(
-        'body[data-page="knowledge-base"] .knowledge-section-card {'
-    )
+    start = EDITORIAL.index('body[data-page="knowledge-base"] .knowledge-section-card {')
     end = EDITORIAL.index("}", start)
     block = EDITORIAL[start:end]
 
@@ -152,4 +147,8 @@ def test_monitoring_warming_shell_keeps_stable_page_structure() -> None:
     assert 'id="monitoring-topbar"' in fallback
     assert "monitoring-summary-surface" in fallback
     assert 'id="monitoring-macro-grid"' in fallback
-    assert "is-warming" in fallback
+    # AGENTS.md §11.3: warming shell must render as stable structure,
+    # not as a generic loading class. `is-warming` was a dead marker and
+    # has been removed; statusBanner (not loading) carries the message.
+    assert "is-warming" not in fallback
+    assert "statusBanner" in fallback

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PAGE = Path("app/static/pages/btc_derivatives.js")
-API = Path("app/static/core/api.js")
-MAIN = Path("app/static/main.js")
-TEMPLATE = Path("app/templates/page.html")
-WEB_ROUTER = Path("app/web/router.py")
-STYLES = Path("app/static/styles.css")
+ROOT = Path(__file__).resolve().parents[2]
+PAGE = ROOT / "source/app/static/pages/btc_derivatives.js"
+API = ROOT / "source/app/static/core/api.js"
+MAIN = ROOT / "source/app/static/main.js"
+TEMPLATE = ROOT / "source/app/templates/page.html"
+WEB_ROUTER = ROOT / "source/app/web/router.py"
+STYLES = ROOT / "source/app/static/styles.css"
 
 
 def test_btc_derivatives_page_is_registered_across_spa_and_web_router() -> None:
@@ -23,11 +24,11 @@ def test_btc_derivatives_page_is_registered_across_spa_and_web_router() -> None:
 
 def test_btc_derivatives_refresh_uses_job_polling_instead_of_long_request() -> None:
     source = PAGE.read_text(encoding="utf-8")
-    api = Path("app/static/core/api.js").read_text(encoding="utf-8")
+    api = Path(ROOT / "source/app/static/core/api.js").read_text(encoding="utf-8")
 
     assert "waitForRefreshJob" in source
     assert "getRefreshJob" in source
-    assert 'requestJson(`/refresh-jobs/${jobId}`' in api
+    assert "requestJson(`/refresh-jobs/${jobId}`" in api
     assert "getBtcDerivativesDashboard" in api
     assert "refreshBtcDerivativesDashboard" in api
     assert "planBtcDerivativeHedge" in api
@@ -49,7 +50,7 @@ def test_internal_snapshot_state_codes_are_mapped_to_chinese_copy() -> None:
     assert 'stale: "最近真实缓存"' in source
     assert 'failed: "不可用"' in source
     assert ">${escapeHtml(snapshotState)}</span>" not in source
-    assert "dashboard?.data_quality?.mode || \"fixture\"" not in source
+    assert 'dashboard?.data_quality?.mode || "fixture"' not in source
 
 
 def test_page_renders_current_chart_layout_from_backend_metadata() -> None:
@@ -66,9 +67,7 @@ def test_page_renders_current_chart_layout_from_backend_metadata() -> None:
         "key_levels_history",
         "options_risk_premium_history",
     }:
-        assert chart_id in source, (
-            f"chart_id {chart_id!r} is missing from the page JS"
-        )
+        assert chart_id in source, f"chart_id {chart_id!r} is missing from the page JS"
 
     assert "dashboard?.chart_layout?.sections" in source
     assert "dashboard?.chart_layout?.cards" in source
@@ -79,9 +78,7 @@ def test_page_renders_current_chart_layout_from_backend_metadata() -> None:
     assert "renderDecisionCards" in source
     assert "renderHedgePlanner" in source
     assert "renderGovernanceGroup" in source
-    assert "renderFuturesTable" in source, (
-        "the per-venue crowding table renderer must be present"
-    )
+    assert "renderFuturesTable" in source, "the per-venue crowding table renderer must be present"
     assert "destroyChartsForPage" in source
 
 
@@ -152,7 +149,7 @@ def test_data_source_footer_matches_gold_governance_ledger() -> None:
     delegation."""
     source = PAGE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
-    editorial = Path("app/static/editorial.css").read_text(encoding="utf-8")
+    editorial = Path(ROOT / "source/app/static/editorial.css").read_text(encoding="utf-8")
 
     # Page must import + delegate to the shared renderer.
     assert "renderGovernanceLedger" in source
@@ -180,8 +177,7 @@ def test_filter_request_abort_is_not_reported_as_page_error() -> None:
 
     assert "function handleLoadError(error)" in source
     handler = source[
-        source.index("function handleLoadError(error)") :
-        source.index("function showError(error)")
+        source.index("function handleLoadError(error)") : source.index("function showError(error)")
     ]
     assert 'error?.name !== "AbortError"' in handler
     assert ".catch(handleLoadError)" in source
@@ -220,7 +216,7 @@ def test_single_point_history_charts_show_centered_markers() -> None:
     source = PAGE.read_text(encoding="utf-8")
 
     assert "function finiteSeriesPointCount(values)" in source
-    assert 'finiteSeriesPointCount(dataset.data) === 1' in source
+    assert "finiteSeriesPointCount(dataset.data) === 1" in source
     assert "extra.pointRadius = Math.max(Number(extra.pointRadius) || 0, 4)" in source
     assert "extra.pointHoverRadius = Math.max(Number(extra.pointHoverRadius) || 0, 6)" in source
     assert "expanded.labels.length === 1" in source
@@ -254,8 +250,8 @@ def test_chart_header_uses_interpretation_not_timestamp_metadata() -> None:
 
 def test_empty_charts_are_compact_and_do_not_claim_a_direction() -> None:
     source = PAGE.read_text(encoding="utf-8")
-    styles = Path("app/static/styles.css").read_text(encoding="utf-8")
-    judgement = Path("app/static/core/judgement.js").read_text(encoding="utf-8")
+    styles = Path(ROOT / "source/app/static/styles.css").read_text(encoding="utf-8")
+    judgement = Path(ROOT / "source/app/static/core/judgement.js").read_text(encoding="utf-8")
 
     assert 'hasData ? chartInsight(chartId, riskView) : "数据不足"' in source
     assert '${hasData ? "" : " is-empty"}' in source
@@ -263,12 +259,12 @@ def test_empty_charts_are_compact_and_do_not_claim_a_direction() -> None:
     assert "height: 120px" in styles
     assert 'STABLE: "持仓稳定"' in judgement
     assert 'stateKey === "NEUTRAL" && judgement.axis === "crowding"' in judgement
-    assert 'judgement.js?v=semantic-v3' in source
+    assert "judgement.js?v=semantic-v3" in source
     assert ".btc-indicator-semantics .btc-decision-card" in styles
 
 
 def test_chart_x_axis_keeps_date_only_labels_as_dates_without_fake_time() -> None:
-    charts = Path("app/static/ui/charts.js").read_text(encoding="utf-8")
+    charts = Path(ROOT / "source/app/static/ui/charts.js").read_text(encoding="utf-8")
 
     assert "isDateOnlyLabel" in charts
     assert "return `${month}-${day}`;" in charts
@@ -287,7 +283,7 @@ def test_chart_header_uses_short_labels_not_evidence_layer_sentences() -> None:
     assert "implication" not in chart_insight
     assert "关键价位迁移与现价存在分歧" not in chart_insight
     assert "墙位迁移" in chart_insight
-    assert 'RISK_CHART_VIEWS[riskView]?.insight' in chart_insight
+    assert "RISK_CHART_VIEWS[riskView]?.insight" in chart_insight
     assert 'title: "保护成本"' in source
 
 
@@ -320,8 +316,8 @@ def test_page_renders_options_wall_signal_card_from_dashboard_metrics() -> None:
 def test_bottom_sections_are_grouped_into_parent_containers() -> None:
     source = PAGE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
-    editorial = Path("app/static/editorial.css").read_text(encoding="utf-8")
-    shared = Path("app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
+    editorial = Path(ROOT / "source/app/static/editorial.css").read_text(encoding="utf-8")
+    shared = Path(ROOT / "source/app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
 
     assert "btc-bottom-group" in source
     assert "btc-protection-group" in source
@@ -343,8 +339,8 @@ def test_protection_planner_is_collapsed_by_default_and_toggle_hides_its_body() 
     styles = STYLES.read_text(encoding="utf-8")
 
     assert "let isHedgePlannerCollapsed = true;" in source
-    assert 'body.hidden = isHedgePlannerCollapsed' in source
-    assert 'setHedgePlannerCollapsed(!isHedgePlannerCollapsed)' in source
+    assert "body.hidden = isHedgePlannerCollapsed" in source
+    assert "setHedgePlannerCollapsed(!isHedgePlannerCollapsed)" in source
     assert ".btc-bottom-group .btc-bottom-group-body[hidden]" in styles
     assert "display: none !important;" in styles
 
@@ -354,8 +350,8 @@ def test_audit_details_are_collapsed_by_default_and_toggle_hides_the_body() -> N
     styles = STYLES.read_text(encoding="utf-8")
 
     assert "let isAuditGroupCollapsed = true;" in source
-    assert 'body.hidden = isAuditGroupCollapsed' in source
-    assert 'setAuditGroupCollapsed(!isAuditGroupCollapsed)' in source
+    assert "body.hidden = isAuditGroupCollapsed" in source
+    assert "setAuditGroupCollapsed(!isAuditGroupCollapsed)" in source
     assert ".btc-bottom-group .btc-bottom-group-body[hidden]" in styles
     assert "指标信号与多空推断，供复核和追溯使用。" not in source
 
@@ -392,9 +388,7 @@ def test_btc_derivatives_page_auto_refreshes_via_interval() -> None:
     assert "AUTO_REFRESH_MS" in source, (
         "page must export an AUTO_REFRESH_MS constant to drive the loop"
     )
-    assert "function scheduleAutoRefresh" in source, (
-        "page must define scheduleAutoRefresh()"
-    )
+    assert "function scheduleAutoRefresh" in source, "page must define scheduleAutoRefresh()"
     assert "function clearAutoRefresh" in source, (
         "page must define clearAutoRefresh() so pause/unmount can cancel"
     )
@@ -426,9 +420,7 @@ def test_btc_derivatives_page_auto_refreshes_via_interval() -> None:
     assert "requestController?.abort" in unmount_block, (
         "unmount() must still abort the in-flight request controller"
     )
-    assert "destroyChartsForPage" in unmount_block, (
-        "unmount() must still destroy chart instances"
-    )
+    assert "destroyChartsForPage" in unmount_block, "unmount() must still destroy chart instances"
 
     pause_block = _extract_block("pause")
     assert "clearAutoRefresh" in pause_block, (
@@ -483,15 +475,14 @@ def test_btc_derivatives_expiry_mode_is_a_locked_context_value() -> None:
     assert '<input type="hidden" name="expiry_mode" value="fixed"' in source
     assert 'id: "btc-expiry-mode"' not in source
     assert 'field: "expiry_mode"' not in source
-    assert "const expiryMode = \"fixed\"" in source
+    assert 'const expiryMode = "fixed"' in source
     import re
-    api = Path("app/api/v1/endpoints/btc_derivatives.py").read_text(encoding="utf-8")
+
+    api = Path(ROOT / "source/app/api/v1/endpoints/btc_derivatives.py").read_text(encoding="utf-8")
     assert re.search(
         r"expiry_mode:\s*Literal\[[\"']fixed[\"'],\s*[\"']constant_maturity[\"']\]",
         api,
-    ), (
-        "backend should still accept both expiry_mode values for backward compat"
-    )
+    ), "backend should still accept both expiry_mode values for backward compat"
 
 
 def test_chart_toolbar_uses_equal_fifth_columns() -> None:
@@ -505,8 +496,8 @@ def test_chart_toolbar_uses_equal_fifth_columns() -> None:
     import re
 
     css = STYLES.read_text(encoding="utf-8")
-    toolbar_block = css[css.index(".btc-chart-toolbar {"):]
-    toolbar_block = toolbar_block[:toolbar_block.index("}") + 1]
+    toolbar_block = css[css.index(".btc-chart-toolbar {") :]
+    toolbar_block = toolbar_block[: toolbar_block.index("}") + 1]
     # Extract only the CSS declarations (lines that start with a property
     # name like `display:`, `grid-template-columns:`). This strips out the
     # multi-line `/* ... */` comment block above the property — the
@@ -535,8 +526,8 @@ def test_chart_toolbar_dropdowns_fill_their_equal_columns() -> None:
     """The shared dropdown max-width must not make four controls look shorter."""
     css = STYLES.read_text(encoding="utf-8")
     selector = 'body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {'
-    block = css[css.index(selector):]
-    block = block[:block.index("}") + 1]
+    block = css[css.index(selector) :]
+    block = block[: block.index("}") + 1]
 
     assert "width: 100%;" in block
     assert "--dropdown-max-width: none;" in block

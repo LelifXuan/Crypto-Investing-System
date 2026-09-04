@@ -1,4 +1,7 @@
 import { setRoot, bindTooltipEscape, renderNavSkeleton, revealStagger, updatePageContext } from "./core/dom.js";
+import { createCommandRegistry } from "./core/commandRegistry.js";
+import { mountCommandPalette } from "./ui/commandPalette.js";
+import { registerOverlay, LAYER, isTopOverlay } from "./ui/overlayCoordinator.js";
 
 const assetVersion = window.__ASSET_VERSION__ ? `?v=${encodeURIComponent(window.__ASSET_VERSION__)}` : "";
 const moduleLoadPromises = new Map();
@@ -50,6 +53,9 @@ const PAGE_META = {
 };
 
 let activeController = null;
+const commands = createCommandRegistry();
+let activeCommandScope = null;
+let palette = null;
 let activePageId = null;
 let spaNavigationInFlight = false;
 let routeEnterCleanupTimer = null;
@@ -213,6 +219,7 @@ function transitionInPageIdentity(animate) {
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let shellReturnFocus = null;
+let shellLayer = null;
 
 function setShellPanel(panel, open, trigger = null, moveFocus = true) {
   if (panel !== "nav") return;
@@ -222,11 +229,13 @@ function setShellPanel(panel, open, trigger = null, moveFocus = true) {
   document.body.classList.toggle(className, open);
   target?.setAttribute("aria-hidden", open || matchMedia("(min-width: 1280px)").matches ? "false" : "true");
   toggle?.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open && target && !shellLayer) shellLayer = registerOverlay({ element: target, priority: LAYER.dialog, modal: true, close: () => closeShellPanels() });
+  if (!open) { shellLayer?.destroy(); shellLayer = null; }
   if (open && moveFocus) {
     shellReturnFocus = trigger || document.activeElement;
     requestAnimationFrame(() => target?.querySelector(FOCUSABLE_SELECTOR)?.focus());
   } else if (shellReturnFocus instanceof HTMLElement) {
-    shellReturnFocus.focus();
+    if (moveFocus) shellReturnFocus.focus();
     shellReturnFocus = null;
   }
 }
@@ -275,6 +284,7 @@ function installAppShell() {
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (!isTopOverlay(document.getElementById("app-sidebar"))) return;
     if (event.key === "Escape") closeShellPanels();
     if (event.key !== "Tab") return;
     const openPanel = document.body.classList.contains("is-nav-open")
@@ -353,6 +363,8 @@ async function boot() {
   const pageMeta = PAGE_META[pageId] || { title: document.body.dataset.pageTitle || "页面", layout: "overview" };
   const isRouteTransition = activePageId !== null && activePageId !== pageId;
   const previousController = activeController;
+  activeCommandScope?.destroy();
+  activeCommandScope = null;
   closeShellPanels(false);
   if (pageRoot) pageRoot.dataset.layout = pageMeta.layout;
   // §16.D — install Escape->blur on tooltip anchors once per SPA boot.
@@ -409,7 +421,8 @@ async function boot() {
   }
   activePageId = pageId;
   try {
-    const renderResult = await renderPage();
+    activeCommandScope = commands.createScope(pageId);
+    const renderResult = await renderPage({ commands: activeCommandScope });
     activeController = normalizeController(renderResult);
     // Most legacy renderers perform their initial mount inside renderPage()
     // and return a teardown-only controller. Wrapper modules expose an
@@ -426,6 +439,8 @@ async function boot() {
     }
   } catch (error) {
     console.error("page:render:error", pageId, error);
+    activeCommandScope?.destroy();
+    activeCommandScope = null;
     activeController = null;
     renderFatalPageError("页面渲染失败", "页面初始化过程中出现运行时错误，请刷新或稍后重试。", "render");
     transitionInNewPage(pageRoot, isRouteTransition);
@@ -447,6 +462,8 @@ const scheduleBoot = () => {
 };
 
 function navigateToPage(pageId, href) {
+  palette?.close({ restoreFocus: false });
+  activeCommandScope?.destroy();
   spaNavigationInFlight = true;
   window.history.pushState({ pageId, href }, "", href);
   document.body.dataset.page = pageId;
@@ -455,6 +472,16 @@ function navigateToPage(pageId, href) {
   // its short exit transition.
   setActiveNavigation(pageId);
   scheduleBoot();
+}
+
+function requestNavigation(pageId, href = PAGE_META[pageId]?.route) {
+  if (!PAGE_META[pageId] || !href || pageId === activePageId) return;
+  if (spaNavigationInFlight) {
+    pendingSpaNavigation = { pageId, href };
+    setPendingNavigation(pageId);
+    return;
+  }
+  navigateToPage(pageId, href);
 }
 
 function installSpaRouter() {
@@ -489,15 +516,7 @@ function installSpaRouter() {
     }
     const href = link.getAttribute("href") || PAGE_META[pageId]?.route || `/${pageId}-page`;
     event.preventDefault();
-    if (spaNavigationInFlight) {
-      // The previous boot hasn't settled yet (e.g. its mount() awaits a data
-      // fetch). Queue instead of dropping — a dropped click would leave the
-      // user stuck on the current page with no feedback.
-      pendingSpaNavigation = { pageId, href };
-      setPendingNavigation(pageId);
-      return;
-    }
-    navigateToPage(pageId, href);
+    requestNavigation(pageId, href);
   });
 
   window.addEventListener("popstate", (event) => {
@@ -525,11 +544,34 @@ document.addEventListener("visibilitychange", async () => {
 });
 
 window.addEventListener("beforeunload", () => {
+  activeCommandScope?.destroy();
+  palette?.destroy();
+  commands.destroy();
   if (activeController) {
     void activeController.unmount();
   }
 });
 
 installAppShell();
+palette = mountCommandPalette({ registry: commands });
+const commandButton = document.createElement("button");
+commandButton.type = "button";
+commandButton.className = "ghost-button compact workbench-command-trigger";
+commandButton.textContent = "命令";
+commandButton.setAttribute("aria-label", "打开当前页面命令（Ctrl 或 Cmd 加 K）");
+commandButton.addEventListener("click", () => palette.open());
+document.querySelector(".app-topbar-actions")?.append(commandButton);
+// Page navigation already has a persistent, structured sidebar. Repeating every
+// route as a flat command list obscures the actions that are specific to the
+// current workflow, so the palette is intentionally scoped to page actions.
+commands.subscribe(() => {
+  const hasPageActions = commands.query("").length > 0;
+  commandButton.hidden = !hasPageActions;
+  commandButton.disabled = !hasPageActions;
+  // The shared button style declares its own display mode, so mirror the
+  // semantic hidden state explicitly instead of relying on UA [hidden] CSS.
+  commandButton.style.display = hasPageActions ? "" : "none";
+});
+if (!history.state?.pageId) history.replaceState({ ...history.state, pageId: document.body.dataset.page, href: location.href }, "", location.href);
 installSpaRouter();
 scheduleBoot();

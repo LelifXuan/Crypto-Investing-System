@@ -6,11 +6,14 @@ If the API shape drifts, this test fires *before* any caller churns.
 
 Audit reference: source/docs/UI_UX_AUDIT_2026-07-31.md §16.B
 """
+
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DOM_JS = ROOT / "app" / "static" / "core" / "dom.js"
@@ -40,7 +43,9 @@ def test_mount_chip_supports_eight_tones():
     assert block, "CHIP_TONE_CLASS not defined"
     body = block.group(1)
     for tone in ("bull", "bear", "neutral", "warning", "danger", "info", "success", "event"):
-        assert re.search(rf"^\s*{tone}\s*:", body, re.M), f"tone {tone!r} missing from CHIP_TONE_CLASS"
+        assert re.search(rf"^\s*{tone}\s*:", body, re.M), (
+            f"tone {tone!r} missing from CHIP_TONE_CLASS"
+        )
 
 
 def test_mount_chip_supports_three_variants():
@@ -63,16 +68,28 @@ def test_mount_button_supports_five_variants():
 
 def test_mount_button_escapes_text_and_attrs():
     source = _read(DOM_JS)
-    assert "escapeHtml(text" in source or "escapeHtml(text ||" in source or "escapeHtml(text || \"\")" in source, \
-        "mountButton must escape text via escapeHtml"
-    assert "escapeHtml(k)" in source and "escapeHtml(String(v))" in source, \
+    assert (
+        "escapeHtml(text" in source
+        or "escapeHtml(text ||" in source
+        or 'escapeHtml(text || "")' in source
+    ), "mountButton must escape text via escapeHtml"
+    assert "escapeHtml(k)" in source and "escapeHtml(String(v))" in source, (
         "mountButton must escape user-provided attribute keys + values"
+    )
 
 
 def test_styles_define_chip_tone_classes():
     source = _read(STYLES)
-    for tone in ("chip-bull", "chip-bear", "chip-neutral", "chip-warning",
-                 "chip-danger", "chip-info", "chip-success", "chip-event"):
+    for tone in (
+        "chip-bull",
+        "chip-bear",
+        "chip-neutral",
+        "chip-warning",
+        "chip-danger",
+        "chip-info",
+        "chip-success",
+        "chip-event",
+    ):
         assert f".{tone}" in source, f"missing .{tone} in styles.css"
 
 
