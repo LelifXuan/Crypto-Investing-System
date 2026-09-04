@@ -709,7 +709,7 @@ function renderEquityCurve(data, mode) {
         ${_renderEquitySummaryCards(summary, meta, mode)}
       </div>
       <div class="etf-equity-canvas-wrap">
-        <canvas id="etf-equity-canvas" height="300"></canvas>
+        <canvas id="etf-equity-canvas" height="300" role="img" aria-label="ETF 定投与一次性投入净值对比图"></canvas>
       </div>
       <p class="etf-equity-caption">${_renderEquityCaption(meta, data?.warnings || [], mode)}${statusHint ? ` · <strong>${escapeHtml(statusHint)}</strong>` : ""}</p>
       <div id="etf-equity-status"></div>

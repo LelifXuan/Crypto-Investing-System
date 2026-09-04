@@ -2,6 +2,7 @@ import { api, invalidateCache } from "../core/api.js";
 import {
   escapeHtml,
   formatDateOnly,
+  formatDateTime,
   formatNumber,
   impactChip,
   knowledgeTooltip,
@@ -189,7 +190,7 @@ function renderCalendarTable(items) {
               <th>状态</th>
             </tr>
           </thead>
-          <tbody>
+          ${items.length ? `<tbody>
             ${items.map((item) => {
               const direction = diffDirection(item);
               const isReleased = String(item.status || "").toLowerCase() === "released";
@@ -240,13 +241,26 @@ function renderCalendarTable(items) {
                 </tr>
               `;
             }).join("")}
-          </tbody>
+          </tbody>` : `<tbody class="macro-table-empty">
+            <tr>
+              <td colspan="7">
+                <div class="macro-empty-state">
+                  <strong>当前没有可展示的宏观事件</strong>
+                  <span>可能是日历尚未同步或当前月份没有计划内事件。点击「更新日历」重新拉取；同步成功且确无事件时属正常状态。</span>
+                  <span class="macro-empty-updated">最近同步：${macroLastSyncedAt ? escapeHtml(formatDateTime(macroLastSyncedAt)) : "尚未同步"}</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>`}
         </table>
       </div>
   `;
 }
 
 let autoSyncedMacro = false;
+// 2026-09-04 (ui-audit P2#13): 空表明细需要真实同步时间,区分
+// 「尚未同步」与「同步成功但无事件」。
+let macroLastSyncedAt = null;
 let workbenchState = null;
 let workbenchUrl = null;
 let workbenchUnsubscribe = null;
@@ -469,6 +483,7 @@ export async function renderMacroCalendar({ commands } = {}) {
     if (force) renderStatus("正在同步宏观日历", "loading");
     let payload = await api.getMacroCalendar(300, { signal: pageController.signal });
     let items = filterCalendarItems(payload || []);
+    macroLastSyncedAt = new Date().toISOString();
     if (false && !items.length && !force && !autoSyncedMacro) {
       autoSyncedMacro = true;
       renderStatus("正在同步宏观日历", "loading");

@@ -830,7 +830,7 @@ function renderAggregateOiChart(d) {
         <p>来源 ${escapeHtml(sourceLabel || "—")}</p>
       </header>
       <div class="btc-chart-canvas-wrap">
-        <canvas id="${canvasId}"></canvas>
+        <canvas id="${canvasId}" role="img" aria-label="聚合持仓 OI 历史图"></canvas>
       </div>
     </article>
   `;

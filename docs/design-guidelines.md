@@ -140,7 +140,7 @@ Component：组件特例，如 --topbar-height、--glass-shadow
 | `--surface-muted` | `#f0edf3` | 弱化区、锁定态、标签背景 |
 | `--ink` | `#211d2b` | 主文字 |
 | `--text-secondary` | `#5f5968` | 描述、辅助标签 |
-| `--text-tertiary` | `#817a88` | 时间、缺失和低优先级信息 |
+| `--text-tertiary` | `#746c7d` | 时间、缺失和低优先级信息（2026-09-04 P2#9：原 `#817a88` 对 `#fcfbf8` 仅 4.00:1 低于 AA，调深至 4.85:1） |
 | `--border` | `#d9d3ca` | 标准边框 |
 | `--border-strong` | `#c8c0b6` | 强分隔 |
 
@@ -236,7 +236,7 @@ Component：组件特例，如 --topbar-height、--glass-shadow
 - 分组顺序固定为：研究、Crypto、配置、参考。
 - 当前页必须同时使用背景、左侧指示线和文字权重表达选中态。
 - 图标使用内嵌 SVG；折叠后保留可理解的 `aria-label`。
-- 1279px 及以下切换为离屏抽屉，配套 scrim 和滚动锁定。
+- 1180px 及以下切换为离屏抽屉，配套 scrim 和滚动锁定。（§13.2 #7 断点收敛后由 1279px 改为 1180px；正文与 §11 断点表一致）
 
 ### 5.2 全站顶栏
 
@@ -544,7 +544,7 @@ backdrop-filter: blur(var(--glass-blur));
 | 断点 | 行为 |
 |---:|---|
 | 1599/1500px | 高密度工具栏和图表网格开始收敛 |
-| 1279px | 固定侧栏切换为抽屉；隐藏全局质量文字 |
+| 1180px | 固定侧栏切换为抽屉；隐藏全局质量文字 |
 | 1180/1100px | 多列治理区、分析区改为堆叠 |
 | 980/900px | 两列内容与参考侧轨变单列 |
 | 767/720px | 移动端顶栏、单列卡片、16px gutter |
@@ -623,7 +623,9 @@ backdrop-filter: blur(var(--glass-blur));
 
 ### 仍未处理（V3.4+）
 
-- *(本轮已清空所有 V3.2 登记项；§13.2 全部 8 项债务已治理完毕)*
+- §13.2 #1 双样式源 token 归属：editorial.css 为唯一 token 权威，已验证（2026-08-31 H0，UI2 surface 合同测试持续守护）。
+- §13.2 #7 断点收敛为 6 组：已验证（2026-08-31，`test_responsive_breakpoints_consolidated.py`）。
+- 2026-09-04 ui-audit 复测仍发现三处残留（下拉局部白底、监控 28px 间距叠加、tertiary 对比度 4.00:1），均已当日修复并以 `test_shared_style_regressions.py` / 对比度 token 值钉住；后续登记按项记录验证视口、状态与日期，不再使用「全部清偿」式汇总声明。
 
 ### UI 2.0 首轮（Workbench interaction layer）
 

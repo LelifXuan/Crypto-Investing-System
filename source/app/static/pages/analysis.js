@@ -856,42 +856,42 @@ function heroTemplate() {
           <div><p class="eyebrow">TREND</p><h2>价格与 EMA</h2></div>
           <p class="section-summary" id="analysis-window-copy"></p>
         </div>
-        <div class="chart-wrap"><canvas id="analysis-price-chart"></canvas></div>
+        <div class="chart-wrap"><canvas id="analysis-price-chart" role="img" aria-label="BTC 价格与 EMA 趋势图"></canvas></div>
       </article>
       <article class="card analysis-chart-card analysis-chart-vegas">
         <div class="section-head">
           <div><p class="eyebrow">STRUCTURE</p><h2>Vegas 通道</h2></div>
           <p class="section-summary" id="analysis-vegas-copy"></p>
         </div>
-        <div class="chart-wrap"><canvas id="analysis-vegas-chart"></canvas></div>
+        <div class="chart-wrap"><canvas id="analysis-vegas-chart" role="img" aria-label="Vegas 通道图"></canvas></div>
       </article>
       <article class="card analysis-chart-card analysis-chart-boll">
         <div class="section-head">
           <div><p class="eyebrow">VOLATILITY</p><h2>BOLL</h2></div>
           <p class="section-summary" id="analysis-boll-copy"></p>
         </div>
-        <div class="chart-wrap"><canvas id="analysis-boll-chart"></canvas></div>
+        <div class="chart-wrap"><canvas id="analysis-boll-chart" role="img" aria-label="布林带波动率图"></canvas></div>
       </article>
       <article class="card analysis-chart-card analysis-chart-rsi">
         <div class="section-head">
           <div><p class="eyebrow">MOMENTUM</p><h2>RSI</h2></div>
           <p class="section-summary" id="analysis-rsi-copy"></p>
         </div>
-        <div class="chart-wrap"><canvas id="analysis-rsi-chart"></canvas></div>
+        <div class="chart-wrap"><canvas id="analysis-rsi-chart" role="img" aria-label="RSI 动量图"></canvas></div>
       </article>
       <article class="card analysis-chart-card analysis-chart-volume">
         <div class="section-head">
           <div><p class="eyebrow">VOLUME</p><h2>成交量</h2></div>
           <p class="section-summary" id="analysis-volume-copy"></p>
         </div>
-        <div class="chart-wrap"><canvas id="analysis-volume-chart"></canvas></div>
+        <div class="chart-wrap"><canvas id="analysis-volume-chart" role="img" aria-label="成交量图"></canvas></div>
       </article>
       <article class="card analysis-chart-card analysis-chart-macd">
         <div class="section-head">
           <div><p class="eyebrow">MOMENTUM</p><h2>MACD</h2></div>
           <p class="section-summary" id="analysis-macd-copy"></p>
         </div>
-        <div class="chart-wrap"><canvas id="analysis-macd-chart"></canvas></div>
+        <div class="chart-wrap"><canvas id="analysis-macd-chart" role="img" aria-label="MACD 动量图"></canvas></div>
       </article>
     </section>
   `;
@@ -1258,9 +1258,21 @@ function beginAnalysisTransition(message = "正在准备目标标的与周期") 
   renderAnalysisStatus(message, "loading");
 }
 
+const ANALYSIS_CHART_A11Y = {
+  "analysis-price-chart": "BTC 价格与 EMA 趋势图",
+  "analysis-vegas-chart": "Vegas 通道图",
+  "analysis-boll-chart": "布林带波动率图",
+  "analysis-rsi-chart": "RSI 动量图",
+  "analysis-volume-chart": "成交量图",
+  "analysis-macd-chart": "MACD 动量图",
+};
+
 function restoreAnalysisCanvas(id) {
   const wrap = document.querySelector(`[data-analysis-chart-id="${id}"]`);
-  if (wrap && !wrap.querySelector("canvas")) wrap.innerHTML = `<canvas id="${id}"></canvas>`;
+  if (wrap && !wrap.querySelector("canvas")) {
+    const label = ANALYSIS_CHART_A11Y[id] || "分析图表";
+    wrap.innerHTML = `<canvas id="${id}" role="img" aria-label="${label}"></canvas>`;
+  }
   return document.getElementById(id);
 }
 

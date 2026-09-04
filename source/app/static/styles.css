@@ -6677,8 +6677,36 @@ body[data-page="ai-strategy"] main {
 }
 
 body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface,
+/* 2026-09-04 (ui-audit P2#13): 宏观日历空表明细 — 跨列说明原因与最近
+   同步时间,不显示裸表头+四个 0(§7.8/§7.10)。 */
+.macro-table-empty td {
+  padding: 0;
+}
+.macro-empty-state {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 28px 16px;
+  text-align: center;
+}
+.macro-empty-state strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+.macro-empty-state span {
+  max-width: 560px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b6357);
+}
+.macro-empty-state .macro-empty-updated {
+  font-size: 12px;
+  color: var(--text-tertiary, #746c7d);
+}
+
+/* 2026-09-04 (ui-audit P2#6): 删除 28px 叠加 margin — 页面根容器 24px
+   gap 已负责大区块间距(§5.3/§7.1),叠加后实测 52px。 */
 body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-surface {
-  margin-top: 28px;
+  margin-top: 0;
 }
 
 .monitoring-topbar {

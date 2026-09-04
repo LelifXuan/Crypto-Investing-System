@@ -13,9 +13,12 @@
   --panel-accent: #ece8f3;
   --text-primary: #211d2b;
   --text-secondary: #5f5968;
-  --text-tertiary: #817a88;
+  /* 2026-09-04 (ui-audit P2#9): #817a88 在 #fcfbf8 上仅 4.00:1,低于
+     WCAG AA 普通文字 4.5:1(§10)。#746c7d 在两个表面都达标
+     (4.85 / 4.61),同色系保持层级感。 */
+  --text-tertiary: #746c7d;
   --ink: #211d2b;
-  --muted: #817a88;
+  --muted: #746c7d;
   --muted-strong: #5f5968;
   --accent: #66548e;
   --accent-strong: #4d3b73;
@@ -1986,7 +1989,9 @@ body[data-page="market-events"] .supply-calendar-filter {
   min-height: 40px;
   padding-inline: 13px;
   color: var(--ink);
-  background: var(--white);
+  /* 2026-09-04 (ui-audit P2#8): trigger 与 popover 统一暖灰表面(§7.4)。
+     局部白底在共享下拉改暖灰后成为唯一的纯白孤例。 */
+  background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   box-shadow: var(--shadow-button);

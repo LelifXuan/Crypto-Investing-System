@@ -179,7 +179,7 @@ function renderChartCard(chartId, eyebrow, title) {
         <p class="gold-card-title">${escapeHtml(title)}</p>
       </div>
       <div class="chart-wrap">
-        <canvas id="gold-canvas-${chartId.replace(CHART_PREFIX, "")}"></canvas>
+        <canvas id="gold-canvas-${chartId.replace(CHART_PREFIX, "")}" role="img" aria-label="${escapeHtml(title)}"></canvas>
       </div>
     </article>
   `;
