@@ -6,7 +6,6 @@ data-availability state (§3.2) and must never read as a market direction
 (§7.10) — info/warning tones only.
 """
 
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +25,9 @@ def test_stale_mark_shows_true_age_in_warning_tone() -> None:
     # the age label formats days/hours, not a fake "Live"
     assert '"实时"' in ANALYSIS
     assert 'statusChip("Live"' not in ANALYSIS
-    assert '"chip-bullish"' not in ANALYSIS[ANALYSIS.index("applyMarkFreshness"):ANALYSIS.index("applyMarkFreshness") + 1500]
+    start = ANALYSIS.index("applyMarkFreshness")
+    helper_block = ANALYSIS[start:start + 1500]
+    assert '"chip-bullish"' not in helper_block
 
 
 def test_freshness_applies_on_first_render_and_enhancement() -> None:

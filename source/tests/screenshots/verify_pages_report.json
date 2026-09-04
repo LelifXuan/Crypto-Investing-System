@@ -6,11 +6,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 130.6,
+      "duration_ms": 120.8,
       "state": "found:.analysis-hero-grid",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": "tests\\screenshots\\market-analysis.png",
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\market-analysis.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     },
@@ -20,12 +20,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 193.3,
+      "duration_ms": 150.2,
       "state": "found:#monitoring-topbar",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": null,
-      "long_task_max_ms": 57.0,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\monitoring-overview.png",
+      "long_task_max_ms": 91.0,
       "failed_responses": []
     },
     {
@@ -34,11 +34,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 87.4,
+      "duration_ms": 74.0,
       "state": "found:.structure-page",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": null,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\market-structure.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     },
@@ -48,11 +48,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 19.3,
+      "duration_ms": 76.5,
       "state": "found:.events-feed-shell",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": null,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\market-events.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     },
@@ -62,11 +62,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 21.6,
+      "duration_ms": 17.0,
       "state": "found:.macro-calendar-card",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": "tests\\screenshots\\macro-calendar.png",
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\macro-calendar.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     },
@@ -76,11 +76,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 124.3,
+      "duration_ms": 77.8,
       "state": "found:.strategy-scan-page",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": null,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\alert-center.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     },
@@ -90,11 +90,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 67.0,
+      "duration_ms": 23.0,
       "state": "found:.knowledge-hero",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": null,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\knowledge-base.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     },
@@ -104,12 +104,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 165.3,
+      "duration_ms": 92.8,
       "state": "found:#etf-overview",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": "tests\\screenshots\\ashare-etf.png",
-      "long_task_max_ms": 54.0,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\ashare-etf.png",
+      "long_task_max_ms": 50.0,
       "failed_responses": []
     },
     {
@@ -118,12 +118,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 85.5,
+      "duration_ms": 76.2,
       "state": "found:.btc-derivatives-page",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": null,
-      "long_task_max_ms": 106.0,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\btc-derivatives.png",
+      "long_task_max_ms": 0.0,
       "failed_responses": []
     },
     {
@@ -132,12 +132,12 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 97.6,
+      "duration_ms": 530.4,
       "state": "found:.strategy-scan-page",
       "data_integrity_ok": true,
       "data_integrity_state": "ok",
-      "screenshot": "tests\\screenshots\\ai-strategy.png",
-      "long_task_max_ms": 78.0,
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\ai-strategy.png",
+      "long_task_max_ms": 72.0,
       "failed_responses": []
     },
     {
@@ -146,11 +146,11 @@
       "console_errors": [],
       "pageerrors": [],
       "content_ok": true,
-      "duration_ms": 111.9,
+      "duration_ms": 110.2,
       "state": "found:.gold-workbench-grid",
       "data_integrity_ok": null,
       "data_integrity_state": "not-applicable",
-      "screenshot": "tests\\screenshots\\gold-allocation.png",
+      "screenshot": "E:\\Personal\\Research\\Crypto Investing System\\source\\tests\\screenshots\\gold-allocation.png",
       "long_task_max_ms": 0.0,
       "failed_responses": []
     }
@@ -159,70 +159,70 @@
     {
       "page_id": "market-analysis",
       "ok": true,
-      "duration_ms": 3.3,
+      "duration_ms": 2.4,
       "state": "found:.analysis-hero-grid",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "monitoring-overview",
       "ok": true,
-      "duration_ms": 135.6,
+      "duration_ms": 128.5,
       "state": "found:#monitoring-topbar",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "market-structure",
       "ok": true,
-      "duration_ms": 125.5,
+      "duration_ms": 170.2,
       "state": "found:.structure-page",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "market-events",
       "ok": true,
-      "duration_ms": 133.0,
+      "duration_ms": 179.3,
       "state": "found:.events-feed-shell",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "macro-calendar",
       "ok": true,
-      "duration_ms": 127.9,
+      "duration_ms": 121.9,
       "state": "found:.macro-calendar-card",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "knowledge-base",
       "ok": true,
-      "duration_ms": 154.2,
+      "duration_ms": 172.4,
       "state": "found:.knowledge-hero",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "ashare-etf",
       "ok": true,
-      "duration_ms": 96.2,
+      "duration_ms": 148.6,
       "state": "found:#etf-overview",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "btc-derivatives",
       "ok": true,
-      "duration_ms": 130.9,
+      "duration_ms": 113.9,
       "state": "found:.btc-derivatives-page",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "ai-strategy",
       "ok": true,
-      "duration_ms": 171.8,
+      "duration_ms": 174.6,
       "state": "found:.strategy-scan-page",
       "long_task_max_ms": 0.0
     },
     {
       "page_id": "gold-allocation",
       "ok": true,
-      "duration_ms": 194.4,
+      "duration_ms": 177.4,
       "state": "found:.gold-workbench-grid",
       "long_task_max_ms": 0.0
     }
@@ -237,7 +237,7 @@
   "options": {
     "viewport": {
       "width": 2560,
-      "height": 1600
+      "height": 1440
     },
     "diff": false,
     "a11y": false,

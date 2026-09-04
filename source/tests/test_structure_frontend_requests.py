@@ -48,7 +48,9 @@ def test_structure_page_recovers_a_missing_snapshot_once_on_open() -> None:
     # waitForAbortableDelay helper) vary between revisions — pin the
     # behavior, not the spelling.
     assert "await api.refreshStructure(instrumentId, timeframe" in load_data_source
-    assert "setTimeout(r, 3000)" in load_data_source or "waitForAbortableDelay(3000" in load_data_source
+    poll = "setTimeout(r, 3000)" in load_data_source
+    poll_legacy = "waitForAbortableDelay(3000" in load_data_source
+    assert poll or poll_legacy
     assert "force: true" in load_data_source
     # 2026-08-13: loadData is no longer `async` at declaration — the
     # recovery/refresh path is awaited internally (line ~46 above).
