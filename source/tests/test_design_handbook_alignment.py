@@ -126,7 +126,9 @@ def test_gold_governance_uses_the_shared_ledger_contract() -> None:
     assertion must NOT pass; we assert the contract via the new
     imports + delegate call."""
     source = (PAGES / "gold_v5.js").read_text(encoding="utf-8")
-    shared = (Path(__file__).resolve().parents[1] / "app/static/ui/governanceLedger.js").read_text(encoding="utf-8")
+    shared = (Path(__file__).resolve().parents[1] / "app/static/ui/governanceLedger.js").read_text(
+        encoding="utf-8"
+    )
 
     # Page must import + delegate to the shared renderer.
     assert "renderGovernanceLedger" in source
@@ -143,7 +145,7 @@ def test_gold_governance_uses_the_shared_ledger_contract() -> None:
 
 def test_monitoring_warming_shell_keeps_stable_page_structure() -> None:
     source = (PAGES / "monitoring.js").read_text(encoding="utf-8")
-    start = source.index("function renderShellFallback(message)")
+    start = source.index("function renderShellFallback(message, pending = false)")
     end = source.index("function hasRenderedMonitoringShell()", start)
     fallback = source[start:end]
 

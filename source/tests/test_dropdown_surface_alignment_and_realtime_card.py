@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DROPDOWN = (ROOT / "app" / "static" / "ui" / "dropdown.js").read_text(encoding="utf-8")
 EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
@@ -15,18 +14,19 @@ def test_dropdown_popovers_default_to_trigger_width_without_pixel_rounding() -> 
     assert 'popover.style.left = `${Math.round(left)}px`' not in DROPDOWN
 
 
-def test_dropdown_trigger_and_popover_share_white_surface() -> None:
-    assert ".dropdown {\n  background: var(--white);" in EDITORIAL
+def test_dropdown_trigger_and_popover_share_editorial_surface() -> None:
+    assert ".dropdown {\n  background: var(--surface);" in EDITORIAL
     assert ".dropdown-popover {" in EDITORIAL
     popover = EDITORIAL[EDITORIAL.index(".dropdown-popover {"):]
     popover = popover[:popover.index("}")]
-    assert "background: var(--white)" in popover
+    assert "background: var(--surface)" in popover
 
 
 def test_realtime_mark_metadata_uses_dividers_not_tinted_cards() -> None:
     assert '.realtime-card .status-grid {' in EDITORIAL
     assert '.realtime-card .mini-card {' in EDITORIAL
-    block = EDITORIAL[EDITORIAL.index('body[data-page="market-analysis"] .realtime-card .mini-card {'):]
+    selector = 'body[data-page="market-analysis"] .realtime-card .mini-card {'
+    block = EDITORIAL[EDITORIAL.index(selector):]
     block = block[:block.index("}")]
     assert "background: transparent" in block
     assert "border: 0" in block

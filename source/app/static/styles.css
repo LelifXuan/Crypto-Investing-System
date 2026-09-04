@@ -2561,19 +2561,6 @@ a.status-chip:focus-visible {
 }
 
 
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
-  background: var(--info-soft);
-  color: var(--info);
-}
-
 .tooltip-icon.tone-bullish {
   background: var(--accent-ghost);
   color: var(--accent-strong);
@@ -6729,6 +6716,51 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   min-height: 96px;
 }
 
+.monitoring-cold-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent-strong);
+  border-radius: 50%;
+  animation: monitoringColdSpin 900ms linear infinite;
+}
+
+body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .monitoring-context-status::before {
+  content: none;
+}
+
+.monitoring-cold-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.monitoring-cold-placeholder {
+  display: grid;
+  gap: 12px;
+  padding-block: 12px;
+}
+
+.monitoring-cold-placeholder span {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+}
+
+.monitoring-cold-placeholder span:nth-child(2) { width: 80%; }
+.monitoring-cold-placeholder span:nth-child(3) { width: 60%; }
+
+@keyframes monitoringColdSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .monitoring-cold-spinner,
+  .monitoring-cold-placeholder span { animation: none; }
+}
+
 /* V1.5.x: SPA router skeleton for top-nav click. The skeleton
    is setRoot-ed immediately on click, then the actual page
    replaces it on the next animation frame. The skeleton
@@ -7109,14 +7141,6 @@ body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-s
   gap: 8px;
   align-content: start;
 }
-  gap: 6px;
-  min-height: 112px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: linear-gradient(145deg, rgba(255, 251, 244, 0.96), rgba(241, 249, 245, 0.84));
-}
-
 .terminal-summary-vote span,
 .terminal-summary-copy-grid span,
 .terminal-summary-watch > span {
@@ -9433,8 +9457,6 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 /* 2026-08-18: gold-style governance card for BTC derivatives — replaced
    the old .btc-source-footer strip with a full grid card matching the
    gold-allocation DATA GOVERNANCE layout. */
-}
-
 /* Legacy chip-row styles kept for backward compat with any other references. */
 .btc-source-footer {
   margin-top: 8px;
@@ -10566,9 +10588,6 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
    Replaces the old collapsible <details> layout with a fixed grid that
    mirrors the gold allocation page's DATA GOVERNANCE section. */
 
-  }
-}
-
 /* Degraded state banner (yellow warning, replaces red errorState) */
 .strategy-degraded-banner {
   display: flex;
@@ -11119,6 +11138,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 @media (max-width: 720px) {
   .gold-signal-grid { grid-template-columns: 1fr; }
   .gold-workbench { grid-template-columns: 1fr; }
+}
+
 /* ------------------------------------------------------------------ */
 /* Strategy Scan Page (Opportunity Scanner)                            */
 /* ------------------------------------------------------------------ */
@@ -12380,6 +12401,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   font-weight: 500;
 }
 
+@media (max-width: 900px) {
   .gold-chart-grid {
     grid-template-columns: 1fr;
   }

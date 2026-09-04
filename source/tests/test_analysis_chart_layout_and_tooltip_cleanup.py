@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "app" / "static" / "pages" / "analysis.js").read_text(encoding="utf-8")
 EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
@@ -36,10 +35,14 @@ def test_floating_surfaces_use_editorial_paper_tokens() -> None:
     assert ".dropdown-popover {" in block
     dropdown_block = block[block.index(".dropdown-popover {"):]
     dropdown_block = dropdown_block[:dropdown_block.index("}")]
-    assert "background: var(--white)" in dropdown_block
+    assert "background: var(--surface)" in dropdown_block
 
 
-def test_market_regime_rail_uses_compact_section_spacing() -> None:
-    assert 'body[data-page="market-analysis"] #page-root { display: grid; gap: var(--space-card); }' in EDITORIAL
+def test_market_regime_rail_uses_shared_section_spacing() -> None:
+    root_rule = (
+        'body[data-page="market-analysis"] #page-root '
+        '{ display: grid; gap: var(--space-section); }'
+    )
+    assert root_rule in EDITORIAL
     assert ':is(.analysis-hero-grid, #analysis-signal-cards) { margin-bottom: 0; }' in EDITORIAL
     assert '.status-mode-badge { margin-block: 0; }' in EDITORIAL
