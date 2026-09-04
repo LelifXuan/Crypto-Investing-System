@@ -855,6 +855,9 @@ function renderSummarySection() {
           <h2>${escapeHtml(summary.title)}</h2>
         </div>
         <p>${escapeHtml(sectionInterpretation(summary.id))}</p>
+        <div class="btc-refresh-stack">
+          <button class="primary-button compact" id="btc-refresh" type="button">刷新衍生品快照</button>
+        </div>
       </div>
       <div class="btc-dashboard-grid">
         ${chartParts}
@@ -1506,7 +1509,9 @@ function renderPageShell(banner = "", freshness = "") {
         <div class="workbench-primary btc-workbench-primary">
           <div class="btc-layout-row btc-layout-row--overview btc-workbench-overview">
             <div class="btc-workbench-chart">${renderSummarySection()}</div>
+            ${renderWorkbenchEvidenceRail()}
           </div>
+          ${renderChartToolbar()}
           ${renderMaturityLadder()}
           ${renderWallInterpretation()}
           <div class="btc-layout-row btc-layout-row--charts">

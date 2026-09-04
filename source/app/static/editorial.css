@@ -4696,7 +4696,7 @@ body[data-page="btc-derivatives"] .btc-decision-card:hover,
 body[data-page="btc-derivatives"] .btc-chart-card:hover { transform: none; box-shadow: none; }
 body[data-page="btc-derivatives"] .btc-workbench-overview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.32fr);
   gap: var(--workbench-gap);
   align-items: stretch;
 }

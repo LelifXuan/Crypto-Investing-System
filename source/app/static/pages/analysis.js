@@ -15,6 +15,7 @@ let revealStagger;
 let skeletonPhaseStyle;
 let statusBanner;
 let statusChip;
+let syncStatusbarReadyState;
 let updatePageContext;
 let chartSkeleton;
 let barDataset;
@@ -847,6 +848,7 @@ function heroTemplate() {
         </div>
       </article>
     </section>
+    <section id="analysis-statusbar"></section>
     <section class="grid cols-3" id="analysis-signal-cards"></section>
     <section class="analysis-chart-grid">
       <article class="card analysis-chart-card analysis-chart-ema">
@@ -1084,8 +1086,18 @@ export function buildUserTradeGuidance(phase, direction, mode = null) {
 }
 
 function renderAnalysisStatus(message, tone = "neutral", mode = null, secondarySeries = null, directionalBias = activeDirectionalBias) {
-  // Status bar removed — analysis page no longer shows a persistent status/banner.
-  // Call sites are kept as no-ops so loading/error paths need no individual edits.
+  // 2026-09-04: statusbar container restored. The earlier removal orphaned
+  // renderModeBadge, which is the market-regime indicator (RANGE / TRANSITION)
+  // required by test_analysis_mode_badge and test_analysis_workbench — it is
+  // functional UI, not a decorative banner.
+  const el = document.getElementById("analysis-statusbar");
+  if (!el) return;
+  const badge = renderModeBadge(mode, secondarySeries, directionalBias);
+  if (!badge) {
+    el.innerHTML = statusBanner(message, tone);
+    return;
+  }
+  el.innerHTML = `${statusBanner(message, tone)}${badge}`;
 }
 
 function renderModeBadge(mode, secondarySeries = null, directionalBias = activeDirectionalBias) {

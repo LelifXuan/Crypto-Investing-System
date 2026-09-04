@@ -15,11 +15,6 @@ import { rangeStateLabel } from "../core/rangeState.js";
 import { mountDropdown } from "../ui/dropdown.js";
 import { getSeriesColor, getPatternFill } from "../ui/charts.js";
 
-import { waitForAbortableDelay } from "../core/precompute.js";
-import { indexPatternIdentities } from "./structureInspection.js";
-import { mountStructureWorkbench } from "./structureWorkbench.js";
-let structureWorkbench = null;
-
 const TIMEFRAMES = ["1h", "4h", "1d", "1w", "1M"];
 const SYSTEMS = [
   { key: "all", label: "全部系统" },
@@ -224,7 +219,9 @@ function renderShell() {
               <p class="eyebrow">形态叠加图</p>
               <h2>${escapeHtml(instrument.code)} · ${escapeHtml(appState.selectedTimeframe)}</h2>
             </div>
+            <div id="structure-chart-state" class="structure-chart-state" aria-live="polite"></div>
           </div>
+          <div id="structure-statusbar" class="structure-chart-status" aria-live="polite"></div>
           <div id="structure-chart-panel" class="structure-chart-panel loading">正在加载结构快照…</div>
         </article>
 
@@ -673,10 +670,10 @@ function buildLegendMarkup(availability) {
 function buildLayerToggleMarkup() {
   return `
     <div class="structure-legend-toggles">
-      <label class="legend-toggle" id="toggle-swing"><input type="checkbox" ${overlayLayerState.swing ? "checked" : ""} data-overlay-layer="swing">摆动骨架</label>
-      <label class="legend-toggle" id="toggle-fill"><input type="checkbox" ${overlayLayerState.fill ? "checked" : ""} data-overlay-layer="fill">图形填充</label>
-      <label class="legend-toggle" id="toggle-boundary"><input type="checkbox" ${overlayLayerState.boundary ? "checked" : ""} data-overlay-layer="boundary">图形边界</label>
-      <label class="legend-toggle" id="toggle-candidate"><input type="checkbox" ${overlayLayerState.candidate ? "checked" : ""} data-overlay-layer="candidate">候选图形（淡化）</label>
+      <label class="legend-toggle" id="toggle-swing"><input type="checkbox" ${overlayLayerState.swing ? "checked" : ""} onchange="toggleOverlayLayer('swing')">摆动骨架</label>
+      <label class="legend-toggle" id="toggle-fill"><input type="checkbox" ${overlayLayerState.fill ? "checked" : ""} onchange="toggleOverlayLayer('fill')">图形填充</label>
+      <label class="legend-toggle" id="toggle-boundary"><input type="checkbox" ${overlayLayerState.boundary ? "checked" : ""} onchange="toggleOverlayLayer('boundary')">图形边界</label>
+      <label class="legend-toggle" id="toggle-candidate"><input type="checkbox" ${overlayLayerState.candidate ? "checked" : ""} onchange="toggleOverlayLayer('candidate')">候选图形（淡化）</label>
     </div>
   `;
 }
@@ -688,6 +685,12 @@ function buildLayerToggleMarkup() {
 // never carry the "观察中" or "候选双底关键线 / 观察中" annotations
 // because those add visual noise without committing to a verdict.
 const overlayLayerState = { swing: true, fill: true, boundary: true, candidate: true };
+window.toggleOverlayLayer = function(layer) {
+  overlayLayerState[layer] = !overlayLayerState[layer];
+  if (state.bundle?.snapshot) {
+    renderChart(state.bundle.snapshot, normalizeCandles(state.bundle.candles || state.bundle.snapshot?.candles || []));
+  }
+};
 
 function classicPatternCandidates(classicPatterns) {
   if (!classicPatterns || classicPatterns.version !== "classic-pattern-region-v1") return [];
@@ -888,7 +891,7 @@ function buildCurrentPriceGuideMarkup(guide, textDecision) {
   const nextTrigger = decision.next_trigger || "";
   const tone = decision.tone || guide.state || "neutral";
   return `
-    <div class="structure-price-guide guide-${escapeHtml(tone)}" data-workbench-id="${escapeHtml(guide.researchObjectId || "structure:system:classic")}">
+    <div class="structure-price-guide guide-${escapeHtml(tone)}">
       <strong>${escapeHtml(headline)}</strong>
       <span>${escapeHtml([closeText, boundaryText, levelText].filter(Boolean).join(" ｜ "))}</span>
       <p>${escapeHtml(message)}</p>
@@ -923,14 +926,12 @@ function buildGuideMarkerMarkup(guide, scale) {
 }
 
 function classicPatternsToGeometry(classicPatterns) {
-  const identities = indexPatternIdentities(classicPatterns);
   return classicPatternCandidates(classicPatterns).filter((candidate) => candidate?.renderable !== false).flatMap((candidate) => {
     const role = candidate.display_role || "candidate";
     const region = candidate.region || {};
     const fillToken = region.fill_token || "patternNeutral";
     const tooltip = classicPatternTooltip(candidate);
     const regionGeometry = {
-      researchObjectId: identities.get(candidate) || "structure:system:classic",
       system: "classic",
       kind: "region",
       status: candidate.status,
@@ -950,7 +951,6 @@ function classicPatternsToGeometry(classicPatterns) {
       },
     };
     const lineGeometry = (candidate.lines || []).map((line) => ({
-      researchObjectId: identities.get(candidate) || "structure:system:classic",
       system: "classic",
       kind: line.role || "boundary",
       status: candidate.status,
@@ -969,11 +969,6 @@ function classicPatternsToGeometry(classicPatterns) {
     }));
     return [regionGeometry, ...lineGeometry];
   });
-}
-
-function researchGeometry(item, markup, hit = "") {
-  const id = item.researchObjectId || (["swing", "classic", "profile"].includes(item.system) ? `structure:system:${item.system}` : null);
-  return id ? `<g class="structure-research-geometry" data-workbench-id="${escapeHtml(id)}">${hit}${markup}</g>` : markup;
 }
 
 function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
@@ -1088,7 +1083,7 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
         if (clippedPoly.length < 3) return "";
         const polyCoords = clippedPoly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
         const title = meta.tooltip || meta.pattern_type || "";
-        return researchGeometry(item, `<polygon points="${polyCoords}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.2" opacity="${boundaryAlpha}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""}><title>${escapeHtml(title)}</title></polygon>`);
+        return `<polygon points="${polyCoords}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.2" opacity="${boundaryAlpha}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""}><title>${escapeHtml(title)}</title></polygon>`;
       }
 
       const points = getGeometryPoints(item);
@@ -1109,7 +1104,7 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
       if (!mapped.length) return "";
 
       if (mapped.length === 1) {
-        return researchGeometry(item, `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${strokeColor}" stroke="#fff8ed" stroke-width="${strokeWidth}" opacity="${opacity}" />`);
+        return `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${strokeColor}" stroke="#fff8ed" stroke-width="${strokeWidth}" opacity="${opacity}" />`;
       }
 
       const path = mapped
@@ -1146,7 +1141,7 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
       // unconfirmed dot itself still renders (it's the latest live
       const observationLabel = "";
       const candidateLabel = "";
-      return researchGeometry(item, `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round">${title}</path>${markers}${observationLabel}${candidateLabel}`, `<path class="structure-research-hit" d="${path}" fill="none" stroke="transparent" stroke-width="14" pointer-events="stroke" vector-effect="non-scaling-stroke"/>`);
+      return `<path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" opacity="${opacity}"${strokeDash ? ` stroke-dasharray="${strokeDash}"` : ""} stroke-linecap="round" stroke-linejoin="round">${title}</path>${markers}${observationLabel}${candidateLabel}`;
     })
     .join("");
 }
@@ -1171,20 +1166,22 @@ function buildMarketProfileMarkup(geometry, scale, priceGuide) {
     .map((item) => {
       const y = scale.yForPrice(item.price);
       if (!Number.isFinite(y)) return "";
-      const rawLabel = String(item.label).trim().toUpperCase();
-      const label = ["POC", "VAH", "VAL"].includes(rawLabel) ? rawLabel : "Profile";
+      const label = String(item.label).toUpperCase().includes("VAH")
+        ? "VAH"
+        : String(item.label).toUpperCase().includes("VAL")
+          ? "VAL"
+          : String(item.label).toUpperCase().includes("POC")
+            ? "POC"
+            : "Profile";
       const opacity = label === "POC" ? 0.85 : 0.5;
       // Label position: default above the line. If a guide label is
       // nearby (within ~18px), push this label below the line so the
       // two don't visually merge.
       const labelAbove = guideY === null || Math.abs(y - guideY) > 18;
       const labelY = labelAbove ? (y - 6) : (y + 14);
-      const objectId = label === "Profile" ? "structure:system:profile" : `structure:level:${label.toLowerCase()}`;
-      return `<g class="structure-research-geometry" data-workbench-id="${objectId}">
-        <line class="structure-research-hit" x1="${scale.plot.x}" y1="${y}" x2="${scale.plot.x + scale.plot.width}" y2="${y}" stroke="transparent" stroke-width="14" pointer-events="stroke" vector-effect="non-scaling-stroke"/>
+      return `
         <line x1="${scale.plot.x}" y1="${y.toFixed(2)}" x2="${(scale.plot.x + scale.plot.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${CHART_SERIES.profile.color}" stroke-width="${label === "POC" ? 2.4 : 1.6}" stroke-dasharray="8 7" opacity="${opacity}"></line>
 		        <text class="structure-svg-axis structure-profile-label" x="${(scale.plot.x + scale.plot.width - 6).toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="end">${escapeHtml(label)} ${escapeHtml(formatAxisPrice(item.price))}</text>
-      </g>
       `;
     })
     .join("");
@@ -1214,7 +1211,6 @@ function renderChart(snapshot, candles) {
   const viewport = calculateViewport(candles, geometry, backendViewport);
   const visibleCandles = viewport.candles.length ? viewport.candles : candles;
   const priceGuide = currentPriceGuide(snapshot, visibleCandles);
-  priceGuide.researchObjectId = indexPatternIdentities(snapshot.classic_patterns).get(snapshot.classic_patterns?.primary) || "structure:system:classic";
   const rawVisibleGeometry = visibleGeometryForViewport(geometry, visibleCandles, viewport.offset);
   const visibleGeometry = rawVisibleGeometry.filter((item) => {
     if (suppressInvalidatedChannelOverlay(item, priceGuide)) return false;
@@ -1242,13 +1238,8 @@ function renderChart(snapshot, candles) {
   const prices = [...candlePrices, ...overlayPrices];
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  // The structure canvas used to keep a fixed 1040:520 intrinsic ratio while
-  // CSS stretched it to the full width of a single-column workbench. On wide
-  // screens that made the SVG grow vertically with its width and pushed the
-  // summary below the fold. Match the logical viewport to the actual panel and
-  // cap its height against the visible browser workspace instead.
-  const width = Math.max(360, Math.round(chartPanel.clientWidth - 28));
-  const height = Math.min(520, Math.max(320, Math.round(window.innerHeight * 0.36)));
+  const width = 1040;
+  const height = 520;
   const scale = buildChartScale(visibleCandles, width, height, minPrice, maxPrice);
   const pricePath = buildLinePath(visibleCandles, scale);
   const overlayMarkup = buildOverlayMarkup(visibleGeometry, visibleCandles, scale, priceGuide);
@@ -1261,7 +1252,7 @@ function renderChart(snapshot, candles) {
 
   chartPanel.className = "structure-chart-panel";
   chartPanel.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg" style="--structure-render-height: ${height}px" role="group" aria-label="形态结构图">
+    <svg viewBox="0 0 ${width} ${height}" class="structure-chart-svg" role="img" aria-label="形态结构图">
       ${buildAxisMarkup(visibleCandles, scale)}
       ${buildLegendMarkup(availability)}
       <path d="${pricePath}" fill="none" stroke="${CHART_SERIES.price.color}" stroke-width="${CHART_SERIES.price.width}" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -1312,10 +1303,12 @@ function renderSummary(snapshot) {
           <div class="metric-box structure-market-state"><span>市场状态</span><strong>${escapeHtml(marketStateLabel)}</strong><small>${escapeHtml(overall.range_basis?.[0] || "")}</small></div>
         </div>
         ${
-          overall.need_confirmation || overall.invalidation
+          overall.meaning
             ? `<div class="structure-copy structure-summary-copy">
+                <p>${escapeHtml(overall.meaning)}</p>
                 ${overall.need_confirmation ? `<p>${escapeHtml(overall.need_confirmation)}</p>` : ""}
                 ${overall.invalidation ? `<p>${escapeHtml(overall.invalidation)}</p>` : ""}
+                ${overall.suggested_mode ? `<p>${escapeHtml(overall.suggested_mode)}</p>` : ""}
               </div>`
             : ""
         }
@@ -1347,7 +1340,7 @@ function renderSummary(snapshot) {
           }
           const reasons = normalizeTextList(system.top_reasons || system.drivers_json).slice(0, 2);
           return `
-            <article class="structure-summary-tile structure-system-merge" data-workbench-id="structure:system:${escapeHtml(system.system)}">
+            <article class="structure-summary-tile structure-system-merge">
               <div class="structure-system-merge-head">
                 <div>
                   <p class="eyebrow">${escapeHtml(labelFor(SYSTEM_LABELS, system.system))}</p>
@@ -1372,11 +1365,10 @@ function renderSummary(snapshot) {
   `;
 }
 
-function renderFromBundle(bundle, { terminal = true } = {}) {
+function renderFromBundle(bundle) {
   if (!bundle) {
     return;
   }
-  try {
   updateChartTitle();
   state.bundle = bundle;
   const candles = normalizeCandles(bundle.candles);
@@ -1402,7 +1394,7 @@ function renderFromBundle(bundle, { terminal = true } = {}) {
         snapshot_version: `${appState.selectedTimeframe}-price-only`,
       };
       renderChart(fallbackSnapshot, candles);
-      summaryPanel.innerHTML = '<div class="empty-state">结构快照暂不可用；仅展示已有价格走势，不生成结构判断。</div>';
+      renderSummary(fallbackSnapshot);
       renderStatus(bundle.status_message || fallbackSnapshot.overall.meaning, bundle.cache_state === "missing" ? "warning" : "neutral");
       return;
     }
@@ -1445,14 +1437,20 @@ function renderFromBundle(bundle, { terminal = true } = {}) {
     bundle.is_stale ? "warning" : freshnessTone,
     { available: true },
   );
-  } finally {
-    structureWorkbench?.update(bundle, { selectedSystem: state.selectedSystem, minConfidence: state.minConfidence, layers: overlayLayerState }, { terminal });
-  }
 }
 
 function renderStatus(message, tone = "neutral", { available = false } = {}) {
-  // Status bar removed — structure page no longer shows a persistent status/banner.
-  // Call sites are kept as no-ops so loading/error paths need no individual edits.
+  const el = document.getElementById("structure-statusbar");
+  const state = document.getElementById("structure-chart-state");
+  if (state) {
+    const label = available
+      ? tone === "warning" ? "缓存可用 · 待更新" : "快照可用 · 自动维护"
+      : tone === "loading" || tone === "info" ? "快照更新中" : "快照需关注";
+    const chipTone = available && tone !== "warning" ? "chip-info" : tone === "danger" ? "chip-danger" : "chip-warning";
+    state.innerHTML = `<span class="status-chip ${chipTone}">${escapeHtml(label)}</span>`;
+  }
+  const showDetail = !available || tone === "warning" || tone === "danger";
+  el.innerHTML = showDetail && message ? `<div class="status-banner status-${tone}">${escapeHtml(message)}</div>` : "";
 }
 
 function updateChartTitle() {
@@ -1462,7 +1460,7 @@ function updateChartTitle() {
   titleNode.textContent = `${instrument.code} · ${appState.selectedTimeframe}`;
 }
 
-function attachEvents(loadData, refresh, signal, onSystemDropdown) {
+function attachEvents(loadData) {
   const handlers = [];
   const listen = (selector, eventName, handler) => {
     const node = document.querySelector(selector);
@@ -1473,7 +1471,7 @@ function attachEvents(loadData, refresh, signal, onSystemDropdown) {
 
   const instrumentRoot = document.querySelector('.dropdown[data-dropdown-id="structure-instrument"]');
   if (instrumentRoot) {
-    const dropdown = mountDropdown(instrumentRoot, {
+    mountDropdown(instrumentRoot, {
       items: appState.instruments.map((i) => ({ value: i.id, label: `${i.code} · ${i.name}` })),
       value: appState.selectedInstrumentId,
       placeholder: "选择品种",
@@ -1483,11 +1481,10 @@ function attachEvents(loadData, refresh, signal, onSystemDropdown) {
         await loadData();
       },
     });
-    handlers.push(() => dropdown.destroy());
   }
   const timeframeRoot = document.querySelector('.dropdown[data-dropdown-id="structure-timeframe"]');
   if (timeframeRoot) {
-    const dropdown = mountDropdown(timeframeRoot, {
+    mountDropdown(timeframeRoot, {
       items: TIMEFRAMES.map((t) => ({ value: t, label: t })),
       value: appState.selectedTimeframe,
       placeholder: "选择周期",
@@ -1497,11 +1494,10 @@ function attachEvents(loadData, refresh, signal, onSystemDropdown) {
         await loadData();
       },
     });
-    handlers.push(() => dropdown.destroy());
   }
   const systemRoot = document.querySelector('.dropdown[data-dropdown-id="structure-system"]');
   if (systemRoot) {
-    const dropdown = mountDropdown(systemRoot, {
+    mountDropdown(systemRoot, {
       items: SYSTEMS.map((s) => ({ value: s.key, label: s.label })),
       value: state.selectedSystem,
       placeholder: "选择系统",
@@ -1510,12 +1506,10 @@ function attachEvents(loadData, refresh, signal, onSystemDropdown) {
         renderFromBundle(state.bundle);
       },
     });
-    onSystemDropdown?.(dropdown);
-    handlers.push(() => dropdown.destroy());
   }
   const confidenceRoot = document.querySelector('.dropdown[data-dropdown-id="structure-confidence"]');
   if (confidenceRoot) {
-    const dropdown = mountDropdown(confidenceRoot, {
+    mountDropdown(confidenceRoot, {
       items: [0, 0.3, 0.5, 0.7].map((c) => ({ value: String(c), label: c.toFixed(2) + "+" })),
       value: String(state.minConfidence),
       placeholder: "选择置信度",
@@ -1524,149 +1518,171 @@ function attachEvents(loadData, refresh, signal, onSystemDropdown) {
         renderFromBundle(state.bundle);
       },
     });
-    handlers.push(() => dropdown.destroy());
   }
   const viewmodeRoot = document.querySelector('.dropdown[data-dropdown-id="structure-viewmode"]');
   if (viewmodeRoot) {
-    const dropdown = mountDropdown(viewmodeRoot, {
+    mountDropdown(viewmodeRoot, {
       items: Object.entries(VIEWPORT_LABELS).map(([k, l]) => ({ value: k, label: l })),
       value: state.viewMode,
       placeholder: "选择视图",
       onChange: (v) => {
         state.viewMode = VIEWPORT_LABELS[v] ? v : "focus";
-        try { localStorage.setItem("structureViewportMode", state.viewMode); } catch { /* session-only */ }
+        localStorage.setItem("structureViewportMode", state.viewMode);
         renderFromBundle(state.bundle);
       },
     });
-    handlers.push(() => dropdown.destroy());
   }
 
-  listen("#structure-refresh", "click", refresh);
-  document.getElementById("page-root").addEventListener("change", (event) => {
-    const layer = event.target.dataset.overlayLayer;
-    if (!Object.hasOwn(overlayLayerState, layer)) return;
-    overlayLayerState[layer] = event.target.checked;
-    renderFromBundle(state.bundle);
-  }, { signal });
+  listen("#structure-refresh", "click", async () => {
+    const button = document.getElementById("structure-refresh");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "生成中";
+    }
+    try {
+      renderStatus("正在拉取 K 线并生成结构快照", "loading");
+      invalidateCache("/marketdata/candles");
+      invalidateCache("/market-prices/marks/latest");
+      await api.refreshStructure(appState.selectedInstrumentId, appState.selectedTimeframe);
+      await loadData({ forceRefresh: true });
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "手动刷新快照";
+      }
+    }
+  });
 
   return () => handlers.forEach((dispose) => dispose());
 }
 
-export async function renderStructure({ commands } = {}) {
-  renderShell();
-  state.bundle = null; state.recoveryKeys.clear();
-  let disposed = false, activeController = null, debounceTimer = null;
-  let settleDebounce = null, lastRequestedKey = null, busy = false, systemDropdown = null;
-  const lifetime = new AbortController();
-  const root = document.getElementById("page-root");
-  structureWorkbench = mountStructureWorkbench({ root, signal: lifetime.signal, commands,
-    refresh: refreshCurrent, busy: () => busy,
-    showAll: () => { state.selectedSystem = "all"; systemDropdown?.setValue("all"); renderFromBundle(state.bundle); },
-  });
-  const mountedWorkbench = structureWorkbench;
-  const detachEvents = attachEvents(loadData, refreshCurrent, lifetime.signal, (dropdown) => { systemDropdown = dropdown; });
-  const alive = (token, key) => !disposed && token === state.requestToken && key === lastRequestedKey;
-  const setBusy = (value) => {
-    busy = value;
-    const button = document.getElementById("structure-refresh");
-    if (button) { button.disabled = value; button.setAttribute("aria-busy", String(value)); }
-  };
-  async function refreshCurrent() {
-    if (disposed || busy) return;
-    await loadData({ forceRefresh: true });
+export async function renderStructure() {
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.searchParams.has("inspect") || currentUrl.searchParams.has("keep")) {
+    currentUrl.searchParams.delete("inspect");
+    currentUrl.searchParams.delete("keep");
+    window.history.replaceState(window.history.state, "", currentUrl);
   }
+  renderShell();
+  let disposed = false;
+  let activeController = null;
+  // 2026-08-11: debounce rapid instrument/timeframe switching to prevent
+  // request queue buildup that leaves the chart panel blank.
+  let debounceTimer = null;
+  let lastRequestedKey = null;
+  const detachEvents = attachEvents(loadData);
+
   function loadData({ forceRefresh = false } = {}) {
-    if (disposed) return Promise.resolve();
-    if (debounceTimer) clearTimeout(debounceTimer);
-    settleDebounce?.(); settleDebounce = null;
-    activeController?.abort();
-    const instrumentId = appState.selectedInstrumentId, timeframe = appState.selectedTimeframe;
-    const requestKey = `${instrumentId}:${timeframe}`;
-    const requestToken = ++state.requestToken;
-    lastRequestedKey = requestKey;
-    mountedWorkbench.beginContext(requestKey, { instrument: getInstrumentMeta(instrumentId).code, timeframe });
-    if (!mountedWorkbench.hasData()) {
-      state.bundle = null;
-      const panel = document.getElementById("structure-chart-panel");
-      panel.className = "structure-chart-panel";
-      panel.innerHTML = chartSkeleton(20);
-      document.getElementById("structure-summary-panel").replaceChildren();
+    // 2026-08-11: debounce — clear pending timer so rapid switching only
+    // triggers ONE final request instead of a queue that leaves the
+    // chart panel blank.
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
     }
-    updateChartTitle(); setBusy(true);
-    renderStatus("正在加载结构快照…", "info");
+    const instrumentId = appState.selectedInstrumentId;
+    const timeframe = appState.selectedTimeframe;
+    const requestKey = `${instrumentId}:${timeframe}`;
+    lastRequestedKey = requestKey;
+
     return new Promise((resolve) => {
-      settleDebounce = resolve;
-      debounceTimer = setTimeout(async () => {
-        debounceTimer = null; settleDebounce = null;
-        if (alive(requestToken, requestKey)) await _fetchAndRender(requestKey, forceRefresh, requestToken);
-        resolve();
-      }, 300);
+    debounceTimer = setTimeout(async () => {
+      if (disposed || lastRequestedKey !== requestKey) { resolve(); return; }
+      await _fetchAndRender(requestKey, forceRefresh);
+      resolve();
+    }, 300);
     });
   }
 
-  async function _fetchAndRender(requestKey, forceRefresh, requestToken) {
+  async function _fetchAndRender(requestKey, forceRefresh) {
+    const requestToken = ++state.requestToken;
     const [instrumentId, timeframe] = requestKey.split(":");
     const limit = timeframe === "1h" ? 220 : 180;
-    const controller = new AbortController(); activeController = controller;
-    const signal = controller.signal;
+
+    updateChartTitle();
+    // 2026-08-11: show chart skeleton instead of plain text
+    const chartPanel = document.getElementById("structure-chart-panel");
+    if (chartPanel && requestToken === state.requestToken) {
+      chartPanel.className = "structure-chart-panel";
+      chartPanel.innerHTML = chartSkeleton(20);
+    }
+    renderStatus("正在加载结构快照…", "info");
+
     try {
-      if (forceRefresh) {
-        await api.refreshStructure(instrumentId, timeframe, { signal });
-        if (!alive(requestToken, requestKey)) return;
-      }
+      activeController?.abort();
+      activeController = new AbortController();
       let bundle = await api.getStructureBundle(instrumentId, timeframe, {
-        includeGeometry: true, candlesLimit: limit, force: forceRefresh, signal,
+        includeGeometry: true,
+        candlesLimit: limit,
+        force: forceRefresh,
+        signal: activeController.signal,
       });
-      if (!alive(requestToken, requestKey)) return;
-      const recoveryKey = requestKey;
-      const needsRecovery = !bundle.snapshot || !normalizeCandles(bundle.candles).length;
-      if (normalizeCandles(bundle.candles).length && (!needsRecovery || !mountedWorkbench.hasData())) {
-        renderFromBundle(bundle, { terminal: !needsRecovery });
-      }
-      if (!forceRefresh && needsRecovery && !state.recoveryKeys.has(recoveryKey)) {
+
+      const recoveryKey = `${instrumentId}:${timeframe}`;
+      const candles = normalizeCandles(bundle.candles);
+      if (
+        !forceRefresh &&
+        !state.recoveryKeys.has(recoveryKey) &&
+        (bundle.cache_state === "missing" || candles.length === 0)
+      ) {
         state.recoveryKeys.add(recoveryKey);
         renderStatus("正在拉取 K 线并生成结构快照", "loading");
-        await api.refreshStructure(instrumentId, timeframe, { signal });
-        if (!alive(requestToken, requestKey)) return;
-        for (let attempt = 0; attempt < 10; attempt++) {
-          await waitForAbortableDelay(3000, signal);
-          if (!alive(requestToken, requestKey)) return;
-          bundle = await api.getStructureBundle(instrumentId, timeframe, {
-            includeGeometry: true, candlesLimit: limit, force: true, signal,
-          });
-          if (!alive(requestToken, requestKey)) return;
-          if (bundle.snapshot && normalizeCandles(bundle.candles).length) break;
-          renderStatus(`正在生成结构快照… (${attempt + 1}/10)`, "loading");
+        try {
+          await api.refreshStructure(instrumentId, timeframe);
+          // 轮询等待后台计算完成（最多 30 秒，每 3 秒一次）
+          const maxAttempts = 10;
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            if (disposed || requestToken !== state.requestToken || lastRequestedKey !== requestKey) return;
+            bundle = await api.getStructureBundle(instrumentId, timeframe, {
+              includeGeometry: true,
+              candlesLimit: limit,
+              force: true,
+              signal: activeController.signal,
+            });
+            const newCandles = normalizeCandles(bundle.candles);
+            if (bundle.cache_state !== "missing" && newCandles.length > 0) break;
+            renderStatus(`正在生成结构快照… (${attempt + 1}/${maxAttempts})`, "loading");
+          }
+        } catch (recoveryError) {
+          console.warn("structure:auto-recovery:failed", recoveryError);
         }
       }
-      if (!alive(requestToken, requestKey)) return;
-      if ((!bundle.snapshot || !normalizeCandles(bundle.candles).length) && mountedWorkbench.hasData()) {
-        throw new Error("刷新未返回有效结构快照");
-      }
+
+      if (disposed || requestToken !== state.requestToken || lastRequestedKey !== requestKey) return;
       renderFromBundle(bundle);
+      revealStagger(document.getElementById("structure-chart-panel"));
+      revealStagger(document.getElementById("structure-summary-panel"));
     } catch (error) {
-      if (!alive(requestToken, requestKey) || signal.aborted) return;
-      if (!mountedWorkbench.hasData()) {
-        renderFromBundle({ snapshot: null, candles: [], cache_state: "error",
-          status_message: "结构快照暂不可用，请手动刷新重试。" });
+      if (error?.name === "AbortError" || error?.name === "TimeoutError") {
+        return;
       }
-      mountedWorkbench.failed();
-      renderStatus(mountedWorkbench.hasData() ? "刷新失败，保留最近有效结构快照。" : "结构快照读取失败，请稍后重试。", "warning");
-    } finally {
-      if (alive(requestToken, requestKey)) setBusy(false);
+      if (disposed) return;
+
+      console.error("structure:renderer:error", error);
+      document.getElementById("structure-chart-panel").className = "structure-chart-panel error";
+      document.getElementById("structure-chart-panel").innerHTML = `<div class="error-state">形态结构加载失败。<br>${escapeHtml(String(error.message || error))}</div>`;
+      document.getElementById("structure-summary-panel").innerHTML = `
+        <article class="structure-summary-tile">
+          <p class="eyebrow">加载失败</p>
+          <h3>结构快照暂时不可用</h3>
+          <p class="structure-copy">${escapeHtml(String(error.message || error))}</p>
+        </article>
+      `;
+      renderStatus("结构快照读取失败，请稍后重试。", "danger");
     }
   }
-  const loadPromise = loadData().catch(() => {
-    if (!disposed) mountedWorkbench.failed();
+
+  const loadPromise = loadData().catch((error) => {
+    if (!disposed) console.error("structure:initial-load:error", error);
   });
+
   return () => {
-    disposed = true; state.requestToken += 1;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    settleDebounce?.(); settleDebounce = null;
-    activeController?.abort(); lifetime.abort();
-    detachEvents(); mountedWorkbench.destroy();
-    if (structureWorkbench === mountedWorkbench) structureWorkbench = null;
-    state.bundle = null; state.recoveryKeys.clear();
+    disposed = true;
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    activeController?.abort();
+    activeController = null;
+    detachEvents?.();
     void loadPromise.catch(() => null);
   };
 }
