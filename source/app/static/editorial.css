@@ -1732,18 +1732,20 @@ body[data-page="macro-calendar"] .macro-calendar-body[hidden] {
 
 /* 底栏：context bar 移至日历与明细下方 */
 /* 日历卡片头部：标题行 + 指标 + 展开/收起按钮，位于卡片顶部始终可见 */
-body[data-page="macro-calendar"] .macro-calendar-card-head {
-  margin-bottom: 8px;
-}
-
+/* 2026-09-04: compact head (audit target 80-88px). Selector must not depend
+   on the .macro-calendar-card-head wrapper — the fixture DOM and collapsed
+   card both render .macro-calendar-head directly inside the card. */
+body[data-page="macro-calendar"] .macro-calendar-head,
 body[data-page="macro-calendar"] .macro-calendar-card-head .macro-calendar-head {
   display: grid;
   grid-template-columns: minmax(200px, 0.6fr) minmax(400px, 1.6fr) auto;
   align-items: center;
   gap: var(--space-section, 18px);
   min-height: 84px;
-  padding: 12px 22px;
-  border-bottom: 1px solid var(--line);
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-elevated);
 }
 
 body[data-page="macro-calendar"] .macro-context-copy {
@@ -4347,3 +4349,474 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   CIS Workbench UI 2.0 — shared interaction layer
+   Surface contract: canvas -> section -> panel -> floating.
+   ============================================================ */
+.workbench-surface-canvas { background: var(--bg); }
+.workbench-surface-section { background: transparent; }
+.workbench-surface-panel {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: none;
+}
+.workbench-surface-floating {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+}
+
+.workbench-context-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  min-height: var(--context-rail-min-height);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-elevated) 74%, transparent);
+  border-block: 1px solid var(--border);
+}
+
+.workbench-context-item {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 16px;
+}
+.workbench-context-item + .workbench-context-item { border-left: 1px solid var(--border-light); }
+.workbench-context-item > span {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.workbench-context-item > strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workbench-context-item > small { color: var(--text-tertiary); font-size: 10px; }
+.workbench-context-item[data-context-status="live"]::before,
+.workbench-context-item[data-context-status="fresh"]::before,
+.workbench-context-item[data-context-status="stale"]::before,
+.workbench-context-item[data-context-status="degraded"]::before,
+.workbench-context-item[data-context-status="unavailable"]::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 6px;
+  height: 6px;
+  background: var(--info);
+  border-radius: 50%;
+}
+.workbench-context-item[data-context-status="stale"]::before,
+.workbench-context-item[data-context-status="degraded"]::before { background: var(--warning); }
+.workbench-context-item[data-context-status="unavailable"]::before { background: var(--neutral); }
+
+.workbench-page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--workbench-gap);
+  align-items: start;
+  min-width: 0;
+}
+body.is-workbench-inspector-open .workbench-page-layout {
+  grid-template-columns: minmax(0, 1fr) var(--inspector-preferred-width, var(--inspector-width));
+}
+.workbench-primary { display: grid; gap: var(--workbench-gap); min-width: 0; }
+.workbench-context-object { min-height: 40px; padding: 8px 12px; color: var(--ink); background: var(--surface-elevated); border: 1px solid var(--border); box-shadow: none; }
+.structure-research-geometry[role="button"] { cursor: pointer; }
+.structure-research-geometry[data-workbench-related] > :not(.structure-research-hit) { stroke-width: 3.2px; }
+.structure-research-geometry:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; }
+body[data-page="market-structure"]:not(.is-workbench-inspector-open) .workbench-primary .structure-overview-grid {
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.72fr);
+}
+body[data-page="market-structure"].is-workbench-inspector-open .workbench-primary .structure-overview-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+body[data-page="market-structure"] .workbench-primary .structure-chart-svg {
+  height: var(--structure-render-height, clamp(320px, 36dvh, 520px));
+  min-height: 0;
+}
+body[data-page="market-structure"] .workbench-primary .structure-summary-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+body[data-page="market-structure"] .workbench-primary :is(.structure-toolbar-card, .structure-main-card, .structure-summary-card, .structure-summary-tile) { box-shadow: none; backdrop-filter: none; background: var(--surface-elevated); transform: none; }
+body[data-page="market-analysis"] .workbench-primary > section { min-width: 0; }
+body[data-page="market-analysis"] .workbench-primary .signal-card,
+body[data-page="market-analysis"] .workbench-primary .analysis-chart-card { box-shadow: none; backdrop-filter: none; }
+
+.workbench-inspector {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--canvas-gutter));
+  z-index: 150;
+  max-height: calc(100vh - var(--topbar-height) - (2 * var(--canvas-gutter)));
+  overflow: auto;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  overscroll-behavior: contain;
+}
+.workbench-inspector[hidden] { display: none; }
+.workbench-inspector-resize { position: absolute; inset: 0 auto 0 0; width: 8px; min-height: 40px; cursor: col-resize; touch-action: none; z-index: 2; }
+.workbench-inspector-resize:hover, .workbench-inspector-resize:focus-visible { background: var(--accent-soft); outline: 1px solid var(--accent); outline-offset: -1px; }
+.workbench-inspector-resize[hidden] { display: none; }
+.workbench-inspector-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 18px 18px 14px;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.workbench-inspector-head span {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.workbench-inspector-head h2 { margin: 4px 0 0; font-size: 18px; line-height: 1.25; }
+.workbench-inspector-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  transition: color var(--motion-hover), background-color var(--motion-hover), transform var(--motion-fast);
+}
+.workbench-inspector-close:hover { color: var(--ink); background: var(--surface-muted); }
+.workbench-inspector-close:active { transform: scale(0.96); }
+.workbench-inspector-close:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.workbench-inspector-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.workbench-inspector-body { padding: 0 18px 18px; }
+.workbench-inspector-section { padding: 16px 0; border-bottom: 1px solid var(--border-light); }
+.workbench-inspector-section:last-child { border-bottom: 0; }
+.workbench-inspector-section h3 {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+.workbench-inspector-section p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+.workbench-inspector-current { display: grid; gap: 4px; }
+.workbench-inspector-current > span { color: var(--text-tertiary); font-size: 11px; }
+.workbench-inspector-current > strong {
+  color: var(--ink);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+.workbench-inspector-current > strong small { margin-left: 5px; color: var(--text-tertiary); font-size: 11px; }
+.workbench-inspector-list { border-block: 1px solid var(--border-light); }
+.workbench-inspector-list article,
+.workbench-inspector-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.workbench-inspector-list article:last-child,
+.workbench-inspector-source:last-child { border-bottom: 0; }
+.workbench-inspector-list span,
+.workbench-inspector-source span { color: var(--text-secondary); font-size: 12px; }
+.workbench-inspector-list strong,
+.workbench-inspector-source strong { color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.workbench-inspector-impact { display: grid; gap: 10px; }
+.workbench-inspector-impact article { padding-left: 10px; border-left: 2px solid var(--border-strong); }
+.workbench-inspector-impact strong { font-size: 12px; }
+.workbench-inspector-impact p { margin-top: 3px; }
+.workbench-inspector-source time { grid-column: 1 / -1; color: var(--text-tertiary); font-size: 10px; }
+.workbench-inspector-source[data-system-status="live"] strong { color: var(--info-strong); }
+.workbench-inspector-source[data-system-status="stale"] strong,
+.workbench-inspector-source[data-system-status="degraded"] strong { color: var(--warning); }
+.workbench-inspector-source[data-system-status="unavailable"] strong { color: var(--danger); }
+.workbench-inspector-updated { margin-top: 8px !important; font-size: 10px !important; }
+
+[data-market-tone="bullish"] { --workbench-tone: var(--bullish); }
+[data-market-tone="bearish"] { --workbench-tone: var(--bearish); }
+[data-market-tone="neutral"] { --workbench-tone: var(--neutral); }
+[data-workbench-id] { outline: 1px solid transparent; outline-offset: -1px; }
+[data-workbench-id][data-workbench-related="preview"] {
+  background-color: color-mix(in srgb, var(--accent-soft) 46%, transparent);
+  outline-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+[data-workbench-id][data-workbench-related="selected"] {
+  background-color: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  outline-color: var(--accent);
+}
+[data-workbench-selectable] { cursor: pointer; }
+[data-workbench-selectable]:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+
+.is-semantic-value-change { animation: semanticValueChange 180ms var(--ease-out); }
+.is-semantic-state-change { animation: semanticStateChange 180ms var(--ease-in-out); }
+@keyframes semanticValueChange {
+  0% { opacity: 0.58; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes semanticStateChange {
+  0% { background-color: color-mix(in srgb, var(--accent-soft) 82%, transparent); }
+  100% { background-color: transparent; }
+}
+
+@media (max-width: 1180px) {
+  body.is-workbench-inspector-drawer-open { overflow: hidden; }
+  body.is-workbench-inspector-drawer-open #page-root {
+    animation: none;
+    transform: none;
+    will-change: auto;
+  }
+  body.is-workbench-inspector-drawer-open .workbench-page-layout {
+    animation: none;
+    transform: none;
+    will-change: auto;
+  }
+  body.is-workbench-inspector-open .workbench-page-layout { grid-template-columns: minmax(0, 1fr); }
+  .workbench-inspector {
+    position: fixed;
+    top: var(--topbar-height);
+    right: 0;
+    bottom: 0;
+    z-index: 1900;
+    width: min(var(--inspector-width), calc(100vw - 48px));
+    max-height: none;
+    border-radius: 0;
+    box-shadow: var(--glass-shadow);
+  }
+}
+
+@media (max-width: 900px) {
+  .workbench-context-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workbench-context-item:nth-child(odd) { border-left: 0; }
+  .workbench-inspector {
+    top: auto;
+    left: 0;
+    width: 100%;
+    max-height: min(78dvh, 720px);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-semantic-value-change,
+  .is-semantic-state-change { animation: none; }
+}
+
+/* Workbench pilots: remove report-card repetition while preserving every
+   existing data section and selector used by the regression suite. */
+body[data-page="monitoring-overview"] #page-root,
+body[data-page="btc-derivatives"] #page-root { gap: var(--workbench-gap); }
+
+body[data-page="monitoring-overview"] .monitoring-workbench-layout,
+body[data-page="btc-derivatives"] .btc-workbench-layout { margin-top: var(--workbench-gap); }
+
+body[data-page="monitoring-overview"] .monitoring-topbar,
+body[data-page="monitoring-overview"] .monitoring-detail-panel,
+body[data-page="monitoring-overview"] .macro-indicator-group,
+body[data-page="monitoring-overview"] .monitoring-panel {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body[data-page="monitoring-overview"] .monitoring-topbar,
+body[data-page="monitoring-overview"] .monitoring-detail-panel {
+  border-color: var(--border);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--surface-elevated) 68%, transparent);
+}
+body[data-page="monitoring-overview"] .monitoring-summary-surface { padding: 0; overflow: hidden; }
+body[data-page="monitoring-overview"] .monitoring-snapshot-grid { gap: 0; }
+body[data-page="monitoring-overview"] .monitoring-panel + .terminal-summary-card { border-left: 1px solid var(--border); }
+body[data-page="monitoring-overview"] .macro-layer-card,
+body[data-page="monitoring-overview"] .terminal-summary-vote,
+body[data-page="monitoring-overview"] .macro-indicator-card { transition: background-color var(--motion-hover), outline-color var(--motion-hover); }
+body[data-page="monitoring-overview"] .macro-indicator-source {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+body[data-page="monitoring-overview"] .macro-indicator-source-toggle {
+  justify-self: start;
+}
+body[data-page="monitoring-overview"] .macro-indicator-source-detail {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  padding: 10px 12px;
+  margin: 0;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
+}
+body[data-page="monitoring-overview"] .macro-indicator-source-detail[hidden] { display: none; }
+body[data-page="monitoring-overview"] .macro-indicator-source-detail dt {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+body[data-page="monitoring-overview"] .macro-indicator-source-detail dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+body[data-page="btc-derivatives"] .btc-derivatives-page { display: grid; gap: var(--workbench-gap); }
+body[data-page="btc-derivatives"] .btc-workbench-primary { gap: var(--workbench-gap); }
+body[data-page="btc-derivatives"] .btc-maturity-ladder,
+body[data-page="btc-derivatives"] .btc-chart-card {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body[data-page="btc-derivatives"] .btc-decision-card {
+  transition: background-color var(--motion-hover), outline-color var(--motion-hover);
+}
+body[data-page="btc-derivatives"] .btc-decision-card:hover,
+body[data-page="btc-derivatives"] .btc-chart-card:hover { transform: none; box-shadow: none; }
+body[data-page="btc-derivatives"] .btc-workbench-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--workbench-gap);
+  align-items: stretch;
+}
+body[data-page="btc-derivatives"] .btc-workbench-chart { min-width: 0; }
+body[data-page="btc-derivatives"] .btc-workbench-chart .btc-chart-section { height: 100%; }
+body[data-page="btc-derivatives"] .btc-workbench-chart .btc-dashboard-grid { height: calc(100% - 54px); }
+body[data-page="btc-derivatives"] .btc-workbench-chart .btc-chart-card { height: 100%; }
+.btc-workbench-evidence {
+  min-width: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-elevated) 76%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.btc-workbench-evidence-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.btc-workbench-evidence-head > span { color: var(--ink); font-size: 14px; font-weight: 650; }
+.btc-workbench-evidence-head > small { color: var(--text-tertiary); font-size: 10px; }
+.btc-workbench-evidence-list { display: grid; }
+.btc-workbench-evidence .btc-evidence-tile {
+  min-height: 0;
+  padding: 13px 16px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-light);
+  border-radius: 0;
+  box-shadow: none;
+  transition: background-color var(--motion-hover), outline-color var(--motion-hover);
+}
+.btc-workbench-evidence .btc-evidence-tile:last-child { border-bottom: 0; }
+.btc-workbench-evidence .btc-evidence-tile h3 { margin: 8px 0 4px; font-size: 12px; line-height: 1.45; }
+.btc-workbench-evidence .btc-evidence-basis { margin: 0; font-size: 10px; }
+.btc-workbench-evidence .btc-evidence-source-toggle { margin-top: 8px; }
+.btc-workbench-evidence .btc-evidence-source-detail {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
+}
+.btc-workbench-evidence .btc-evidence-source-detail[hidden] { display: none; }
+.btc-workbench-evidence .btc-evidence-source-detail dt {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.btc-workbench-evidence .btc-evidence-source-detail dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+body[data-page="btc-derivatives"] .btc-maturity-ladder { border-radius: var(--radius-card); }
+body[data-page="btc-derivatives"] .btc-maturity-table tbody tr[data-workbench-selectable] {
+  transition: background-color var(--motion-hover), outline-color var(--motion-hover);
+}
+
+@media (max-width: 1500px) {
+  body[data-page="btc-derivatives"] .btc-workbench-overview { grid-template-columns: minmax(0, 1fr); }
+  .btc-workbench-evidence-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .btc-workbench-evidence .btc-evidence-tile:nth-child(odd) { border-right: 1px solid var(--border-light); }
+}
+
+@media (max-width: 900px) {
+  body[data-page="monitoring-overview"] .monitoring-panel + .terminal-summary-card { border-left: 0; border-top: 1px solid var(--border); }
+  .btc-workbench-evidence-list { grid-template-columns: minmax(0, 1fr); }
+  .btc-workbench-evidence .btc-evidence-tile:nth-child(odd) { border-right: 0; }
+}
+
+/* Operator core: a single floating command surface, no runtime style injection. */
+.workbench-command-overlay {
+  position: fixed; inset: 0; z-index: var(--layer-command);
+  display: grid; align-items: start; justify-items: center;
+  padding: min(14vh, 120px) 16px 24px;
+  background: rgb(0 0 0 / 28%); overflow: auto;
+}
+.workbench-command-overlay[hidden], .workbench-command-status[hidden] { display: none; }
+.workbench-command-dialog {
+  width: min(600px, 100%); min-width: 0; max-height: 80dvh; overflow: auto;
+  padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--radius-card);
+  background: var(--surface-elevated); box-shadow: var(--glass-shadow); color: var(--text-primary);
+}
+.workbench-command-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.workbench-command-dialog h2 { font-size: 18px; margin: 0; }
+.workbench-command-dialog label { display: block; margin: 16px 0 8px; font-size: 13px; }
+.workbench-command-dialog input { width: 100%; min-width: 0; min-height: 44px; }
+.workbench-command-dialog button { min-width: 44px; min-height: 40px; }
+.workbench-command-dialog [role="listbox"] { max-height: 45dvh; overflow: auto; margin-top: 12px; }
+.workbench-command-dialog [role="option"] {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 12px; min-height: 44px; cursor: pointer; border-bottom: 1px solid var(--border-light);
+}
+.workbench-command-dialog [role="option"] strong { font-size: 14px; overflow-wrap: anywhere; }
+.workbench-command-dialog [role="option"] small { color: var(--text-tertiary); flex-shrink: 0; }
+.workbench-command-dialog [aria-selected="true"] { background: var(--accent-soft); outline: 1px solid var(--border-strong); outline-offset: -1px; }
+.workbench-command-dialog [aria-disabled="true"] { opacity: 0.55; cursor: default; }
+.workbench-command-dialog footer { margin-top: 12px; font-size: 12px; color: var(--text-tertiary); }
+.workbench-command-status { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: var(--layer-command); max-width: calc(100vw - 32px); padding: 16px; background: var(--surface-elevated); border: 1px solid var(--border-strong); }
+.strategy-detail-panel { z-index: var(--layer-dialog); }
+.strategy-detail-overlay { z-index: calc(var(--layer-dialog) - 1); }
+body.is-nav-open .app-sidebar { z-index: var(--layer-dialog); }
+body.is-nav-open .shell-scrim { z-index: calc(var(--layer-dialog) - 1); }
+@media (max-width: 1180px) { .workbench-inspector { z-index: var(--layer-inspector); } }
+@media (max-width: 560px) {
+  .workbench-command-overlay { padding: 16px 8px; }
+  .workbench-command-dialog { max-height: calc(100dvh - 32px); padding: 14px; }
+  .workbench-command-dialog [role="option"] { align-items: start; flex-direction: column; gap: 4px; }
+}
+
+.workbench-inspector-head > div:last-child { display: flex; align-items: center; gap: 4px; }
+.workbench-inspector .workbench-inspector-pin { min-height: 40px; min-width: 48px; padding: 0 8px; background: transparent; box-shadow: none; border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; }
+.workbench-inspector .workbench-inspector-pin[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: currentColor; }
+.workbench-recovery-note { color: var(--text-secondary); font-size: 12px; padding: 8px 12px; border-left: 2px solid var(--border-strong); }
