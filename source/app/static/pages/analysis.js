@@ -831,7 +831,7 @@ function heroTemplate() {
             <p class="eyebrow">MARK SNAPSHOT</p>
             <h2>实时标记价 ${knowledgeTooltip("Mark / Index / Deviation", "tone-bullish", "5 分钟自动刷新，切回页面时会立即补读。", { extra: "页面中的实时标记价 5 分钟自动刷新，切回页面时会立即补读。" })}</h2>
           </div>
-          <span class="chip chip-neutral">报价快照</span>
+          <span class="chip chip-neutral" id="analysis-mark-freshness">报价快照</span>
         </div>
         <p class="live-price" id="analysis-mark-price">-</p>
         <div class="status-grid">
@@ -1488,6 +1488,7 @@ async function publishAnalysisBundle(bundle, token) {
     document.getElementById("analysis-mark-price").textContent = finiteInputNumber(markPayload?.mark_price) === null ? "—" : formatNumber(markPayload.mark_price);
     document.getElementById("analysis-mark-updated").textContent = formatDateTime(markPayload?.ts_event);
     document.getElementById("analysis-mark-next").textContent = "5 分钟自动刷新";
+    applyMarkFreshness(markPayload);
     document.getElementById("analysis-mark-close").textContent = formatNumber(close);
     document.getElementById("analysis-mark-aux").textContent = latestCandle ? `${formatNumber(latestCandle.low)} - ${formatNumber(latestCandle.high)}` : "-";
 
@@ -1667,6 +1668,30 @@ async function publishAnalysisBundle(bundle, token) {
     };
 }
 
+// 2026-09-04 (ui-audit P1#4): quote freshness is data state, not market
+// direction (§3.2/§7.10). A cached mark older than 10 minutes is labeled
+// with its true age; info/warning tones only — never bullish.
+const MARK_STALE_AFTER_MS = 10 * 60 * 1000;
+
+function applyMarkFreshness(markPayload, { preferLive = false } = {}) {
+  const freshnessEl = document.getElementById("analysis-mark-freshness");
+  if (!freshnessEl || !markPayload?.ts_event) return;
+  const ageMs = Date.now() - new Date(markPayload.ts_event).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return;
+  if (ageMs < MARK_STALE_AFTER_MS) {
+    freshnessEl.textContent = "实时";
+    freshnessEl.className = "chip chip-neutral";
+  } else {
+    const hours = Math.round(ageMs / 3600000);
+    freshnessEl.textContent = `缓存 · ${hours >= 24 ? Math.round(hours / 24) + " 天前" : hours + " 小时前"}`;
+    freshnessEl.className = "chip chip-warning";
+  }
+  const next = document.getElementById("analysis-mark-next");
+  if (next) {
+    next.textContent = preferLive && ageMs < MARK_STALE_AFTER_MS ? "5 分钟自动刷新" : "最近可用报价";
+  }
+}
+
 async function enhanceLatestMark(token = activeRenderToken, { preferLive = false } = {}) {
   if (!isRunActive(token)) return null;
   try {
@@ -1683,7 +1708,10 @@ async function enhanceLatestMark(token = activeRenderToken, { preferLive = false
     const next = document.getElementById("analysis-mark-next");
     if (price) price.textContent = formatNumber(markPayload.mark_price);
     if (updated) updated.textContent = formatDateTime(markPayload.ts_event);
-    if (next) next.textContent = preferLive ? "5 分钟自动刷新" : "最近可用报价";
+    if (next && !(markPayload?.ts_event)) {
+      next.textContent = preferLive ? "5 分钟自动刷新" : "最近可用报价";
+    }
+    applyMarkFreshness(markPayload, { preferLive });
     return markPayload;
   } catch (error) {
     if (error?.name !== "AbortError") console.warn("analysis:latest-mark:enhance-failed", error);
