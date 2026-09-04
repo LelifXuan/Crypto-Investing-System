@@ -12643,6 +12643,29 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   background: var(--accent-ghost);
 }
 
+/* 2026-09-04 (ui-audit P1#5): 缺历史数据时的等待态说明卡 — 与 BTC 空态
+   一致的 dashed 卡,明确原因与恢复动作,不以 0 冒充模拟结果。 */
+.etf-equity-pending {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 20px 24px;
+  border: 1px dashed var(--border, rgba(175, 154, 123, 0.4));
+  border-radius: 14px;
+  background: rgba(245, 240, 232, 0.45);
+  color: var(--text-secondary, #6b6357);
+  font-size: 13px;
+}
+.etf-equity-pending-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.etf-equity-pending p {
+  margin: 0;
+}
+
 .etf-equity-stats {
   display: grid;
   gap: 10px;

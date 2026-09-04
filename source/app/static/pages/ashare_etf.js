@@ -438,6 +438,25 @@ function _buildEquityPayload() {
 }
 
 function _renderEquitySummaryCards(summary, meta, mode) {
+  // 2026-09-04 (ui-audit P1#5): when history is missing the summary must
+  // not present fabricated zeros as if a simulation ran (§1.2/§7.10).
+  // Missing = every tracked symbol lacks data, or the backend marked the
+  // source missing/unavailable with no simulated months at all.
+  const missingSymbols = meta?.symbols_missing?.length ?? 0;
+  const totalSymbols = (meta?.symbols?.length) || (missingSymbols > 0 ? missingSymbols : 0);
+  const historyMissing =
+    meta?.source_status === "missing" ||
+    (missingSymbols > 0 && totalSymbols > 0 && missingSymbols >= totalSymbols) ||
+    ((summary?.months_simulated ?? 0) === 0 && Number(summary?.final_total_value ?? 0) === 0 && Number(summary?.final_cost_value ?? 0) === 0);
+  if (historyMissing) {
+    return `
+      <div class="etf-equity-pending">
+        <p class="etf-equity-pending-title">等待历史数据</p>
+        <p>模拟结果尚未生成：${missingSymbols > 0 ? `${missingSymbols} 个 ETF 缺少历史数据（${escapeHtml((meta.symbols_missing || []).join(", "))}）。` : "历史数据仍在抓取或尚未就绪。"}</p>
+        <p>数据就绪后此处将展示策略权益、累计投入与一次性投入对比；不会以 0 作为模拟结果。</p>
+      </div>
+    `;
+  }
   if (mode === "simulation") {
     const rebalances = summary.rebalance_count ?? 0;
     const topups = summary.quarterly_topup_count ?? 0;
