@@ -83,7 +83,7 @@ REAL_CONTENT_SELECTORS = {
     "market-analysis": [".analysis-hero-grid", ".analysis-chart-grid"],
     "market-structure": [".structure-page"],
     "market-events": [".events-feed-shell", ".events-feed-card", "#market-events-root"],
-    "macro-calendar": ["#macro-statusbar", "#macro-summary-cards"],
+    "macro-calendar": [".macro-calendar-card", ".macro-calendar-head"],
     # alert-center was removed; /alerts-page now routes to ai-strategy (see app/web/router.py).
     "alert-center": [".strategy-scan-page", ".strategy-v2-toolbar"],
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
