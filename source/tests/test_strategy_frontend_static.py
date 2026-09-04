@@ -477,18 +477,22 @@ def test_strategy_index_banner_distinguishes_pending_vs_ready_no_edge():
     - still pending: "数据补齐中 (X/Y) ..." (NEW)
     The 'no opportunities found' copy that previously appeared in
     ALL cases is misleading when data is still pending."""
+    # 2026-09-04: the persistent banner was removed with the strategy
+    # statusbar (V2.3 workbench layout). The pending-vs-ready distinction
+    # now lives in the ranked empty state, driven by the same matrix
+    # cache_state classification in index.js.
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
-    # Existing copy must remain for the opportunities-found case
-    assert "发现" in index
-    # New "ready, no edge" copy
-    assert ("全部数据已就绪" in index) or ("数据已就绪" in index), (
-        "index.js must add a banner for the 'ready, no edge' case"
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
+    # pending: data still warming — must NOT claim "no opportunities"
+    assert "数据补齐中" in ranked, (
+        "ranked empty state must keep the pending copy"
     )
-    # New pending banner
-    assert ("数据补齐中" in index) or ("数据待补" in index), (
-        "index.js must add a banner for the 'data still pending' case"
+    # ready, no edge
+    assert "当前无交易机会" in ranked, (
+        "ranked empty state must keep the no-edge copy"
     )
-    # Readiness is derived from the same visible matrix as the count.
+    # the two states are selected by the same visible-matrix classification
+    assert "hasPending" in ranked
     assert 'item.cache_state === "fresh"' in index
     assert '"missing", "warming", "error"' in index
 

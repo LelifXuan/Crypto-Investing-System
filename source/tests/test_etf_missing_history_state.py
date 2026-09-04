@@ -17,7 +17,7 @@ def test_missing_history_renders_pending_state_not_zeros() -> None:
     idx = ETF.index("function _renderEquitySummaryCards")
     block = ETF[idx:idx + 2000]
     assert "historyMissing" in block
-    assert "etf-equity-pending" in block
+    assert "etf-equity-awaiting" in block
     assert "等待历史数据" in block
     assert "不会以 0 作为模拟结果" in block
 
@@ -38,7 +38,7 @@ def test_genuine_zero_positions_are_not_swallowed() -> None:
 
 
 def test_pending_card_has_dashed_placeholder_styling() -> None:
-    assert ".etf-equity-pending" in STYLES
-    idx = STYLES.index(".etf-equity-pending {")
+    assert ".etf-equity-awaiting" in STYLES
+    idx = STYLES.index(".etf-equity-awaiting {")
     block = STYLES[idx:STYLES.index("}", idx)]
     assert "dashed" in block

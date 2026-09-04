@@ -55,8 +55,13 @@ def test_key_pages_reveal_only_when_async_content_lands() -> None:
     assert "workbench.chartConfig(key, config)" in ANALYSIS
     assert "if (prepared) renderChart(key, canvas, prepared)" in ANALYSIS
     assert 'revealStagger(canvas.closest(".chart-wrap"))' not in ANALYSIS
-    assert 'revealStagger(document.getElementById("structure-chart-panel"))' not in STRUCTURE
-    assert "renderFromBundle(bundle);" in STRUCTURE
+    # Structure: the reveal fires only AFTER the async bundle lands, never
+    # from a cached quick repaint (that path renders without staggering).
+    network_render = STRUCTURE.index("renderFromBundle(bundle);")
+    chart_reveal = STRUCTURE.index(
+        'revealStagger(document.getElementById("structure-chart-panel"))'
+    )
+    assert network_render < chart_reveal
     assert "renderFromBundle(state.bundle);\n        revealStagger" not in STRUCTURE
 
     assert EVENTS.count('revealStagger(document.getElementById("events-feed")') == 2

@@ -42,12 +42,16 @@ def test_event_stream_refresh_is_primary_and_translation_is_secondary() -> None:
 
 
 def test_event_stream_heading_metrics_and_actions_share_one_context_bar() -> None:
-    assert 'class="card events-hero events-context-bar"' in PAGE
-    assert 'class="events-metrics-grid" id="events-metrics"' in PAGE
+    # 2026-09-04 (V2.3 workbench): the events-hero context bar was replaced
+    # by the shared context rail (summary fields) plus a feed-card header
+    # that visually binds translate/refresh to the panel they operate on.
+    # The old separate metrics grid must NOT come back.
+    assert 'id="events-context-rail"' in PAGE
+    assert "mountContextRail" in PAGE
     assert '<section class="grid cols-4 events-metrics-grid"' not in PAGE
-    assert 'class="events-inline-metric"' in PAGE
-    assert 'body[data-page="market-events"] .events-context-bar {' in EDITORIAL
-    assert 'grid-template-columns: repeat(4, minmax(104px, 1fr));' in EDITORIAL
+    assert 'class="events-feed-actions"' in PAGE
+    assert 'id="events-refresh"' in PAGE
+    assert 'id="events-translate-toggle"' in PAGE
 
 
 def test_collapsing_calendar_keeps_feed_below_sticky_topbar() -> None:

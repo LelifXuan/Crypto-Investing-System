@@ -809,25 +809,35 @@ export async function renderMarketEvents({ commands } = {}) {
       button.textContent = "刷新信息流";
     }
   }
-  document.getElementById("events-refresh").addEventListener("click", () => { void refreshEvents().catch(() => { if (!pageLifetime.signal.aborted) renderStatus("刷新失败，已保留可用信息流", "warning"); }); }, { signal: pageLifetime.signal });
-
-  document.getElementById("events-translate-toggle").addEventListener("click", async () => {
-    appState.translateEvents = !appState.translateEvents;
-    persistState();
-    const toggleBtn = document.getElementById("events-translate-toggle");
-    if (toggleBtn) toggleBtn.textContent = appState.translateEvents ? "关闭中文翻译" : "开启中文翻译";
-    if (appState.translateEvents) {
-      renderStatus("翻译中", "loading");
-      api.refreshMarketEventTranslations({ limit: 50, maxBatches: 10 }).catch(() => {});
-      await pollTranslations();
-    } else {
-      stopTranslationPolling();
-      // 只重拉信息流并就地更新,不重建 metrics / 供给日历。
-      invalidateCache("/marketevents");
-      await loadFeed(true);
-      renderStatus("已关闭中文翻译", "success");
+  // 2026-09-04: 刷新/翻译按钮由 renderEventFeed 生成,feed 指纹重建会替换
+  // 按钮 DOM。直接绑定会在第一次重建后失效(点击静默无响应),改为挂在
+  // #events-feed 外层 shell 的一次性事件委托;委托监听器随 pageLifetime
+  // signal 一并清理。
+  document.getElementById("events-feed")?.addEventListener("click", (ev) => {
+    if (ev.target.closest("#events-refresh")) {
+      void refreshEvents().catch(() => { if (!pageLifetime.signal.aborted) renderStatus("刷新失败，已保留可用信息流", "warning"); });
+      return;
     }
-  });
+    if (ev.target.closest("#events-translate-toggle")) {
+      void (async () => {
+        appState.translateEvents = !appState.translateEvents;
+        persistState();
+        const toggleBtn = document.getElementById("events-translate-toggle");
+        if (toggleBtn) toggleBtn.textContent = appState.translateEvents ? "关闭中文翻译" : "开启中文翻译";
+        if (appState.translateEvents) {
+          renderStatus("翻译中", "loading");
+          api.refreshMarketEventTranslations({ limit: 50, maxBatches: 10 }).catch(() => {});
+          await pollTranslations();
+        } else {
+          stopTranslationPolling();
+          // 只重拉信息流并就地更新,不重建 metrics / 供给日历。
+          invalidateCache("/marketevents");
+          await loadFeed(true);
+          renderStatus("已关闭中文翻译", "success");
+        }
+      })();
+    }
+  }, { signal: pageLifetime.signal });
 
   // 2026-08-11: 冻结/解冻按钮事件委托
   document.getElementById("events-feed")?.addEventListener("click", async (ev) => {

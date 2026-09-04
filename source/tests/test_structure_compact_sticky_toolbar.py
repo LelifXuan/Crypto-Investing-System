@@ -41,6 +41,9 @@ def test_wide_structure_workspace_keeps_summary_beside_chart() -> None:
         'body[data-page="market-structure"].is-workbench-inspector-open '
         ".workbench-primary .structure-overview-grid"
     ) in EDITORIAL
-    assert "chartPanel.clientWidth - 28" in PAGE
-    assert "window.innerHeight * 0.36" in PAGE
-    assert "--structure-render-height" in PAGE
+    # 2026-09-04 (P1#3): SVG sizing is container-width aware with padding
+    # subtracted (not the old clientWidth-28 + innerHeight*0.36 heuristic),
+    # and the render size is pinned inline so CSS cannot re-shrink it.
+    assert "parseFloat(hostCS.paddingLeft)" in PAGE
+    assert "parseFloat(hostCS.paddingRight)" in PAGE
+    assert "Math.abs(inner - rendered) > 1" in PAGE

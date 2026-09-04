@@ -322,27 +322,30 @@ def test_chart_skeleton_candle_no_after_pseudo() -> None:
 
 def test_reduced_motion_global_block_still_present() -> None:
     """Global @media (prefers-reduced-motion: reduce) must clamp duration to 0.01ms."""
-    match = re.search(
+    matches = re.findall(
         r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]+?)\n\}",
         STYLES,
     )
-    assert match is not None, (
+    assert matches, (
         "prefers-reduced-motion media query missing in styles.css"
     )
-    body = match.group(1)
-    assert "animation-duration: 0.01ms !important" in body, (
-        "Global reduced-motion must clamp animation-duration to 0.01ms"
-    )
+    # 2026-09-04: page-local cold-start blocks precede the global clamp in
+    # the file; the GLOBAL block is whichever one carries the 0.01ms rule.
+    assert any(
+        "animation-duration: 0.01ms !important" in body for body in matches
+    ), "Global reduced-motion must clamp animation-duration to 0.01ms"
 
 
 def test_loading_pulse_reduced_motion_strategy() -> None:
     """Reduced-motion users receive a stable placeholder, not a compressed loop."""
-    match = re.search(
+    matches = re.findall(
         r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]+?)\n\}",
         STYLES,
     )
-    assert match is not None
-    body = match.group(1)
+    assert matches
+    # The global clamp block (not the cold-start override) owns the
+    # stable-placeholder rules for loading-pulse and stagger items.
+    body = next((b for b in matches if ".loading-pulse" in b), matches[-1])
     assert ".loading-pulse" in body
     assert "[data-stagger-item]" in body
     assert "animation: none !important" in body

@@ -450,8 +450,8 @@ function _renderEquitySummaryCards(summary, meta, mode) {
     ((summary?.months_simulated ?? 0) === 0 && Number(summary?.final_total_value ?? 0) === 0 && Number(summary?.final_cost_value ?? 0) === 0);
   if (historyMissing) {
     return `
-      <div class="etf-equity-pending">
-        <p class="etf-equity-pending-title">等待历史数据</p>
+      <div class="etf-equity-awaiting">
+        <p class="etf-equity-awaiting-title">等待历史数据</p>
         <p>模拟结果尚未生成：${missingSymbols > 0 ? `${missingSymbols} 个 ETF 缺少历史数据（${escapeHtml((meta.symbols_missing || []).join(", "))}）。` : "历史数据仍在抓取或尚未就绪。"}</p>
         <p>数据就绪后此处将展示策略权益、累计投入与一次性投入对比；不会以 0 作为模拟结果。</p>
       </div>

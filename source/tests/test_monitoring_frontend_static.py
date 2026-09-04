@@ -63,11 +63,20 @@ def test_monitoring_css_removes_terminal_brief_classes() -> None:
 def test_monitoring_surfaces_have_clear_vertical_separation() -> None:
     content = _read(STYLES_CSS)
 
-    full_render_selector = 'body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface'
-    diff_shell_selector = 'body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-surface'
+    full_render_selector = (
+        'body[data-page="monitoring-overview"] .monitoring-surface + .monitoring-surface'
+    )
+    diff_shell_selector = (
+        'body[data-page="monitoring-overview"] #monitoring-topbar + .monitoring-summary-surface'
+    )
     assert full_render_selector in content
     assert diff_shell_selector in content
-    assert "margin-top: 28px;" in content
+    # 2026-09-04 (ui-audit P2#6): the 28px overlay margin was removed —
+    # section spacing is owned by the page-root 24px gap. The diff shell
+    # rule must exist but must not re-add stacked margin.
+    idx = content.index(diff_shell_selector)
+    block = content[idx:content.index("}", idx)]
+    assert "margin-top: 0" in block or "margin-top" not in block
 
 
 def test_monitoring_js_does_not_render_decision_brief_in_main_canvas() -> None:
