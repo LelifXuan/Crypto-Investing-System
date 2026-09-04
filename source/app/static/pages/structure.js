@@ -1557,6 +1557,12 @@ function attachEvents(loadData) {
 }
 
 export async function renderStructure() {
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.searchParams.has("inspect") || currentUrl.searchParams.has("keep")) {
+    currentUrl.searchParams.delete("inspect");
+    currentUrl.searchParams.delete("keep");
+    window.history.replaceState(window.history.state, "", currentUrl);
+  }
   renderShell();
   let disposed = false;
   let activeController = null;

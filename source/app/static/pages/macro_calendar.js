@@ -259,7 +259,6 @@ function renderCalendarSkeleton() {
         <div class="skeleton-cell" style="height:200px"></div>
       </article>
     </section>
-    <footer id="macro-statusbar" class="macro-statusbar">${statusBanner("正在读取日历数据", "loading")}</footer>
   `;
 }
 
@@ -292,8 +291,8 @@ export async function renderMacroCalendar() {
   setRoot(renderCalendarSkeleton());
 
   const renderStatus = (message, tone = "neutral") => {
-    const el = document.getElementById("macro-statusbar");
-    if (el) el.innerHTML = statusBanner(message, tone);
+    // Status bar removed — macro calendar page no longer shows a persistent status/banner.
+    // Call sites are kept as no-ops so loading/error paths need no individual edits.
   };
 
   async function load(force = false) {

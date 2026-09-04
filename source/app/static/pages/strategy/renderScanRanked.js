@@ -1,5 +1,6 @@
 // app/static/pages/strategy/renderScanRanked.js
 import { escapeHtml, formatNumber } from "../../core/dom.js";
+import { appState } from "../../core/state.js";
 
 const TIMEFRAME_LABELS = { "1w": "周线", "1d": "日线", "4h": "4H" };
 
@@ -28,11 +29,12 @@ export function renderScanRanked(ranked, hasPending = false) {
       const tone = item.direction === "LONG" ? "bullish" : "bearish";
       const arrow = item.direction === "LONG" ? "↑" : "↓";
       const timeframe = TIMEFRAME_LABELS[item.timeframe] || item.timeframe;
+      const code = item.instrument_code || appState.instruments.find((i) => i.id === item.instrument_id)?.code || item.instrument_id;
       return `
         <article class="card scan-ranked-card" data-tone="${tone}" data-instrument="${escapeHtml(item.instrument_id)}" data-timeframe="${escapeHtml(item.timeframe)}" style="cursor:pointer">
           <div class="scan-ranked-head">
             <div>
-              <span class="impact-chip impact-${tone}">${escapeHtml(item.direction_label)} ${arrow}</span>
+              <span class="impact-chip impact-${tone}">${escapeHtml(code)} ${escapeHtml(item.direction_label)} ${arrow}</span>
               <span class="status-chip chip-neutral">${escapeHtml(timeframe)}</span>
             </div>
             <div class="scan-ranked-score">

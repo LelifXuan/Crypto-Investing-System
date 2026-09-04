@@ -544,16 +544,16 @@ function missingTone(item) {
   return "neutral";
 }
 
-function renderShellFallback(message) {
+function renderShellFallback(message, pending = false) {
   return `
     <div id="monitoring-topbar">
-      <div class="monitoring-progress-banner">${statusBanner(message, "warning")}</div>
-      <section class="monitoring-surface monitoring-topbar is-warming">
+      <div class="monitoring-progress-banner" role="status">${statusBanner(message, pending ? "loading" : "warning")}</div>
+      <section class="monitoring-surface monitoring-topbar is-warming" aria-busy="${pending}">
         <div class="monitoring-topbar-grid">
           <article class="monitoring-topbar-item monitoring-topbar-context wide">
-            <span class="monitoring-context-status" data-status-tone="pending">正在读取最近快照</span>
+            <span class="monitoring-context-status" data-status-tone="${pending ? "pending" : "neutral"}">${pending ? '<span class="monitoring-cold-spinner" aria-hidden="true"></span>正在读取最近快照' : '快照暂不可用'}</span>
             <small>监控总览</small>
-            <strong>后台准备中</strong>
+            <strong>${pending ? "后台准备中" : "等待重新加载"}</strong>
           </article>
         </div>
       </section>
@@ -562,7 +562,10 @@ function renderShellFallback(message) {
       <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
         <div id="monitoring-macro-panel"></div>
         <div id="monitoring-terminal-summary">
-          <p class="section-summary">正在读取最近快照；可刷新或稍后自动更新。</p>
+          <div class="monitoring-cold-content">
+          <p class="section-summary">${escapeHtml(message)}</p>
+          ${pending ? '<div class="monitoring-cold-placeholder" aria-hidden="true"><span></span><span></span><span></span></div>' : ''}
+          </div>
         </div>
       </div>
     </section>
@@ -1055,6 +1058,7 @@ const MONITORING_SECTION_IDS = [
   "monitoring-macro-panel",
   "monitoring-terminal-summary",
   "monitoring-macro-grid",
+  "monitoring-governance-bar",
 ];
 
 function applyMonitoringDiff(data, options = {}) {
@@ -1073,12 +1077,14 @@ function applyMonitoringDiff(data, options = {}) {
         </div>
       </section>
       <div id="monitoring-macro-grid"></div>
+      <div id="monitoring-governance-bar"></div>
     `;
     root._monitoringSections = {
       topbar: root.querySelector("#monitoring-topbar"),
       "monitoring-macro-panel": root.querySelector("#monitoring-macro-panel"),
       "monitoring-terminal-summary": root.querySelector("#monitoring-terminal-summary"),
       "monitoring-macro-grid": root.querySelector("#monitoring-macro-grid"),
+      "monitoring-governance-bar": root.querySelector("#monitoring-governance-bar"),
     };
   }
   const macro = getMacroPayload(data);
@@ -1087,6 +1093,7 @@ function applyMonitoringDiff(data, options = {}) {
   sections["monitoring-macro-panel"].innerHTML = renderMacroPanel(data, macro);
   sections["monitoring-terminal-summary"].innerHTML = renderTerminalSummary(data);
   sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro, data);
+  sections["monitoring-governance-bar"].innerHTML = renderMonitoringGovernanceBar(data);
   bindMacroGroupToggles();
   bindMonitoringMissingToggle();
   updatePageContext({
@@ -1204,10 +1211,10 @@ async function loadDashboard() {
         showMonitoringBanner("正在读取最近快照", "loading");
       } catch (error) {
         console.warn("monitoring stored snapshot render failed", error);
-        setRoot(renderShellFallback("正在读取最近快照"));
+        setRoot(renderShellFallback("正在读取最近快照", true));
       }
     } else {
-      setRoot(renderShellFallback("正在读取最近快照"));
+      setRoot(renderShellFallback("正在读取最近快照", true));
     }
   } else {
     showMonitoringBanner("正在读取最近快照", "loading");

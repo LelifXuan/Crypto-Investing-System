@@ -155,6 +155,10 @@ function renderEventFeed(items) {
           <p class="eyebrow">EVENT FEED</p>
           <h2>最新信息流</h2>
         </div>
+        <div class="events-feed-actions">
+          <button id="events-translate-toggle" class="ghost-button compact" type="button">${appState.translateEvents ? "关闭中文翻译" : "开启中文翻译"}</button>
+          <button id="events-refresh" class="primary-button compact" type="button">刷新信息流</button>
+        </div>
       </div>
       <div class="event-feed">${cards}</div>
     </article>
@@ -179,7 +183,10 @@ function renderEventFeedLoading() {
           <p class="eyebrow">EVENT FEED</p>
           <h2>正在接入信息流</h2>
         </div>
-        <span>同步来源与发布时间</span>
+        <div class="events-feed-actions">
+          <button id="events-translate-toggle" class="ghost-button compact" type="button">${appState.translateEvents ? "关闭中文翻译" : "开启中文翻译"}</button>
+          <button id="events-refresh" class="primary-button compact" type="button">刷新信息流</button>
+        </div>
       </div>
       <div class="event-stream-skeleton">${rows}</div>
     </article>
@@ -494,10 +501,9 @@ export async function renderMarketEvents() {
         <h2>最近市场事件与新闻</h2>
       </div>
       <dl class="events-metrics-grid" id="events-metrics" aria-label="信息流摘要"></dl>
-      <div class="toolbar compact-toolbar events-context-actions">
-        <button id="events-translate-toggle" class="ghost-button compact" type="button">${appState.translateEvents ? "关闭中文翻译" : "开启中文翻译"}</button>
-        <button id="events-refresh" class="primary-button compact" type="button">刷新信息流</button>
-      </div>
+      <!-- 2026-09-01: translate + refresh buttons now live inside the feed-card
+           header (rendered by renderEventFeed / renderEventFeedLoading) so
+           they are visually bound to the panel they operate on. -->
     </section>
     <section id="events-supply-calendar"></section>
     <section class="events-feed-shell" id="events-feed" aria-busy="true">${renderEventFeedLoading()}</section>
@@ -643,40 +649,53 @@ export async function renderMarketEvents() {
     statusbar.insertAdjacentElement("afterend", button);
   }
 
-  document.getElementById("events-refresh").addEventListener("click", async () => {
-    const button = document.getElementById("events-refresh");
-    button.disabled = true;
-    button.textContent = "同步中";
-    setFeedBusy(true);
-    try {
-      renderStatus("正在同步市场信息流", "loading");
-      await api.syncMarketEvents();
-      await load(true);
-      renderStatus("数据已就绪", "success");
-    } finally {
-      setFeedBusy(false);
-      button.disabled = false;
-      button.textContent = "刷新信息流";
-    }
-  });
-
-  document.getElementById("events-translate-toggle").addEventListener("click", async () => {
-    appState.translateEvents = !appState.translateEvents;
-    persistState();
-    const toggleBtn = document.getElementById("events-translate-toggle");
-    if (toggleBtn) toggleBtn.textContent = appState.translateEvents ? "关闭中文翻译" : "开启中文翻译";
-    if (appState.translateEvents) {
-      renderStatus("翻译中", "loading");
-      api.refreshMarketEventTranslations({ limit: 50, maxBatches: 10 }).catch(() => {});
-      await pollTranslations();
-    } else {
-      stopTranslationPolling();
-      // 只重拉信息流并就地更新,不重建 metrics / 供给日历。
-      invalidateCache("/marketevents");
-      await loadFeed(true);
-      renderStatus("已关闭中文翻译", "success");
-    }
-  });
+  // 2026-09-01: use event delegation on the stable feed-card container so
+  // handlers survive the load() rerender that replaces the button DOM.
+  // (Previously handlers were bound directly to the loading-state button,
+  // which got swapped out for the real button right after — making clicks
+  // silently no-op.)
+  const feedCard = document.getElementById("events-feed");
+  if (feedCard && !feedCard._governanceBound) {
+    feedCard._governanceBound = true;
+    feedCard.addEventListener("click", async (ev) => {
+      const refreshBtn = ev.target.closest("#events-refresh");
+      if (refreshBtn) {
+        const button = document.getElementById("events-refresh");
+        if (!button) return;
+        button.disabled = true;
+        button.textContent = "同步中";
+        setFeedBusy(true);
+        try {
+          renderStatus("正在同步市场信息流", "loading");
+          await api.syncMarketEvents();
+          await load(true);
+          renderStatus("数据已就绪", "success");
+        } finally {
+          setFeedBusy(false);
+          button.disabled = false;
+          button.textContent = "刷新信息流";
+        }
+        return;
+      }
+      const translateBtn = ev.target.closest("#events-translate-toggle");
+      if (translateBtn) {
+        appState.translateEvents = !appState.translateEvents;
+        persistState();
+        const toggleBtn = document.getElementById("events-translate-toggle");
+        if (toggleBtn) toggleBtn.textContent = appState.translateEvents ? "关闭中文翻译" : "开启中文翻译";
+        if (appState.translateEvents) {
+          renderStatus("翻译中", "loading");
+          api.refreshMarketEventTranslations({ limit: 50, maxBatches: 10 }).catch(() => {});
+          await pollTranslations();
+        } else {
+          stopTranslationPolling();
+          invalidateCache("/marketevents");
+          await loadFeed(true);
+          renderStatus("已关闭中文翻译", "success");
+        }
+      }
+    });
+  }
 
   // 2026-08-11: 冻结/解冻按钮事件委托
   document.getElementById("events-feed")?.addEventListener("click", async (ev) => {
