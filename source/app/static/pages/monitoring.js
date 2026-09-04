@@ -715,19 +715,19 @@ function missingTone(item) {
   return "neutral";
 }
 
-function renderShellFallback(message) {
+function renderShellFallback(message, pending = false) {
   return `
     <div id="monitoring-context-rail"></div>
     <div class="workbench-page-layout monitoring-workbench-layout">
-      <div class="workbench-primary">
+      <div class="monitoring-primary">
         <div id="monitoring-topbar">
-          <div class="monitoring-progress-banner">${statusBanner(message, "warning")}</div>
-          <section class="monitoring-surface monitoring-topbar">
+          <div class="monitoring-progress-banner" role="status">${statusBanner(message, pending ? "loading" : "warning")}</div>
+          <section class="monitoring-surface monitoring-topbar" aria-busy="${pending}">
             <div class="monitoring-topbar-grid">
               <article class="monitoring-topbar-item monitoring-topbar-context wide">
-                <span class="monitoring-context-status" data-status-tone="pending">正在读取最近快照</span>
+                <span class="monitoring-context-status" data-status-tone="${pending ? "pending" : "neutral"}">${pending ? '<span class="monitoring-cold-spinner" aria-hidden="true"></span>正在读取最近快照' : '快照暂不可用'}</span>
                 <small>监控总览</small>
-                <strong>后台准备中</strong>
+                <strong>${pending ? "后台准备中" : "等待重新加载"}</strong>
               </article>
             </div>
           </section>
@@ -736,7 +736,10 @@ function renderShellFallback(message) {
           <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
             <div id="monitoring-macro-panel"></div>
             <div id="monitoring-terminal-summary">
-              <p class="section-summary">正在读取最近快照；可刷新或稍后自动更新。</p>
+              <div class="monitoring-cold-content">
+              <p class="section-summary">${escapeHtml(message)}</p>
+              ${pending ? '<div class="monitoring-cold-placeholder" aria-hidden="true"><span></span><span></span><span></span></div>' : ''}
+              </div>
             </div>
           </div>
         </section>
@@ -1336,7 +1339,7 @@ function applyMonitoringDiff(data, options = {}) {
     return;
   }
   if (!hasRenderedMonitoringShell()) {
-    root.innerHTML = renderShellFallback("正在读取最近快照");
+    root.innerHTML = renderShellFallback("正在读取最近快照", true);
     attachMonitoringShell(root);
   }
   const macro = getMacroPayload(data);
@@ -1494,11 +1497,11 @@ async function loadDashboard() {
         showMonitoringBanner("正在读取最近快照", "loading");
       } catch (error) {
         console.warn("monitoring stored snapshot render failed", error);
-        setRoot(renderShellFallback("正在读取最近快照"));
+        setRoot(renderShellFallback("正在读取最近快照", true));
         attachMonitoringShell(document.getElementById("page-root"));
       }
     } else {
-      setRoot(renderShellFallback("正在读取最近快照"));
+      setRoot(renderShellFallback("正在读取最近快照", true));
       attachMonitoringShell(document.getElementById("page-root"));
     }
   } else {
@@ -1526,7 +1529,9 @@ async function loadDashboard() {
     }
     console.warn("monitoring snapshot fetch failed", error);
     workbenchUrl?.dataReady();
-    if (hasRenderedMonitoringShell()) {
+    // LKG = a real rendered bundle, not just a warming shell on screen.
+    // Cold-start failures must not claim a previous snapshot exists.
+    if (lastRenderedBundle && hasRenderedMonitoringShell()) {
       showMonitoringBanner("监控快照读取失败，已保留上一份可用快照。", "warning");
     } else {
       setRoot(renderShellFallback("监控快照暂不可用；可刷新或稍后自动更新。"));
