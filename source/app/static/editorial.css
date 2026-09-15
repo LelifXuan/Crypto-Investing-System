@@ -4118,8 +4118,15 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
 }
 
 @media (pointer: coarse) {
-  body .disclosure-toggle {
+  body .disclosure-toggle,
+  body .etf-equity-mode-btn,
+  body .etf-equity-from .etf-equity-freq-btn,
+  body #etf-equity-generate,
+  body .etf-equity-from input,
+  body .etf-equity-offset input {
     min-height: 44px;
+    min-width: 44px;
+    padding-block: 8px;
   }
 }
 
