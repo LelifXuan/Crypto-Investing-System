@@ -9,7 +9,7 @@
 首次验证暴露的 BTC abort 后旧页面重绘与 timer 重启已修复并补测试，随后全量重跑通过。
 P2 操作核心按 Command → Pin → Resize → URL 验收；这条记录描述 P1 冻结批次，V2.3 页面范围见下方迁移基线。
 
-> 版本 3.4 · UI 2.0 页面迁移基线（H0–H4 软件验收冻结，2026-08-31）  
+> 版本 3.5 · 冷灰 / 冷紫 / 蓝灰全站视觉基线（2026-09-09）  
 > 适用范围：`source/app/templates/page.html`、`source/app/static/styles.css`、`source/app/static/editorial.css`、`source/app/static/ui/` 与 `source/app/static/pages/`。
 
 ### V2.3 页面迁移基线（2026-08-31）
@@ -49,7 +49,7 @@ ETF、Gold 不迁移；Knowledge 保持 reference layout。不是完整 P2 Compl
 
 ### 1.1 Design Read
 
-**面向专业研究与配置决策的高密度市场终端，采用克制的编辑部式信息层级、暖灰纸面和低饱和紫色操作语言，重点突出数据状态、时间、来源和可执行边界。**
+**面向专业研究与配置决策的高密度市场终端，采用克制的编辑部式信息层级、低饱和冷灰白表面、深冷紫操作语言和蓝灰配套色，重点突出数据状态、时间、来源和可执行边界。**
 
 设计旋钮：
 
@@ -100,7 +100,7 @@ editorial.css    当前应用外壳、最终视觉语义和页面级修正
 新 token 按以下层级组织：
 
 ```text
-Primitive：原始值，如暖灰、紫色、间距 8px
+Primitive：原始值，如冷灰、冷紫、蓝灰、间距 8px
     ↓
 Semantic：用途，如 --accent、--border、--space-action
     ↓
@@ -133,26 +133,26 @@ Component：组件特例，如 --topbar-height、--glass-shadow
 
 | Token | 当前值 | 用途 |
 |---|---|---|
-| `--bg` | `#f2efea` | 应用画布 |
-| `--bg-strong` | `#e8e3dd` | 左侧导航背景 |
-| `--surface` | `#f7f5f1` | 普通表面 |
-| `--surface-elevated` | `#fcfbf8` | 卡片与实色浮层 |
-| `--surface-muted` | `#f0edf3` | 弱化区、锁定态、标签背景 |
+| `--bg` | `#eef1f5` | 应用画布 |
+| `--bg-strong` | `#e5e9f0` | 左侧导航背景 |
+| `--surface` | `#f5f7fa` | 普通表面 |
+| `--surface-elevated` | `#fbfcfe` | 卡片与实色浮层 |
+| `--surface-muted` | `#edf0f5` | 弱化区、锁定态、标签背景 |
 | `--ink` | `#211d2b` | 主文字 |
 | `--text-secondary` | `#5f5968` | 描述、辅助标签 |
-| `--text-tertiary` | `#746c7d` | 时间、缺失和低优先级信息（2026-09-04 P2#9：原 `#817a88` 对 `#fcfbf8` 仅 4.00:1 低于 AA，调深至 4.85:1） |
-| `--border` | `#d9d3ca` | 标准边框 |
-| `--border-strong` | `#c8c0b6` | 强分隔 |
+| `--text-tertiary` | `#746c7d` | 时间、缺失和低优先级信息；在当前两个主表面上的对比度为 4.89:1 / 4.68:1 |
+| `--border` | `#d5dae2` | 标准边框 |
+| `--border-strong` | `#c2c9d3` | 强分隔 |
 
-这是“暖灰纸面 + 冷紫操作色”的编辑部终端，不是米金奢侈品风格，也不是高饱和 SaaS 蓝紫渐变。
+这是“冷灰白表面 + 深冷紫主题色 + 蓝灰配套色”的研究终端。画布、导航、普通容器和浮层依靠明度区分层级，浅紫只用于低权重选中背景。
 
 ### 3.2 操作色与状态色
 
 | 语义 | Token | 当前值 | 使用规则 |
 |---|---|---|---|
-| 主操作 | `--accent` | `#66548e` | 选中、强调、轻量交互 |
-| 主操作加强 | `--accent-strong` | `#4d3b73` | 主要按钮、焦点、章节标识 |
-| 按下 | `--accent-pressed` | `#413161` | active / 强 hover |
+| 主操作 | `--accent` | `#554a78` | 选中、强调、轻量交互 |
+| 主操作加强 | `--accent-strong` | `#40365f` | 主要按钮、焦点、章节标识 |
+| 按下 | `--accent-pressed` | `#312a4a` | active / 强 hover |
 | 信息 | `--info` | `#3e6f9f` | 数据在线、快照、说明 |
 | 看多 | `--bullish` | `#34745f` | 明确的市场方向 |
 | 看空 | `--bearish` | `#a34f5f` | 明确的市场方向 |
@@ -162,10 +162,13 @@ Component：组件特例，如 --topbar-height、--glass-shadow
 
 强制规则：
 
-- 紫色只表达操作、选中和产品识别，不替代看多/看空。
-- 看多、看空不能用同一紫色色阶区分。
+- 深冷紫只表达操作、选中和产品识别；蓝灰用于信息与辅助层级，二者都不替代看多/看空。
+- 看多、看空不能用同一主题色色阶区分。
 - `warning` 不是“市场风险高”的默认颜色，仅表达系统或执行层面的注意状态。
 - K 线涨跌可使用更清晰的 `--direction-up` / `--direction-down`，但只限密集价格图。
+- 页面画布与通用容器的环境光只允许使用中性灰或 `--info-*` 蓝灰；禁止用 warning、danger、bearish 或旧米棕色制造径向晕染。
+- warning、danger、bearish 只能出现在与其语义直接对应的 chip、细边、图表序列或小范围提示内，不能成为卡片、空态、工具栏和整页背景。
+- `missing`、`unknown` 与尚未完成计算的置信度统一显示为“待评估”或明确的数据阶段；不得渲染成红色、琥珀色或大号风险结论。
 
 ### 3.3 间距、圆角与阴影
 
@@ -298,6 +301,7 @@ padding: clamp(20px, 1.4vw, 28px);
 - 数据密集区允许紧凑 padding，但必须在同一组内一致。
 - 页面根容器用 24px gap 分隔大区块，直接子区块不再叠加上下 margin；同组独立卡片用 16px gap。
 - 图表卡片的标题与绘图区各自承担内边距，不再叠加通用卡片 padding。
+- 通用卡片、图表壳、空态与摘要面板只使用 `--surface*`、`--border*` 和低强度 `--info-*`；不得保留旧暖米色或棕色边框的硬编码回退值。
 
 ### 7.2 按钮
 
@@ -347,7 +351,7 @@ Chip 只表达短状态、来源、方向或筛选，不承载完整句子。
 - 长标签在 trigger 截断，在 popover 显示完整内容。
 - 键盘支持 Arrow、Enter、Escape；焦点返回触发器。
 - Popover 不得被卡片 `overflow` 裁切。
-- Trigger 与 popover 统一使用 `--surface` 暖灰表面、`--ink` 深色文字；禁用态使用 `--surface-muted` 与可读的 `--text-secondary`。
+- Trigger 与 popover 统一使用 `--surface` 冷灰表面、`--ink` 深色文字；禁用态使用 `--surface-muted` 与可读的 `--text-secondary`。
 - 普通筛选栏上下 padding 为 12px，控件保持 38–40px；不得通过扩大控件高度填满容器。
 
 ### 页面指南与紧凑概览
@@ -488,6 +492,8 @@ backdrop-filter: blur(var(--glass-blur));
 
 市场方向独立使用 bullish / bearish / neutral。系统可用性绝不改变市场方向 tone。
 
+置信度与数据质量使用紧凑 chip 或一行状态说明。缺失值显示“待评估”，只有后端明确返回低置信度结论时才显示“不足”；两者都使用信息蓝或中性灰，不使用看空红色，也不放大为首屏主标题。
+
 文案应短而具体：
 
 - 好：`快照过期 18 分钟，正在刷新；当前展示上次可用结果。`
@@ -598,8 +604,8 @@ backdrop-filter: blur(var(--glass-blur));
 3. **治理底栏重复实现**：gold / ETF / BTC 使用三套前缀相近的 CSS。应抽成共享 `data-governance` 组件与少量领域 slot。
 4. **图表色散落在 JS**：技术指标、形态结构、衍生品和黄金页面存在大量硬编码 series 色。应统一到 chart palette token，并为每个序列定义用途。
 5. **知识百科横向溢出**：1280×720 浏览器抽查发现 document 宽度超过 viewport。优先检查 1279px 下 `knowledge-workspace` 的 220px + `--reading-measure` 组合、工具栏和长内容的 `min-width`。
-6. **局部组件仍覆盖全局视觉**：知识章节卡仍使用旧 `rgba(99,102,241,...)` 色值，与当前 `#66548e` editorial accent 不完全一致，应改用 token。
-   *2026-08-27 V3.2*：已收敛。`styles.css` 中 91 处 `rgba(99,102,241,α)` 全部迁入 `editorial.css :root` 的 20 个 `--info-*` token（base + sub-tier），保留 indigo hue 不变；详见 §3.2 与 `tests/test_local_component_color_tokens.py`。
+6. **局部组件仍覆盖全局视觉**：知识章节卡曾使用散落的旧靛蓝色值，无法随主题一起调整。
+   *2026-09-08*：已收敛。局部高亮统一使用蓝灰 `--info-*` token，与冷紫主题色分工；详见 §3.2 与 `tests/test_local_component_color_tokens.py`。
 7. **断点过多**：当前存在 1500、1279、1180、1100、980、900、780、767、720、700、640、560 等近邻断点。后续应收敛为壳层、内容层和移动层三组，而不是继续新增。
    *2026-08-27 V3.2*：已收敛。17 个 width 值收为 6 组：`560` (mobile-s) / `720` (mobile-l) / `900` (tablet) / `1180` (small-desktop) / 默认 (desktop, 2560×1440 基线) / `1500` (wide-desktop)；`520` 作为 mobile-s 内部 extreme sub-tier 保留作扩展点；详见 §11 与 `tests/test_responsive_breakpoints_consolidated.py`。
 8. **文档分叉**：根手册与 `source/docs/design-guidelines.md` 曾出现调色板和 2560×1600/1440 视口冲突。后续应以本手册为视觉基线，并逐步把旧文件收敛为工程检查清单。
@@ -608,6 +614,17 @@ backdrop-filter: blur(var(--glass-blur));
 已治理：区块级折叠控件已收敛到共享 `disclosure` 组件；知识指南和 AI 详情保留为明确的 `inline` 层级，不再与区块操作混用。2026-08-27 V3.2 同步治理 §13.2 #3（governance ledger 共享基类 + 5 个 variant 修饰符）与 §13.2 #4（chart series token 化，21 个 `--series-*` 加 getSeriesColor/getPatternFill API）。
 
 这些债务是后续迭代清单，不授权一次性全站重构。每次只处理一个共享组件或一个页面家族，并保留全量验证。
+
+### 13.3 2026-09-09 全系统复查
+
+本轮以 3.5 视觉基线检查共享 CSS、模板、十个 SPA 页面和十一条冷启动路由，并对 2560×1440、1280×720、768×1024、390×844 四个视口做实际渲染复核。
+
+- **已修复**：共享样式中残留的暖米色表面、棕色边框和暖色环境光已迁移到冷灰表面与蓝灰信息光；语义 warning 继续保留，但只通过 token 用于小范围状态。
+- **已修复**：侧栏副标题、分组标题和普通导航由 tertiary 提升到 `--text-secondary`，解决 `--bg-strong` 上约 4.1:1 的小字对比度不足。
+- **已修复**：A 股 ETF 持仓份额与成本价输入补充逐品种可访问名称；审查脚本不再把 `hidden` 控件误报为缺少标签。
+- **已修复**：响应式检查的宏观日历真内容选择器同步到当前组件，避免页面已渲染却被记为 `content=N`。
+- **通过**：全站没有原生 `<select>`、没有 `transition: all`，四个验收视口没有页面级横向溢出。
+- **继续治理**：`styles.css` 仍承担历史页面规则，`editorial.css` 仍是最终 token 权威；页面 JS 仍有 22 个图表序列硬编码颜色。两项按 §13.2 的小批次迁移原则处理，不在本轮扩大为结构重构。
 
 ---
 
@@ -694,6 +711,7 @@ backdrop-filter: blur(var(--glass-blur));
 
 | 日期 | 版本 | 修订 |
 |---|---|---|
+| 2026-09-09 | 3.5 | 固定冷灰表面、深冷紫主色与蓝灰配套色；新增通用容器禁止暖色晕染、缺失置信度不得告警化的规则；记录全站响应式、对比度、表单标签和审查脚本复查结果。 |
 | 2026-08-24 | 3.1 | 新增 disclosure 组件唯一入口、三种层级、完整状态与可访问性规范；统一活动页面的区块级折叠按钮。 |
 | 2026-08-20 | 3.0 | 对十个页面、全局外壳、当前生效 token 与共享组件进行审查；纠正旧手册中调色板、卡片圆角、间距、字体层级和视口基线与实际实现不一致的问题；新增设计债务与治理顺序。 |
 
