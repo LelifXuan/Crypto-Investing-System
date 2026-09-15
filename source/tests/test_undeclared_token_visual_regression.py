@@ -48,14 +48,15 @@ STYLES = ROOT / "app" / "static" / "editorial.css"
 # `#6366f1`); `--card-bg` is consumed again by the restored alert-chip styles.
 #
 # 2026-08-27: after the editorial palette re-theme the visual baseline moved
-# to `--info-strong: #2e577e` (editorial) and `--surface-muted: #f0edf3`
+# to `--info-strong: #2e577e` (editorial) and the cool-neutral
+# `--surface-muted: #edf0f5`
 # (editorial). We pin those values here so any future regression to the
 # indigo / cream legacy hex is caught by CI.
 EXPECTED_ALIASES = {
     "--line": "var(--border)",
     "--text": "var(--ink)",
     "--bg-surface": "var(--panel-strong)",
-    "--bg-hover": "rgba(99, 102, 241, 0.10)",
+    "--bg-hover": "rgba(85, 74, 120, 0.10)",
     "--danger-strong": "#7a4630",
     "--info-strong": "#2e577e",
     "--border-light": "rgba(33, 29, 43, 0.08)",
@@ -65,7 +66,7 @@ EXPECTED_ALIASES = {
 }
 
 PREEXISTING_ALIASES = {
-    "--surface-muted": "#f0edf3",
+    "--surface-muted": "#edf0f5",
 }
 
 

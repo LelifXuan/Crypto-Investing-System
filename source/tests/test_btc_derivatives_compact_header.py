@@ -7,9 +7,8 @@ EDITORIAL_CSS = ROOT / "app" / "static" / "editorial.css"
 
 def test_derivatives_header_groups_summary_decisions_and_controls() -> None:
     # 2026-09-04 (V2.3 workbench): the old cockpit-header wrapper is gone.
-    # Grouping is now: summary chart + evidence rail (overview row) first,
-    # then the shared chart toolbar (window/maturity filters), matching the
-    # old summary -> decisions -> controls reading order.
+    # The summary chart is the primary content. Evidence opens on demand,
+    # then the shared chart toolbar follows.
     source = PAGE_JS.read_text(encoding="utf-8")
     # isolate the page shell template (its literal markup anchor) so these
     # are CALL positions, not function definitions
@@ -17,8 +16,8 @@ def test_derivatives_header_groups_summary_decisions_and_controls() -> None:
     shell = source[shell_start:shell_start + 2500]
     assert shell.index("renderSummarySection()") < shell.index("renderChartToolbar()")
     assert shell.index("renderChartToolbar()") < shell.index("renderMaturityLadder()")
-    # the evidence rail sits beside the summary (same overview row)
-    assert shell.index("renderWorkbenchEvidenceRail()") < shell.index("renderChartToolbar()")
+    assert "renderWorkbenchEvidenceRail()" not in shell
+    assert 'id="btc-open-summary-evidence"' in source
 
 
 def test_derivatives_header_removes_stacked_card_weight() -> None:

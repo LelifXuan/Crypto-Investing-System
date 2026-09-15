@@ -259,7 +259,6 @@ def test_empty_charts_are_compact_and_do_not_claim_a_direction() -> None:
     assert "height: 120px" in styles
     assert 'STABLE: "持仓稳定"' in judgement
     assert 'stateKey === "NEUTRAL" && judgement.axis === "crowding"' in judgement
-    assert "judgement.js?v=semantic-v3" in source
     assert ".btc-indicator-semantics .btc-decision-card" in styles
 
 

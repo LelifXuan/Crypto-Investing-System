@@ -51,7 +51,7 @@ REAL_CONTENT_SELECTORS = {
     "market-analysis": [".analysis-hero-grid", ".analysis-chart-grid"],
     "market-structure": [".structure-page"],
     "market-events": [".events-feed-shell", ".events-feed-card", "#market-events-root"],
-    "macro-calendar": ["#macro-statusbar", "#macro-summary-cards"],
+    "macro-calendar": [".macro-calendar-card", ".macro-calendar-head"],
     "knowledge-base": [".knowledge-hero", ".knowledge-sections"],
     "ashare-etf": ["#etf-overview", "#etf-equity-curve"],
     "btc-derivatives": [".btc-derivatives-page", ".btc-chart-overview"],

@@ -60,6 +60,39 @@ def test_desktop_components_are_not_trapped_in_mobile_media():
         assert (selector, ()) in rules, f"{selector} has no unconditional base rule"
 
 
+def test_legacy_warm_surface_palette_is_absent_from_shared_css():
+    """Generic surfaces may not reintroduce the retired beige/brown palette."""
+    css = "\n".join(
+        (STATIC / filename).read_text(encoding="utf-8")
+        for filename in ("styles.css", "editorial.css")
+    )
+    retired_fragments = (
+        "rgba(183, 121, 31,",
+        "rgba(175, 154, 123,",
+        "rgba(148, 129, 101,",
+        "rgba(219, 209, 194,",
+        "rgba(247, 243, 236,",
+        "rgba(255, 248, 237,",
+        "rgba(255, 248, 235,",
+    )
+    assert not [fragment for fragment in retired_fragments if fragment in css]
+
+
+def test_sidebar_small_text_uses_aa_contrast_token():
+    css = (STATIC / "editorial.css").read_text(encoding="utf-8")
+    assert ".app-sidebar-brand > div > span { color: var(--text-secondary);" in css
+    assert re.search(
+        r"\.editorial-nav-group h2\s*\{[^}]*color:\s*var\(--text-secondary\)",
+        css,
+        re.S,
+    )
+    assert re.search(
+        r"\.editorial-nav a\s*\{[^}]*color:\s*var\(--text-secondary\)",
+        css,
+        re.S,
+    )
+
+
 @pytest.mark.parametrize("broken", ["}", ".a {", "color: red;", ".a {} padding: 2px; }"])
 def test_scope_guard_rejects_malformed_css(broken):
     with pytest.raises(AssertionError):
@@ -139,11 +172,11 @@ def test_controls_have_readable_colors_and_compact_heights(page):
     })""")
     assert [s["height"] for s in styles] == [38, 40, 38]
     assert styles[0]["color"] == "rgb(33, 29, 43)"
-    assert styles[0]["background"] == "rgb(247, 245, 241)"
+    assert styles[0]["background"] == "rgb(245, 247, 250)"
     assert styles[2]["color"] == "rgb(95, 89, 104)"
     assert styles[2]["opacity"] == "1"
     assert page.locator(".primary-button").first.evaluate(
-        "e => getComputedStyle(e).backgroundColor") == "rgb(77, 59, 115)"
+        "e => getComputedStyle(e).backgroundColor") == "rgb(64, 54, 95)"
 
 
 @pytest.mark.parametrize("width, columns", [(2560, 2), (1280, 2), (900, 1), (390, 1)])
@@ -192,3 +225,59 @@ def test_guide_stays_at_sidebar_foot_and_outside_sidebar(page):
     page.set_viewport_size({"width": 390, "height": 844})
     box = panel.bounding_box()
     assert box["x"] >= 16 and box["x"] + box["width"] <= 374
+
+
+def test_structure_chart_surfaces_use_cool_neutral_palette(page):
+    page.evaluate("document.body.dataset.page = 'market-structure'")
+    page.locator("#page-root").evaluate("""root => {
+      root.innerHTML = `<section class="structure-page">
+        <article class="card structure-main-card">
+          <div class="structure-chart-panel">
+            <div class="structure-chart-shell"></div>
+          </div>
+        </article>
+      </section>`;
+    }""")
+    expected_background = (
+        "linear-gradient(rgba(251, 252, 254, 0.9), "
+        "rgba(238, 242, 247, 0.82))"
+    )
+    for selector in [".structure-chart-panel", ".structure-chart-shell"]:
+        styles = page.locator(selector).evaluate("""element => {
+          const style = getComputedStyle(element);
+          return { backgroundImage: style.backgroundImage, borderColor: style.borderColor };
+        }""")
+        assert styles["backgroundImage"] == expected_background
+        assert styles["borderColor"] == "rgba(104, 117, 135, 0.16)"
+
+    css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    source = (STATIC / "pages/structure.js").read_text(encoding="utf-8")
+    assert "#fff8ed" not in source
+    assert "stroke: #fff8ed" not in css
+
+
+def test_monitoring_low_confidence_uses_blue_companion_palette(page):
+    page.evaluate("document.body.dataset.page = 'monitoring-overview'")
+    page.locator("#page-root").evaluate("""root => {
+      root.innerHTML = `<div class="monitoring-metric-rail">
+        <article class="monitoring-topbar-item monitoring-confidence-item">
+          <span>数据置信度</span>
+          <span class="monitoring-confidence-chip" data-confidence-tone="warning">不足</span>
+        </article>
+      </div>`;
+    }""")
+    styles = page.locator(".monitoring-confidence-chip").evaluate("""element => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        border: style.borderColor,
+        color: style.color,
+        boxShadow: style.boxShadow,
+      };
+    }""")
+    assert styles == {
+        "background": "rgb(230, 238, 246)",
+        "border": "rgba(65, 89, 119, 0.14)",
+        "color": "rgb(46, 87, 126)",
+        "boxShadow": "none",
+    }

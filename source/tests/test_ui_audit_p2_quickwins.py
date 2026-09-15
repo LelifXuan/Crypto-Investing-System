@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STYLES = (ROOT / "app/static/styles.css").read_text(encoding="utf-8")
 EDITORIAL = (ROOT / "app/static/editorial.css").read_text(encoding="utf-8")
 MACRO = (ROOT / "app/static/pages/macro_calendar.js").read_text(encoding="utf-8")
+ETF = (ROOT / "app/static/pages/ashare_etf.js").read_text(encoding="utf-8")
+A11Y_SCAN = (ROOT / "tests/a11y_scan.py").read_text(encoding="utf-8")
 GUIDE = (ROOT.parent / "docs/design-guidelines.md").read_text(encoding="utf-8")
 PAGES = ROOT / "app/static/pages"
 
@@ -48,8 +50,11 @@ def test_tertiary_text_meets_aa_on_both_surfaces() -> None:
     m = re.search(r"--text-tertiary:\s*(#[0-9a-fA-F]{6})", EDITORIAL)
     assert m, "tertiary token missing"
     color = m.group(1)
-    assert _ratio(color, "#fcfbf8") >= 4.5, f"on surface-elevated: {_ratio(color, '#fcfbf8'):.2f}"
-    assert _ratio(color, "#f7f5f1") >= 4.5, f"on surface: {_ratio(color, '#f7f5f1'):.2f}"
+    elevated = re.search(r"--surface-elevated:\s*(#[0-9a-fA-F]{6})", EDITORIAL)
+    surface = re.search(r"--surface:\s*(#[0-9a-fA-F]{6})", EDITORIAL)
+    assert elevated and surface
+    assert _ratio(color, elevated.group(1)) >= 4.5
+    assert _ratio(color, surface.group(1)) >= 4.5
 
 
 def test_macro_empty_table_shows_reason_and_sync_time() -> None:
@@ -82,3 +87,17 @@ def test_handbook_sidebar_breakpoint_matches_code() -> None:
     # handbook must not claim the stale 1279px as the current rule
     assert "1279px 及以下切换为离屏抽屉" not in GUIDE
     assert "1180px 及以下切换为离屏抽屉" in GUIDE
+
+
+def test_etf_position_inputs_have_programmatic_labels() -> None:
+    assert 'aria-label="持仓份额：${escapeHtml(item.name)}"' in ETF
+    assert 'aria-label="成本价：${escapeHtml(item.name)}"' in ETF
+
+
+def test_a11y_scan_ignores_hidden_form_controls() -> None:
+    assert 'hidden: el.hidden' in A11Y_SCAN
+    assert 'and not inp["hidden"]' in A11Y_SCAN
+
+
+def test_a11y_heading_check_scopes_to_main_content() -> None:
+    assert "#app-page-title,main h1,main h2,main h3,main h4,main h5,main h6" in A11Y_SCAN

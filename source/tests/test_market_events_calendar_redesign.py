@@ -41,13 +41,9 @@ def test_event_stream_refresh_is_primary_and_translation_is_secondary() -> None:
     assert 'body[data-page="market-events"] #events-refresh {' in EDITORIAL
 
 
-def test_event_stream_heading_metrics_and_actions_share_one_context_bar() -> None:
-    # 2026-09-04 (V2.3 workbench): the events-hero context bar was replaced
-    # by the shared context rail (summary fields) plus a feed-card header
-    # that visually binds translate/refresh to the panel they operate on.
-    # The old separate metrics grid must NOT come back.
-    assert 'id="events-context-rail"' in PAGE
-    assert "mountContextRail" in PAGE
+def test_event_stream_actions_live_in_feed_without_a_summary_rail() -> None:
+    assert 'id="events-context-rail"' not in PAGE
+    assert "mountContextRail" not in PAGE
     assert '<section class="grid cols-4 events-metrics-grid"' not in PAGE
     assert 'class="events-feed-actions"' in PAGE
     assert 'id="events-refresh"' in PAGE

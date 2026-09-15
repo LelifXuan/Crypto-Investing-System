@@ -115,7 +115,7 @@ def test_v31_has_section_14_5_remaining_debts() -> None:
 
 def test_v31_no_obsolete_brand_color() -> None:
     """V3.1 must not regress to the legacy `--ink #1d2b3a` or `#14b8a6`
-    brand that conflicted with `#66548e` editorial accent."""
+    brand that conflicted with the editorial accent."""
     source = _read(SOURCE_DOC)
     bad_patterns = [
         "--ink #1d2b3a",

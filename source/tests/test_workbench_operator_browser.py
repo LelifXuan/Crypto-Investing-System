@@ -147,7 +147,7 @@ def test_resize_keyboard_persistence_and_route_abort() -> None:
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(f"{BASE_URL}/btc-derivatives-page")
-        page.locator(".btc-evidence-tile").first.press("Enter")
+        page.locator("#btc-open-summary-evidence").press("Enter")
         handle = page.get_by_role("separator", name="调整详情宽度")
         handle.press("Home")
         assert handle.get_attribute("aria-valuenow") == "320"

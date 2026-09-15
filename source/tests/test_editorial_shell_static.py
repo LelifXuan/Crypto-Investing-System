@@ -49,7 +49,7 @@ def test_editorial_tokens_and_responsive_breakpoints_are_locked() -> None:
         "--sidebar-collapsed-width: 64px",
         "--topbar-height: 64px",
         "--reading-measure: 800px",
-        "--accent: #66548e",
+        "--accent: #554a78",
         "--info: #3e6f9f",
         "@media (max-width: 1180px)",
         "@media (max-width: 720px)",

@@ -1,7 +1,7 @@
 """Static guard: term-detail `.knowledge-body` must NOT use lavender / purple.
 
-Background: editorial.css redefines `:root --surface-muted: #f0edf3` (light
-lavender) and `:root --accent: #66548e` (mid purple). Combined with the
+Background: the shared muted surface and accent color must not turn opened
+term content into a purple tile. Combined with the
 previous rule
 
     body[data-page="knowledge-base"] .knowledge-body {
@@ -9,10 +9,8 @@ previous rule
       border-left: 3px solid var(--accent);
     }
 
-this produced a lavender slab with a purple left-stripe on every opened
-term card. The user flagged it as AI-default purple. Switched to hard-coded
-neutral warm cream + warm border instead. This guard prevents regression
-to the purple tokens.
+this produced a tinted slab with a purple left-stripe on every opened term
+card. The body now uses the shared elevated neutral plus a neutral border.
 """
 
 from pathlib import Path
@@ -54,12 +52,11 @@ def test_knowledge_body_does_not_use_purple_surface_muted() -> None:
     css = _read(EDITORIAL)
     block = _knowledge_body_block(css)
     # Must not reference the lavender --surface-muted token directly.
-    # Hard-coded neutral cream (rgba(255, 253, 249, ...)) is the intended
-    # replacement; any reference to --surface-muted in this block would
-    # silently re-introduce the lavender look.
+    # The elevated neutral is the intended replacement; any reference to
+    # --surface-muted would give the expanded body too much visual weight.
     assert "var(--surface-muted)" not in block, (
-        "knowledge-body must not use --surface-muted (which is #f0edf3 "
-        "lavender in editorial.css); see docs/design-guidelines.md §9 "
+        "knowledge-body must not use --surface-muted; see "
+        "docs/design-guidelines.md §9 "
         "color-consistency rules"
     )
 
@@ -68,20 +65,15 @@ def test_knowledge_body_does_not_use_purple_accent_stripe() -> None:
     css = _read(EDITORIAL)
     block = _knowledge_body_block(css)
     # Must not reference --accent as the left stripe — that token is the
-    # indigo-purple #66548e. Use --border-strong (warm brown) or a neutral
-    # tone instead so the stripe reads as warm-cream-page chrome rather
-    # than AI purple.
+    # theme accent. Use --border-strong so the stripe remains
+    # neutral rather than reading as an accent state.
     assert "var(--accent)" not in block, (
         "knowledge-body left stripe must not use --accent (which is the "
-        "indigo-purple #66548e in editorial.css)"
+        "theme accent in editorial.css)"
     )
 
 
-def test_knowledge_body_does_not_paint_lavender_hex() -> None:
+def test_knowledge_body_uses_elevated_neutral_surface() -> None:
     css = _read(EDITORIAL)
     block = _knowledge_body_block(css)
-    # Guard against someone copying the lavender value back from the
-    # token definition into a hard-coded background.
-    assert "#f0edf3" not in block, (
-        "knowledge-body must not paint the lavender #f0edf3 background"
-    )
+    assert "var(--surface-elevated)" in block

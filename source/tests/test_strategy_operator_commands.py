@@ -88,7 +88,8 @@ def test_strategy_commands_focus_refresh_detail_and_scope(width, height):
         if opener.is_visible():
             opener.click()
         page.get_by_role("link", name="监控总览", exact=True).click()
-        expect(page.locator("#monitoring-context-rail")).to_be_visible()
+        expect(page.locator("#monitoring-topbar")).to_be_visible()
+        expect(page.locator("#monitoring-context-rail")).to_have_count(0)
         page.keyboard.press("Control+k")
         expect(page.get_by_role("option")).to_have_count(3)
         page.get_by_role("combobox").fill("strategy:")

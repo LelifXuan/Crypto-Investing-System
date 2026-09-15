@@ -315,7 +315,7 @@ def test_btc_workbench_drawer_resize_and_selection_lifecycle(viewport: dict, rol
 
         page.route("**/api/v1/**", route_api)
         page.goto(f"{BASE_URL}/btc-derivatives-page", wait_until="domcontentloaded")
-        target = page.locator(".btc-evidence-tile").first
+        target = page.locator("#btc-open-summary-evidence")
         target.wait_for(state="visible")
         target.press("Space")
         inspector = page.locator("#btc-workbench-inspector")
@@ -352,7 +352,9 @@ def test_btc_workbench_drawer_resize_and_selection_lifecycle(viewport: dict, rol
         assert inspector.is_visible()
         inspector.press("Escape")
         assert inspector.is_hidden()
-        assert page.evaluate("document.activeElement?.classList.contains('btc-evidence-tile')")
+        # Refresh replaces the summary controls, so the remounted inspector
+        # returns focus to the stable refresh action.
+        assert page.evaluate("document.activeElement?.id === 'btc-refresh'")
 
         page.locator('[data-page-link="monitoring-overview"]').evaluate("el => el.click()")
         page.wait_for_url("**/monitoring-page")

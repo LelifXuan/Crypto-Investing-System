@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
 STYLES = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
@@ -53,5 +52,5 @@ def test_direction_chips_do_not_reuse_brand_purple() -> None:
     end = EDITORIAL.index(".chip-warning", start)
     direction_block = EDITORIAL[start:end]
     assert "var(--accent" not in direction_block
-    assert "#66548e" not in direction_block.lower()
-    assert "#4d3b73" not in direction_block.lower()
+    assert "#554a78" not in direction_block.lower()
+    assert "#40365f" not in direction_block.lower()

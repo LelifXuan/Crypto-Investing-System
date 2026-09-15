@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "app" / "static" / "pages" / "monitoring.js").read_text(encoding="utf-8")
 EDITORIAL = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
@@ -21,3 +20,12 @@ def test_topbar_uses_editorial_three_zone_layout() -> None:
     assert ".monitoring-context-status::before" in EDITORIAL
     assert "grid-template-columns: repeat(5, minmax(104px, 1fr))" in EDITORIAL
     assert "background: var(--surface-muted)" in EDITORIAL
+
+
+def test_confidence_is_a_secondary_state_instead_of_a_large_metric() -> None:
+    assert 'if (!key) return "待评估"' in PAGE
+    assert '<span>数据置信度</span>' in PAGE
+    assert 'class="monitoring-confidence-chip"' in PAGE
+    assert "<strong>${escapeHtml(macroConfidence(macro))}</strong>" not in PAGE
+    assert ".monitoring-confidence-chip" in EDITORIAL
+    assert "font-size: 12px" in EDITORIAL

@@ -8,10 +8,8 @@ Two regressions addressed on 2026-08-18:
    rail and 300px right rail. Loosened to 1fr so the column can grow.
 
 2. `.knowledge-guide-card` used `rgba(255,255,255,0.92)` + `rgba(247,251,255,0.98)`
-   (cool blue-tinted) on a warm cream page background, producing the
-   "blue tile pasted onto warm cream" disjoint the user flagged. Switched
-   to the same `--surface-elevated` neutral cream gradient every other card
-   on the page uses.
+   on a warmer page background, producing a disconnected tile. It now uses
+   the same cool-neutral surface gradient as every other card on the page.
 """
 
 from pathlib import Path
@@ -65,7 +63,7 @@ def test_knowledge_content_column_is_not_reading_measure_capped() -> None:
     )
 
 
-def test_knowledge_guide_card_uses_neutral_cream_surface() -> None:
+def test_knowledge_guide_card_uses_shared_neutral_surface() -> None:
     css = _read(STYLES)
     selector = ".knowledge-guide-card {"
     idx = css.index(selector)
@@ -74,12 +72,11 @@ def test_knowledge_guide_card_uses_neutral_cream_surface() -> None:
     # Old cool-blue backgrounds must be gone
     assert "rgba(255, 255, 255, 0.92)" not in block, (
         "knowledge-guide-card outer background was a cool blue-tinted white "
-        "that clashed with the warm cream page — must use --surface-elevated "
-        "neutral cream gradient (see docs/design-guidelines.md §9)"
+        "that clashed with the shared page surface (see design guidelines §9)"
     )
 
 
-def test_knowledge_guide_card_is_open_uses_neutral_cream_surface() -> None:
+def test_knowledge_guide_card_is_open_uses_shared_neutral_surface() -> None:
     css = _read(STYLES)
     selector = ".knowledge-guide-card.is-open {"
     idx = css.index(selector)
@@ -87,7 +84,7 @@ def test_knowledge_guide_card_is_open_uses_neutral_cream_surface() -> None:
     block = css[idx:block_end]
     assert "rgba(247, 251, 255, 0.98)" not in block, (
         "knowledge-guide-card.is-open still uses the cool blue "
-        "rgba(247,251,255,0.98) — should be the same neutral cream gradient "
+        "rgba(247,251,255,0.98) — should be the same neutral gradient "
         "as the closed state, with only a slight alpha bump for the open "
         "hint instead of a color swap"
     )

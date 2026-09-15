@@ -162,7 +162,7 @@ def test_btc_failed_refresh_retains_committed_lkg_and_pin():
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 2560, "height": 1440})
         page.route("**/api/v1/**", route_api)
-        page.goto(f"{BASE_URL}/btc-derivatives-page?inspect=btc:evidence:funding")
+        page.goto(f"{BASE_URL}/btc-derivatives-page?inspect=btc:metric:funding")
         inspector = page.locator("#btc-workbench-inspector")
         inspector.wait_for()
         page.locator(".workbench-inspector-pin").click()

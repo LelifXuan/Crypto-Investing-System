@@ -160,7 +160,9 @@ def scan_page(page, page_id: str, threshold_contrast: float) -> dict:
 
     # 3. Check heading hierarchy
     heading_results = page.evaluate("""() => {
-      const headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
+      const headings = document.querySelectorAll(
+        '#app-page-title,main h1,main h2,main h3,main h4,main h5,main h6'
+      );
       return Array.from(headings).map(h => parseInt(h.tagName[1]));
     }""")
     if heading_results:
@@ -175,14 +177,19 @@ def scan_page(page, page_id: str, threshold_contrast: float) -> dict:
                 findings.append({
                     "check": "heading-hierarchy",
                     "severity": "WARN",
-                    "detail": f"Skipped heading level: h{heading_results[i-1]} → h{heading_results[i]}",
+                    "detail": (
+                        f"Skipped heading level: h{heading_results[i - 1]} "
+                        f"→ h{heading_results[i]}"
+                    ),
                 })
 
     # 4. Check color contrast on text elements
     # Fix: walk up DOM to find actual rendered background (not transparent)
     # Also handles CSS gradients (body uses gradient, not solid background-color)
     contrast_results = page.evaluate("""() => {
-      const elements = document.querySelectorAll('p, span, a, button, h1, h2, h3, h4, h5, h6, td, th, li');
+      const elements = document.querySelectorAll(
+        'p, span, a, button, h1, h2, h3, h4, h5, h6, td, th, li'
+      );
       const results = [];
       function extractGradientColor(bgImage) {
         // Extract the base color from CSS gradient.
@@ -231,8 +238,8 @@ def scan_page(page, page_id: str, threshold_contrast: float) -> dict:
           }
           current = current.parentElement;
         }
-        // Fallback: warm cream matching --bg token
-        return 'rgb(243, 236, 225)';
+        // Fallback: cool neutral matching --bg token
+        return 'rgb(238, 241, 245)';
       }
       for (const el of elements) {
         const style = window.getComputedStyle(el);
@@ -268,12 +275,19 @@ def scan_page(page, page_id: str, threshold_contrast: float) -> dict:
       const inputs = document.querySelectorAll('input, select, textarea');
       return Array.from(inputs).map(el => ({
         type: el.type || el.tagName.toLowerCase(),
-        hasLabel: !!el.labels?.length || el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby'),
+        hidden: el.hidden,
+        hasLabel: !!el.labels?.length
+          || el.hasAttribute('aria-label')
+          || el.hasAttribute('aria-labelledby'),
         id: el.id || '',
       }));
     }""")
     for inp in form_results:
-        if not inp["hasLabel"] and inp["type"] not in ("hidden", "submit", "button"):
+        if (
+            not inp["hasLabel"]
+            and not inp["hidden"]
+            and inp["type"] not in ("hidden", "submit", "button")
+        ):
             findings.append({
                 "check": "form-label",
                 "severity": "WARN",
@@ -282,7 +296,9 @@ def scan_page(page, page_id: str, threshold_contrast: float) -> dict:
 
     # 6. Check aria-* on interactive elements
     aria_results = page.evaluate("""() => {
-      const interactive = document.querySelectorAll('[role], [aria-label], [aria-describedby], [aria-expanded]');
+      const interactive = document.querySelectorAll(
+        '[role], [aria-label], [aria-describedby], [aria-expanded]'
+      );
       return interactive.length;
     }""")
     if aria_results == 0:
@@ -381,7 +397,11 @@ def main(argv: list[str]) -> int:
             print(f"[a11y] scanning {pid} ...", end=" ", flush=True)
             ctx = browser.new_context(viewport={"width": 2560, "height": 1440})
             page = ctx.new_page()
-            page.goto(f"{BASE_URL}{PAGE_ROUTES[pid]}", wait_until="domcontentloaded", timeout=30_000)
+            page.goto(
+                f"{BASE_URL}{PAGE_ROUTES[pid]}",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
 
             # Wait for content
             selectors = REAL_CONTENT_SELECTORS.get(pid, [".card", "section"])

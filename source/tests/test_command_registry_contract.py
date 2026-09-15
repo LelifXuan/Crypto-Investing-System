@@ -11,8 +11,8 @@ def test_palette_is_scoped_to_page_actions_not_navigation() -> None:
     assert "commands.register({ id: `nav:" not in main
     assert "搜索当前页面操作" in palette
     assert 'registry.query("").length === 0' in palette
-    assert "commandButton.hidden = !hasPageActions" in main
-    assert 'commandButton.style.display = hasPageActions ? "" : "none"' in main
+    assert "workbench-command-trigger" not in main
+    assert 'commandButton.textContent = "命令"' not in main
 
 
 def test_registry_scope_search_execution_and_disposal() -> None:

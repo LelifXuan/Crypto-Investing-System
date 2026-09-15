@@ -262,7 +262,7 @@ def test_guide_toggle_collapses_inner_padding_when_collapsed() -> None:
     contributes nothing visually."""
     # Card chrome stays
     block = _css_block(STYLES, ".knowledge-guide-card {")
-    assert "linear-gradient(180deg, rgba(255, 253, 249, 0.92)" in block, (
+    assert "linear-gradient(180deg, rgba(251, 252, 254, 0.92)" in block, (
         "knowledge-guide-card outer gradient must remain so the chrome "
         "(border / box-shadow) stays consistent across open / closed"
     )

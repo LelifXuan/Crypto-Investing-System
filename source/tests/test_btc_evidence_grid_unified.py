@@ -20,16 +20,16 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_workbench_uses_indicator_rail_and_keeps_inference_audit_grid() -> None:
+def test_workbench_removes_persistent_indicator_rail_and_keeps_inference_audit_grid() -> None:
     source = _read(PAGE)
-    rail_start = source.index("function renderWorkbenchEvidenceRail")
-    rail_block = source[rail_start : rail_start + 700]
-    assert "renderIndicatorJudgements()" in rail_block
-    assert 'class="btc-workbench-evidence-list"' in rail_block
+    shell_start = source.index('<div class="btc-derivatives-page">')
+    shell = source[shell_start : shell_start + 1800]
+    assert "renderWorkbenchEvidenceRail()" not in shell
+    assert 'id="btc-open-summary-evidence"' in source
+    assert 'firstChartInspection("leverage_pressure_timeline")' in source
 
-    # UI 2.0 promotes indicator judgements beside the leverage timeline.
     # The supporting audit section remains below and keeps the inference
-    # blocks without duplicating the promoted evidence.
+    # blocks for users who need the full audit trail.
     grid_start = source.index('class="btc-evidence-grid"')
     grid_block = source[grid_start : grid_start + 600]
     assert "inferenceTiles" in grid_block, "the supporting audit grid must retain inference blocks"
@@ -47,21 +47,12 @@ def test_workbench_uses_indicator_rail_and_keeps_inference_audit_grid() -> None:
     )
 
 
-def test_indicator_judgement_tile_uses_unified_class() -> None:
+def test_indicator_judgement_rail_and_internal_fields_are_not_rendered() -> None:
     source = _read(PAGE)
-    block = source[
-        source.index("function renderIndicatorJudgements") : source.index(
-            "function renderIndicatorJudgements"
-        )
-        + 1500
-    ]
-    assert "btc-evidence-tile" in block, (
-        "renderIndicatorJudgements must emit .btc-evidence-tile so the "
-        "first row matches the inference row visually"
-    )
-    assert "btc-decision-card" not in block, (
-        "renderIndicatorJudgements must drop the legacy .btc-decision-card wrapper"
-    )
+    assert "function renderIndicatorJudgements" not in source
+    assert "function renderWorkbenchEvidenceRail" not in source
+    assert "btc-evidence-source-detail" not in source
+    assert "<dt>指标键</dt>" not in source
 
 
 def test_unified_grid_is_equal_height() -> None:

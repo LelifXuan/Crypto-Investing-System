@@ -59,7 +59,7 @@ def test_palette_overlay_keyboard_and_route_scope(width: int) -> None:
         search.press("Escape")
         navigate_with_sidebar(page, "BTC 衍生品")
         page.wait_for_url("**/btc-derivatives-page")
-        page.locator(".btc-evidence-tile").first.wait_for()
+        page.locator("#btc-open-summary-evidence").wait_for()
         page.keyboard.press("Control+k")
         search.fill("刷新")
         assert page.get_by_role("option").count() == 1
@@ -76,13 +76,13 @@ def test_palette_overlay_keyboard_and_route_scope(width: int) -> None:
         browser.close()
 
 
-def test_page_without_actions_has_no_palette_entry_point() -> None:
+def test_pages_have_no_visible_palette_entry_point() -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 2560, "height": 1440})
         page.goto(f"{BASE_URL}/knowledge-page")
         page.locator(".knowledge-hero").wait_for()
-        assert page.locator(".workbench-command-trigger").is_hidden()
+        assert page.locator(".workbench-command-trigger").count() == 0
         page.keyboard.press("Control+k")
         assert page.get_by_role("dialog", name="工作台命令").is_hidden()
         browser.close()

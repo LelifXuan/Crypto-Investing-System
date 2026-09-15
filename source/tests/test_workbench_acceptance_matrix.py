@@ -19,7 +19,7 @@ VIEWPORTS = [
 ]
 PAGES = [
     ("monitoring", "monitoring-page", ".macro-layer-card", "#monitoring-inspector"),
-    ("btc", "btc-derivatives-page", ".btc-evidence-tile", "#btc-workbench-inspector"),
+    ("btc", "btc-derivatives-page", "#btc-open-summary-evidence", "#btc-workbench-inspector"),
     ("events", "market-events-page", ".event-card[data-workbench-selectable]", "#events-inspector"),
     ("macro", "macro-calendar-page", "tr[data-workbench-selectable]", "#macro-inspector"),
 ]

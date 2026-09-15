@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "app" / "static" / "pages" / "market_events.js").read_text(encoding="utf-8")
 CSS = (ROOT / "app" / "static" / "editorial.css").read_text(encoding="utf-8")
@@ -12,8 +11,14 @@ def test_new_event_page_immediately_renders_a_feed_skeleton() -> None:
     assert "function renderEventFeedLoading()" in PAGE
     assert '${renderEventFeedLoading()}' in PAGE
     assert 'id="events-feed" aria-busy="true"' in PAGE
-    assert 'lastFeedFingerprint = ""' in PAGE
+    assert "lastFeedFingerprint = null" in PAGE
     assert 'lastCalendarFingerprint = ""' in PAGE
+
+
+def test_empty_feed_replaces_the_cold_start_skeleton() -> None:
+    assert "let lastFeedFingerprint = null" in PAGE
+    assert 'lastFeedFingerprint = null;' in PAGE
+    assert 'class="compact-empty">当前信息流暂无内容。' in PAGE
 
 
 def test_feed_motion_is_page_specific_and_reduced_motion_safe() -> None:
