@@ -352,7 +352,11 @@ export function buildAdaptiveAxisOptions(profile = "generic", datasets = [], opt
   }
   if (profile === "volume") {
     const max = values.length ? Math.max(...values, 0) : 0;
-    return { min: 0, max: max > 0 ? max * 1.08 : 1 };
+    return {
+      min: 0,
+      max: max > 0 ? max * 1.08 : 1,
+      ticks: { value_format: "integer" },
+    };
   }
   if (profile === "centeredZero") {
     const maxAbs = values.length ? Math.max(...values.map((value) => Math.abs(value))) : 0;
