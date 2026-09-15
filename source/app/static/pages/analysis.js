@@ -1576,22 +1576,22 @@ async function publishAnalysisBundle(bundle, token) {
               // direction remains legible without relying on red versus green.
               upStrokeColor: themeColor("--info", "#3e6f9f"),
               upColor: "rgba(230, 238, 246, 0.38)",
-              downStrokeColor: themeColor("--accent", "#66548e"),
-              downColor: "rgba(102, 84, 142, 0.42)",
+              downStrokeColor: themeColor("--accent", "#554a78"),
+              downColor: "rgba(85, 74, 120, 0.42)",
             }),
             lineDataset("上轨", analysis.boll.upper, themeColor("--info", "#3e6f9f"), {
               order: 2,
               borderDash: [5, 5],
               borderWidth: 1.5,
               fill: 2,
-              backgroundColor: "rgba(102, 84, 142, 0.07)",
+              backgroundColor: "rgba(85, 74, 120, 0.07)",
             }),
             lineDataset("下轨", analysis.boll.lower, themeColor("--info", "#3e6f9f"), {
               order: 2,
               borderDash: [5, 5],
               borderWidth: 1.5,
             }),
-            lineDataset("中轨", analysis.boll.middle, themeColor("--accent-strong", "#4d3b73"), {
+            lineDataset("中轨", analysis.boll.middle, themeColor("--accent-strong", "#40365f"), {
               order: 1,
               borderWidth: 2.3,
             }),

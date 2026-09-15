@@ -11,7 +11,6 @@ import { mountDropdown } from "../ui/dropdown.js";
 import { renderDisclosureToggle } from "../ui/disclosure.js";
 import { createWorkbenchState } from "../core/workbenchState.js?v=operator-core-1";
 import { mountWorkbenchUrlState } from "../core/workbenchUrlState.js";
-import { mountContextRail } from "../ui/contextRail.js";
 import { mountInspector } from "../ui/inspector.js?v=operator-core-1";
 import { markWorkbenchRelations } from "../ui/semanticMotion.js?v=operator-core-1";
 
@@ -19,7 +18,7 @@ let autoSyncedEvents = false;
 let translationPollTimer = null;
 
 // 渲染去重:上一次渲染的指纹 + 缓存。无变化的刷新直接跳过 innerHTML 重建。
-let lastFeedFingerprint = "";
+let lastFeedFingerprint = null;
 let lastCalendarFingerprint = "";
 let orderedItemsCache = [];
 // 供给日历缓存(60s),避免每次 load 都重复请求同一批节点。
@@ -35,7 +34,6 @@ let workbenchState = null;
 let workbenchUrl = null;
 let workbenchUnsubscribe = null;
 let workbenchInteractionController = null;
-let contextRail = null;
 let inspector = null;
 let workbenchFocusTimer = null;
 const inspectionRegistry = new Map();
@@ -82,9 +80,7 @@ function buildEventInspection(item, relatedIds = []) {
 
 function ensureEventsWorkbench(root) {
   if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "market-events" });
-  contextRail?.destroy();
   inspector?.destroy();
-  contextRail = mountContextRail(root.querySelector("#events-context-rail"));
   inspector = mountInspector(root.querySelector("#events-inspector"), {
     state: workbenchState,
     returnFocus: () => root.querySelector("#events-refresh"),
@@ -617,10 +613,9 @@ export async function renderMarketEvents({ commands } = {}) {
   // The page DOM is rebuilt on every SPA entry, while module-level fingerprints
   // survive. Reset them so an unchanged cached payload still repaints the new
   // page instead of leaving the feed shell blank.
-  lastFeedFingerprint = "";
+  lastFeedFingerprint = null;
   lastCalendarFingerprint = "";
   setRoot(`
-    <div id="events-context-rail"></div>
     <section id="events-supply-calendar"></section>
     <div class="events-actions-bar">
       <!-- The translate + refresh buttons live inside the feed-card header
@@ -690,7 +685,6 @@ export async function renderMarketEvents({ commands } = {}) {
       calendarRoot.innerHTML = renderSupplyCalendarCard(calendarItems, calendarCoverage, currentCalendarFilter);
       bindSupplyCalendarControls(calendarRoot, calendarItems, calendarCoverage);
     }
-    updateEventsContext(true);
     workbenchUrl?.dataReady();
     renderStatus("数据已就绪", "success");
     return orderedItemsCache;
@@ -720,7 +714,6 @@ export async function renderMarketEvents({ commands } = {}) {
       }
     }
     revealStagger(document.getElementById("events-feed"), { selector: ".event-card" });
-    updateEventsContext(true);
     workbenchUrl?.dataReady();
     renderStatus("数据已就绪", "success");
   }
@@ -876,7 +869,6 @@ export async function renderMarketEvents({ commands } = {}) {
     setFeedBusy(false);
   });
   ensureEventsWorkbench(document);
-  updateEventsContext();
   return {
     async unmount() {
       pageLifetime.abort();
@@ -887,8 +879,6 @@ export async function renderMarketEvents({ commands } = {}) {
       workbenchUnsubscribe = null;
       workbenchInteractionController?.abort();
       workbenchInteractionController = null;
-      contextRail?.destroy();
-      contextRail = null;
       inspector?.destroy();
       inspector = null;
       workbenchUrl?.destroy();
@@ -915,25 +905,4 @@ export async function renderMarketEvents({ commands } = {}) {
       }
     },
   };
-}
-
-function updateEventsContext(loaded = false) {
-  const items = orderedItemsCache || [];
-  const lastTs = items[0]?.ts_event || null;
-  const sources = [...new Set(items.map((item) => item.source).filter(Boolean))];
-  contextRail?.update({
-    instrument: "市场信息流",
-    primaryValue: loaded ? `${items.length} 条` : undefined,
-    timeframe: appState.translateEvents ? "已开启中文翻译" : "原文",
-    marketRisk: undefined,
-    freshness: {
-      label: "最新事件",
-      value: loaded && lastTs ? formatDateOnly(lastTs) : (loaded ? "暂无事件" : "正在读取"),
-      status: "unavailable",
-    },
-    sourceSummary: {
-      value: sources.length ? sources.join(" · ") : "信源待确认",
-      status: "unavailable",
-    },
-  });
 }

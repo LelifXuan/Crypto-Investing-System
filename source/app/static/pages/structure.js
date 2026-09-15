@@ -377,25 +377,23 @@ function firstVisibleTs(candles) {
 }
 
 function localIndexForPoint(point, candles, offset, fallbackIndex = 0) {
+  // Geometry indices belong to the detection window, which can be longer
+  // than the returned candles (especially weekly snapshots). Timestamp is
+  // the stable identity; subtracting the chart offset from that index is not.
+  const timestamp = pointTime(point);
+  if (timestamp !== null) return nearestCandleIndex(candles, timestamp, fallbackIndex);
   if (hasExplicitIndex(point)) {
     return Math.max(0, Number(point.index) - offset);
-  }
-  const ts = point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time;
-  if (ts !== undefined && ts !== null) {
-    return nearestCandleIndex(candles, ts, fallbackIndex);
   }
   return fallbackIndex;
 }
 
 function visiblePointInViewport(point, candles, offset) {
   if (!candles.length) return false;
-  if (hasExplicitIndex(point)) return Number(point.index) >= offset;
-  const ts = point?.ts ?? point?.timestamp ?? point?.ts_open ?? point?.time;
-  if (ts === undefined || ts === null) return true;
-  const pointTs = normalizeTs(ts);
+  const pointTs = pointTime(point);
   const startTs = firstVisibleTs(candles);
-  if (pointTs === null || startTs === null) return true;
-  return pointTs >= startTs;
+  if (pointTs !== null && startTs !== null) return pointTs >= startTs;
+  return !hasExplicitIndex(point) || Number(point.index) >= offset;
 }
 
 function shouldExtendToLatest(item, role) {
@@ -628,6 +626,14 @@ function visibleGeometryForViewport(geometry, candles, offset) {
       const points = getGeometryPoints(item);
       const filtered = points
         .filter((point, index) => {
+          // Never clamp a confirmed swing outside the candle window onto
+          // its last bar. Forward projection is handled separately below.
+          if (item.system === "swing") {
+            const timestamp = pointTime(point);
+            if (timestamp !== null && timestamp > normalizeTs(candles.at(-1)?.ts_open)) return false;
+            if (timestamp === null && hasExplicitIndex(point)
+                && Number(point.index) >= offset + candles.length) return false;
+          }
           return visiblePointInViewport(point, candles, offset);
         })
         .map((point, index) => {
@@ -664,7 +670,7 @@ function buildLegendMarkup(availability) {
       <g transform="translate(${78 + index * 168}, 22)" class="${helpText[key] ? "structure-legend-help" : ""}">
         ${helpText[key] ? `<title>${escapeHtml(helpText[key])}</title>` : ""}
         <line x1="0" y1="0" x2="28" y2="0" stroke="${series.color}" stroke-width="${series.width}" stroke-dasharray="${series.dash}"></line>
-        ${key === "swing" ? `<circle cx="0" cy="0" r="3.5" fill="${series.color}" stroke="#fff8ed" stroke-width="1.4"></circle><circle cx="28" cy="0" r="3.5" fill="${series.color}" stroke="#fff8ed" stroke-width="1.4"></circle>` : ""}
+        ${key === "swing" ? `<circle cx="0" cy="0" r="3.5" fill="${series.color}" stroke="#fbfcfe" stroke-width="1.4"></circle><circle cx="28" cy="0" r="3.5" fill="${series.color}" stroke="#fbfcfe" stroke-width="1.4"></circle>` : ""}
         <text class="structure-svg-axis structure-axis-label" x="36" y="4">${escapeHtml(series.label)}</text>
         ${helpText[key] ? `<text class="structure-legend-help-icon" x="${helpX[key]}" y="4">ⓘ</text>` : ""}
       </g>
@@ -1108,7 +1114,7 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
       if (!mapped.length) return "";
 
       if (mapped.length === 1) {
-        return `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${strokeColor}" stroke="#fff8ed" stroke-width="${strokeWidth}" opacity="${opacity}" />`;
+        return `<circle cx="${mapped[0].x.toFixed(2)}" cy="${mapped[0].y.toFixed(2)}" r="5" fill="${strokeColor}" stroke="#fbfcfe" stroke-width="${strokeWidth}" opacity="${opacity}" />`;
       }
 
       const path = mapped
@@ -1138,7 +1144,7 @@ function buildOverlayMarkup(geometry, candles, scale, priceGuide) {
               Number.isFinite(low) ? `最低：${formatNumber(low, 2)}` : "",
               `状态：${confirmed ? "已确认" : "观察中"}`,
             ].filter(Boolean).join("\n");
-            return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${confirmed ? 4.2 : 3.8}" fill="${confirmed ? strokeColor : "#fff8ed"}" stroke="${strokeColor}" stroke-width="1.8" opacity="${confirmed ? 0.94 : 0.72}"><title>${escapeHtml(details)}</title></circle>`;
+            return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${confirmed ? 4.2 : 3.8}" fill="${confirmed ? strokeColor : "#fbfcfe"}" stroke="${strokeColor}" stroke-width="1.8" opacity="${confirmed ? 0.94 : 0.72}"><title>${escapeHtml(details)}</title></circle>`;
           }).join("")
         : "";
       // V1.7.x: drop the floating "观察中" annotation entirely. The

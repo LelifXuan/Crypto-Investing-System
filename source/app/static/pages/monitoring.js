@@ -16,7 +16,6 @@ import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js"
 import { renderGovernanceLedger } from "../ui/governanceLedger.js";
 import { createWorkbenchState } from "../core/workbenchState.js?v=operator-core-1";
 import { mountWorkbenchUrlState } from "../core/workbenchUrlState.js";
-import { mountContextRail } from "../ui/contextRail.js";
 import { mountInspector } from "../ui/inspector.js?v=operator-core-1";
 import { markWorkbenchRelations } from "../ui/semanticMotion.js?v=operator-core-1";
 import { animateStateChange, animateValueChange } from "../ui/semanticMotion.js?v=operator-core-1";
@@ -28,7 +27,6 @@ const boundRefreshButtons = new WeakSet();
 let lastRenderedBundle = null;
 let workbenchState = null;
 let workbenchUrl = null;
-let contextRail = null;
 let inspector = null;
 let interactionController = null;
 let workbenchUnsubscribe = null;
@@ -82,14 +80,6 @@ function monitoringTimestamp(data) {
   return data?.updated_at || data?.snapshot_at || data?.data_ts || data?.source_updated_at || null;
 }
 
-function monitoringFreshnessStatus(data) {
-  const state = normalizeKey(data?.freshness_state || data?.cache_state || data?.status);
-  if (["fresh", "live", "ok", "ready"].includes(state)) return "live";
-  if (["stale", "cached", "stale_revalidating"].includes(state)) return "stale";
-  if (["error", "failed", "degraded"].includes(state)) return "degraded";
-  return "unavailable";
-}
-
 function inspectionAttrs(item) {
   if (!item?.id) return "";
   inspectionRegistry.set(item.id, item);
@@ -128,32 +118,9 @@ function macroInspection(data, macro) {
   };
 }
 
-function updateMonitoringContext(data, macro) {
-  const sourceRows = getSourceStatus(data);
-  const freshCount = sourceRows.filter((source) => sourceMeta(source.status).tone === "live").length;
-  const timestamp = monitoringTimestamp(data);
-  const freshnessStatus = monitoringFreshnessStatus(data);
-  contextRail?.update({
-    instrument: "BTC",
-    timeframe: "1D",
-    regime: actualMacroRegime(macro),
-    freshness: {
-      value: timestamp ? formatDateTime(timestamp) : freshnessStatus === "degraded" ? "降级" : "后台准备中",
-      detail: timestamp && freshnessStatus === "stale" ? "最近可用快照" : "",
-      status: freshnessStatus,
-    },
-    sourceSummary: {
-      value: `${freshCount}/${sourceRows.length || 0} 在线`,
-      status: freshCount === sourceRows.length && sourceRows.length ? "live" : freshCount ? "stale" : "unavailable",
-    },
-  });
-}
-
 function ensureMonitoringWorkbench(root) {
   if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "monitoring-overview" });
-  contextRail?.destroy();
   inspector?.destroy();
-  contextRail = mountContextRail(root.querySelector("#monitoring-context-rail"));
   inspector = mountInspector(root.querySelector("#monitoring-inspector"), {
     state: workbenchState,
     returnFocus: () => root.querySelector(".monitoring-refresh"),
@@ -562,10 +529,11 @@ function macroCompleteness(macro) {
 
 function macroConfidence(macro) {
   const key = normalizeKey(macro?.confidence || macro?.confidence_label);
+  if (!key) return "待评估";
   if (["high", "strong", "good", "较高"].includes(key)) return "较高";
   if (["medium", "normal", "ok", "中等"].includes(key)) return "中等";
   if (["low", "weak", "poor", "不足"].includes(key)) return "不足";
-  return readableText(macro?.confidence_label || macro?.confidence, "不足");
+  return readableText(macro?.confidence_label || macro?.confidence, "待评估");
 }
 
 function macroBiasLabel(macro) {
@@ -717,7 +685,6 @@ function missingTone(item) {
 
 function renderShellFallback(message, pending = false) {
   return `
-    <div id="monitoring-context-rail"></div>
     <div class="workbench-page-layout monitoring-workbench-layout">
       <div class="monitoring-primary">
         <div id="monitoring-topbar">
@@ -761,11 +728,6 @@ function attachMonitoringShell(root) {
     "monitoring-governance": root.querySelector("#monitoring-governance"),
   };
   ensureMonitoringWorkbench(root);
-  contextRail?.update({
-    instrument: "BTC",
-    timeframe: "1D",
-    freshness: { value: "后台准备中", status: "unavailable" },
-  });
 }
 
 function hasRenderedMonitoringShell() {
@@ -791,6 +753,15 @@ function renderTopbar(data, macro) {
   const missing = Math.max(indicators.length - visible.length, 0);
   const technicalCount = numeric(data?.technical_indicator_count) ?? technical.length;
   const macroCoverage = macroCompleteness(macro);
+  const confidence = macroConfidence(macro);
+  const confidenceTone =
+    confidence === "较高"
+      ? "ready"
+      : confidence === "中等"
+        ? "neutral"
+        : confidence === "不足"
+          ? "warning"
+          : "pending";
   const statusMessage =
     technicalCount > 0 && macroCoverage <= 0
       ? "技术指标已就绪，宏观覆盖待补齐。"
@@ -810,9 +781,9 @@ function renderTopbar(data, macro) {
             <span>宏观总分</span>
             <strong>${escapeHtml(formatNumber(macroScore(macro), 0))}</strong>
           </article>
-          <article class="monitoring-topbar-item">
-            <span>置信度</span>
-            <strong>${escapeHtml(macroConfidence(macro))}</strong>
+          <article class="monitoring-topbar-item monitoring-confidence-item">
+            <span>数据置信度</span>
+            <span class="monitoring-confidence-chip" data-confidence-tone="${confidenceTone}">${escapeHtml(confidence)}</span>
           </article>
           <article class="monitoring-topbar-item" title="有有效数据的宏观指标占比；不足 100% 意味着部分指标缺失或过期，决策置信度会相应降低">
             <span>宏观数据覆盖</span>
@@ -1350,7 +1321,6 @@ function applyMonitoringDiff(data, options = {}) {
   sections["monitoring-terminal-summary"].innerHTML = renderTerminalSummary(data);
   sections["monitoring-macro-grid"].innerHTML = renderMacroIndicatorGrid(macro, data);
   sections["monitoring-governance"].innerHTML = renderMonitoringGovernanceBar(data);
-  updateMonitoringContext(data, macro);
   inspectionRegistry.forEach((item, id) => {
     const next = { value: item.current?.value, state: item.current?.marketTone };
     const previous = previousWorkbenchValues.get(id);
@@ -1603,8 +1573,6 @@ export async function renderMonitoring({ commands } = {}) {
       workbenchUnsubscribe = null;
       inspector?.destroy();
       inspector = null;
-      contextRail?.destroy();
-      contextRail = null;
       workbenchUrl?.destroy();
       workbenchUrl = null;
       workbenchState?.destroy();

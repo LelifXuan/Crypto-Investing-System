@@ -28,8 +28,8 @@ body {
   font-family: var(--font-sans);
   background:
     radial-gradient(circle at top left, var(--info-tint-max), transparent 25%),
-    radial-gradient(circle at top right, rgba(183, 121, 31, 0.12), transparent 24%),
-    linear-gradient(180deg, #f7f1e7 0%, #efe5d6 44%, #ebe2d6 100%);
+    radial-gradient(circle at top right, var(--info-tint-strong), transparent 24%),
+    linear-gradient(180deg, #f6f8fb 0%, #eef1f5 44%, #e9edf3 100%);
   line-height: 1.55;
 }
 
@@ -91,7 +91,7 @@ h2 {
 
 .auth-card,
 .card {
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.92), rgba(247, 242, 233, 0.76));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.92), rgba(243, 246, 250, 0.76));
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
@@ -102,7 +102,7 @@ h2 {
 .auth-card {
   padding: var(--card-padding);
   background:
-    linear-gradient(180deg, rgba(255, 252, 247, 0.94), rgba(248, 244, 236, 0.88));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.94), rgba(245, 247, 250, 0.88));
 }
 
 .card {
@@ -127,7 +127,7 @@ h2 {
   min-width: 0;
 }
 
-/* Card surfaces use semi-transparent white over the warm cream page bg.
+/* Card surfaces use semi-transparent cool white over the neutral page bg.
    --muted (#7b8693) on this surface falls to ~3.6:1 (fails WCAG AA 4.5:1).
    Bump card/article body text to --text-secondary for readable contrast (>5:1). */
 :where(.card, article[class]) :where(p, span, li, h3, h4, h5, h6):not(.chip):not(.btn):not(.status-chip):not(.status-chip *) {
@@ -501,7 +501,7 @@ button:active,
 }
 
 button.secondary {
-  background: linear-gradient(180deg, rgba(255, 251, 245, 0.96), rgba(239, 248, 244, 0.92));
+  background: linear-gradient(180deg, rgba(250, 252, 254, 0.96), rgba(239, 248, 244, 0.92));
   color: var(--accent-strong);
   border: 1px solid var(--info-tint-strong);
   box-shadow: none;
@@ -514,7 +514,7 @@ button.secondary:hover {
 input,
 select,
 textarea {
-  background: rgba(255, 253, 249, 0.95);
+  background: rgba(251, 252, 254, 0.95);
   color: var(--ink);
 }
 
@@ -561,7 +561,7 @@ textarea {
   padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid var(--border);
-  background: rgba(255, 253, 248, 0.94);
+  background: rgba(251, 252, 254, 0.94);
 }
 
 .field-help strong {
@@ -584,7 +584,7 @@ textarea {
   overflow-y: auto;
   max-height: min(60vh, 960px);
   border-radius: 18px;
-  border: 1px solid rgba(175, 154, 123, 0.14);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.5);
 }
 
@@ -594,7 +594,7 @@ textarea {
   margin-bottom: 18px;
   padding: 18px;
   border-radius: 20px;
-  border: 1px solid rgba(175, 154, 123, 0.16);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.54);
 }
 
@@ -644,8 +644,8 @@ textarea {
   min-height: 96px;
   padding: 10px;
   border-radius: 16px;
-  border: 1px solid rgba(175, 154, 123, 0.16);
-  background: rgba(255, 253, 249, 0.84);
+  border: 1px solid var(--border);
+  background: rgba(251, 252, 254, 0.84);
 }
 
 .macro-month-day.is-outside {
@@ -711,8 +711,8 @@ textarea {
   text-align: center;
   color: var(--muted);
   border-radius: 16px;
-  border: 1px dashed rgba(175, 154, 123, 0.24);
-  background: rgba(255, 253, 249, 0.68);
+  border: 1px dashed var(--border-strong);
+  background: rgba(251, 252, 254, 0.68);
 }
 
 @media (max-width: 900px) {
@@ -742,13 +742,13 @@ table {
 }
 
 thead {
-  background: linear-gradient(180deg, rgba(248, 244, 236, 0.94), rgba(244, 237, 228, 0.86));
+  background: linear-gradient(180deg, rgba(245, 247, 250, 0.94), rgba(238, 242, 247, 0.86));
 }
 
 th,
 td {
   padding: 15px 16px;
-  border-bottom: 1px solid rgba(175, 154, 123, 0.16);
+  border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
 }
@@ -793,8 +793,8 @@ table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(180deg, rgba(248, 244, 236, 0.94), rgba(244, 237, 228, 0.86));
-  box-shadow: inset 0 -1px 0 rgba(175, 154, 123, 0.16);
+  background: linear-gradient(180deg, rgba(245, 247, 250, 0.94), rgba(238, 242, 247, 0.86));
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 @media (max-width: 900px) {
@@ -825,8 +825,8 @@ table thead th {
   overflow: hidden;
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 243, 236, 0.72));
-  border: 1px solid rgba(175, 154, 123, 0.14);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(238, 242, 247, 0.72));
+  border: 1px solid var(--border);
   padding: 14px;
 }
 
@@ -857,7 +857,7 @@ table thead th {
 .indicator-hero {
   background:
     radial-gradient(circle at top right, var(--info-edge), transparent 30%),
-    linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(237, 249, 245, 0.94));
+    linear-gradient(135deg, rgba(251, 252, 254, 0.98), rgba(237, 249, 245, 0.94));
   margin-bottom: var(--content-gap);
 }
 
@@ -902,7 +902,7 @@ table thead th {
 }
 
 .indicator-group-card {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(246, 240, 230, 0.92));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(242, 245, 249, 0.92));
 }
 
 .analysis-overview-grid {
@@ -923,8 +923,8 @@ table thead th {
   padding: 24px;
   background:
     radial-gradient(circle at top left, var(--info-tint-max), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(183, 121, 31, 0.12), transparent 24%),
-    linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(237, 249, 245, 0.94));
+    radial-gradient(circle at bottom right, var(--info-tint-strong), transparent 24%),
+    linear-gradient(135deg, rgba(251, 252, 254, 0.98), rgba(237, 249, 245, 0.94));
 }
 
 .analysis-hero-top {
@@ -969,7 +969,7 @@ table thead th {
 .analysis-live-card-strong {
   background:
     radial-gradient(circle at top right, var(--info-edge), transparent 30%),
-    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(234, 248, 244, 0.94));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(234, 248, 244, 0.94));
 }
 
 .analysis-refresh-panel {
@@ -994,7 +994,7 @@ table thead th {
   padding: 10px 12px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.48);
-  border: 1px solid rgba(175, 154, 123, 0.12);
+  border: 1px solid var(--border);
   display: grid;
   gap: 1px;
 }
@@ -1073,7 +1073,7 @@ table thead th {
 .analysis-live-card {
   background:
     radial-gradient(circle at top right, var(--info-tint-strong), transparent 30%),
-    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(244, 249, 247, 0.92));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(244, 249, 247, 0.92));
 }
 
 .analysis-live-card .lead {
@@ -1104,12 +1104,12 @@ table thead th {
 
 .analysis-chart-primary {
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(241, 247, 245, 0.92));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(241, 247, 245, 0.92));
 }
 
 .analysis-chart-secondary {
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(247, 243, 236, 0.92));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(238, 242, 247, 0.92));
 }
 
 .analysis-card-grid {
@@ -1158,7 +1158,7 @@ table thead th {
   padding: 14px 16px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(175, 154, 123, 0.16);
+  border: 1px solid var(--border);
 }
 
 .indicator-list-item strong {
@@ -1335,7 +1335,7 @@ main:has(.tooltip-anchor:focus-within) {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.7);
   color: var(--muted);
-  border: 1px dashed rgba(175, 154, 123, 0.28);
+  border: 1px dashed var(--border-strong);
 }
 
 .event-feed-item {
@@ -1343,7 +1343,7 @@ main:has(.tooltip-anchor:focus-within) {
   gap: 10px;
   padding: 18px;
   border-radius: 18px;
-  border: 1px solid rgba(175, 154, 123, 0.16);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.8);
 }
 
@@ -1363,15 +1363,15 @@ main:has(.tooltip-anchor:focus-within) {
 }
 
 .metric.metric-accent {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(235, 248, 243, 0.94));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(235, 248, 243, 0.94));
 }
 
 .metric.metric-sand {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(247, 241, 231, 0.94));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(247, 241, 231, 0.94));
 }
 
 .metric.metric-slate {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(237, 242, 248, 0.94));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(237, 242, 248, 0.94));
 }
 
 .metric.metric-danger {
@@ -1383,13 +1383,13 @@ main:has(.tooltip-anchor:focus-within) {
   gap: 18px;
   background:
     radial-gradient(circle at top right, var(--info-tint-max), transparent 26%),
-    linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(243, 249, 247, 0.92));
+    linear-gradient(135deg, rgba(251, 252, 254, 0.98), rgba(243, 249, 247, 0.92));
 }
 
 .macro-hero {
   background:
     radial-gradient(circle at top right, rgba(29, 78, 216, 0.12), transparent 26%),
-    linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(240, 245, 252, 0.94));
+    linear-gradient(135deg, rgba(251, 252, 254, 0.98), rgba(240, 245, 252, 0.94));
 }
 
 .monitoring-headline {
@@ -1712,15 +1712,15 @@ main:has(.tooltip-anchor:focus-within) {
 }
 
 .monitoring-pane.technical {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(236, 248, 245, 0.92));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(236, 248, 245, 0.92));
 }
 
 .monitoring-pane.macro {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(246, 241, 232, 0.92));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(242, 245, 249, 0.92));
 }
 
 .monitoring-pane.onchain {
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(241, 245, 250, 0.94));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(241, 245, 250, 0.94));
 }
 
 .monitoring-list {
@@ -1740,7 +1740,7 @@ main:has(.tooltip-anchor:focus-within) {
 .monitoring-list-item {
   padding: 14px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(175, 154, 123, 0.14);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.78);
 }
 
@@ -1815,7 +1815,7 @@ body[data-page="macro-calendar"] #macro-calendar-detail {
   display: grid;
   gap: 16px;
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(247, 243, 236, 0.94));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(238, 242, 247, 0.94));
 }
 
 @media (max-width: 1180px) {
@@ -1846,7 +1846,7 @@ body[data-page="macro-calendar"] .monitoring-side-card {
   gap: 6px;
   padding: 16px 18px;
   border-radius: 18px;
-  border: 1px solid rgba(175, 154, 123, 0.16);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.78);
 }
 
@@ -1905,19 +1905,19 @@ body[data-page="macro-calendar"] .monitoring-side-card {
   }
 
   .card.metric:nth-child(1) {
-    background: linear-gradient(180deg, rgba(255, 253, 248, 0.95), rgba(239, 249, 246, 0.88));
+    background: linear-gradient(180deg, rgba(251, 252, 254, 0.95), rgba(239, 249, 246, 0.88));
   }
 
   .card.metric:nth-child(2) {
-    background: linear-gradient(180deg, rgba(255, 253, 248, 0.95), rgba(246, 240, 230, 0.88));
+    background: linear-gradient(180deg, rgba(251, 252, 254, 0.95), rgba(242, 245, 249, 0.88));
   }
 
   .card.metric:nth-child(3) {
-    background: linear-gradient(180deg, rgba(255, 253, 248, 0.95), rgba(246, 244, 232, 0.88));
+    background: linear-gradient(180deg, rgba(251, 252, 254, 0.95), rgba(246, 244, 232, 0.88));
   }
 
   .card.metric:nth-child(4) {
-    background: linear-gradient(180deg, rgba(255, 253, 248, 0.95), rgba(238, 243, 250, 0.88));
+    background: linear-gradient(180deg, rgba(251, 252, 254, 0.95), rgba(238, 243, 250, 0.88));
   }
 }
 
@@ -2441,7 +2441,7 @@ a.status-chip:focus-visible {
 .chip-neutral {
   background: var(--neutral-chip-surface, #ece9e4);
   color: var(--neutral-chip-ink, #59535f);
-  border-color: var(--neutral-chip-border, #d9d3ca);
+  border-color: var(--neutral-chip-border, #d5dae2);
 }
 
 /* Variants override fill / stroke on top of the tone. */
@@ -2523,11 +2523,11 @@ a.status-chip:focus-visible {
 .btn-primary:hover { box-shadow: var(--shadow-button-hover); transform: translateY(-1px); }
 
 .btn-secondary {
-  background: rgba(255, 251, 245, 0.92);
+  background: rgba(250, 252, 254, 0.92);
   color: var(--accent-strong);
   border-color: var(--info-tint-strong);
 }
-.btn-secondary:hover { background: rgba(255, 251, 245, 0.98); box-shadow: var(--shadow-button); }
+.btn-secondary:hover { background: rgba(250, 252, 254, 0.98); box-shadow: var(--shadow-button); }
 
 .btn-ghost {
   background: transparent;
@@ -2545,7 +2545,7 @@ a.status-chip:focus-visible {
 .btn-tab {
   background: rgba(255, 255, 255, 0.7);
   color: var(--muted-strong);
-  border-color: rgba(175, 154, 123, 0.18);
+  border-color: var(--border);
   border-radius: 999px;
 }
 .btn-tab[aria-selected="true"],
@@ -3023,7 +3023,7 @@ tr.is-supply-event td {
 .divergence-overall {
   padding: 16px 18px;
   border-color: var(--info-edge);
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.92), rgba(237, 249, 245, 0.78));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.92), rgba(237, 249, 245, 0.78));
 }
 
 .divergence-score-row {
@@ -3163,7 +3163,7 @@ tr.is-supply-event td {
   padding: var(--card-padding);
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(244, 249, 247, 0.92));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(244, 249, 247, 0.92));
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -3224,7 +3224,7 @@ tr.is-supply-event td {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(175, 154, 123, 0.16);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.76);
   color: var(--muted-strong);
   line-height: 1.4;
@@ -3728,7 +3728,7 @@ tr.is-supply-event td {
 }
 
 /* ---- 2. Shimmer loading bar ----
-   Replaces the simple dot with a warm cream shimmer. */
+   Replaces the simple dot with a restrained neutral shimmer. */
 .shimmer-bar {
   position: relative;
   overflow: hidden;
@@ -3839,8 +3839,8 @@ article.card:hover,
 .structure-toolbar-card {
   padding: 20px 24px;
   background:
-    linear-gradient(180deg, rgba(255, 252, 247, 0.82), rgba(246, 241, 232, 0.72));
-  border: 1px solid rgba(175, 154, 123, 0.2);
+    linear-gradient(180deg, rgba(251, 252, 254, 0.82), rgba(242, 245, 249, 0.72));
+  border: 1px solid rgba(104, 117, 135, 0.18);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -3974,7 +3974,7 @@ article.card:hover,
   padding: 16px 18px;
   border-color: var(--info-ghost-strong);
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.72), rgba(246, 249, 246, 0.62));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.72), rgba(246, 249, 246, 0.62));
   box-shadow: var(--shadow-soft);
 }
 
@@ -4065,8 +4065,8 @@ article.card:hover,
   min-height: 0;
   padding: 14px 14px 12px;
   border-radius: 20px;
-  border: 1px solid rgba(175, 154, 123, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 243, 236, 0.72));
+  border: 1px solid rgba(104, 117, 135, 0.16);
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.9), rgba(238, 242, 247, 0.82));
   align-content: start;
 }
 
@@ -4138,8 +4138,8 @@ article.card:hover,
 .warning-banner {
   padding: 14px 16px;
   border-radius: 18px;
-  border: 1px solid rgba(183, 121, 31, 0.2);
-  background: rgba(183, 121, 31, 0.1);
+  border: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
+  background: var(--warning-soft);
   color: var(--warm);
   line-height: 1.55;
 }
@@ -4255,8 +4255,8 @@ article.card:hover,
   overflow: hidden;
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 243, 236, 0.72));
-  border: 1px solid rgba(175, 154, 123, 0.14);
+    linear-gradient(180deg, rgba(251, 252, 254, 0.9), rgba(238, 242, 247, 0.82));
+  border: 1px solid rgba(104, 117, 135, 0.16);
   padding: 14px;
 }
 
@@ -4349,12 +4349,12 @@ article.card:hover,
    (e.g. 经典图形上破 at 64,024 + POC at 63,882 → only ~140 dollars
    apart in plot coords). Without a background, the SVG <text>
    visually merges with the price line / grid lines / other labels.
-   Add a cream halo via paint-order: stroke fill so the labels
+   Add a cool-white halo via paint-order: stroke fill so the labels
    read clearly against the chart background. */
 .structure-guide-label,
 .structure-profile-label {
   paint-order: stroke fill;
-  stroke: #fff8ed;
+  stroke: #fbfcfe;
   stroke-width: 4;
   stroke-linejoin: round;
 }
@@ -4522,8 +4522,8 @@ article.card:hover,
 .analysis-hero-card {
   background:
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.26), transparent 30%),
-    linear-gradient(180deg, rgba(255, 253, 249, 0.94), rgba(245, 240, 232, 0.78));
-  border-color: rgba(148, 129, 101, 0.18);
+    linear-gradient(180deg, rgba(251, 252, 254, 0.94), rgba(238, 242, 247, 0.78));
+  border-color: var(--border);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     var(--shadow-card);
@@ -4611,9 +4611,9 @@ button:hover,
 .structure-chart-panel,
 .structure-chart-shell {
   border-radius: 22px;
-  border: 1px solid rgba(148, 129, 101, 0.14);
+  border: 1px solid rgba(104, 117, 135, 0.16);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(246, 241, 233, 0.76));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.9), rgba(238, 242, 247, 0.82));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -4679,7 +4679,7 @@ button:hover,
 .divergence-overall,
 .divergence-alert-item {
   background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(148, 129, 101, 0.14);
+  border: 1px solid var(--border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
@@ -4703,7 +4703,7 @@ button:hover,
   padding: 20px 22px;
   background:
     radial-gradient(circle at top right, var(--info-tint-strong), transparent 28%),
-    linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(243, 239, 231, 0.84));
+    linear-gradient(180deg, rgba(251, 252, 254, 0.96), rgba(240, 243, 248, 0.84));
 }
 
 .alert-chip-hero .section-head {
@@ -4949,7 +4949,7 @@ button:hover,
 
 .structure-chart-meta {
   padding-top: 2px;
-  border-top: 1px solid rgba(148, 129, 101, 0.1);
+  border-top: 1px solid var(--border);
 }
 
 .structure-detail-card {
@@ -5763,7 +5763,7 @@ body[data-page="ai-strategy"] main {
 }
 .knowledge-toggle-button:hover {
   background: var(--accent-soft);
-  border-color: rgba(102, 84, 142, 0.28);
+  border-color: rgba(85, 74, 120, 0.28);
 }
 
 .knowledge-body p {
@@ -6666,7 +6666,7 @@ body[data-page="ai-strategy"] main {
   border: 1px solid var(--info-tint-max);
   border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(250, 253, 250, 0.94), rgba(255, 248, 237, 0.8)),
+    linear-gradient(135deg, rgba(251, 252, 254, 0.94), rgba(238, 242, 247, 0.8)),
     var(--surface);
   box-shadow: var(--shadow-card);
 }
@@ -6809,7 +6809,7 @@ body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .moni
   padding: 10px 13px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: linear-gradient(145deg, rgba(255, 253, 248, 0.96), rgba(244, 250, 247, 0.88));
+  background: linear-gradient(145deg, rgba(251, 252, 254, 0.96), rgba(244, 250, 247, 0.88));
 }
 
 .monitoring-topbar-item span,
@@ -6883,13 +6883,13 @@ body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .moni
 .monitoring-summary-surface {
   padding: clamp(18px, 2.2vw, 26px);
   background:
-    linear-gradient(135deg, rgba(250, 253, 250, 0.92), rgba(255, 248, 237, 0.78));
+    linear-gradient(135deg, rgba(251, 252, 254, 0.92), rgba(238, 242, 247, 0.78));
 }
 
 .monitoring-panel,
 .monitoring-detail-panel {
   padding: 18px;
-  border: 1px solid rgba(219, 209, 194, 0.72);
+  border: 1px solid var(--border);
   border-radius: 18px;
   background:
     linear-gradient(145deg, rgba(255, 252, 246, 0.96), rgba(245, 250, 247, 0.86));
@@ -7045,7 +7045,7 @@ body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .moni
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.92), rgba(247, 242, 233, 0.76));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.92), rgba(243, 246, 250, 0.76));
   box-shadow: var(--shadow-soft);
 }
 
@@ -7074,9 +7074,9 @@ body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .moni
   min-height: 92px;
   max-width: 360px;
   padding: 16px 18px;
-  border: 1px dashed rgba(219, 209, 194, 0.86);
+  border: 1px dashed var(--border-strong);
   border-radius: 12px;
-  background: rgba(255, 248, 237, 0.58);
+  background: var(--surface-muted);
 }
 
 .technical-empty-state strong {
@@ -7094,7 +7094,7 @@ body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .moni
   display: grid;
   gap: 18px;
   padding: 22px 24px;
-  border: 1px solid rgba(219, 209, 194, 0.72);
+  border: 1px solid var(--border);
   border-radius: 18px;
   background:
     linear-gradient(145deg, rgba(255, 252, 246, 0.96), rgba(245, 250, 247, 0.86));
@@ -7175,9 +7175,9 @@ body[data-page="monitoring-overview"] .monitoring-topbar[aria-busy="true"] .moni
   display: grid;
   gap: 8px;
   padding: 14px;
-  border: 1px solid rgba(219, 209, 194, 0.72);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(255, 248, 237, 0.54);
+  background: var(--surface-muted);
 }
 
 .terminal-summary-copy-grid p,
@@ -7223,7 +7223,7 @@ ul.terminal-summary-watch li {
 .terminal-summary-context {
   margin: 6px 0 0;
   padding: 8px 14px;
-  border-left: 3px solid rgba(219, 209, 194, 0.72);
+  border-left: 3px solid var(--border);
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.55;
@@ -7474,7 +7474,7 @@ ul.terminal-summary-watch li {
   padding: 14px;
   border: 1px dashed var(--border);
   border-radius: 10px;
-  background: rgba(255, 248, 237, 0.68);
+  background: var(--surface-muted);
 }
 
 @media (max-width: 1180px) {
@@ -7794,7 +7794,7 @@ ul.terminal-summary-watch li {
     var(--info-ghost-strong),
     /* second alpha stop stays literal — paired 0.08 → 0.03 gradient on
        .strategy-primary-plan-card; no single token expresses both ends. */
-    rgba(99, 102, 241, 0.03)
+    rgba(65, 89, 119, 0.03)
   );
   box-shadow: inset 4px 0 0 0 var(--accent-strong),
     inset 0 0 0 1px var(--info-tint-max);
@@ -8240,9 +8240,9 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
   gap: 10px;
   align-items: center;
   padding: 12px 16px;
-  border: 1px solid rgba(183, 121, 31, 0.22);
+  border: 1px solid color-mix(in srgb, var(--warning) 22%, transparent);
   border-radius: 14px;
-  background: rgba(255, 248, 235, 0.82);
+  background: var(--warning-soft);
   color: var(--muted-strong);
   font-size: 13px;
 }
@@ -8253,7 +8253,7 @@ body[data-page="btc-derivatives"] [data-page-link="btc-derivatives"] {
 
 .btc-safety-strip span {
   padding-left: 10px;
-  border-left: 1px solid rgba(183, 121, 31, 0.2);
+  border-left: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
 }
 
 .btc-decision-grid,
@@ -8635,7 +8635,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-confidence-chip[data-tone="neutral"] {
   background: var(--neutral-chip-surface, #ece9e4);
-  border-color: var(--neutral-chip-border, #d9d3ca);
+  border-color: var(--neutral-chip-border, #d5dae2);
   color: var(--neutral-chip-ink, #59535f);
 }
 
@@ -8649,7 +8649,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   letter-spacing: 0.015em;
   background: var(--neutral-chip-surface, #ece9e4);
   color: var(--neutral-chip-ink, #59535f);
-  border: 1px solid var(--neutral-chip-border, #d9d3ca);
+  border: 1px solid var(--neutral-chip-border, #d5dae2);
 }
 
 .btc-tone-chip[data-tone="bullish"] {
@@ -8666,7 +8666,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 
 .btc-tone-chip[data-tone="neutral"] {
   background: var(--neutral-chip-surface, #ece9e4);
-  border-color: var(--neutral-chip-border, #d9d3ca);
+  border-color: var(--neutral-chip-border, #d5dae2);
   color: var(--neutral-chip-ink, #59535f);
 }
 
@@ -8758,7 +8758,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   padding: 22px 24px 24px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.92), rgba(247, 242, 233, 0.76));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.92), rgba(243, 246, 250, 0.76));
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -9375,7 +9375,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 
 .btc-hedge-result--empty {
-  background: rgba(255, 251, 245, 0.62);
+  background: rgba(250, 252, 254, 0.62);
   border-style: dashed;
 }
 
@@ -9423,7 +9423,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   padding: 10px 12px;
   border-left: 3px solid var(--warning);
   border-radius: 8px;
-  background: rgba(183, 121, 31, 0.09);
+  background: var(--warning-soft);
   color: var(--muted-strong);
 }
 
@@ -9431,7 +9431,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .btc-method-notes {
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(255, 251, 245, 0.72);
+  background: rgba(250, 252, 254, 0.72);
 }
 
 .btc-quality-details summary,
@@ -9473,7 +9473,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   gap: 14px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(255, 251, 245, 0.55);
+  background: rgba(250, 252, 254, 0.55);
   box-shadow: var(--shadow-soft);
   color: var(--muted-strong);
   font-size: 12.5px;
@@ -9505,14 +9505,14 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 
 .btc-source-state[data-state="stale"] {
-  border-color: rgba(183, 121, 31, 0.45);
-  background: rgba(183, 121, 31, 0.10);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  background: var(--warning-soft);
   color: var(--warning);
 }
 
 .btc-source-state[data-state="data_insufficient"] {
-  border-color: rgba(183, 121, 31, 0.45);
-  background: rgba(183, 121, 31, 0.06);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning-soft) 50%, transparent);
   color: var(--warning);
 }
 
@@ -9551,8 +9551,8 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 
 .btc-source-chip[data-status="degraded"] {
-  border-color: rgba(183, 121, 31, 0.45);
-  background: rgba(183, 121, 31, 0.08);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  background: var(--warning-soft);
   color: var(--warning);
 }
 
@@ -9579,7 +9579,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .btc-details-drawer {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: rgba(255, 251, 245, 0.72);
+  background: rgba(250, 252, 254, 0.72);
   box-shadow: var(--shadow-soft);
   overflow: hidden;
 }
@@ -9855,7 +9855,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 }
 .strategy-v2-metric:hover {
   background: var(--surface-elevated);
-  box-shadow: inset 0 0 0 1px rgba(102, 84, 142, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(85, 74, 120, 0.16);
 }
 .strategy-v2-metric strong {
   font-size: 1.05rem;
@@ -10638,11 +10638,10 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   padding: 0;
   margin: 16px 0;
   /* 2026-08-18: surface was rgba(255,255,255,0.92) (cool blue-tinted white)
-     which clashed with the warm-cream page background. Switch to the same
-     --surface-elevated gradient used by every other card on the page so
-     the guide card reads as one piece of the same surface system instead
-     of a cool-blue tile pasted onto warm cream. */
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.92), rgba(247, 242, 233, 0.76));
+     which clashed with the page background. Use the same cool-neutral
+     surface gradient as every other card so the guide reads as one piece
+     of the shared surface system. */
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.92), rgba(243, 246, 250, 0.76));
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-soft);
@@ -10653,7 +10652,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
      cooler rgba(247,251,255,0.98) which read as a color shift on open —
      dropped the shift so open/close is only signalled ( by the inner
      section visibility, not by a surface swap. */
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.94), rgba(247, 242, 233, 0.80));
+  background: linear-gradient(180deg, rgba(251, 252, 254, 0.94), rgba(243, 246, 250, 0.80));
 }
 
 /* 2026-08-18: 三层折叠的第二层 — 使用指南卡片。.knowledge-guide-toggle
@@ -11387,7 +11386,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   /* 2026-08-20: 磨砂玻璃质感优化 — 参考 page-guide-panel 的 frosted-glass 设计。
      降低 blur 从 28px → 16px，提升背景不透明度从 0.82 → 0.92，减少"乳白模糊感"，
      保留透出底层内容的磨砂效果，同时提升文字可读性。 */
-  background: rgba(252, 247, 238, 0.92);
+  background: rgba(248, 250, 253, 0.92);
   border-left: 1px solid var(--glass-border-outer);
   box-shadow: var(--shadow-card-hover), inset 1px 0 0 rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(16px);
@@ -11412,7 +11411,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   top: 0;
   z-index: 2;
   /* 2026-08-20: 顶栏与面板统一不透明度，用 hairline 分隔线划分区域 */
-  background: rgba(252, 247, 238, 0.88);
+  background: rgba(248, 250, 253, 0.88);
   border-bottom: 1px solid var(--glass-border-outer);
   padding: 16px 24px;
   display: flex;
@@ -12064,7 +12063,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
     linear-gradient(
       180deg,
       rgba(252, 249, 243, 0.97),
-      rgba(246, 241, 232, 0.95)
+      rgba(242, 245, 249, 0.95)
     );
   border: 1px solid var(--border-glass);
   border-radius: 16px;
@@ -12204,7 +12203,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   left: 8px;
   right: 8px;
   height: 12px;
-  background: linear-gradient(to bottom, rgba(252, 249, 243, 0), rgba(246, 241, 232, 0.95));
+  background: linear-gradient(to bottom, rgba(252, 249, 243, 0), rgba(242, 245, 249, 0.95));
   pointer-events: none;
   border-radius: 0 0 14px 14px;
 }
@@ -12336,7 +12335,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   gap: 8px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: rgba(255, 253, 249, 0.5);
+  background: rgba(251, 252, 254, 0.5);
   border: 1px solid rgba(196, 188, 168, 0.32);
 }
 .gold-formula-item {
@@ -12398,7 +12397,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .gold-mini-card {
   padding: 12px 14px;
   border-radius: 12px;
-  background: rgba(255, 253, 249, 0.6);
+  background: rgba(251, 252, 254, 0.6);
   border: 1px solid rgba(196, 188, 168, 0.32);
   display: flex;
   flex-direction: column;
@@ -12434,7 +12433,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .gold-mini-card.is-empty,
 .gold-workbench-card.is-empty {
   border-style: dashed;
-  background: rgba(245, 240, 232, 0.45);
+  background: rgba(238, 242, 247, 0.45);
   color: var(--text-secondary, #6b6357);
   font-size: 13px;
   display: flex;
@@ -12678,9 +12677,9 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   display: grid;
   gap: 6px;
   padding: 20px 24px;
-  border: 1px dashed var(--border, rgba(175, 154, 123, 0.4));
+  border: 1px dashed var(--border, var(--border-strong));
   border-radius: 14px;
-  background: rgba(245, 240, 232, 0.45);
+  background: rgba(238, 242, 247, 0.45);
   color: var(--text-secondary, #6b6357);
   font-size: 13px;
 }

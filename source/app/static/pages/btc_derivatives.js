@@ -18,14 +18,12 @@ import {
   renderChart,
 } from "../ui/charts.js";
 import { renderGovernanceLedger } from "../ui/governanceLedger.js";
-import { judgementMeta } from "../core/judgement.js?v=semantic-v3";
 import { rangeStateLabel } from "../core/rangeState.js";
 import { mountPageGuide } from "../ui/pageGuideFab.js";
 import { mountDropdown } from "../ui/dropdown.js";
 import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js";
 import { createWorkbenchState } from "../core/workbenchState.js?v=operator-core-1";
 import { mountWorkbenchUrlState } from "../core/workbenchUrlState.js";
-import { mountContextRail } from "../ui/contextRail.js";
 import { mountInspector } from "../ui/inspector.js?v=operator-core-1";
 import {
   animateStateChange,
@@ -76,7 +74,6 @@ let isHedgePlannerCollapsed = true;
 let isAuditGroupCollapsed = true;
 let workbenchState = null;
 let workbenchUrl = null;
-let contextRail = null;
 let inspector = null;
 let interactionController = null;
 let workbenchUnsubscribe = null;
@@ -97,10 +94,6 @@ const DATASET_INSPECTION_MAP = Object.freeze({
   "Put 保护成本": { key: "protection-cost", title: "Put 保护成本", impact: "影响下行保护与对冲成本。" },
   "借记价差成本": { key: "protection-cost", title: "借记价差成本", impact: "影响有限风险保护方案的预算边界。" },
 });
-
-function btcWorkbenchId(...parts) {
-  return parts.filter(Boolean).map((part) => String(part).trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff_-]+/g, "-")).join(":");
-}
 
 function latestFinite(values) {
   for (let index = (values || []).length - 1; index >= 0; index -= 1) {
@@ -179,34 +172,6 @@ function datasetInspection(chartId, chartPayload, dataset) {
   return item;
 }
 
-function latestSpotValue() {
-  const leverage = dashboard?.futures?.charts?.leverage_pressure_timeline;
-  const priceSeries = (leverage?.datasets || []).find((item) => ["BTC 价格", "Price", "价格"].includes(item.label));
-  const value = latestFinite(priceSeries?.data);
-  return value === null ? null : money(value);
-}
-
-function updateBtcContext() {
-  const state = dashboard?.snapshot_state || dashboard?.data_quality?.mode;
-  const providers = dashboard?.source_status || dashboard?.data_quality?.providers || [];
-  const ready = providers.filter((item) => sourceConnectivity(item.status) === "ok").length;
-  const analysis = dashboard?.joint_analysis || {};
-  contextRail?.update({
-    instrument: "BTC/USD",
-    primaryValue: latestSpotValue(),
-    timeframe: filters.window || "各图默认",
-    regime: analysis.range_state && analysis.range_state !== "NONE" ? rangeStateLabel(analysis) : undefined,
-    marketRisk: (dashboard?.cards || []).find((item) => item.id === "primary_risk")?.conclusion,
-    freshness: {
-      value: dashboard?.data_timestamp ? formatDateTime(dashboard.data_timestamp) : displayState(state),
-      status: ["live", "healthy", "ok"].includes(state) ? "live" : state === "data_insufficient" ? "unavailable" : "degraded",
-    },
-    sourceSummary: {
-      value: `${ready}/${providers.length || 0} 在线`,
-      status: ready === providers.length && providers.length ? "live" : ready ? "stale" : "unavailable",
-    },
-  });
-}
 const RISK_CHART_VIEWS = Object.freeze({
   sentiment: {
     title: "期权情绪",
@@ -641,88 +606,6 @@ function renderDecisionCards() {
   `;
 }
 
-function renderIndicatorJudgements() {
-  const items = dashboard?.indicator_judgements || [];
-  if (!items.length) return "";
-  return items.map((item) => {
-    const meta = judgementMeta(item);
-    const key = String(item.indicator_key || item.key || item.label || "indicator");
-    const explicitMetricKey = {
-      funding_rate: "funding",
-      funding_rate_zscore: "funding",
-      basis_rate: "basis",
-      basis_rate_zscore: "basis",
-      open_interest_notional: "open-interest",
-      skew_25d: "skew",
-      protection_cost: "protection-cost",
-    }[key];
-    const id = `btc:evidence:${explicitMetricKey || btcWorkbenchId(key)}`;
-    const rawCurrent = item.value_text ?? item.value_num;
-    const inspection = {
-      id,
-      type: "derivatives-evidence",
-      title: item.label || item.reason || key,
-      current: rawCurrent === null || rawCurrent === undefined || rawCurrent === ""
-        ? null
-        : { label: meta.stateLabel, value: rawCurrent, marketTone: normalizedTone(item.signal_state || item.signal) },
-      interpretation: item.reason || "等待指标更新。",
-      impacts: [{ label: "研究影响", summary: `${meta.effectLabel} · ${meta.dataLabel}` }],
-      sources: btcSourceRows(),
-      updatedAt: dashboard?.data_timestamp || dashboard?.generated_at || null,
-      relatedIds: explicitMetricKey ? [`btc:metric:${explicitMetricKey}`] : [],
-    };
-    const sourceDetailId = `${id}-source-detail`;
-    return `
-      <article class="btc-evidence-tile" data-tone="${escapeHtml(judgementTone(item, meta))}" ${inspectionAttrs(inspection)}>
-        <header>
-          <span class="btc-tone-chip" data-tone="${escapeHtml(judgementTone(item, meta))}">${escapeHtml(meta.axisLabel)}</span>
-          <span class="btc-confidence-chip" data-tone="${escapeHtml(judgementTone(item, meta))}">${escapeHtml(meta.stateLabel)}</span>
-        </header>
-        <h3>${escapeHtml(item.reason || "等待指标更新。")}</h3>
-        <p class="btc-evidence-basis"><strong>影响</strong>${escapeHtml(`${meta.effectLabel} · ${meta.dataLabel}`)}</p>
-        ${renderDisclosureToggle({
-          controls: sourceDetailId,
-          expanded: false,
-          expandLabel: "查看来源",
-          collapseLabel: "收起来源",
-          variant: "inline",
-          className: "btc-evidence-source-toggle",
-          data: { evidenceKey: key },
-        })}
-        <dl id="${sourceDetailId}" class="btc-evidence-source-detail" hidden>
-          <dt>指标键</dt><dd>${escapeHtml(key)}</dd>
-          <dt>状态</dt><dd>${escapeHtml(item.data_status || item.status || "—")}</dd>
-          <dt>时间</dt><dd>${escapeHtml(item.observation_ts || item.timestamp || "—")}</dd>
-        </dl>
-      </article>
-    `;
-  }).join("");
-}
-
-function renderWorkbenchEvidenceRail() {
-  const content = renderIndicatorJudgements();
-  if (!content) return "";
-  return `
-    <aside class="btc-workbench-evidence" aria-label="衍生品关键证据">
-      <div class="btc-workbench-evidence-head">
-        <span>关键证据</span>
-        <small>选择后查看来源与影响</small>
-      </div>
-      <div class="btc-workbench-evidence-list">${content}</div>
-    </aside>
-  `;
-}
-
-function judgementTone(item, meta) {
-  const dataStatus = item?.data_status;
-  if (dataStatus && dataStatus !== "ready") return "neutral";
-  const state = String(meta?.stateLabel || "");
-  if (state.includes("看多") || state.includes("强多") || state.includes("上行") || state.includes("偏多")) return "bullish";
-  if (state.includes("看空") || state.includes("强空") || state.includes("下行") || state.includes("偏空")) return "bearish";
-  if (state.includes("中性") || state.includes("待确认") || state.includes("稳定") || state.includes("不足") || state.includes("分歧")) return "neutral";
-  return "neutral";
-}
-
 function inferenceBlock(id) {
   return (dashboard?.joint_analysis?.inference_blocks || []).find((block) => block.id === id) || {};
 }
@@ -856,6 +739,7 @@ function renderSummarySection() {
         </div>
         <p>${escapeHtml(sectionInterpretation(summary.id))}</p>
         <div class="btc-refresh-stack">
+          <button class="secondary compact" id="btc-open-summary-evidence" type="button">查看证据与来源</button>
           <button class="primary-button compact" id="btc-refresh" type="button">刷新衍生品快照</button>
         </div>
       </div>
@@ -1300,29 +1184,6 @@ function setAuditGroupCollapsed(collapsed) {
   if (body) body.hidden = isAuditGroupCollapsed;
 }
 
-function bindBtcEvidenceSourceToggles() {
-  document.querySelectorAll(".btc-evidence-source-toggle").forEach((btn) => {
-    if (btn.dataset.bound === "1") return;
-    btn.dataset.bound = "1";
-    const detailId = btn.getAttribute("aria-controls");
-    if (!detailId) return;
-    const detail = document.getElementById(detailId);
-    if (!detail) return;
-    btn.addEventListener("click", () => {
-      const expanded = btn.getAttribute("aria-expanded") === "true";
-      const next = !expanded;
-      btn.setAttribute("aria-expanded", String(next));
-      detail.hidden = !next;
-      const label = btn.querySelector("[data-disclosure-label]");
-      if (label) {
-        label.textContent = next
-          ? btn.dataset.disclosureCollapseLabel || "收起来源"
-          : btn.dataset.disclosureExpandLabel || "查看来源";
-      }
-    });
-  });
-}
-
 function renderAuditGroup() {
   const analysis = dashboard?.joint_analysis || {};
   const blocks = analysis.inference_blocks || [];
@@ -1504,12 +1365,10 @@ function renderPageShell(banner = "", freshness = "") {
   }
   return `
     <div class="btc-derivatives-page">
-      <div id="btc-context-rail"></div>
       <div class="workbench-page-layout btc-workbench-layout">
         <div class="workbench-primary btc-workbench-primary">
           <div class="btc-layout-row btc-layout-row--overview btc-workbench-overview">
             <div class="btc-workbench-chart">${renderSummarySection()}</div>
-            ${renderWorkbenchEvidenceRail()}
           </div>
           ${renderChartToolbar()}
           ${renderMaturityLadder()}
@@ -1538,14 +1397,12 @@ function firstChartInspection(chartId) {
 function mountBtcWorkbench(root) {
   if (!root) return;
   if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "btc-derivatives" });
-  contextRail?.destroy();
   inspector?.destroy();
   chartResizeObserver?.disconnect();
   interactionController?.abort();
   workbenchUnsubscribe?.();
   interactionController = new AbortController();
   const { signal } = interactionController;
-  contextRail = mountContextRail(root.querySelector("#btc-context-rail"));
   inspector = mountInspector(root.querySelector("#btc-workbench-inspector"), {
     state: workbenchState,
     returnFocus: () => root.querySelector("#btc-refresh"),
@@ -1599,7 +1456,6 @@ function mountBtcWorkbench(root) {
   workbenchUnsubscribe = workbenchState.subscribe((snapshot) => {
     markWorkbenchRelations(root, snapshot);
   });
-  updateBtcContext();
   inspectionRegistry.forEach((item, id) => {
     const next = { value: item.current?.value, state: item.current?.marketTone };
     const previous = previousWorkbenchValues.get(id);
@@ -1990,6 +1846,10 @@ function updateHedgeFormForPortfolioType(portfolioType) {
 }
 
 function bindEvents() {
+  document.getElementById("btc-open-summary-evidence")?.addEventListener("click", (event) => {
+    const item = firstChartInspection("leverage_pressure_timeline");
+    if (item) workbenchState?.select(item, { trigger: event.currentTarget });
+  });
   document.getElementById("btc-refresh")?.addEventListener("click", () => {
     loadDashboard({ refresh: true }).catch(handleLoadError);
   });
@@ -2004,7 +1864,6 @@ function bindEvents() {
   document.querySelector(".btc-audit-toggle")?.addEventListener("click", () => {
     setAuditGroupCollapsed(!isAuditGroupCollapsed);
   });
-  bindBtcEvidenceSourceToggles();
   document.getElementById("btc-hedge-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -2212,8 +2071,6 @@ export async function renderBtcDerivatives({ commands } = {}) {
       chartResizeObserver = null;
       inspector?.destroy();
       inspector = null;
-      contextRail?.destroy();
-      contextRail = null;
       workbenchUrl?.destroy();
       workbenchUrl = null;
       workbenchState?.destroy();

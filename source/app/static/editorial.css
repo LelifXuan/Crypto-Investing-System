@@ -3,28 +3,27 @@
    renderers remain stable while shared layout and visual semantics migrate. */
 
 :root {
-  --bg: #f2efea;
-  --bg-strong: #e8e3dd;
-  --surface: #f7f5f1;
-  --surface-elevated: #fcfbf8;
-  --surface-muted: #f0edf3;
-  --panel: #f7f5f1;
-  --panel-strong: #fcfbf8;
-  --panel-accent: #ece8f3;
+  --bg: #eef1f5;
+  --bg-strong: #e5e9f0;
+  --surface: #f5f7fa;
+  --surface-elevated: #fbfcfe;
+  --surface-muted: #edf0f5;
+  --panel: #f5f7fa;
+  --panel-strong: #fbfcfe;
+  --panel-accent: #e8e9f2;
   --text-primary: #211d2b;
   --text-secondary: #5f5968;
-  /* 2026-09-04 (ui-audit P2#9): #817a88 在 #fcfbf8 上仅 4.00:1,低于
-     WCAG AA 普通文字 4.5:1(§10)。#746c7d 在两个表面都达标
-     (4.85 / 4.61),同色系保持层级感。 */
+  /* #746c7d 在冷灰白的两个主表面上保持 AA 对比度
+     (4.89 / 4.68)，同时保留清晰的信息层级。 */
   --text-tertiary: #746c7d;
   --ink: #211d2b;
   --muted: #746c7d;
   --muted-strong: #5f5968;
-  --accent: #66548e;
-  --accent-strong: #4d3b73;
-  --accent-pressed: #413161;
-  --accent-soft: #ece8f3;
-  --accent-ghost: rgba(102, 84, 142, 0.1);
+  --accent: #554a78;
+  --accent-strong: #40365f;
+  --accent-pressed: #312a4a;
+  --accent-soft: #e8e7f0;
+  --accent-ghost: rgba(85, 74, 120, 0.1);
   --info: #3e6f9f;
   --info-soft: #e6eef6;
   --info-strong: #2e577e;
@@ -49,16 +48,16 @@
   --neutral: #746e79;
   --neutral-soft: rgba(116, 110, 121, 0.11);
   --neutral-chip-ink: #59535f;
-  --neutral-chip-surface: #ece9e4;
-  --neutral-chip-border: #d9d3ca;
+  --neutral-chip-surface: #edf0f4;
+  --neutral-chip-border: #d5dae2;
   --translating-chip-ink: #8a5a1b;
   --translating-chip-surface: #fdf2e0;
   --translating-chip-border: #e8c89a;
   --translating-dot: #d4942e;
-  --border: #d9d3ca;
-  --border-strong: #c8c0b6;
+  --border: #d5dae2;
+  --border-strong: #c2c9d3;
   --border-light: rgba(33, 29, 43, 0.08);
-  --border-glass: #d9d3ca;
+  --border-glass: #d5dae2;
   --border-glass-soft: rgba(33, 29, 43, 0.08);
   --line: var(--border);
   --line-soft: rgba(33, 29, 43, 0.08);
@@ -88,8 +87,8 @@
   --shadow-soft: 0 1px 2px rgba(33, 29, 43, 0.04), 0 8px 24px rgba(33, 29, 43, 0.04);
   --shadow-card: 0 1px 2px rgba(33, 29, 43, 0.04), 0 12px 32px rgba(33, 29, 43, 0.055);
   --shadow-hover: 0 2px 4px rgba(33, 29, 43, 0.05), 0 16px 40px rgba(33, 29, 43, 0.07);
-  --shadow-button: 0 1px 2px rgba(77, 59, 115, 0.12), 0 5px 14px rgba(77, 59, 115, 0.1);
-  --shadow-button-hover: 0 2px 4px rgba(77, 59, 115, 0.14), 0 8px 20px rgba(77, 59, 115, 0.14);
+  --shadow-button: 0 1px 2px rgba(64, 54, 95, 0.12), 0 5px 14px rgba(64, 54, 95, 0.1);
+  --shadow-button-hover: 0 2px 4px rgba(64, 54, 95, 0.14), 0 8px 20px rgba(64, 54, 95, 0.14);
   /* Disclosure component tokens: semantic accent → component contract. */
   --disclosure-bg: var(--accent-strong);
   --disclosure-bg-hover: var(--accent-pressed);
@@ -165,14 +164,14 @@
   --glass-blur: 28px;
   --glass-blur-deep: 16px;
   --glass-shadow: 0 32px 80px rgba(31, 42, 58, 0.22), 0 12px 28px rgba(31, 42, 58, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(31, 42, 58, 0.08);
-  --surface-glass: rgba(248, 243, 232, 0.74);
-  --surface-glass-strong: rgba(252, 247, 238, 0.88);
-  --surface-glass-soft: rgba(238, 241, 236, 0.58);
+  --surface-glass: rgba(245, 248, 252, 0.76);
+  --surface-glass-strong: rgba(251, 252, 254, 0.9);
+  --surface-glass-soft: rgba(235, 240, 246, 0.62);
   --blur-soft: blur(10px);
   --blur-card: blur(16px);
   /* Hover tint + transition shorthand (legacy indigo-tinted hover, preserved). */
-  --hover-tint: rgba(99, 102, 241, 0.10);
-  --hover-tint-strong: rgba(99, 102, 241, 0.18);
+  --hover-tint: rgba(85, 74, 120, 0.10);
+  --hover-tint-strong: rgba(85, 74, 120, 0.18);
   --transition-hover: 180ms ease;
   /* Card hover shadow used by pressable cards; same family as --shadow-card but with extra lift. */
   --shadow-card-hover: 0 18px 36px rgba(31, 42, 58, 0.12);
@@ -181,7 +180,7 @@
      --card-bg / --surface-primary resolve without falling back to empty. */
   --text: var(--ink);
   --bg-surface: var(--panel-strong);
-  --bg-hover: rgba(99, 102, 241, 0.10);
+  --bg-hover: rgba(85, 74, 120, 0.10);
   --danger-strong: #7a4630;
   --info-strong: #2e577e;
   --ink-muted: #5f5968;
@@ -233,34 +232,29 @@
   --pattern-fill-neutral:   rgba(99, 102, 241, 0.12);  /* 中性形态填充 */
   --pattern-fill-mixed:     rgba(230, 126, 34, 0.12);  /* 混合形态填充 */
 
-  /* === Local component tints (indigo, hue preserved) =================
-     2026-08-27 §13.2 #6: every rgba(99,102,241,α) site-level color used
-     across pages must declare its value through one of these tokens. The
-     goal is consolidation, NOT re-painting — hue stays indigo. --info-*
-     is a SEPARATE family from --info (steel blue) and from --accent
-     (lavender); do not conflate them. See docs/design-guidelines.md
-     §3.2 / §7.* for the semantic family. */
-  --info-ghost:        rgba(99, 102, 241, 0.06);  /* whisper surface (event-frozen / dropdown hover) */
-  --info-ghost-soft:   rgba(99, 102, 241, 0.07);  /* skeleton / evidence chip bg */
-  --info-ghost-faint:  rgba(99, 102, 241, 0.055); /* faint chip bg / strategy-narrative watch li */
-  --info-ghost-strong: rgba(99, 102, 241, 0.08);  /* minimal card border (groups / mini-card / structure detail) */
-  --info-surface-soft: rgba(99, 102, 241, 0.045); /* strategy plan-table primary row */
-  --info-tint:         rgba(99, 102, 241, 0.10);  /* hover tint / low-key surface */
-  --info-tint-em:      rgba(99, 102, 241, 0.12);  /* tooltip / primary card badge bg */
-  --info-tint-strong:  rgba(99, 102, 241, 0.14);  /* dominant card border (analysis / btc / strategy) */
-  --info-tint-max:     rgba(99, 102, 241, 0.18);  /* visible border (button / hero / input) */
-  --info-edge:         rgba(99, 102, 241, 0.20);  /* primary-card hover border */
-  --info-edge-strong:  rgba(99, 102, 241, 0.26);  /* active pill border */
-  --info-edge-max:     rgba(99, 102, 241, 0.34);  /* "today" / dot border / active chip */
-  --info-glow:         rgba(99, 102, 241, 0.55);  /* selected dropdown border / btc-wall effective / dot emphasis */
-  --info-key:          rgba(99, 102, 241, 0.42);  /* knowledge-highlight */
-  --info-focus:        rgba(99, 102, 241, 0.50);  /* :focus-visible outline (controls) */
-  --info-focus-em:     rgba(99, 102, 241, 0.70);  /* :focus-visible outline (links/chips) */
-  --info-halo-soft:    rgba(99, 102, 241, 0.12);  /* structure-toolbar hero */
-  --info-halo:         rgba(99, 102, 241, 0.14);  /* alert-chip-hero, metric::after */
-  --info-halo-mid:     rgba(99, 102, 241, 0.16);  /* body hero top-left */
-  --info-halo-strong:  rgba(99, 102, 241, 0.18);  /* analysis-hero, monitoring-hero */
-  --info-halo-em:      rgba(99, 102, 241, 0.20);  /* indicator-hero, live-card-strong */
+  /* Local informational surfaces use the same restrained blue-grey hue as
+     the interaction system, with alpha carrying the hierarchy. */
+  --info-ghost:        rgba(65, 89, 119, 0.06);
+  --info-ghost-soft:   rgba(65, 89, 119, 0.07);
+  --info-ghost-faint:  rgba(65, 89, 119, 0.055);
+  --info-ghost-strong: rgba(65, 89, 119, 0.08);
+  --info-surface-soft: rgba(65, 89, 119, 0.045);
+  --info-tint:         rgba(65, 89, 119, 0.10);
+  --info-tint-em:      rgba(65, 89, 119, 0.12);
+  --info-tint-strong:  rgba(65, 89, 119, 0.14);
+  --info-tint-max:     rgba(65, 89, 119, 0.18);
+  --info-edge:         rgba(65, 89, 119, 0.20);
+  --info-edge-strong:  rgba(65, 89, 119, 0.26);
+  --info-edge-max:     rgba(65, 89, 119, 0.34);
+  --info-glow:         rgba(65, 89, 119, 0.55);
+  --info-key:          rgba(65, 89, 119, 0.42);
+  --info-focus:        rgba(65, 89, 119, 0.50);
+  --info-focus-em:     rgba(65, 89, 119, 0.70);
+  --info-halo-soft:    rgba(65, 89, 119, 0.12);
+  --info-halo:         rgba(65, 89, 119, 0.14);
+  --info-halo-mid:     rgba(65, 89, 119, 0.16);
+  --info-halo-strong:  rgba(65, 89, 119, 0.18);
+  --info-halo-em:      rgba(65, 89, 119, 0.20);
 }
 
 html {
@@ -353,7 +347,7 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
 .app-sidebar-brand strong,
 .app-sidebar-brand span { display: block; }
 .app-sidebar-brand strong { color: var(--ink); font-size: 13px; letter-spacing: -0.02em; }
-.app-sidebar-brand > div > span { color: var(--muted); font-size: 11px; }
+.app-sidebar-brand > div > span { color: var(--text-secondary); font-size: 11px; }
 
 .app-mark {
   display: grid;
@@ -382,7 +376,7 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
 .editorial-nav-group { display: grid; gap: 3px; }
 .editorial-nav-group h2 {
   margin: 0 10px 7px;
-  color: color-mix(in srgb, var(--muted) 82%, transparent);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 650;
   line-height: 1.2;
@@ -398,7 +392,7 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   align-items: center;
   min-height: 42px;
   padding: 8px 10px;
-  color: var(--muted);
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: 8px;
   transition: color var(--motion-hover), background-color var(--motion-hover), transform var(--motion-fast);
@@ -809,7 +803,7 @@ button:not(.secondary):not(.ghost-button):not(.icon-button):not(.dropdown):not(.
 
 /* Text inside controls must follow the control state. A legacy article/card
    typography rule also targets spans, which otherwise turns primary-button
-   labels grey while their button surface stays deep purple. */
+   labels grey while their button surface stays deep blue. */
 #page-root :where(button, .btn, .primary-button, .btn-primary) > :where(span, svg) {
   color: inherit;
 }
@@ -824,7 +818,7 @@ body[data-page="market-events"] #events-translate-toggle {
 body[data-page="market-events"] #events-translate-toggle:hover {
   color: var(--accent-strong);
   background: var(--accent-ghost);
-  border-color: rgba(102, 84, 142, 0.48);
+  border-color: rgba(85, 74, 120, 0.48);
   box-shadow: none;
 }
 
@@ -1248,7 +1242,7 @@ body[data-page="market-events"] .events-feed-actions {
   border-radius: 14px;
 }
 
-.nav-skeleton-row { background: linear-gradient(90deg, var(--surface-muted), #f8f6f3, var(--surface-muted)); /* 2026-08-14: animation provided by skeletonShimmer via styles.css */ }
+.nav-skeleton-row { background: linear-gradient(90deg, var(--surface-muted), #f8fafc, var(--surface-muted)); /* 2026-08-14: animation provided by skeletonShimmer via styles.css */ }
 
 /* Monitoring sample: broad editorial canvas and ledger-like detail density. */
 body[data-page="monitoring-overview"] #page-root { display: grid; gap: var(--space-section); }
@@ -1347,6 +1341,33 @@ body[data-page="monitoring-overview"] .monitoring-metric-rail .monitoring-topbar
   font-size: 22px;
   font-weight: 550;
   font-variant-numeric: tabular-nums;
+}
+
+body[data-page="monitoring-overview"] .monitoring-metric-rail .monitoring-confidence-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+body[data-page="monitoring-overview"] .monitoring-metric-rail .monitoring-confidence-chip[data-confidence-tone="ready"] {
+  border-color: var(--info-tint-strong);
+  background: var(--info-soft);
+  color: var(--info-strong);
+}
+
+body[data-page="monitoring-overview"] .monitoring-metric-rail .monitoring-confidence-chip[data-confidence-tone="warning"] {
+  border-color: var(--info-tint-strong);
+  background: var(--info-soft);
+  color: var(--info-strong);
 }
 
 body[data-page="monitoring-overview"] .monitoring-refresh {
@@ -1685,7 +1706,7 @@ body[data-page="market-analysis"] .analysis-chart-rsi { grid-column: 2; grid-row
 .dropdown-item[aria-selected="true"] {
   color: var(--accent-strong);
   background: var(--accent-soft) !important;
-  border-color: rgba(102, 84, 142, 0.48);
+  border-color: rgba(85, 74, 120, 0.48);
   box-shadow: none !important;
   font-weight: 600;
 }
@@ -1989,8 +2010,8 @@ body[data-page="market-events"] .supply-calendar-filter {
   min-height: 40px;
   padding-inline: 13px;
   color: var(--ink);
-  /* 2026-09-04 (ui-audit P2#8): trigger 与 popover 统一暖灰表面(§7.4)。
-     局部白底在共享下拉改暖灰后成为唯一的纯白孤例。 */
+  /* Trigger 与 popover 统一使用共享冷灰表面，避免局部纯白控件
+     脱离全站表面层级。 */
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -2414,7 +2435,7 @@ body[data-page="ai-strategy"] .scan-cell-btn {
 
 /* The global primary-button selector is intentionally broad. Matrix cells
    need stronger, state-specific selectors so unqualified candidates never
-   inherit the purple opportunity treatment. */
+   inherit the themed opportunity treatment. */
 body[data-page="ai-strategy"] .scan-cell-unqualified .scan-cell-btn,
 body[data-page="ai-strategy"] .scan-cell-pending .scan-cell-btn {
   border: 1px dashed var(--border-light);
@@ -2542,7 +2563,7 @@ body.is-sidebar-collapsed .page-guide-panel {
   padding: 4px 10px;
   color: var(--accent-strong);
   background: var(--accent-soft);
-  border: 1px solid rgba(102, 84, 142, 0.14);
+  border: 1px solid rgba(85, 74, 120, 0.14);
 }
 
 .page-guide-panel .page-guide-title {
@@ -2995,15 +3016,9 @@ body[data-page="knowledge-base"] .knowledge-body {
   margin-top: var(--space-card);
   padding: 18px 20px;
   color: var(--text-primary);
-  /* 2026-08-18: editorial.css :root redefines --surface-muted=#f0edf3 (light
-     lavender) and --accent=#66548e (mid purple), so the previous
-     `background: var(--surface-muted); border-left: 3px solid var(--accent)`
-     combo produced the lavender-with-purple-stripe look the user flagged
-     as AI-default "purple tile". Hard-code neutral cream surface + warm
-     border instead of the purple tokens — keeps the visual structure
-     (left accent stripe, contained body, slight surface tint) but
-     removes the indigo hue entirely. See docs/design-guidelines.md §9. */
-  background: rgba(255, 253, 249, 0.85);
+  /* Use the shared cool neutral surface without turning the term body into
+     an accent tile. The left border preserves hierarchy without adding hue. */
+  background: color-mix(in srgb, var(--surface-elevated) 86%, transparent);
   border-left: 3px solid var(--border-strong);
   border-radius: 0 10px 10px 0;
 }
@@ -3204,7 +3219,7 @@ body[data-page="btc-derivatives"] .btc-cockpit-header .btc-evidence-chips {
 
 body[data-page="btc-derivatives"] .btc-cockpit-header .btc-evidence-chips span {
   padding: 3px 7px;
-  border-color: rgba(102, 84, 142, 0.2);
+  border-color: rgba(85, 74, 120, 0.2);
   background: var(--accent-soft);
   color: var(--accent-strong);
   font-size: 11px;
@@ -4730,85 +4745,19 @@ body[data-page="btc-derivatives"] .btc-decision-card {
 body[data-page="btc-derivatives"] .btc-decision-card:hover,
 body[data-page="btc-derivatives"] .btc-chart-card:hover { transform: none; box-shadow: none; }
 body[data-page="btc-derivatives"] .btc-workbench-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.32fr);
-  gap: var(--workbench-gap);
-  align-items: stretch;
+  display: block;
 }
 body[data-page="btc-derivatives"] .btc-workbench-chart { min-width: 0; }
 body[data-page="btc-derivatives"] .btc-workbench-chart .btc-chart-section { height: 100%; }
 body[data-page="btc-derivatives"] .btc-workbench-chart .btc-dashboard-grid { height: calc(100% - 54px); }
 body[data-page="btc-derivatives"] .btc-workbench-chart .btc-chart-card { height: 100%; }
-.btc-workbench-evidence {
-  min-width: 0;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--surface-elevated) 76%, transparent);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-}
-.btc-workbench-evidence-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.btc-workbench-evidence-head > span { color: var(--ink); font-size: 14px; font-weight: 650; }
-.btc-workbench-evidence-head > small { color: var(--text-tertiary); font-size: 10px; }
-.btc-workbench-evidence-list { display: grid; }
-.btc-workbench-evidence .btc-evidence-tile {
-  min-height: 0;
-  padding: 13px 16px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--border-light);
-  border-radius: 0;
-  box-shadow: none;
-  transition: background-color var(--motion-hover), outline-color var(--motion-hover);
-}
-.btc-workbench-evidence .btc-evidence-tile:last-child { border-bottom: 0; }
-.btc-workbench-evidence .btc-evidence-tile h3 { margin: 8px 0 4px; font-size: 12px; line-height: 1.45; }
-.btc-workbench-evidence .btc-evidence-basis { margin: 0; font-size: 10px; }
-.btc-workbench-evidence .btc-evidence-source-toggle { margin-top: 8px; }
-.btc-workbench-evidence .btc-evidence-source-detail {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 4px 12px;
-  margin: 8px 0 0;
-  padding: 8px 10px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
-}
-.btc-workbench-evidence .btc-evidence-source-detail[hidden] { display: none; }
-.btc-workbench-evidence .btc-evidence-source-detail dt {
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.btc-workbench-evidence .btc-evidence-source-detail dd {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
 body[data-page="btc-derivatives"] .btc-maturity-ladder { border-radius: var(--radius-card); }
 body[data-page="btc-derivatives"] .btc-maturity-table tbody tr[data-workbench-selectable] {
   transition: background-color var(--motion-hover), outline-color var(--motion-hover);
 }
 
-@media (max-width: 1500px) {
-  body[data-page="btc-derivatives"] .btc-workbench-overview { grid-template-columns: minmax(0, 1fr); }
-  .btc-workbench-evidence-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .btc-workbench-evidence .btc-evidence-tile:nth-child(odd) { border-right: 1px solid var(--border-light); }
-}
-
 @media (max-width: 900px) {
   body[data-page="monitoring-overview"] .monitoring-panel + .terminal-summary-card { border-left: 0; border-top: 1px solid var(--border); }
-  .btc-workbench-evidence-list { grid-template-columns: minmax(0, 1fr); }
-  .btc-workbench-evidence .btc-evidence-tile:nth-child(odd) { border-right: 0; }
 }
 
 /* Operator core: a single floating command surface, no runtime style injection. */

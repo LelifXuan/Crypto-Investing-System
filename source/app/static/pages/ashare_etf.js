@@ -1186,8 +1186,8 @@ function renderExecutionRows() {
         <td>
           <strong>${escapeHtml(item.name)}</strong>
         </td>
-        <td><input class="etf-cell-input" data-field="shares" data-symbol="${escapeHtml(item.symbol)}" type="number" min="0" step="100" value="${escapeHtml(saved.shares ?? 0)}" /></td>
-        <td><input class="etf-cell-input" data-field="costPrice" data-symbol="${escapeHtml(item.symbol)}" type="number" min="0" step="0.001" value="${escapeHtml(saved.costPrice ?? 0)}" /></td>
+        <td><input class="etf-cell-input" data-field="shares" data-symbol="${escapeHtml(item.symbol)}" type="number" min="0" step="100" value="${escapeHtml(saved.shares ?? 0)}" aria-label="持仓份额：${escapeHtml(item.name)}" /></td>
+        <td><input class="etf-cell-input" data-field="costPrice" data-symbol="${escapeHtml(item.symbol)}" type="number" min="0" step="0.001" value="${escapeHtml(saved.costPrice ?? 0)}" aria-label="成本价：${escapeHtml(item.name)}" /></td>
         <td><span class="etf-locked-price">${price ? money(price, 3) : "-"}</span></td>
         <td class="etf-action-cell"><span class="status-chip ${sideClass(action)}">${sideLabel(action)}</span></td>
         <td class="etf-number-cell">${row?.trade_shares ? formatNumber(row.trade_shares, 0) : "-"}</td>

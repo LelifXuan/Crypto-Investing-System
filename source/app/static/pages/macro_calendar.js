@@ -13,7 +13,6 @@ import { renderDisclosureToggle, setDisclosureState } from "../ui/disclosure.js"
 import { createWorkbenchState } from "../core/workbenchState.js?v=operator-core-1";
 import { mountWorkbenchUrlState } from "../core/workbenchUrlState.js";
 import { mountInspector } from "../ui/inspector.js?v=operator-core-1";
-import { mountContextRail } from "../ui/contextRail.js";
 import { markWorkbenchRelations } from "../ui/semanticMotion.js?v=operator-core-1";
 
 const MONTH_NAMES = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
@@ -265,15 +264,12 @@ let workbenchState = null;
 let workbenchUrl = null;
 let workbenchUnsubscribe = null;
 let workbenchInteractionController = null;
-let contextRail = null;
 let inspector = null;
 const inspectionRegistry = new Map();
 
 function ensureMacroWorkbench(root) {
   if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "macro-calendar" });
-  contextRail?.destroy();
   inspector?.destroy();
-  contextRail = mountContextRail(root.querySelector("#macro-context-rail"));
   inspector = mountInspector(root.querySelector("#macro-inspector"), {
     state: workbenchState,
     returnFocus: () => root.querySelector("#macro-sync-button"),
@@ -375,7 +371,6 @@ function renderContextBar(items, isCalendarCollapsed) {
 // 骨架占位：与真实结构一致，避免"空白 → 加载中 → 内容"三段跳
 function renderCalendarSkeleton() {
   return `
-    <div id="macro-context-rail"></div>
     <section id="macro-calendar-container">
       <article class="card macro-calendar-card is-collapsed">
         <header class="macro-calendar-card-head">
@@ -455,7 +450,7 @@ export async function renderMacroCalendar({ commands } = {}) {
   let refreshInFlight = false;
   let refreshCalendar = async () => {};
   let expandCalendar = () => {};
-  commands?.register({ id: "macro:refresh", label: "更新宏观日历", enabled: () => !disposed && !refreshInFlight && Boolean(contextRail), run: () => refreshCalendar() });
+  commands?.register({ id: "macro:refresh", label: "更新宏观日历", enabled: () => !disposed && !refreshInFlight && Boolean(document.getElementById("macro-sync-button")), run: () => refreshCalendar() });
   commands?.register({ id: "macro:expand", label: "展开宏观日历", run: () => expandCalendar(true) });
   commands?.register({ id: "macro:close-inspector", label: "关闭当前 Inspector", enabled: () => Boolean(workbenchState?.getSnapshot().selection), run: () => workbenchState.clearSelection() });
   let weekdaysScrollHandler = null;
@@ -508,12 +503,6 @@ export async function renderMacroCalendar({ commands } = {}) {
       </div>
     `;
     ensureMacroWorkbench(document);
-    contextRail?.update({
-      instrument: "宏观日历",
-      primaryValue: `${items.length} 项`,
-      timeframe: `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`,
-      sourceSummary: { value: "宏观日历", status: "unavailable" },
-    });
     renderStatus(items.length ? "数据已就绪" : "当前范围暂无宏观事件", items.length ? "success" : "info");
     if (selectedId) {
       const updated = inspectionRegistry.get(selectedId);
@@ -628,8 +617,6 @@ export async function renderMacroCalendar({ commands } = {}) {
       workbenchUnsubscribe = null;
       workbenchInteractionController?.abort();
       workbenchInteractionController = null;
-      contextRail?.destroy();
-      contextRail = null;
       inspector?.destroy();
       inspector = null;
       workbenchUrl?.destroy();

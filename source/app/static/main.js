@@ -554,24 +554,9 @@ window.addEventListener("beforeunload", () => {
 
 installAppShell();
 palette = mountCommandPalette({ registry: commands });
-const commandButton = document.createElement("button");
-commandButton.type = "button";
-commandButton.className = "ghost-button compact workbench-command-trigger";
-commandButton.textContent = "命令";
-commandButton.setAttribute("aria-label", "打开当前页面命令（Ctrl 或 Cmd 加 K）");
-commandButton.addEventListener("click", () => palette.open());
-document.querySelector(".app-topbar-actions")?.append(commandButton);
 // Page navigation already has a persistent, structured sidebar. Repeating every
 // route as a flat command list obscures the actions that are specific to the
 // current workflow, so the palette is intentionally scoped to page actions.
-commands.subscribe(() => {
-  const hasPageActions = commands.query("").length > 0;
-  commandButton.hidden = !hasPageActions;
-  commandButton.disabled = !hasPageActions;
-  // The shared button style declares its own display mode, so mirror the
-  // semantic hidden state explicitly instead of relying on UA [hidden] CSS.
-  commandButton.style.display = hasPageActions ? "" : "none";
-});
 if (!history.state?.pageId) history.replaceState({ ...history.state, pageId: document.body.dataset.page, href: location.href }, "", location.href);
 installSpaRouter();
 scheduleBoot();
