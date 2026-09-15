@@ -26,11 +26,11 @@
 
 | # | 债项 | 优先级 | 说明 |
 |---|---|---|---|
-| U1 | AI 审计详情直接显示实现标识（`legacy-cross-horizon-v2`、`auditable-rules-v3-shadow`、`gateio:futures.contracts`、微秒 ISO 时间） | **P2** | §1.3 不暴露实现术语。技术 ID 转可理解标签，精确 ID 留在按需审计详情；时间统一 UTC 无微秒格式。 |
-| U2 | 黄金成交量轴 `128,882,313.00000001` 浮点尾数 | **P2** | §4 数字排版。后端 Decimal 序列化或前端量级格式化（亿/万）二选一。 |
-| U3 | 监控宏观分组每条约 109.6px 高、完整卡片嵌套在明细卡内 | **P2** | §1 高密度/§7.1 不嵌套。改为紧凑横栏 + 分隔线；同组独立卡则 16px gap。 |
-| U4 | 触屏命中区：手机按钮多 38-40px（ETF 策略模拟 32px） | **P2** | §10 至少 44×44。coarse pointer 下扩大 hit-box，桌面保持紧凑；以实际 hit-test 证明。 |
-| U5 | 监控冷启动骨架只覆盖顶部状态块 + 三行，与最终结构不等高（CLS） | **P2** | §7.10 结构稳定。在现有 warming shell 基础上补双列摘要/宏观分组/治理底栏占位。 |
+| U1 | AI 审计详情直接显示实现标识（`legacy-cross-horizon-v2`、`auditable-rules-v3-shadow`、`gateio:futures.contracts`、微秒 ISO 时间） | **P2** | §1.3 不暴露实现术语。技术 ID 转可理解标签，精确 ID 留在按需审计详情；时间统一 UTC 无微秒格式。**已偿（见下方 2026-09-16 已偿摘要）** |
+| U2 | 黄金成交量轴 `128,882,313.00000001` 浮点尾数 | **P2** | §4 数字排版。后端 Decimal 序列化或前端量级格式化（亿/万）二选一。**已偿（见下方 2026-09-16 已偿摘要）** |
+| U3 | 监控宏观分组每条约 109.6px 高、完整卡片嵌套在明细卡内 | **P2** | §1 高密度/§7.1 不嵌套。改为紧凑横栏 + 分隔线；同组独立卡则 16px gap。**已偿（见下方 2026-09-16 已偿摘要）** |
+| U4 | 触屏命中区：手机按钮多 38-40px（ETF 策略模拟 32px） | **P2** | §10 至少 44×44。coarse pointer 下扩大 hit-box，桌面保持紧凑；以实际 hit-test 证明。**已偿（见下方 2026-09-16 已偿摘要）** |
+| U5 | 监控冷启动骨架只覆盖顶部状态块 + 三行，与最终结构不等高（CLS） | **P2** | §7.10 结构稳定。在现有 warming shell 基础上补双列摘要/宏观分组/治理底栏占位。**已偿（见下方 2026-09-16 已偿摘要）** |
 | U6 | 事件信息流真实满载态、BTC 衍生品完整行情满载态未在审计中复核 | **P3** | 空态审计过，满载留待有真实数据时复核。 |
 | U7 | 手册 §3.1 其余三级文字背景组合的对比度矩阵 | **P3** | tertiary 主 token 已达 4.85:1（P2#9）；剩余小字体/透明背景组合按需逐个测量。 |
 
@@ -53,6 +53,20 @@
 ## 建议下一步顺序
 
 1. B1+B2（chip 可用性语义）——业务正确性优先，已有完整审计输入。
-2. U1-U5 按序（UI 审计 P2 遗留）。
-3. T1 Ruff 分批清偿（每模块一 commit）。
-4. I1 PostgreSQL 迁移评估（仅当多进程部署提上日程）。
+2. T1 Ruff 分批清偿（每模块一 commit）。
+3. I1 PostgreSQL 迁移评估（仅当多进程部署提上日程）。
+
+## 本轮已偿（2026-09-16,UI 审计 P2 一次性清偿）
+
+- **U1** AI 审计详情脱术语化：`renderDecisionAudit.js` 新增 `humanizeModelVersion` / `humanizePriceSource` 把 `legacy-cross-horizon-v2` / `auditable-rules-v3-shadow` / `gateio:futures.contracts` 等映射为人类可读标签；`dom.js::formatDateTime` 入口加微秒正则拍平；`renderEventWatch.js` 旁路改走统一 `formatDateTime`。
+- **U2** 黄金成交量轴整数格式化：`charts.js::buildAdaptiveAxisOptions` 给 volume profile 加 `ticks.value_format = "integer"`，沿用 `formatChartValue` 现有 integer 分支，避免 `128,882,313.00000001` 类尾数。
+- **U3+U5** 监控冷启动骨架补占位：`monitoring.js::renderShellFallback` 在 pending=true 时给 `#monitoring-macro-panel` / `#monitoring-macro-grid` / `#monitoring-governance` / `monitoring-topbar-grid` 注入 `monitoring-cold-placeholder`；`styles.css` 合并重复 `.macro-indicator-group` 声明并把 `gap` 从 14px 改为 16px（同组独立卡要求），消除冷启动期 109.6px 高度坍塌。
+- **U4** ETF 触屏命中区：`editorial.css` 现有 `@media (pointer: coarse)` 块扩 ETF selector（`.etf-equity-mode-btn` / `.etf-equity-freq-btn` / `#etf-equity-generate` / `.etf-equity-from input` / `.etf-equity-offset input` → 44×44 + padding-block 8px）；`styles.css` 给 `.primary-action` 加默认 40px / 8px 16px 规则（避免原生 button 形态塌陷）；桌面 `.etf-equity-mode-btn` padding 从 6×14 调到 8×16。
+- **守卫**：新增 `tests/test_ui_audit_p2_unreleased_fixes.py` 共 14 项静态断言钉住以上修复。
+
+## 仍遗留（U6-U7，P3）
+
+| 债项 | 优先级 | 说明 |
+|---|---|---|
+| U6 | **P3** | 事件信息流真实满载态、BTC 衍生品完整行情满载态未在审计中复核。空态审计过，满载留待有真实数据时复核。 |
+| U7 | **P3** | 手册 §3.1 其余三级文字背景组合的对比度矩阵。tertiary 主 token 已达 4.85:1（P2#9）；剩余小字体/透明背景组合按需逐个测量。 |
