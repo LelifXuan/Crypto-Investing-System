@@ -1,5 +1,50 @@
 import { directionLabel } from "./adapter.js?v=trade-4h-v1";
 
+const MODEL_VERSION_LABELS = {
+  "legacy-cross-horizon-v2": "传统跨周期模型 v2",
+  "auditable-rules-v3-shadow": "可审计规则模型 v3（影子）",
+};
+
+function humanizeModelVersion(version) {
+  if (!version) return "—";
+  return MODEL_VERSION_LABELS[String(version)] || String(version);
+}
+
+function humanizePriceSource(source) {
+  const raw = String(source || "").trim();
+  if (!raw || raw === "-") return "—";
+  const [providerRaw, detailRaw] = raw.split(":");
+  const providerMap = {
+    gateio: "Gate.io",
+    binance: "Binance",
+    bybit: "Bybit",
+    okx: "OKX",
+    deribit: "Deribit",
+    coinbase: "Coinbase",
+    kraken: "Kraken",
+    ftx: "FTX",
+    bitget: "Bitget",
+    hyperliquid: "Hyperliquid",
+    eastmoney: "东方财富",
+    sina: "新浪财经",
+  };
+  const provider = providerMap[String(providerRaw).toLowerCase()] || providerRaw || "外部数据源";
+  if (!detailRaw) return provider;
+  const detailLabels = {
+    "futures.contracts": "合约行情",
+    "spot.tickers": "现货行情",
+    "futures.tickers": "合约行情",
+    "index.price": "指数价格",
+    "mark.price": "标记价格",
+    "funding.rate": "资金费率",
+    candles: "K 线",
+    macro: "宏观",
+    onchain: "链上",
+  };
+  const detail = detailLabels[String(detailRaw).toLowerCase()] || detailRaw;
+  return `${provider} · ${detail}`;
+}
+
 function labelRole(value) {
   return {
     direction_input: "方向输入",
@@ -65,10 +110,10 @@ export function renderDecisionAudit(model, helpers) {
         <span class="status-chip neutral">新模型仅影子记录，不影响当前主策略</span>
       </div>
       <div class="strategy-audit-summary">
-        <article><span>主模型</span><strong>${escapeHtml(model.active_model_version)}</strong></article>
-        <article><span>候选模型</span><strong>${escapeHtml(model.candidate_model_version)}</strong></article>
+        <article><span>主模型</span><strong>${escapeHtml(humanizeModelVersion(model.active_model_version))}</strong></article>
+        <article><span>候选模型</span><strong>${escapeHtml(humanizeModelVersion(model.candidate_model_version))}</strong></article>
         <article><span>策略时间</span><strong>${escapeHtml(formatDateTime(model.strategy_as_of))}</strong></article>
-        <article><span>价格时间</span><strong>${escapeHtml(formatDateTime(model.price_as_of))}</strong><small>${escapeHtml(model.price_source || "-")}</small></article>
+        <article><span>价格时间</span><strong>${escapeHtml(formatDateTime(model.price_as_of))}</strong><small>${escapeHtml(humanizePriceSource(model.price_source))}</small></article>
         <article><span>重算状态</span><strong>${escapeHtml(model.recompute_status)}</strong></article>
       </div>
       <div class="strategy-audit-columns">

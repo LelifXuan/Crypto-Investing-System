@@ -11,7 +11,7 @@ export function renderEventWatch(model, helpers) {
       <p class="eyebrow">${escapeHtml(item.timeframe || "EVENT")}</p>
       <h3>${escapeHtml(item.event_window_status || "事件窗口")}</h3>
       <p>${escapeHtml(item.trading_rule || "事件窗口内降低交易权限。")}</p>
-      <small>${escapeHtml(item.next_check_time ? (String(item.next_check_time).includes("T") ? formatDateTime(item.next_check_time) : item.next_check_time) : "")}</small>
+      <small>${escapeHtml(item.next_check_time ? formatDateTime(item.next_check_time) : "")}</small>
     </article>
   `).join("");
   const isEmpty = items.length === 0;

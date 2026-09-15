@@ -244,7 +244,10 @@ export function formatPercent(value, digits = 2) {
 // so this comment deliberately describes the rule without naming it.)
 export function formatDateTime(value) {
   if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
+  // Strip sub-second precision so ISO strings like "2026-09-16T07:11:23.123456+00:00"
+  // never leak microseconds to the DOM (design-guidelines §数字排版).
+  const normalised = value instanceof Date ? value : new Date(String(value).replace(/\.\d+/, ""));
+  const date = normalised;
   if (Number.isNaN(date.getTime())) return "-";
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("zh-CN", {
