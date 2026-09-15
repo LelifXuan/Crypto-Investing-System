@@ -3071,6 +3071,27 @@ tr.is-supply-event td {
   }
 }
 
+.primary-action {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--info-ghost);
+  border: 1px solid var(--info-ghost-strong);
+  cursor: pointer;
+}
+
+.primary-action:hover {
+  background: var(--info-ghost-strong);
+}
+
+.primary-action:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+
 .primary-button {
   border: 0;
   border-radius: var(--radius-pill);
@@ -3403,17 +3424,10 @@ tr.is-supply-event td {
   gap: 12px;
 }
 
-/* 分组容器：可折叠横栏 + 卡片子网格 */
+/* 分组卡片容器 — 可折叠横栏 + 卡片子网格（参考 supply-calendar-card） */
 .macro-indicator-group {
   display: grid;
-  gap: 8px;
-  grid-column: 1 / -1; /* 独占整行 */
-}
-
-/* 分组卡片容器 — 参考 supply-calendar-card 的 section-head 布局 */
-.macro-indicator-group {
-  display: grid;
-  gap: 14px;
+  gap: 16px;
   grid-column: 1 / -1;
   padding: clamp(18px, 1.2vw, 24px);
   border: 1px solid var(--info-ghost-strong);
@@ -12547,7 +12561,7 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  padding: 6px 14px;
+  padding: 8px 16px;
   transition: background var(--dur-press) var(--ease-out), color var(--dur-press) var(--ease-out);
 }
 

@@ -684,6 +684,41 @@ function missingTone(item) {
 }
 
 function renderShellFallback(message, pending = false) {
+  const coldPlaceholder = '<div class="monitoring-cold-placeholder" aria-hidden="true"><span></span><span></span><span></span></div>';
+  const topbarPlaceholder = `
+    <article class="monitoring-topbar-item monitoring-cold-topbar-item" aria-hidden="true">
+      <span class="monitoring-context-status" data-status-tone="pending"><span class="monitoring-cold-spinner" aria-hidden="true"></span></span>
+      <small>数据源</small>
+      <strong>等待加载</strong>
+    </article>
+    <article class="monitoring-topbar-item monitoring-cold-topbar-item" aria-hidden="true">
+      <span class="monitoring-context-status" data-status-tone="pending"><span class="monitoring-cold-spinner" aria-hidden="true"></span></span>
+      <small>治理底栏</small>
+      <strong>等待加载</strong>
+    </article>
+  `;
+  const macroGridPlaceholder = `
+    <article class="card macro-indicator-group is-cold" aria-hidden="true">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">MACRO LAYER</p>
+          <h3>宏观分组</h3>
+        </div>
+      </div>
+      <div class="macro-group-cards">
+        <div class="monitoring-cold-placeholder"><span></span><span></span><span></span></div>
+        <div class="monitoring-cold-placeholder"><span></span><span></span><span></span></div>
+        <div class="monitoring-cold-placeholder"><span></span><span></span><span></span></div>
+        <div class="monitoring-cold-placeholder"><span></span><span></span><span></span></div>
+      </div>
+    </article>
+  `;
+  const governancePlaceholder = `
+    <section class="monitoring-surface monitoring-cold-governance" aria-hidden="true">
+      <div class="monitoring-cold-placeholder"><span></span><span></span></div>
+      <div class="monitoring-cold-placeholder"><span></span><span></span></div>
+    </section>
+  `;
   return `
     <div class="workbench-page-layout monitoring-workbench-layout">
       <div class="monitoring-primary">
@@ -696,12 +731,15 @@ function renderShellFallback(message, pending = false) {
                 <small>监控总览</small>
                 <strong>${pending ? "后台准备中" : "等待重新加载"}</strong>
               </article>
+              ${pending ? topbarPlaceholder : ''}
             </div>
           </section>
         </div>
         <section class="monitoring-surface monitoring-summary-surface">
           <div class="monitoring-snapshot-grid monitoring-snapshot-grid-full">
-            <div id="monitoring-macro-panel"></div>
+            <div id="monitoring-macro-panel">
+              ${pending ? coldPlaceholder : ''}
+            </div>
             <div id="monitoring-terminal-summary">
               <div class="monitoring-cold-content">
               <p class="section-summary">${escapeHtml(message)}</p>
@@ -710,8 +748,12 @@ function renderShellFallback(message, pending = false) {
             </div>
           </div>
         </section>
-        <div id="monitoring-macro-grid"></div>
-        <div id="monitoring-governance"></div>
+        <div id="monitoring-macro-grid">
+          ${pending ? macroGridPlaceholder : ''}
+        </div>
+        <div id="monitoring-governance">
+          ${pending ? governancePlaceholder : ''}
+        </div>
       </div>
       <aside class="workbench-inspector" id="monitoring-inspector" hidden></aside>
     </div>
