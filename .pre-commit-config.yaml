@@ -22,8 +22,12 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
     hooks:
+      # 2026-09-16 (D1): ruff-format 不在 commit-time 强制 — 历史 287 文件未格式化,
+      # 一次性 reformat 会污染 git history。等专项 format 巡检 commit 之后再加回强制。
+      # 现阶段只装好, 不激活; 开发者可手动 `ruff format <file>` 单文件使用。
       - id: ruff-format
         files: ^source/(app|tests|scripts)/.*\.py$
+        stages: [manual]
         # 仅做格式化, 不做 lint 检查 (lint 由上面 local hook 完成)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
