@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "app" / "static" / "pages" / "market_events.js").read_text(encoding="utf-8")
 

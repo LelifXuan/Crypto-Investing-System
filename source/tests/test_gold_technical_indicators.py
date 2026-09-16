@@ -1,5 +1,4 @@
 """Tests for gold technical indicator computation functions."""
-import math
 import random
 
 import pytest

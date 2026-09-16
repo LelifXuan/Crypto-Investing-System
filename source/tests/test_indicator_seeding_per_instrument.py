@@ -11,14 +11,9 @@ in-memory DB with 3 instruments.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from types import SimpleNamespace
-
 import pytest
-from sqlalchemy import select
 
 from app.core.db import db_manager
-from app.db.models.market import IndicatorMonitoringPolicy
 from app.repositories.market_repository import MarketRepository
 from app.services.indicator_monitoring import IndicatorMonitoringService
 

@@ -17,9 +17,15 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Awaitable, Any, Callable, Mapping, Protocol
+from typing import Any, Awaitable, Callable, Mapping, Protocol
 
-from .cache_policy import CachePolicy, CacheState, CanonicalCacheEntry, force_observe_projection, warming_payload
+from .cache_policy import (
+    CachePolicy,
+    CacheState,
+    CanonicalCacheEntry,
+    force_observe_projection,
+    warming_payload,
+)
 from .singleflight import BuildQueueFullError, SingleFlightBuildCoordinator, _SimpleMetrics
 
 logger = logging.getLogger(__name__)

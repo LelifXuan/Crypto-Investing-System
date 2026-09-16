@@ -24,8 +24,8 @@ intentionally a no-op.
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 revision = "0011_drop_dead_structure_tables"
 down_revision = "0010_strategy_signal_tables"

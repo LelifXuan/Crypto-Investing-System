@@ -5,9 +5,6 @@ chart builder attaches a '数据接续' vertical-line annotation when any
 field hits the threshold."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-
-
 # ---------------------------------------------------------------------------
 # 1. _merge_price_history flags resume rows
 # ---------------------------------------------------------------------------

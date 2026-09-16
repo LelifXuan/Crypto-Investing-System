@@ -1,5 +1,4 @@
 """Tests for gold derivatives data service."""
-import json
 import tempfile
 from pathlib import Path
 
@@ -8,7 +7,7 @@ import pytest
 
 class TestAggregatedOICache:
     def test_read_empty_cache_returns_none(self):
-        from app.services.gold_derivatives import AggregatedOICache, OISnapshot
+        from app.services.gold_derivatives import AggregatedOICache
         with tempfile.TemporaryDirectory() as tmp:
             cache = AggregatedOICache(cache_dir=Path(tmp))
             result = cache.read_all()
@@ -29,6 +28,7 @@ class TestAggregatedOICache:
 
     def test_oi_change_4w_with_sufficient_data(self):
         from decimal import Decimal
+
         from app.services.gold_derivatives import AggregatedOICache, OISnapshot
         with tempfile.TemporaryDirectory() as tmp:
             cache = AggregatedOICache(cache_dir=Path(tmp))
@@ -42,6 +42,7 @@ class TestAggregatedOICache:
 
     def test_prune_keeps_only_recent(self):
         from decimal import Decimal
+
         from app.services.gold_derivatives import AggregatedOICache, OISnapshot
         with tempfile.TemporaryDirectory() as tmp:
             cache = AggregatedOICache(cache_dir=Path(tmp), max_snapshots=3)

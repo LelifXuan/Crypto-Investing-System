@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parents[1]
 DERIVATIVES_JS = REPO / "app" / "static" / "pages" / "btc_derivatives.js"
 KNOWLEDGE_JS = REPO / "app" / "static" / "core" / "knowledge.js"

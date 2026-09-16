@@ -1,5 +1,6 @@
 # tests/test_opportunity_scanner.py
 import pytest
+
 from app.services.strategy_unified.opportunity_scanner import (
     compute_opportunity_score,
 )

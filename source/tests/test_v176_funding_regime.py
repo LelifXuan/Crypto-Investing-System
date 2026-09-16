@@ -104,7 +104,6 @@ def test_weighted_score_skip_clamps_to_0_100():
 import pytest
 
 from app.services.strategy_signal.config_loader import (
-    DEFAULT_STRATEGY_SIGNAL_CONFIG,
     load_strategy_signal_config,
 )
 

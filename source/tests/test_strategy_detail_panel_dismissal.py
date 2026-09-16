@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DETAIL_PANEL = ROOT / "app" / "static" / "pages" / "strategy" / "renderDetailPanel.js"
 STRATEGY_PAGE = ROOT / "app" / "static" / "pages" / "strategy" / "index.js"

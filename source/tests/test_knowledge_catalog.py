@@ -4,8 +4,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_PATH = ROOT / "app" / "static" / "core" / "knowledge.js"
 DOM_PATH = ROOT / "app" / "static" / "core" / "dom.js"

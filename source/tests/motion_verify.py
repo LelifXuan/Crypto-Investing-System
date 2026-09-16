@@ -22,8 +22,6 @@ import re
 import sys
 from pathlib import Path
 
-import tinycss2
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CSS_FILE = REPO_ROOT / "app" / "static" / "styles.css"
 SCREENSHOT_DIR = REPO_ROOT / "tests" / "screenshots"
@@ -278,7 +276,7 @@ def main(argv: list[str]) -> int:
                 print(f"  UNUSED: {token}")
 
     ladder = report["duration_ladder"]
-    print(f"[Duration Ladder] " + " < ".join(
+    print("[Duration Ladder] " + " < ".join(
         f"{t}={v}ms" for t, v in ladder.items() if v
     ))
 

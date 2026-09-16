@@ -1,8 +1,9 @@
 """Pure Playwright interaction logic check.
 2026-09-01. Viewport 2560x1600 per user request.
 """
-from playwright.sync_api import sync_playwright
 import sys
+
+from playwright.sync_api import sync_playwright
 
 VIEWPORT = {"width": 2560, "height": 1600}
 BASE = "http://127.0.0.1:8002"

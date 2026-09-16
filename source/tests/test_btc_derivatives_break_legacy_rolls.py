@@ -20,7 +20,6 @@ from typing import Any
 
 from app.services.btc_derivatives.service import _break_legacy_rolls
 
-
 COST_KEYS = (
     "call_protection_cost_pct",
     "put_protection_cost_pct",

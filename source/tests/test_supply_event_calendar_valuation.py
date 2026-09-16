@@ -5,7 +5,6 @@ from pathlib import Path
 
 from app.api.v1.endpoints.market_events import _display_value, _payload_decimal
 
-
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = (ROOT / "app" / "api" / "v1" / "endpoints" / "market_events.py").read_text(
     encoding="utf-8"

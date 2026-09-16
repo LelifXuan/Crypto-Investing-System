@@ -8,7 +8,6 @@ from app.services.btc_derivatives.chart_builder import (
     build_consolidated_dashboard_charts,
 )
 
-
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -289,12 +288,12 @@ def test_collector_persists_price_history_to_cache() -> None:
     """LiveCollector must call cache.append_daily() for every per-day
     row in result.history, with a stable series_key so the row is
     deduped across re-runs."""
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
 
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
     from app.services.btc_derivatives.sources.cache import LiveSourceCache
     from app.services.btc_derivatives.sources.collector import LiveCollector
-    from app.services.btc_derivatives.sources.adapters import AdapterResult
 
     with tempfile.TemporaryDirectory() as tmp:
         cache = LiveSourceCache(root=Path(tmp))
@@ -324,12 +323,12 @@ def test_collector_persists_price_history_to_cache() -> None:
 def test_collector_dedupes_price_history_by_day() -> None:
     """A second persist call with overlapping days must replace (not
     duplicate) the same day's row in the cache. The freshest value wins."""
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
 
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
     from app.services.btc_derivatives.sources.cache import LiveSourceCache
     from app.services.btc_derivatives.sources.collector import LiveCollector
-    from app.services.btc_derivatives.sources.adapters import AdapterResult
 
     with tempfile.TemporaryDirectory() as tmp:
         cache = LiveSourceCache(root=Path(tmp))
@@ -371,12 +370,12 @@ def test_collector_merges_price_history_with_cached() -> None:
     """When upstream returns a partial history, the merge function must
     combine fresh + cached to produce a complete time-series, with
     fresh values winning for overlapping days."""
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
 
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
     from app.services.btc_derivatives.sources.cache import LiveSourceCache
     from app.services.btc_derivatives.sources.collector import LiveCollector
-    from app.services.btc_derivatives.sources.adapters import AdapterResult
 
     with tempfile.TemporaryDirectory() as tmp:
         cache = LiveSourceCache(root=Path(tmp))
@@ -412,14 +411,14 @@ def test_collector_persists_price_history_to_archive() -> None:
     DerivativesArchive under data_type='daily_metrics' with the same
     series_key, so a cache rebuild can recover the most recent
     snapshot."""
-    from pathlib import Path
     import shutil
     import tempfile
+    from pathlib import Path
 
     from app.services.btc_derivatives.archive import DerivativesArchive
+    from app.services.btc_derivatives.sources.adapters import AdapterResult
     from app.services.btc_derivatives.sources.cache import LiveSourceCache
     from app.services.btc_derivatives.sources.collector import LiveCollector
-    from app.services.btc_derivatives.sources.adapters import AdapterResult
 
     tmp = tempfile.mkdtemp()
     try:

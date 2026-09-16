@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 from app.services.strategy_signal.risk_reward import _percentile_rank
 
 

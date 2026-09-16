@@ -10,8 +10,8 @@ from app.schemas.btc_derivatives_sources import (
     NormalizedOptionQuote,
     NormalizedPerpSnapshot,
 )
-from app.services.btc_derivatives.chart_builder import REQUIRED_CHART_IDS
 from app.services.btc_derivatives.archive import DerivativesArchive
+from app.services.btc_derivatives.chart_builder import REQUIRED_CHART_IDS
 from app.services.btc_derivatives.live_service import (
     BtcDerivativesLiveService,
     _merge_key_level_history,

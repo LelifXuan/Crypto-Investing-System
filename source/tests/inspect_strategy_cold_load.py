@@ -92,16 +92,16 @@ def main() -> int:
 
     # Print report
     print("=" * 70)
-    print(f"STARTED     t=0.0s")
+    print("STARTED     t=0.0s")
     print(f"END         t={(now()):.2f}s")
     if t_matrix_visible > 0:
         print(f"matrix .scan-matrix-table visible at t={t_matrix_visible - t_start:.2f}s")
     else:
-        print(f"matrix .scan-matrix-table NEVER became visible")
+        print("matrix .scan-matrix-table NEVER became visible")
     if t_ranked_visible > 0:
         print(f"ranked .scan-ranked-card visible at t={t_ranked_visible - t_start:.2f}s")
     else:
-        print(f"ranked .scan-ranked-card NEVER became visible (no real opportunities?)")
+        print("ranked .scan-ranked-card NEVER became visible (no real opportunities?)")
     if t_steady_state > 0:
         print(f"steady-state reached at t={t_steady_state - t_start:.2f}s")
     print()

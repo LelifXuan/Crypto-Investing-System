@@ -1,11 +1,28 @@
 """Strategy runtime services: build identity, single-flight, cache policy, executor."""
 
 from .build_key import BuildKey, build_strategy_key
-from .cache_policy import CachePolicy, CacheState, CanonicalCacheEntry, force_observe_projection, warming_payload
-from .hot_path import StrategyHotPathService, StrategyCacheRepository, StrategyServeResult
+from .cache_policy import (
+    CachePolicy,
+    CacheState,
+    CanonicalCacheEntry,
+    force_observe_projection,
+    warming_payload,
+)
+from .hot_path import StrategyCacheRepository, StrategyHotPathService, StrategyServeResult
 from .indicator_executor import IndicatorExecutor
-from .precompute_planner import PrecomputePlanner, PrecomputeCandidate, PlannedBuild, build_candidate_from_cache_state
-from .singleflight import SingleFlightBuildCoordinator, BuildJob, BuildJobState, BuildQueueFullError, _SimpleMetrics
+from .precompute_planner import (
+    PlannedBuild,
+    PrecomputeCandidate,
+    PrecomputePlanner,
+    build_candidate_from_cache_state,
+)
+from .singleflight import (
+    BuildJob,
+    BuildJobState,
+    BuildQueueFullError,
+    SingleFlightBuildCoordinator,
+    _SimpleMetrics,
+)
 
 __all__ = [
     "BuildKey",

@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "app" / "static" / "pages" / "monitoring.js").read_text(encoding="utf-8")
 STYLES = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")

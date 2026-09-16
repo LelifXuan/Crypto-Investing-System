@@ -5,7 +5,6 @@ from uuid import uuid4
 
 from .common import (
     FusionResult,
-    StructureAlert,
     StructureEvent,
     build_structure_dedupe_key,
     event_name,

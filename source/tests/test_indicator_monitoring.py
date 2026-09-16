@@ -63,8 +63,6 @@ def _stub_all_macro_providers(service: IndicatorMonitoringService, monkeypatch) 
     cancellable), making the suite flaky. Stub the network surface of every
     provider so the tests assert orchestration deterministically.
     """
-    from datetime import UTC as _UTC
-    from datetime import datetime as _dt
 
     for provider in service.macro_provider_registry.providers():
 

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "app" / "static" / "pages" / "gold_v5.js"
 CSS = ROOT / "app" / "static" / "editorial.css"

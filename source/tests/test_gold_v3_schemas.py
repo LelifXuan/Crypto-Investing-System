@@ -1,6 +1,4 @@
 """Tests for gold V3 Pydantic schemas."""
-import pytest
-from pydantic import ValidationError
 
 
 class TestGoldV3SignalLight:
@@ -41,10 +39,10 @@ class TestGoldV3SignalLight:
 class TestGoldV3AllocationResponse:
     def test_allocation_response_minimal(self):
         from app.schemas.gold_v3 import (
-            GoldV3AllocationResponse,
+            GoldContractRef,
             GoldSignalLight,
             GoldSpotDca,
-            GoldContractRef,
+            GoldV3AllocationResponse,
         )
         resp = GoldV3AllocationResponse(
             signals=[
@@ -113,9 +111,12 @@ class TestGoldV3AllocationResponse:
 
     def test_allocation_response_serializes_to_json(self):
         import json
+
         from app.schemas.gold_v3 import (
-            GoldV3AllocationResponse, GoldSignalLight,
-            GoldSpotDca, GoldContractRef,
+            GoldContractRef,
+            GoldSignalLight,
+            GoldSpotDca,
+            GoldV3AllocationResponse,
         )
         resp = GoldV3AllocationResponse(
             signals=[

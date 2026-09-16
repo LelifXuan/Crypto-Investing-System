@@ -71,7 +71,6 @@ async def test_per_task_timeout_cancels_hung_task():
         s.close = AsyncMock()
         yield s
 
-    from app.core.db import db_manager
     with patch("app.core.db.db_manager.session", _session_ctx), \
          patch.object(IndicatorMonitoringService, "run_policy", new=mock_run):
         t0 = asyncio.get_event_loop().time()

@@ -57,6 +57,19 @@ extend-exclude = [
     "scripts/dev.ps1",
     "scripts/dev_env.ps1",
     "tools/launcher/Program.cs",
+    # 2026-09-16 (T1): ruff scope 收回到真维护代码 — vendor / build / data / cache 不再扫。
+    # runtime_python: Python 3.11 嵌入式解释器副本 (DLLs/Lib/Scripts/python.exe)。
+    # runtime: 后台 worker runtime 目录 (含 site-packages 风格副本)。
+    # data: 市场数据缓存 / 历史 JSON 副本。
+    "runtime_python",
+    "runtime_python*/**",
+    "runtime/**",
+    "data/**",
+    "**/__pycache__/**",
+    "*.pyc",
+    "**/.venv/**",
+    "**/node_modules/**",
+    "**/.pytest_cache/**",
 ]
 
 [tool.ruff.lint]
