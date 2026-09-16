@@ -8,8 +8,8 @@
 
 | # | 债项 | 来源 | 优先级 | 说明与验收 |
 |---|---|---|---|---|
-| B1 | chip_structure 无数据被编码为 `risk_score=100 / extreme` | `docs/chip-structure-availability-audit.md`（2026-08-31） | **P1** | 缺失数据 ≠ 极端市场风险。需要把 `state=missing` 与市场风险分离：missing 走 `system_availability` 门禁，不进 `_conflicts` 的 `risk_score_extreme` 分支。已确认消费链 9 处（monitoring/alerts/strategy_unified 等）。修复时先定可用性合同再写回归（fresh/missing/stale 三态固定输入），不得只删 skip。 |
-| B2 | `market_context.py` 把 chip 依赖标记为 fresh 而不检查 `chip.state=missing` | 同上 | **P1** | 假新鲜度污染 freshness 元数据，strategy_unified 依赖元数据传播。与 B1 一并修复。 |
+| B1 | chip_structure 无数据被编码为 `risk_score=100 / extreme` | `docs/chip-structure-availability-audit.md`（2026-08-31） | **P1** | **已偿（2026-09-16，见下方本轮已偿摘要）**。新增 `availability_state` 枚举 + `availability_reason`，missing/unavailable 分支 `risk_score=null` / `risk_label=null` / `conflict_level=0` / `recommended_action_v2='unavailable'`。FinalDecision `_conflicts` 删 `risk_score_extreme` 假冲突；`_final_action` / `_trade_permission` 新增 `unavailable` 显式态（区别于 `observe`）。前端 chip Tonal 按 `availability_state` 分支渲染：missing 时 chip_risk 显示「数据不可用」chip-neutral 灰（不再叠加「风险极高」chip-bearish 红）。 |
+| B2 | `market_context.py` 把 chip 依赖标记为 fresh 而不检查 `chip.state=missing` | 同上 | **P1** | **已偿（与 B1 同 commit）**。`_dependency_meta("chip_structure", ...)` 跟随 `chip.availability_state`：`missing/unavailable` → `cache_state='missing'`、`source_updated_at=None`；`stale_lkg` → `stale`；其余走 fresh。 |
 | B3 | ETF 历史数据缺失时后台刷新链路未验证 | `reports/ui-style-20260904`（技术指标刷新压力测试失败记录） | **P2** | worker 禁用的隔离环境无法完成强制刷新 + 最后标的日线为空 → 等待超时。需在启用 worker 的环境验证后台刷新闭环，或给「目标快照为空」提供明确终止语义。前端操作可恢复已用固定样本回放验证。 |
 
 ## 二、测试与工程债
@@ -52,9 +52,9 @@
 
 ## 建议下一步顺序
 
-1. B1+B2（chip 可用性语义）——业务正确性优先，已有完整审计输入。
-2. T1 Ruff 分批清偿（每模块一 commit）。
-3. I1 PostgreSQL 迁移评估（仅当多进程部署提上日程）。
+1. T1 Ruff 分批清偿（每模块一 commit，约 247 项存量）。
+2. I1 PostgreSQL 迁移评估（仅当多进程部署提上日程）。
+3. U6 / U7 P3 复核（满载态审计 + 手册对比度矩阵）——留待有真实数据时触发。
 
 ## 本轮已偿（2026-09-16,UI 审计 P2 一次性清偿）
 
@@ -70,3 +70,12 @@
 |---|---|---|
 | U6 | **P3** | 事件信息流真实满载态、BTC 衍生品完整行情满载态未在审计中复核。空态审计过，满载留待有真实数据时复核。 |
 | U7 | **P3** | 手册 §3.1 其余三级文字背景组合的对比度矩阵。tertiary 主 token 已达 4.85:1（P2#9）；剩余小字体/透明背景组合按需逐个测量。 |
+
+## 本轮已偿（2026-09-16,B1+B2 chip_structure availability 业务语义）
+
+- **后端 schema + service**：`ChipStructureRead` 新增 `availability_state` 枚举（`ready | low_confidence | missing | unavailable | stale_lkg`）和 `availability_reason`；`risk_score` / `risk_label` 改 `Optional`（可空），默认不再是 `100/extreme`。`chip_structure.py` 三分支（real_structure / candles≥20 / missing）都显式设 `availability_state`；missing 分支输出 `risk_score=None` / `conflict_level=0` / `recommended_action_v2='unavailable'`。
+- **FinalDecision 权限优先级**：`_conflicts` 删除 `risk_score >= 80 → risk_score_extreme` 假冲突分支（历史根因：missing 同时输出 100 → 假冲突）。`_final_action` / `_trade_permission` 新增 `unavailable` 显式态，缺数据时 `trade_permission='unavailable'`（不再误为 `observe`），且权限先于 conflicts 短路。
+- **market_context freshness**：`_dependency_meta("chip_structure", ...)` 按 `chip.availability_state` 决定 `cache_state`：`missing/unavailable → missing + source_updated_at=None`，`stale_lkg → stale`，其余 fresh。修复了「缺失数据被标记为 fresh 的假新鲜度」污染 strategy_unified 元数据的链路。
+- **前端 chip Tonal**：`alerts.js` `chipStateMarkup` 新增 `unavailable` / `stale_lkg` 枚举映射；`chipRiskMarkup` 增加 `chipAvailabilityGuards(availability)` 守卫，`availability_state in {missing, unavailable, stale_lkg}` 时直接渲染「数据不可用」`chip-neutral` 灰色 chip（不再叠 `chip-bearish` 红色）；`renderChipStructureCard` 风险分数值守卫时显示「—」。
+- **守卫**：新增 `tests/test_chip_structure_availability.py` 6 fixture（missing 直返、missing 经 FinalDecision、stale_lkg、low_confidence 保留真实 risk_score、`_conflicts` 不再触发 risk_score_extreme、analyzer 异常 → unavailable）；新增 `tests/test_chip_availability_static.py` 7 项静态守卫（schema availability_state 字段、risk_score Optional、chipRiskMarkup availability 守卫、chipStateMarkup unavailable/stale_lkg 枚举、_conflicts 不含 risk_score_extreme append、market_context 按 availability 分支、_missing_payload availability_state='missing'）；旧 `test_market_context_builder.py::test_market_context_cache_meta_tracks_source_pages_and_freshness` 的 `fake_analyze` 补 `availability_state='ready'`，接受新契约（旧契约假设 chip_structure 永远 fresh，本身就是审计指出的 bug）。
+- **验证门禁**：全量 pytest 2078 passed / 3 skipped（排除旧 skip-everything 模块）；改动范围 Ruff 0；verify_pages 11/11 + 10/10；真实 API 烟测 `instrument_id=BTCUSDT&timeframe=1h` 返回 `action='unavailable'` + `trade_permission='unavailable'` + `risk_score=None` + `conflicts=[]`（修复前 `no_trade / observe / 100/extreme / [risk_score_extreme]`）。
