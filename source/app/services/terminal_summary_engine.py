@@ -747,10 +747,26 @@ class StructureSummaryAdapter:
         # that as the user-facing state — range with directional bias
         # (上行震荡 / 下行震荡 / 中性震荡) is itself a valid verdict and
         # more informative than a generic "结构切换".
-        structure_overall = structure.get("overall") if isinstance(structure.get("overall"), Mapping) else structure
-        upstream_range_state = str(structure_overall.get("range_state") or "NONE") if structure_overall else "NONE"
-        upstream_range_label = str(structure_overall.get("range_label") or "") if structure_overall else ""
-        if upstream_range_state in {"UPWARD_RANGE", "DOWNWARD_RANGE", "NEUTRAL_RANGE"} and upstream_range_label:
+        structure_overall = (
+            structure.get("overall")
+            if isinstance(structure.get("overall"), Mapping)
+            else structure
+        )
+        upstream_range_state = (
+            str(structure_overall.get("range_state") or "NONE")
+            if structure_overall
+            else "NONE"
+        )
+        upstream_range_label = (
+            str(structure_overall.get("range_label") or "")
+            if structure_overall
+            else ""
+        )
+        if (
+            upstream_range_state
+            in {"UPWARD_RANGE", "DOWNWARD_RANGE", "NEUTRAL_RANGE"}
+            and upstream_range_label
+        ):
             regime = upstream_range_state.lower()
         base_score = _num(structure.get("score"))
         if base_score is None:

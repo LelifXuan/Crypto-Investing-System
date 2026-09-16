@@ -232,10 +232,14 @@ class Settings(BaseSettings):
     macro_sync_concurrency: int = Field(default=4, alias="MACRO_SYNC_CONCURRENCY")
     # 单任务超时（秒）：某个 provider 请求挂起时，任务被强制取消而非永久
     # 占死信号量槽位 —— 这是"全并发卡死"的防御底线。
-    macro_sync_task_timeout_seconds: int = Field(default=60, alias="MACRO_SYNC_TASK_TIMEOUT_SECONDS")
+    macro_sync_task_timeout_seconds: int = Field(
+        default=60, alias="MACRO_SYNC_TASK_TIMEOUT_SECONDS"
+    )
     # 总超时（秒）：整批同步的保守上限，即使个别任务异常挂起也必须在
     # 此时间内返回，绝不无限等待。
-    macro_sync_batch_timeout_seconds: int = Field(default=180, alias="MACRO_SYNC_BATCH_TIMEOUT_SECONDS")
+    macro_sync_batch_timeout_seconds: int = Field(
+        default=180, alias="MACRO_SYNC_BATCH_TIMEOUT_SECONDS"
+    )
     monitoring_stale_refresh_check_seconds: int = Field(
         default=3600,
         alias="MONITORING_STALE_REFRESH_CHECK_SECONDS",

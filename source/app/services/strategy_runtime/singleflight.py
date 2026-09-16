@@ -66,7 +66,9 @@ class _SimpleMetrics:
         self._gauges: dict[str, float] = {}
         self._observations: dict[str, list[float]] = {}
 
-    def increment(self, name: str, value: int = 1, *, labels: Mapping[str, str] | None = None) -> None:
+    def increment(
+        self, name: str, value: int = 1, *, labels: Mapping[str, str] | None = None
+    ) -> None:
         key = self._key(name, labels)
         self._counters[key] = self._counters.get(key, 0) + value
 
@@ -178,7 +180,10 @@ class SingleFlightBuildCoordinator(Generic[T]):
                     )
                     self._metrics.gauge("strategy_build_inflight", float(self.inflight_count))
 
-            task = asyncio.create_task(runner(), name=f"strategy-build:{key_digest[:12]}:{job_id[:8]}")
+            task = asyncio.create_task(
+                runner(),
+                name=f"strategy-build:{key_digest[:12]}:{job_id[:8]}",
+            )
             now = _utc_now()
             job = BuildJob(
                 job_id=job_id,

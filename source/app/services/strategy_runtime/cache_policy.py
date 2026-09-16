@@ -101,7 +101,9 @@ def warming_payload(*, job_id: str | None, blocker: str) -> dict[str, Any]:
         "status": "degraded",
         "prewarm_status": "enqueued" if job_id else "disabled",
         "refresh_state": "missing",
-        "refresh_limitations": ["Unified strategy snapshot is missing; background prewarm has been queued."],
+        "refresh_limitations": [
+            "Unified strategy snapshot is missing; background prewarm has been queued.",
+        ],
         "decision": {
             "permission": "observe",
             "state": "WAIT_TRIGGER",

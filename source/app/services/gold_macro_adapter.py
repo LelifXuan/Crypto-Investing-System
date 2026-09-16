@@ -222,7 +222,6 @@ def _gold_macro_snapshot(macro: dict) -> dict:
 
     ry_val = value_of(real_yield)
     dxy_val = value_of(dxy)
-    cpi_val = value_of(cpi)
     vix_val = value_of(vix)
 
     # 流动性冲击检测
@@ -277,14 +276,21 @@ def _gold_macro_snapshot(macro: dict) -> dict:
                 return ("bullish", "CPI 温和回落 + 实际利率下行 + 美元不强，降息预期支撑黄金")
         # CPI 快速下行 → 等待确认
         if value < 1.0:
-            return ("neutral", "CPI 快速下行，衰退风险升温，需结合 VIX/DXY/ETF 流向确认（不输出单方向）")
+            return (
+                "neutral",
+                "CPI 快速下行，衰退风险升温，需结合 VIX/DXY/ETF 流向确认（不输出单方向）",
+            )
         return ("neutral", "CPI 处于中性区间，需结合其他宏观信号综合判断")
 
     def bias_for_vix(value):
         if value is None:
             return ("missing", "数据不足")
         if liquidity_shock:
-            return ("bearish", "VIX 急升叠加 DXY 走强 + 实际利率上行 → 流动性冲击模式，黄金先被卖补保证金，待压力缓和后回到避险逻辑")
+            return (
+                "bearish",
+                "VIX 急升叠加 DXY 走强 + 实际利率上行 → 流动性冲击模式, "
+                "黄金先被卖补保证金, 待压力缓和后回到避险逻辑",
+            )
         if value >= 28:
             return ("strong_bullish", "VIX 急升，市场风险厌恶强烈，黄金避险属性显著")
         if value >= 22:

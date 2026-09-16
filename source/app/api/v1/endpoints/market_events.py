@@ -378,7 +378,10 @@ async def list_supply_event_calendar(
     nodes = await repo.list_supply_calendar_nodes(limit=limit)
     instrument_ids = {node.instrument_id for node in nodes}
     instrument_ids.add("bnb-usdt-perp")
-    marks = {instrument_id: await repo.latest_mark(instrument_id) for instrument_id in instrument_ids}
+    marks = {
+        instrument_id: await repo.latest_mark(instrument_id)
+        for instrument_id in instrument_ids
+    }
 
     items: list[dict[str, Any]] = []
     for node in nodes:

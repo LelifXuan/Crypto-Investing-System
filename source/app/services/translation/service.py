@@ -52,10 +52,6 @@ class MarketEventTranslationService:
     _provider_backoff_until: dict[str, float] = {}
 
     def __init__(self, *, enabled: bool | None = None, provider: str | None = None) -> None:
-        configured_provider = (provider or settings.market_events_translation_provider or "").lower()
-        has_internal_tencent_key = bool(
-            settings.tencent_tmt_secret_id and settings.tencent_tmt_secret_key
-        )
         configured_enabled = settings.market_events_translate_enabled
         self.enabled = configured_enabled if enabled is None else enabled
         default_provider = settings.market_events_translation_provider
