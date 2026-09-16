@@ -130,7 +130,7 @@ def test_a11y_queries_exempt_from_width_consolidation() -> None:
         if not css.exists():
             continue
         source = css.read_text(encoding="utf-8")
-        a11y = _a11y_query_count(source)
+        _a11y_query_count(source)
         width = len(_width_queries(source))
         # V3.2: the codebase has at least one of each (hover, prefers-
         # reduced-motion); width count > 0 by design.
@@ -142,7 +142,7 @@ def test_breakpoint_groups_have_clear_separation() -> None:
     least 100px larger than the previous — no two values within 100px.
     This guards against accidental regressions like `720` and `767`."""
     widths = sorted(CANONICAL_WIDTHS)
-    for prev, nxt in zip(widths, widths[1:]):
+    for prev, nxt in zip(widths, widths[1:], strict=False):
         gap = nxt - prev
         assert gap >= 100, (
             f"adjacent canonical breakpoints {prev} and {nxt} only {gap}px apart; "

@@ -16,8 +16,8 @@ def _make_candle(close, high=None, low=None):
     """Minimal candle-like object for tests."""
     class C:
         __slots__ = ("close", "high", "low")
-        def __init__(self, c, h, l):
-            self.close, self.high, self.low = c, h, l
+        def __init__(self, c, h, low):
+            self.close, self.high, self.low = c, h, low
     return C(close, high or close, low or close)
 
 
@@ -125,10 +125,9 @@ class TestTechnicalIndicators:
 
     def test_ema20_distance_negative_when_below_ema(self):
         # Price trending down → close < EMA20
-        closes = [100.0] * 21
         candles = []
         v = 100.0
-        for i in range(30):
+        for _i in range(30):
             v -= 1.0
             candles.append(_make_candle(v))
         result = _compute_technical_indicators(candles)
@@ -137,7 +136,7 @@ class TestTechnicalIndicators:
     def test_rsi_oversold_on_sustained_decline(self):
         candles = []
         v = 100.0
-        for i in range(30):
+        for _i in range(30):
             v -= 2.0
             candles.append(_make_candle(v))
         result = _compute_technical_indicators(candles)

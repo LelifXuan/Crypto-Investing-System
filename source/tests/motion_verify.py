@@ -117,7 +117,7 @@ def verify_motion_system(css_text: str) -> dict:
 
     # 2. Duration ladder verification
     dur_values = {}
-    for token, expected_ms in DUR_LADDER_EXPECTED.items():
+    for token, _expected_ms in DUR_LADDER_EXPECTED.items():
         defn = data["token_defs"].get(token, "")
         # Extract ms value
         ms_match = re.search(r'(\d+)ms', defn)

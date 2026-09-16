@@ -5,6 +5,10 @@ from __future__ import annotations
 import math
 
 from app.services.strategy_signal.risk_reward import _percentile_rank
+from app.services.strategy_signal.snapshot_builder import (
+    StrategySnapshotBuilder,
+    _compute_momentum_at_scale,
+)
 
 
 def test_percentile_rank_empty_history_returns_50():
@@ -57,9 +61,6 @@ def test_percentile_rank_skips_none_inside_history():
     history = [1.0, None, 2.0, None, 3.0]
     result = _percentile_rank(history, 2.0)
     assert 60.0 <= result <= 70.0
-
-
-from app.services.strategy_signal.snapshot_builder import _compute_momentum_at_scale
 
 
 def test_compute_momentum_at_scale_neutral_when_all_inputs_missing():
@@ -124,9 +125,6 @@ def test_compute_momentum_at_scale_clamped_to_0_100():
     )
     assert 0.0 <= bullish <= 100.0
     assert 0.0 <= bearish <= 100.0
-
-
-from app.services.strategy_signal.snapshot_builder import StrategySnapshotBuilder
 
 
 def test_feature_components_emits_six_momentum_keys():

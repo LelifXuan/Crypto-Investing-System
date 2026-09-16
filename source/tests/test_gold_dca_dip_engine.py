@@ -8,6 +8,7 @@ from app.services.gold_dca_dip import (
     GoldSettings,
     IndicatorSnapshot,
     QuoteSnapshot,
+    _bias_for_indicator,
 )
 
 
@@ -202,9 +203,6 @@ def test_execution_plan_does_not_expose_forbidden_trading_actions() -> None:
     }
     for token in forbidden:
         assert token not in rendered
-
-
-from app.services.gold_dca_dip import _bias_for_indicator
 
 
 def test_bias_for_indicator_none_returns_missing():

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.services.structure.classic import (
     CLASSIC_PATTERN_CONTRACT_VERSION,
-    _make_region_geometry,
     build_classic_patterns_payload,
     detect_classic_patterns,
 )
@@ -364,23 +363,6 @@ def test_region_projection_uses_candle_interval_not_fixed_hours():
     candles = make_candles([(0, 100), (4, 104)], length=5)
     for idx, candle in enumerate(candles):
         candle.ts_open = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=idx)
-
-    region = _make_region_geometry(
-        "rectangle_range",
-        "candidate",
-        0,
-        100,
-        6,
-        102,
-        6,
-        98,
-        0,
-        96,
-        None,
-        None,
-        candles,
-        0.6,
-    )
 
 
 def test_channel_polygon_left_edge_includes_older_pivots_in_tolerance():

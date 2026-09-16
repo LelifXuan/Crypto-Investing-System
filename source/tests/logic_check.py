@@ -94,8 +94,14 @@ with sync_playwright() as p:
     for name, (route, sel) in FOOTER_PAGES.items():
         ctx = browser.new_context(viewport=VIEWPORT)
         page = ctx.new_page()
-        page.on("pageerror", lambda e: page_errors.append((name, str(e))))
-        page.on("console", lambda m: m.type == "error" and console_errors.append((name, m.text)))
+        page.on(
+            "pageerror",
+            lambda e, _n=name: page_errors.append((_n, str(e))),
+        )
+        page.on(
+            "console",
+            lambda m, _n=name: m.type == "error" and console_errors.append((_n, m.text)),
+        )
         page.goto(f"{BASE}{route}", wait_until="domcontentloaded")
         # Monitoring uses diff-update and waits on backend; some pages
         # only render the ledger after the bundle fetch lands. Poll up

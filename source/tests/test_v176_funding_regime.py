@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
+from app.services.strategy_signal.config_loader import (
+    load_strategy_signal_config,
+)
+from app.services.strategy_signal.scoring_engine import weighted_score_skip
 from app.services.strategy_signal.snapshot_builder import (
     _compute_funding_pressure,
     _remap_funding_crowding,
@@ -57,9 +63,6 @@ def test_remap_funding_crowding_missing_returns_0():
 # --- weighted_score_skip (V1.7.6 funding slot degradation) ---
 
 
-from app.services.strategy_signal.scoring_engine import weighted_score_skip
-
-
 def test_weighted_score_skip_all_slots_present_normal_behavior():
     """When no slots are None, output equals old weighted_score."""
     values = {"a": 80.0, "b": 40.0}
@@ -99,13 +102,6 @@ def test_weighted_score_skip_clamps_to_0_100():
 
 
 # --- V1.7.6 weight-table sanity (3-TF momentum + funding regime) ---
-
-
-import pytest
-
-from app.services.strategy_signal.config_loader import (
-    load_strategy_signal_config,
-)
 
 
 def test_weight_tables_sum_to_one_all_modes():

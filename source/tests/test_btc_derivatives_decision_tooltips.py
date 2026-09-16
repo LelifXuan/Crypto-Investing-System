@@ -26,7 +26,6 @@ def _node(script: str) -> dict:
     import json
     import subprocess
 
-    module_path = REPO / "app" / "static" / "pages" / "btc_derivatives.js"
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script],
         check=True, capture_output=True, text=True, encoding="utf-8",

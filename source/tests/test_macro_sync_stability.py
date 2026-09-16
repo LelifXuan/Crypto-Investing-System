@@ -79,7 +79,7 @@ async def test_per_task_timeout_cancels_hung_task():
                 svc.run_policy(_policy("hung"), trigger_type="manual"),
                 timeout=settings.macro_sync_task_timeout_seconds,
             )
-            assert False, "should have timed out"
+            raise AssertionError("should have timed out")
         except asyncio.TimeoutError:
             dt = asyncio.get_event_loop().time() - t0
             assert dt < 3, f"hung task not cancelled: took {dt:.1f}s"
