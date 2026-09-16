@@ -117,6 +117,8 @@ async def test_market_context_cache_meta_tracks_source_pages_and_freshness(monke
 
     async def fake_analyze(self, instrument_id: str, timeframe: str):
         return {
+            "availability_state": "ready",
+            "availability_reason": "结构快照可用",
             "evidence_quality": "structure_snapshot",
             "execution_score": 72,
             "execution_label": "ok",
