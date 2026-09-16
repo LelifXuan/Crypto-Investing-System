@@ -141,10 +141,27 @@ class MarketContextBuilder:
                 )
                 logger.warning("chip_structure_analyze_failed: %s", exc, exc_info=True)
             else:
+                # 2026-09-16 (B1+B2): cache_state 必须跟随 chip.availability_state,
+                # 不能无条件写 fresh。缺数据 / unavailable / stale_lkg 都标 missing 或 stale,
+                # 防止下游 (strategy_unified / monitoring) 把假新鲜度当真数据用。
+                chip_availability = (
+                    str(chip.get("availability_state") or chip.get("state") or "missing").lower()
+                )
+                if chip_availability in {"missing", "unavailable"}:
+                    chip_cache_state = "missing"
+                    chip_source_ts = None
+                elif chip_availability == "stale_lkg":
+                    chip_cache_state = "stale"
+                    chip_source_ts = chip.get("generated_at")
+                else:
+                    # ready / low_confidence 视为 fresh, 但 source_updated_at
+                    # 优先用 chip 自带 generated_at, 没有再 fallback now。
+                    chip_cache_state = "fresh"
+                    chip_source_ts = chip.get("generated_at") or now
                 dependencies["chip_structure"] = self._dependency_meta(
                     "chip_structure",
-                    cache_state="fresh",
-                    source_updated_at=now,
+                    cache_state=chip_cache_state,
+                    source_updated_at=chip_source_ts,
                     timeframe=timeframe,
                     snapshot_payload=chip,
                 )

@@ -449,8 +449,14 @@ class ChipStructureRead(BaseModel):
     confidence_label: str = "invalid"
     execution_score: float = 0.0
     execution_label: str = "blocked"
-    risk_score: float = 100.0
-    risk_label: str = "extreme"
+    # 2026-09-16 (B1+B2): system_availability 与 market_risk 分离。
+    # 缺数据时不能再用 risk_score=100/extreme 伪装成极端市场风险,
+    # 否则会污染 final_decision.trade_permission 和 monitoring 总览。
+    # availability_state 枚举: ready | low_confidence | missing | unavailable | stale_lkg
+    availability_state: str = "missing"
+    availability_reason: str | None = None
+    risk_score: float | None = None
+    risk_label: str | None = None
     confidence_cap: float = 0.0
     conflict_level: int
     position_multiplier: float

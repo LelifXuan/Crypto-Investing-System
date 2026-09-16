@@ -36,8 +36,12 @@ class FinalDecisionService:
             "confidence_label": confidence_label,
             "execution_score": chip.get("execution_score", 0.0),
             "execution_label": chip.get("execution_label", "blocked"),
-            "risk_score": chip.get("risk_score", 100.0),
-            "risk_label": chip.get("risk_label", "extreme"),
+            # 2026-09-16 (B1+B2): 透传 chip.availability_state,
+            # risk_score / risk_label 用 chip 实际值 (可能为 None, 不再兜底 100/extreme)。
+            "availability_state": chip.get("availability_state", "missing"),
+            "availability_reason": chip.get("availability_reason"),
+            "risk_score": chip.get("risk_score"),
+            "risk_label": chip.get("risk_label"),
             "confidence_cap": chip.get("confidence_cap", 0.0),
             "action": action,
             "recommended_action": chip.get("recommended_action_v2", "no_trade"),
@@ -45,7 +49,7 @@ class FinalDecisionService:
             "position_multiplier": chip.get("position_multiplier", 0.0),
             "capital_ceiling_pct": chip.get("capital_ceiling_pct", 0.0),
             "evidence_quality": chip.get("evidence_quality", "proxy_only"),
-            "conflict_level": chip.get("conflict_level", 3),
+            "conflict_level": chip.get("conflict_level", 0),
             "chip_regime": chip.get("primary_regime"),
             "macro_bias": macro_bias,
             "market_state_axes": market_state_axes,
@@ -112,17 +116,21 @@ class FinalDecisionService:
                 "confidence_label": "invalid",
                 "execution_score": 0.0,
                 "execution_label": "blocked",
-                "risk_score": 100.0,
-                "risk_label": "extreme",
+                # 2026-09-16 (B1+B2): 异常 ≠ 极端风险;
+                # availability_state=unavailable, risk_score=null。
+                "availability_state": "unavailable",
+                "availability_reason": f"chip_structure.analyze 异常: {exc}",
+                "risk_score": None,
+                "risk_label": None,
                 "confidence_cap": 0.0,
-                "recommended_action": "risk_off",
-                "recommended_action_v2": "no_trade",
+                "recommended_action": "unavailable",
+                "recommended_action_v2": "unavailable",
                 "position_multiplier": 0.0,
                 "capital_ceiling_pct": 0.0,
                 "evidence_quality": "proxy_only",
-                "conflict_level": 3,
+                "conflict_level": 0,
                 "risk_gates": ["CHIP_STRUCTURE_UNAVAILABLE"],
-                "explain": [f"筹码结构暂不可用，最终决策降级为仅观察：{exc}"],
+                "explain": [f"筹码结构暂不可用，最终决策降级为数据不可用：{exc}"],
                 "components": {},
             }
 
@@ -201,6 +209,10 @@ class FinalDecisionService:
 
     def _conflicts(self, chip: dict[str, Any], macro_bias: str) -> list[str]:
         conflicts: list[str] = []
+        # 2026-09-16 (B1+B2): chip 不可用时不再参与冲突计算 —
+        # 缺数据是 availability 门禁, 不是市场结论冲突。
+        if self._is_chip_unavailable(chip):
+            return conflicts
         action = str(chip.get("recommended_action_v2") or chip.get("recommended_action") or "")
         allowed_when_macro_risk_off = {
             "observe",
@@ -208,6 +220,7 @@ class FinalDecisionService:
             "reduce_or_exit",
             "observe_only",
             "risk_off",
+            "unavailable",
         }
         if macro_bias in {"risk_off", "event_wait"} and action not in allowed_when_macro_risk_off:
             conflicts.append("macro_risk_off_vs_trade_action")
@@ -216,11 +229,26 @@ class FinalDecisionService:
             and chip.get("capital_ceiling_pct", 0) > 10
         ):
             conflicts.append("weak_data_quality_vs_position_size")
-        if float(chip.get("risk_score") or 0.0) >= 80:
-            conflicts.append("risk_score_extreme")
+        # 2026-09-16 (B1+B2): 删 risk_score_extreme 冲突分支。
+        # 历史原因: missing 分支同时输出 risk_score=100, 触发本冲突 → 假冲突。
+        # 修复后 risk_score 在 missing 时为 None, 此分支天然失效; 显式删除防止复发。
         return conflicts
 
+    @staticmethod
+    def _is_chip_unavailable(chip: dict[str, Any]) -> bool:
+        availability = str(chip.get("availability_state") or "").lower()
+        if availability in {"missing", "unavailable", "stale_lkg"}:
+            return True
+        # 老快照兼容: availability_state 缺失时, 用 state 兜底
+        if not availability and chip.get("state") in {"missing", "unavailable"}:
+            return True
+        return False
+
     def _final_action(self, chip: dict[str, Any], conflicts: list[str]) -> str:
+        # 2026-09-16 (B1+B2): 缺数据时 action 显式 unavailable,
+        # 区别于 no_trade(有数据但不开仓)。
+        if self._is_chip_unavailable(chip):
+            return "unavailable"
         action = str(chip.get("recommended_action_v2") or "no_trade")
         if chip.get("state") == "missing":
             return "no_trade"
@@ -230,6 +258,10 @@ class FinalDecisionService:
 
     @staticmethod
     def _trade_permission(action: str, conflicts: list[str]) -> str:
+        # 2026-09-16 (B1+B2): unavailable 是 permission 显式态,
+        # 必须先于 conflicts 短路, 否则被 observe 覆盖。
+        if action == "unavailable":
+            return "unavailable"
         if conflicts:
             return "observe"
         if action in {"normal_trade", "allow", "long_triggered", "short_triggered"}:

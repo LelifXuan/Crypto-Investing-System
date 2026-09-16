@@ -76,6 +76,10 @@ class ChipStructureService:
             "state_confidence_label": state_label,
             "execution_quality_label": "盘口执行待确认",
             "entry_trigger_label": "交易触发待定",
+            # 2026-09-16 (B1+B2): K 线 ≥20 但缺微观证据时,
+            # 仍属于低置信度 (low_confidence), 不是缺数据; risk_score 沿用真实值。
+            "availability_state": "low_confidence",
+            "availability_reason": "微观结构输入不完整, 仅以 K 线变化 proxy。",
             "risk_score": risk_score,
             "risk_label": "elevated",
             "confidence_cap": 55.0,
@@ -218,6 +222,10 @@ class ChipStructureService:
             ),
             "execution_score": round(max(35.0, min(80.0, confidence)), 2),
             "execution_label": "pending",
+            # 2026-09-16 (B1+B2): 走结构快照时是真正可分析的数据,
+            # availability_state 跟 confidence 对齐: ≥50 ready, 否则 low_confidence。
+            "availability_state": "ready" if confidence >= 50 else "low_confidence",
+            "availability_reason": "方向来自结构页快照, 不是首尾 K 线 proxy。",
             "risk_score": 35.0 if confidence >= 60 else 55.0,
             "risk_label": "normal" if confidence >= 60 else "elevated",
             "confidence_cap": round(min(85.0, confidence + 15), 2),
@@ -295,10 +303,18 @@ class ChipStructureService:
             "state_confidence_label": "信息缺失",
             "execution_quality_label": "盘口信息不可用",
             "entry_trigger_label": "无交易触发",
-            "risk_score": 100.0,
-            "risk_label": "extreme",
+            # 2026-09-16 (B1+B2): system_availability 与 market_risk 分离。
+            # 缺数据 ≠ 极端市场风险。前端 chip_risk chip 看到 availability=missing
+            # 直接渲染「数据不可用」中性色, 不再误显示「风险极高」。
+            # risk_score=None / risk_label=None 是显式 null, 表示「没有真实风险打分」。
+            "availability_state": "missing",
+            "availability_reason": reason,
+            "risk_score": None,
+            "risk_label": None,
             "confidence_cap": 0.0,
-            "conflict_level": 3,
+            # conflict_level 0: 没有真实冲突, 只是没有数据。原值 3 会让结构模块把 missing
+            # 渲染为「强冲突」, 同样是 missing 误编码。
+            "conflict_level": 0,
             "position_multiplier": 0.0,
             "capital_allocation_pct_min": 0.0,
             "capital_allocation_pct_max": 0.0,
@@ -316,8 +332,10 @@ class ChipStructureService:
             "direction_permission": "blocked",
             "capital_ceiling_pct": 0.0,
             "execution_readiness": "blocked",
-            "recommended_action": "risk_off",
-            "recommended_action_v2": "no_trade",
+            # recommended_action 改 unavailable: 区别于 no_trade(有数据但不开仓),
+            # unavailable 显式说明「没有数据, 谈不开仓是无意义」。
+            "recommended_action": "unavailable",
+            "recommended_action_v2": "unavailable",
             "entry_confirmation_required": ["等待预计算补齐 K 线与结构快照。"],
             "invalidation_conditions": ["数据仍不可用时继续保持空仓观察。"],
             "risk_notes": [reason],
