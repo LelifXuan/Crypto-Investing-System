@@ -126,13 +126,27 @@ function chipStateMarkup(state) {
     ready: ["可用", "chip-bullish alert-pill"],
     low_confidence: ["置信度较低", "chip-event alert-pill"],
     missing: ["无法判断", "chip-bearish alert-pill"],
+    unavailable: ["暂不可用", "chip-bearish alert-pill"],
+    stale_lkg: ["待刷新", "chip-event alert-pill"],
   };
   const [label, className] = mapping[state] || ["观察", "chip-neutral alert-pill"];
   return statusChip(label, className);
 }
 
+// 2026-09-16 (B1+B2): system_availability 与 market_risk 解耦。
+// availability_state in {missing, unavailable, stale_lkg} 时 chip_risk chip
+// 必须降级为「数据不可用」中性色, 不渲染 risk_score / risk_label。
+// 防止前端出现「无法判断」+「风险极高」两块红色 chip 视觉矛盾。
+function chipAvailabilityGuards(availability) {
+  const blocked = ["missing", "unavailable", "stale_lkg"];
+  return blocked.includes(String(availability || "").toLowerCase());
+}
+
 function chipStateLabelMarkup(payload) {
-  const label = payload?.state_label || (payload?.state ? chipStateMarkup(payload.state) : statusChip("观察", "chip-neutral alert-pill"));
+  // 2026-09-16 (B1+B2): 优先读 availability_state, 缺失时回落到 state。
+  // 老快照 (无 availability_state) 仍按 state 渲染, 保证向后兼容。
+  const availability = payload?.availability_state || payload?.state;
+  const label = payload?.state_label || (availability ? chipStateMarkup(availability) : statusChip("观察", "chip-neutral alert-pill"));
   if (typeof label !== "string" || label.includes("span")) {
     return label;
   }
@@ -143,6 +157,9 @@ function chipStateLabelMarkup(payload) {
     流动性不足: "chip-event alert-pill",
     风险受限: "chip-bearish alert-pill",
     无法判断: "chip-bearish alert-pill",
+    置信度较低: "chip-event alert-pill",
+    暂不可用: "chip-bearish alert-pill",
+    待刷新: "chip-event alert-pill",
   }[label] || "chip-neutral alert-pill";
   const displayLabel = {
     可用: "状态可用",
@@ -151,6 +168,9 @@ function chipStateLabelMarkup(payload) {
     流动性不足: "流动性不足",
     风险受限: "风险受限",
     无法判断: "无法判断",
+    置信度较低: "置信度较低",
+    暂不可用: "暂不可用",
+    待刷新: "待刷新",
   }[label] || label;
   return statusChip(displayLabel, className);
 }
@@ -228,7 +248,14 @@ function chipExecutionMarkup(label) {
   return statusChip(text, className);
 }
 
-function chipRiskMarkup(label) {
+function chipRiskMarkup(label, availability) {
+  // 2026-09-16 (B1+B2): availability 门禁 — 缺数据 / 不可用 / 待刷新
+  // 时不再渲染 risk_label, 改为中性「数据不可用」chip。
+  // 修复前: missing 时同时显示「无法判断」+「风险极高」两块红色 chip,
+  // 视觉重叠且语义矛盾 (缺数据 ≠ 极端市场风险)。
+  if (chipAvailabilityGuards(availability)) {
+    return statusChip("数据不可用", "chip-neutral alert-pill");
+  }
   const mapping = {
     normal: ["风险正常", "chip-bullish alert-pill"],
     elevated: ["风险抬升", "chip-event alert-pill"],
@@ -384,7 +411,11 @@ function renderChipStructureCard(payload) {
   const riskGates = Array.isArray(payload.risk_gates) ? payload.risk_gates : [];
   const confidenceLabel = payload.confidence_label || "watch_only";
   const executionLabel = payload.execution_label || "blocked";
-  const riskLabel = payload.risk_label || "normal";
+  // 2026-09-16 (B1+B2): risk_label 在 availability=missing/unavailable/stale_lkg
+  // 时为 None, 必须降级到「数据不可用」chip, 不能用 "normal" 兜底(会让 missing
+  // 显示「风险正常」绿色 chip, 与「无法判断」红色 chip 视觉矛盾)。
+  const availabilityState = payload.availability_state || payload.state;
+  const riskLabel = payload.risk_label;
   const recommendedAction = payload.recommended_action_v2 || payload.recommended_action;
   const allowFuturesLong = payload.allow_futures_long === true;
   const stateConfidenceLabel = payload.state_confidence_label || internalLabel(payload.confidence_label) || "状态置信待定";
@@ -393,11 +424,16 @@ function renderChipStructureCard(payload) {
   const positionReason = payload.allocation_reason || payload.position_sizing_reason || "当前暂无明确仓位建议。";
   const components = payload.components || {};
   const componentRows = Object.entries(components).slice(0, 4);
+  // 2026-09-16 (B1+B2): availability 守卫时 risk_score=None, 必须显示 "—"
+  // 而不是 "0" (会让缺数据时显示「风险分 0」绿色 chip, 与「数据不可用」语义矛盾)。
+  const riskScoreDisplay = chipAvailabilityGuards(availabilityState)
+    ? "—"
+    : formatNumber(payload.risk_score, 0);
   const scoreItems = [
     ["方向分", formatNumber(payload.direction_score, 0)],
     ["状态置信", formatNumber(payload.confidence_score, 0)],
     ["执行分", formatNumber(payload.execution_score, 0)],
-    ["风险分", formatNumber(payload.risk_score, 0)],
+    ["风险分", riskScoreDisplay],
     ["总资本", payload.capital_allocation_label || "0%"],
   ];
 
@@ -413,7 +449,7 @@ function renderChipStructureCard(payload) {
           ${chipDirectionMarkup(payload.direction_score)}
           ${chipConfidenceMarkup(confidenceLabel)}
           ${chipExecutionMarkup(executionLabel)}
-          ${chipRiskMarkup(riskLabel)}
+          ${chipRiskMarkup(riskLabel, availabilityState)}
         </div>
       </div>
       <div class="alert-chip-headline">
@@ -445,7 +481,7 @@ function renderChipStructureCard(payload) {
           </article>
           <article class="alert-chip-block">
             <div class="list-card-head"><strong>风险等级</strong></div>
-            <p>${chipRiskMarkup(riskLabel)}</p>
+            <p>${chipRiskMarkup(riskLabel, availabilityState)}</p>
             <p>${riskGates.length ? `主要限制：${escapeHtml(riskGates.map(internalLabel).join(" / "))}` : "当前未触发额外风控限制。"}</p>
           </article>
         </div>
