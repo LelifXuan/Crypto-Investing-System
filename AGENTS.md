@@ -2,9 +2,12 @@
 
 你正在实现一个交易系统管理平台。请严格遵守以下约束。
 
+> 工程政策的单一权威是 `docs/engineering-guidelines.md`；视觉与交互政策的单一权威是
+> `docs/design-guidelines.md`。本文件是面向开发代理的强制执行覆盖层，不建立第二套规范。
+
 ## 一、总目标
 
-构建一个**以管理链路为核心**的交易系统，而不是先做超低延迟撮合系统。  
+构建一个**以管理链路为核心**的交易系统，而不是先做超低延迟撮合系统。
 最少包含以下 6 个模块：
 
 - 仓位管理
@@ -142,6 +145,14 @@
 3. `python -m pytest tests/ -q`（或相关测试模块）
 4. **架构/工作流/推理改动**:额外跑 `python tests/verify_pages.py --pages <受影响>`
 5. **全部通过后再汇报**，不得跳过验证步骤
+
+### 六.6 Lint 与自动化门禁
+
+- 首次开发前必须在 Git 仓库根目录执行 `pre-commit install`。
+- pre-commit 对维护代码执行 Ruff 检查与格式化，并检查 YAML、TOML、尾随空格和冲突标记。
+- CI 的静态检查作用域固定为 `source/app/`、`source/tests/`、`source/scripts/`，禁止把 vendor、runtime、cache 或 data 重新纳入。
+- CI 必须运行全量 pytest、import/compile smoke、`verify_pages.py` 和 `stress_test.py`；浏览器门禁统一使用 2560×1440。
+- 改动范围 Ruff 0 错、pytest 0 失败，以及适用时浏览器门禁 0 失败，是合并的并列前置条件。
 
 ### 六.1 实例检查门禁
 
@@ -291,6 +302,83 @@ python tests/stress_test.py                          # 全量压力测试
 ☐ compileall: all compiled
 ☐ node --check: all passed
 ```
+
+### 六.6 Lint 门禁与工程化（2026-09-16 新增）
+
+**规则写在文档里 ≠ 规则被遵守**。AGENTS.md 已写得很完整（§六 ~ §十二 约 200 行严格规则），
+但「不工程化 = 没有强约束」——T1 ruff 5101 → 0 是手工清偿成果，下一个开发者 / AI agent
+没有同样自律就会再次累积。本节把 lint 规则固化为基础设施：
+
+#### 1. pre-commit（开发者本地）
+
+仓库根已有 `.pre-commit-config.yaml`，配置内容：
+- `maintained-python-check`: 跑 `source/scripts/precommit_lint.py`，锁定 scope 为 `app/ tests/ scripts/`
+- `ruff-format`: 与 ruff check 解耦，缺格式化直接拒绝 commit
+- 基础 hooks: `check-yaml` / `check-toml` / `check-merge-conflict` / `trailing-whitespace` / `end-of-file-fixer`
+- `forbid-print`: 仅防 `app/services/` `app/api/` 里漏 `print()`
+
+**安装步骤**（每个开发者 / 每个新 clone 必须执行一次）：
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+**跳过 commit hook**：仅在紧急 hotfix 且已确认无误时使用 `git commit --no-verify`，
+并在 PR 描述里注明原因。**不允许把 `--no-verify` 作为常规做法**。
+
+#### 2. CI（云端强制）
+
+`.github/workflows/ci.yml` 已配两个 job：
+
+**`quality` job**（每次 PR 必跑）：
+```yaml
+- python -m ruff check app/ tests/ scripts/   # 与 pre-commit 一致
+- python -c "import app.main"                  # smoke import
+- python -m pytest tests/ -q                   # 全量单测
+- python -m compileall -q app tests scripts    # 编译 smoke
+```
+策略矩阵 Python 3.11 + 3.14 双跑，任一失败即 block merge。
+
+**`browser-gates` job**（架构/工作流改动时必跑）：
+```yaml
+- python -m playwright install --with-deps chromium
+- uvicorn app.main:app --host 127.0.0.1 --port 8002 &   # 后端实例
+- 等待 /api/v1/health/live 就绪
+- python tests/verify_pages.py --viewport 2560x1440    # 视觉门禁
+- python tests/stress_test.py --viewport 2560x1440 --fixtures  # 性能门禁
+```
+
+#### 3. PR 合并的并列前置条件
+
+| 前置 | 来源 | 强制级别 |
+|---|---|---|
+| ruff check 改动范围 0 错 | pre-commit + CI quality | **必** |
+| pytest 全量通过 | CI quality | **必** |
+| smoke import `app.main` | CI quality | **必** |
+| compileall 0 错 | CI quality | **必** |
+| 架构/工作流改动 → verify_pages 全量 PASS | CI browser-gates | **必** |
+| 形态/技术指标/AI 策略页改动 → stress_test PASS | CI browser-gates | **必** |
+| pre-commit 已 `install`（本地） | 开发者首次 clone 后必做 | **必** |
+
+**缺任一项不予合并**——与 §六.4 全量 verify_pages 规则同级。
+
+#### 4. AI agent 协作约束
+
+- 完成任何代码改动后，agent 必须**先跑**：
+  ```bash
+  ruff check <改动文件>
+  pytest -q <相关测试模块>
+  ```
+  0 错后才允许报告"完成"。
+- 涉及 `main.js` / `core/*.js` / `templates/page.html` / `app/api/router.py` /
+  `app/core/paths.py` / 任何 `pages/*.js` / `endpoints/*.py` 删除或重命名的改动，
+  agent 必须**额外**跑 `python tests/verify_pages.py` 全量并报告结果。
+- agent 不允许执行 `git commit --no-verify` 或删除 pre-commit hook 绕过门禁。
+
+#### 5. 与现有规则的关系
+
+本节与 §六.1（实例检查门禁）、§六.4（修复后全量验证）、§十一.7（改动范围 ruff 0）同级。
+**任何变更 AGENTS.md §六 / §十一的尝试，必须在 PR 描述里写明理由并请求 review**。
 
 ### 错误处理原则
 

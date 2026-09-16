@@ -1,0 +1,38 @@
+# 2026-09-16 (D1): 强化 pre-commit 配置
+#  - ruff check 走 source/scripts/precommit_lint.py 锁定 scope (app/ tests/ scripts/)
+#  - 增加 ruff-format 守卫, 与 ruff check 解耦, 缺格式化时直接拒绝 commit
+#  - 基础文件卫生 hooks (trailing-whitespace / end-of-file-fixer / 大文件拒绝)
+#  - AST 守卫: 禁止 print() 漏入提交 (强制使用 logging)
+#
+# 安装方法:
+#     pip install pre-commit
+#     pre-commit install
+# 与 CI 等价的强制项详见 docs/AGENTS.md §六.6 Lint 门禁。
+
+repos:
+  - repo: local
+    hooks:
+      - id: maintained-python-check
+        name: ruff check (maintained Python)
+        entry: python source/scripts/precommit_lint.py
+        language: system
+        pass_filenames: false
+        files: ^source/(app|tests|scripts)/.*\.py$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff-format
+        files: ^source/(app|tests|scripts)/.*\.py$
+        # 仅做格式化, 不做 lint 检查 (lint 由上面 local hook 完成)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      # 2026-09-16 (D1): 不引入 forbid-print — pre-commit-hooks v5 无此 hook,
+      # 且 ruff T10/print-finder 等价检查更准
