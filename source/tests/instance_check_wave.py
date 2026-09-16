@@ -97,12 +97,20 @@ def main():
             ("market-analysis", "/indicators-page"),
         ]:
             try:
-                page.goto(f"http://127.0.0.1:8002{url}", wait_until="domcontentloaded", timeout=30000)
+                page.goto(
+                    f"http://127.0.0.1:8002{url}",
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
                 # Skeleton mounts fast; probe quickly
                 try:
                     page.wait_for_selector(".chart-skeleton-candle", timeout=8000, state="attached")
                 except Exception as e:
-                    results.append({"page": page_id, "phase": "cold-start", "error": f"no skeleton: {e}"})
+                    results.append({
+                        "page": page_id,
+                        "phase": "cold-start",
+                        "error": f"no skeleton: {e}",
+                    })
                     continue
                 time.sleep(0.4)
 
@@ -121,8 +129,12 @@ def main():
                 if data_a and data_b:
                     ops_a = [s["opacity"] for s in data_a["samples"]]
                     ops_b = [s["opacity"] for s in data_b["samples"]]
-                    moved = sum(1 for a, b in zip(ops_a, ops_b) if a != b) >= 4
+                    moved = sum(1 for a, b in zip(ops_a, ops_b, strict=False) if a != b) >= 4
 
+                sample_a = data_a["samples"][0] if data_a and data_a["samples"] else {}
+                sample_b = data_b["samples"][0] if data_b and data_b["samples"] else {}
+                opacity_a = [s["opacity"] for s in data_a["samples"]] if data_a else []
+                opacity_b = [s["opacity"] for s in data_b["samples"]] if data_b else []
                 results.append({
                     "page": page_id,
                     "phase": "cold-start",
@@ -131,12 +143,12 @@ def main():
                     "wave_alive_B": ok_b,
                     "msg_A": msg_a,
                     "msg_B": msg_b,
-                    "first_anim": data_a["samples"][0]["animationName"] if data_a and data_a["samples"] else None,
-                    "first_delay": data_a["samples"][0]["animationDelay"] if data_a and data_a["samples"] else None,
-                    "first_transform_A": data_a["samples"][0]["transform"] if data_a and data_a["samples"] else None,
-                    "first_transform_B": data_b["samples"][0]["transform"] if data_b and data_b["samples"] else None,
-                    "opacity_profile_A": [s["opacity"] for s in data_a["samples"]] if data_a else [],
-                    "opacity_profile_B": [s["opacity"] for s in data_b["samples"]] if data_b else [],
+                    "first_anim": sample_a.get("animationName"),
+                    "first_delay": sample_a.get("animationDelay"),
+                    "first_transform_A": sample_a.get("transform"),
+                    "first_transform_B": sample_b.get("transform"),
+                    "opacity_profile_A": opacity_a,
+                    "opacity_profile_B": opacity_b,
                     "wave_moved": moved,
                     "err_count": len(errs),
                 })
@@ -153,7 +165,11 @@ def main():
         ctx.route("**/structure/**", slow_route)
         page = ctx.new_page()
         try:
-            page.goto("http://127.0.0.1:8002/indicators-page", wait_until="domcontentloaded", timeout=30000)
+            page.goto(
+                "http://127.0.0.1:8002/indicators-page",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
             try:
                 page.wait_for_selector(".chart-skeleton-candle", timeout=8000, state="attached")
                 time.sleep(0.4)
@@ -190,7 +206,11 @@ def main():
         ctx.route("**/api/v1/structure/tab/bundle*", slow_structure)
         page = ctx.new_page()
         try:
-            page.goto("http://127.0.0.1:8002/structure-page", wait_until="domcontentloaded", timeout=30000)
+            page.goto(
+                "http://127.0.0.1:8002/structure-page",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
             # Try to catch the skeleton during initial fetch (it lasts ~1.2s now)
             initial_skeleton = False
             try:
@@ -218,7 +238,8 @@ def main():
 
             if not initial_skeleton:
                 # Click the timeframe dropdown button directly
-                clicked = page.evaluate("""() => {
+                clicked = page.evaluate(
+                    """() => {
                   const btn = document.querySelector('button.dropdown[data-dropdown-id=\"structure-timeframe\"]');
                   if (!btn) return 'no-btn';
                   btn.click();
@@ -246,6 +267,9 @@ def main():
                     data = probe(page)
                     page.screenshot(path=str(OUT / "structure_after_switch.png"), full_page=False)
                     ok, msg = is_wave_alive(data)
+                    first_sample = data["samples"][0] if data and data["samples"] else {}
+                    first8_delays = [s["animationDelay"] for s in data["samples"]] if data else []
+                    first8_opacities = [s["opacity"] for s in data["samples"]] if data else []
                     results.append({
                         "page": "structure (after switch)",
                         "phase": "dropdown-switch",
@@ -254,14 +278,19 @@ def main():
                         "candle_count": data["count"] if data else 0,
                         "wave_alive": ok,
                         "msg": msg,
-                        "first_anim": data["samples"][0]["animationName"] if data and data["samples"] else None,
-                        "first_delay": data["samples"][0]["animationDelay"] if data and data["samples"] else None,
-                        "first_transform": data["samples"][0]["transform"] if data and data["samples"] else None,
-                        "delays_first_8": [s["animationDelay"] for s in data["samples"]] if data else [],
-                        "opacity_first_8": [s["opacity"] for s in data["samples"]] if data else [],
+                        "first_anim": first_sample.get("animationName"),
+                        "first_delay": first_sample.get("animationDelay"),
+                        "first_transform": first_sample.get("transform"),
+                        "delays_first_8": first8_delays,
+                        "opacity_first_8": first8_opacities,
                     })
                 except Exception as e:
-                    results.append({"phase": "dropdown-switch", "clicked": clicked, "picked": picked, "error": str(e)})
+                    results.append({
+                        "phase": "dropdown-switch",
+                        "clicked": clicked,
+                        "picked": picked,
+                        "error": str(e),
+                    })
         finally:
             ctx.close()
 
@@ -274,7 +303,11 @@ def main():
         ctx.route("**/structure/**", slow_route)
         page = ctx.new_page()
         try:
-            page.goto("http://127.0.0.1:8002/monitoring-page", wait_until="domcontentloaded", timeout=30000)
+            page.goto(
+                "http://127.0.0.1:8002/monitoring-page",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
             time.sleep(2)
             # SPA navigation via in-app link
             page.evaluate("""

@@ -79,7 +79,9 @@ def main() -> int:
         try:
             # Wait a bit more for any "warming" → real data transition
             page.wait_for_function(
-                "() => { const el = document.querySelector('#strategy-scan-status'); return el && el.innerText && !el.innerText.includes('预热') && !el.innerText.includes('扫描失败') && el.innerText.length > 0; }",
+                "() => { const el = document.querySelector('#strategy-scan-status');"
+                " return el && el.innerText && !el.innerText.includes('预热')"
+                " && !el.innerText.includes('扫描失败') && el.innerText.length > 0; }",
                 timeout=120_000,
             )
             t_steady_state = now()
@@ -108,14 +110,20 @@ def main() -> int:
     print("=== Banner text over time ===")
     for t, txt in snapshots:
         marker = ""
-        if "预热" in txt: marker = " [WARMING]"
-        elif "扫描失败" in txt: marker = " [ERROR]"
-        elif "发现" in txt: marker = " [DATA]"
-        elif "无明确" in txt: marker = " [EMPTY]"
-        elif "正在" in txt: marker = " [LOADING]"
+        if "预热" in txt:
+            marker = " [WARMING]"
+        elif "扫描失败" in txt:
+            marker = " [ERROR]"
+        elif "发现" in txt:
+            marker = " [DATA]"
+        elif "无明确" in txt:
+            marker = " [EMPTY]"
+        elif "正在" in txt:
+            marker = " [LOADING]"
         print(f"  +{t - t_start:5.2f}s  {txt!r}{marker}")
     print()
-    print(f"=== Console / Page errors ({len([e for e in events if e[1] in ('console','pageerror')])} events) ===")
+    err_count = len([e for e in events if e[1] in ("console", "pageerror")])
+    print(f"=== Console / Page errors ({err_count} events) ===")
     for t, kind, msg in events:
         if kind in ("console", "pageerror"):
             print(f"  +{t - t_start:5.2f}s  [{kind}] {msg}")
