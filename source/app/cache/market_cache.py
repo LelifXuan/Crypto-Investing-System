@@ -1,7 +1,47 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from datetime import datetime, timezone
+
+# A quote held in market_cache is considered fresh while its provider-side
+# timestamp is no older than this threshold. MarketService.get_best_mark uses
+# the same value as its fast-path cutoff, so the two definitions stay aligned.
+LIVE_MARK_MAX_AGE_SECONDS = 15
+
+UTC = timezone.utc
+
+
+def is_mark_fresh(
+    payload: Mapping | None,
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int = LIVE_MARK_MAX_AGE_SECONDS,
+) -> bool:
+    """Return True when a cache payload's ts_event is within the age budget.
+
+    A missing payload, missing/empty ``ts_event``, unparsable timestamp,
+    future timestamp (clock skew), or older than ``max_age_seconds`` all
+    return False. Centralising the rule lets the cache and the service
+    agree on what "fresh" means without duplicating the parse/age math.
+    """
+    if not payload:
+        return False
+    raw_ts = payload.get("ts_event")
+    if not raw_ts:
+        return False
+    if isinstance(raw_ts, datetime):
+        ts = raw_ts
+    else:
+        try:
+            ts = datetime.fromisoformat(str(raw_ts))
+        except (TypeError, ValueError):
+            return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    reference = now or datetime.now(UTC)
+    age = (reference - ts).total_seconds()
+    return age >= 0 and age <= max_age_seconds
 
 
 class MarketCache:
@@ -23,6 +63,18 @@ class MarketCache:
     async def clear_mark(self, instrument_id: str) -> None:
         async with self._lock:
             self._marks.pop(instrument_id, None)
+
+    async def clear_marks(self, instrument_ids: Iterable[str]) -> None:
+        # Bulk eviction for a stream of instruments (e.g. a single spot/futures
+        # websocket that just disconnected). Distinct from `clear_mark` (one)
+        # and `clear` (everything): callers do not need to enumerate what to
+        # keep, and unrelated streams stay warm.
+        ids = list(instrument_ids)
+        if not ids:
+            return
+        async with self._lock:
+            for instrument_id in ids:
+                self._marks.pop(instrument_id, None)
 
     async def set_book_ticker(self, instrument_id: str, payload: Mapping) -> None:
         async with self._lock:
