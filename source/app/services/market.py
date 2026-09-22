@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 
@@ -16,6 +17,18 @@ from app.repositories.market_repository import MarketRepository
 from app.services.eventing import EventPublisher
 
 UTC = timezone.utc
+logger = logging.getLogger(__name__)
+# Fast-path cutoff for returning the in-memory WS mark directly. Mirrored in
+# app.cache.market_cache.LIVE_MARK_MAX_AGE_SECONDS — keep the two values in
+# lockstep so the cache and the service agree on what "fresh" means.
+LIVE_MARK_MAX_AGE_SECONDS = 15
+# Anything older than this from the WS cache is treated as a stale residue
+# (the websocket disconnected and no replacement has arrived yet). It must
+# NOT participate in the last-known-good merge — otherwise a 6-day-old
+# residue can out-vote a 6-hour-old DB row simply because it is "less old"
+# than the next refresh would have been. We evict it and fall through to
+# the database / REST fallback instead.
+LIVE_MARK_FALLBACK_MAX_AGE_SECONDS = 600
 
 
 class MarketService:
@@ -54,24 +67,62 @@ class MarketService:
         *,
         persist_live: bool = True,
     ) -> MarkPrice | None:
+        cached_mark = None
         if prefer_live and settings.market_stream_prefer_ws_cache:
             cached = await market_cache.get_mark(instrument_id)
             if cached is not None:
-                return MarkPrice(
-                    mark_id=0,
-                    instrument_id=instrument_id,
-                    mark_price=Decimal(str(cached["mark_price"])),
-                    source=cached["source"],
-                    ts_event=datetime.fromisoformat(cached["ts_event"]),
-                )
+                try:
+                    ts = datetime.fromisoformat(cached["ts_event"])
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=UTC)
+                    candidate = MarkPrice(
+                        mark_id=0, instrument_id=instrument_id,
+                        mark_price=Decimal(str(cached["mark_price"])),
+                        source=cached["source"], ts_event=ts,
+                    )
+                    age = (datetime.now(UTC) - ts).total_seconds()
+                    if (
+                        not candidate.mark_price.is_finite()
+                        or candidate.mark_price <= 0 or age < 0
+                    ):
+                        cached_mark = None
+                    elif age <= LIVE_MARK_MAX_AGE_SECONDS:
+                        return candidate
+                    elif age <= LIVE_MARK_FALLBACK_MAX_AGE_SECONDS:
+                        # Acceptable as a last-known-good candidate. Will be
+                        # compared against the DB row below; not returned
+                        # directly because it has exceeded the fast path.
+                        cached_mark = candidate
+                    else:
+                        # WS residue that has been sitting in cache since
+                        # the last successful push (often many days when
+                        # the stream silently died). Evict it so subsequent
+                        # calls do not re-evaluate the same stale value,
+                        # and refuse to merge it as LKG.
+                        await market_cache.clear_mark(instrument_id)
+                        logger.warning(
+                            "ws_mark_residue_evicted instrument=%s age=%.0fs",
+                            instrument_id, age,
+                        )
+                        cached_mark = None
+                except (KeyError, TypeError, ValueError, InvalidOperation):
+                    cached_mark = None
         if prefer_live and settings.market_data_provider.lower() == "gateio":
             try:
                 if persist_live:
                     return await self.fetch_and_persist_live_mark(instrument_id)
                 return await self.fetch_live_mark(instrument_id)
-            except Exception:
-                pass
-        return await self.repository.latest_mark(instrument_id)
+            except Exception as exc:
+                logger.warning("live_mark_unavailable instrument=%s error=%s",
+                               instrument_id, type(exc).__name__)
+        stored = await self.repository.latest_mark(instrument_id)
+        # Preserve the newest last-known-good quote with its ORIGINAL time.
+        # A disconnected WS feed must not permanently suppress REST recovery.
+        candidates = [mark for mark in (cached_mark, stored) if mark is not None]
+        return (
+            max(candidates, key=lambda mark: mark.ts_event.replace(tzinfo=UTC))
+            if candidates else None
+        )
 
     async def fetch_live_mark(self, instrument_id: str) -> MarkPrice:
         """Read a live quote without opening a SQLite write transaction."""
