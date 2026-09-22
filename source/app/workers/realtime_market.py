@@ -104,6 +104,7 @@ class MarketStreamWorker:
     async def _run_spot(self, specs: list[dict]) -> None:
         symbols = sorted({item["symbol"] for item in specs})
         symbol_map = {item["symbol"]: item["instrument_id"] for item in specs}
+        instrument_ids = [item["instrument_id"] for item in specs]
         while not self._stopping.is_set():
             try:
                 async with connect(settings.gateio_spot_ws_url, ping_interval=None) as ws:
@@ -114,6 +115,9 @@ class MarketStreamWorker:
             except ConnectionClosed as exc:  # pragma: no cover
                 if not self._stopping.is_set():
                     logger.info("spot websocket disconnected: %s", self._describe_disconnect(exc))
+                    await self._evict_market_cache_on_disconnect(
+                        instrument_ids, stream_label="spot"
+                    )
                     await asyncio.sleep(settings.market_stream_reconnect_delay_seconds)
             except Exception as exc:  # pragma: no cover
                 logger.exception("spot websocket loop failed: %s", exc)
@@ -122,6 +126,7 @@ class MarketStreamWorker:
     async def _run_futures(self, settle: str, specs: list[dict]) -> None:
         symbols = sorted({item["symbol"] for item in specs})
         symbol_map = {item["symbol"]: item["instrument_id"] for item in specs}
+        instrument_ids = [item["instrument_id"] for item in specs]
         ws_url = settings.gateio_futures_ws_url_template.format(settle=settle)
         while not self._stopping.is_set():
             try:
@@ -137,10 +142,39 @@ class MarketStreamWorker:
                         settle,
                         self._describe_disconnect(exc),
                     )
+                    await self._evict_market_cache_on_disconnect(
+                        instrument_ids, stream_label=f"futures:{settle}"
+                    )
                     await asyncio.sleep(settings.market_stream_reconnect_delay_seconds)
             except Exception as exc:  # pragma: no cover
                 logger.exception("futures websocket loop failed for %s: %s", settle, exc)
                 await asyncio.sleep(settings.market_stream_reconnect_delay_seconds)
+
+    async def _evict_market_cache_on_disconnect(
+        self, instrument_ids: list[str], *, stream_label: str
+    ) -> None:
+        # A closed stream will not push any new mark_price events. Any cache
+        # entry we still hold is residue from the last successful push — keep
+        # it on screen long enough and the UI will report "实时" while the
+        # actual data is however many minutes (or days) old. Drop it here so
+        # the next /market-prices/marks/latest falls through to DB/REST, and
+        # so MarketService.get_best_mark's fast-path no longer returns the
+        # stale value if a refresh arrives faster than the eviction log.
+        if not instrument_ids:
+            return
+        try:
+            await market_cache.clear_marks(instrument_ids)
+            logger.info(
+                "market cache evicted for %s instruments after %s disconnect",
+                len(instrument_ids),
+                stream_label,
+            )
+        except Exception as exc:  # pragma: no cover - eviction must never block reconnect
+            logger.warning(
+                "market cache eviction failed for %s disconnect: %s",
+                stream_label,
+                exc,
+            )
 
     async def _subscribe_spot(self, ws, symbols: list[str]) -> None:
         await ws.send(
