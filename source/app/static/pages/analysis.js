@@ -35,6 +35,9 @@ let mountAnalysisWorkbench;
 let observeChartsForPage;
 let workbench = null;
 let pageController = null;
+let markController = null;
+let latestDisplayedMark = null;
+let markInstrumentId = null;
 
 async function ensureDeps() {
   if (api && appState && renderChart) {
@@ -829,7 +832,7 @@ function heroTemplate() {
         <div class="card-head-inline">
           <div>
             <p class="eyebrow">MARK SNAPSHOT</p>
-            <h2>实时标记价 ${knowledgeTooltip("Mark / Index / Deviation", "tone-bullish", "5 分钟自动刷新，切回页面时会立即补读。", { extra: "页面中的实时标记价 5 分钟自动刷新，切回页面时会立即补读。" })}</h2>
+            <h2>标记价格 ${knowledgeTooltip("Mark / Index / Deviation", "tone-bullish", "每 15 秒更新报价，进入页面或切换品种立即读取。", { extra: "报价超过 60 秒未更新会标记为过期，历史价格仅供参考。" })}</h2>
           </div>
           <span class="chip chip-neutral" id="analysis-mark-freshness">报价快照</span>
         </div>
@@ -1307,6 +1310,7 @@ async function renderChartBatch(defs, token = activeRenderToken) {
 
 async function loadAll(force = false, token = activeRenderToken) {
   if (!isRunActive(token)) return { status: "aborted", data: null, refreshed: false, error: null };
+  void enhanceLatestMark(token, { preferLive: true });
   let bundleMode = null;
   let bundleSecondary = null;
   activeRangeClassification = null;
@@ -1385,9 +1389,7 @@ async function loadAll(force = false, token = activeRenderToken) {
       return { status: "error", data: null, refreshed: false, error };
     }
     document.getElementById("analysis-summary").textContent = "拉取失败，可手动重试";
-    document.getElementById("analysis-mark-price").textContent = "-";
-    document.getElementById("analysis-mark-updated").textContent = "-";
-    document.getElementById("analysis-mark-next").textContent = "请手动刷新";
+    displayLatestMark(null);
     document.getElementById("analysis-signal-cards").innerHTML = errorState(errMsg);
     for (const id of ANALYSIS_CHART_IDS) {
       const wrap = document.querySelector(`[data-analysis-chart-id="${id}"]`);
@@ -1497,10 +1499,7 @@ async function publishAnalysisBundle(bundle, token) {
     document.getElementById("analysis-volume-copy").textContent = volumeInterpretation(analysis.volumes);
     document.getElementById("analysis-macd-copy").textContent = macdText;
 
-    document.getElementById("analysis-mark-price").textContent = finiteInputNumber(markPayload?.mark_price) === null ? "—" : formatNumber(markPayload.mark_price);
-    document.getElementById("analysis-mark-updated").textContent = formatDateTime(markPayload?.ts_event);
-    document.getElementById("analysis-mark-next").textContent = "5 分钟自动刷新";
-    applyMarkFreshness(markPayload);
+    displayLatestMark(markPayload, { fromBundle: true });
     document.getElementById("analysis-mark-close").textContent = formatNumber(close);
     document.getElementById("analysis-mark-aux").textContent = latestCandle ? `${formatNumber(latestCandle.low)} - ${formatNumber(latestCandle.high)}` : "-";
 
@@ -1680,60 +1679,85 @@ async function publishAnalysisBundle(bundle, token) {
     };
 }
 
-// 2026-09-04 (ui-audit P1#4): quote freshness is data state, not market
-// direction (§3.2/§7.10). A cached mark older than 10 minutes is labeled
-// with its true age; info/warning tones only — never bullish.
-const MARK_STALE_AFTER_MS = 10 * 60 * 1000;
+// Quote freshness is independent of analysis publication and market direction.
+// Never let an older bundle overwrite a more recent live quote.
+// Aligned with backend MarketService.LIVE_MARK_MAX_AGE_SECONDS (15s) so the
+// UI does not claim "实时" for data the service already considers stale.
+const MARK_STALE_AFTER_MS = 15 * 1000;
+// A bundle's `mark` may itself be old (cached analysis snapshot taken minutes
+// or days earlier). Showing that number on first paint — even for 200ms —
+// tells the user the wrong price. We refuse to render a bundle-derived mark
+// older than this and wait for the live /market-prices/marks/latest fetch
+// to fill the card instead.
+const BUNDLE_MARK_STALE_AFTER_MS = 30 * 1000;
 
 function applyMarkFreshness(markPayload, { preferLive = false } = {}) {
   const freshnessEl = document.getElementById("analysis-mark-freshness");
-  if (!freshnessEl || !markPayload?.ts_event) return;
-  const ageMs = Date.now() - new Date(markPayload.ts_event).getTime();
-  if (!Number.isFinite(ageMs) || ageMs < 0) return;
-  if (ageMs < MARK_STALE_AFTER_MS) {
-    freshnessEl.textContent = "实时";
-    freshnessEl.className = "chip chip-neutral";
-  } else {
-    const hours = Math.round(ageMs / 3600000);
-    freshnessEl.textContent = `缓存 · ${hours >= 24 ? Math.round(hours / 24) + " 天前" : hours + " 小时前"}`;
-    freshnessEl.className = "chip chip-warning";
-  }
+  if (!freshnessEl) return;
+  const ageMs = Date.now() - new Date(markPayload?.ts_event || "").getTime();
+  const fresh = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < MARK_STALE_AFTER_MS;
+  freshnessEl.textContent = fresh ? "实时" : "报价过期";
+  freshnessEl.className = fresh ? "chip chip-neutral" : "chip chip-warning";
   const next = document.getElementById("analysis-mark-next");
-  if (next) {
-    next.textContent = preferLive && ageMs < MARK_STALE_AFTER_MS ? "5 分钟自动刷新" : "最近可用报价";
+  if (next) next.textContent = fresh ? "每 15 秒更新" : "历史报价，仅供参考；正在重试";
+}
+
+function displayLatestMark(payload, options = {}) {
+  if (markInstrumentId !== appState.selectedInstrumentId) {
+    markInstrumentId = appState.selectedInstrumentId;
+    latestDisplayedMark = null;
   }
+  const fromBundle = options.fromBundle === true;
+  const price = finiteInputNumber(payload?.mark_price);
+  const timestamp = Date.parse(payload?.ts_event || "");
+  const ageMs = Number.isFinite(timestamp) ? Date.now() - timestamp : Infinity;
+  const bundleTooStale = fromBundle && ageMs > BUNDLE_MARK_STALE_AFTER_MS;
+  if (!bundleTooStale
+      && price !== null && price > 0 && Number.isFinite(timestamp)
+      && timestamp <= Date.now() + 1000
+      && (!latestDisplayedMark || timestamp >= Date.parse(latestDisplayedMark.ts_event))) {
+    latestDisplayedMark = payload;
+  }
+  const markPayload = latestDisplayedMark;
+  const value = document.getElementById("analysis-mark-price");
+  if (value) value.textContent = markPayload ? formatNumber(markPayload.mark_price) : "—";
+  const updated = document.getElementById("analysis-mark-updated");
+  if (updated) updated.textContent = markPayload ? formatDateTime(markPayload.ts_event) : "等待最新报价";
+  applyMarkFreshness(markPayload, options);
 }
 
 async function enhanceLatestMark(token = activeRenderToken, { preferLive = false } = {}) {
   if (!isRunActive(token)) return null;
+  markController?.abort();
+  const controller = new AbortController();
+  markController = controller;
+  const instrumentId = appState.selectedInstrumentId;
+  displayLatestMark(null);
   try {
-    const markPayload = await api.getLatestMark(appState.selectedInstrumentId, {
-      preferLive,
-      persistLive: false,
-      force: preferLive,
-      signal: abortController?.signal,
-      timeoutMs: preferLive ? 5000 : 1500,
+    const markPayload = await api.getLatestMark(instrumentId, {
+      preferLive, persistLive: false, force: true,
+      signal: controller.signal, timeoutMs: 8000,
     });
-    if (!markPayload || !isRunActive(token)) return null;
-    const price = document.getElementById("analysis-mark-price");
-    const updated = document.getElementById("analysis-mark-updated");
-    const next = document.getElementById("analysis-mark-next");
-    if (price) price.textContent = formatNumber(markPayload.mark_price);
-    if (updated) updated.textContent = formatDateTime(markPayload.ts_event);
-    if (next && !(markPayload?.ts_event)) {
-      next.textContent = preferLive ? "5 分钟自动刷新" : "最近可用报价";
-    }
-    applyMarkFreshness(markPayload, { preferLive });
+    if (!isRunActive(token) || controller.signal.aborted || markController !== controller
+        || appState.selectedInstrumentId !== instrumentId) return null;
+    displayLatestMark(markPayload, { preferLive });
     return markPayload;
   } catch (error) {
-    if (error?.name !== "AbortError") console.warn("analysis:latest-mark:enhance-failed", error);
+    if (!controller.signal.aborted && isRunActive(token) && markController === controller) {
+      applyMarkFreshness(latestDisplayedMark);
+      const next = document.getElementById("analysis-mark-next");
+      if (next) next.textContent = "报价更新失败，15 秒后重试";
+      console.warn("analysis:latest-mark:enhance-failed", error);
+    }
     return null;
+  } finally {
+    if (markController === controller) markController = null;
   }
 }
 
 async function refreshMarkOnly() {
   const token = activeRenderToken;
-  if (document.hidden || analysisRequestPending || !isRunActive(token)) return;
+  if (document.hidden || markController || !isRunActive(token)) return;
   invalidateCache("/market-prices/marks/latest");
   return enhanceLatestMark(token, { preferLive: true });
 }
@@ -1855,7 +1879,7 @@ export async function renderAnalysis({ commands } = {}) {
       if (head) head.dataset.workbenchId = `analysis:${key}`;
     }
     bindEventHandlers();
-    markTimer = window.setInterval(refreshMarkOnly, 300000);
+    markTimer = window.setInterval(refreshMarkOnly, 15000);
     document.addEventListener("visibilitychange", refreshMarkOnly);
     isMounted = true;
   } else {
@@ -1878,6 +1902,8 @@ export async function renderAnalysis({ commands } = {}) {
   return {
     async unmount() {
       activeRenderToken += 1;
+      markController?.abort(); markController = null;
+      latestDisplayedMark = null; markInstrumentId = null;
       pageController?.abort(); pageController = null;
       workbench?.destroy(); workbench = null;
       timeframeDropdown?.destroy(); timeframeDropdown = null;
