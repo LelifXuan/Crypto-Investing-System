@@ -791,3 +791,28 @@ def test_strategy_scan_cache_response_stamps_serve_time():
     age-label ranked cards."""
     endpoint = (ROOT / "app/api/v1/endpoints/strategy.py").read_text(encoding="utf-8")
     assert '"served_at"' in endpoint or "'served_at'" in endpoint
+
+
+def test_strategy_scan_ranked_shows_execution_levels_not_validator_chatter():
+    """Ranked cards must print entry/stop/TP1, not the bundle validator's
+    verdict line (CONTEXT_ALIGNED_SHORT：当前策略状态为…)."""
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
+        encoding="utf-8"
+    )
+    assert "scan-ranked-levels" in ranked
+    assert "止损" in ranked and "止盈" in ranked
+    assert "levelsLine(item)" in ranked
+    # The old summary paragraph is gone from the card template.
+    assert "scan-ranked-summary" not in ranked
+
+
+def test_strategy_scan_levels_line_hides_missing_tp1():
+    """A missing TP1 must render as —, never 止盈 0."""
+    import re
+
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
+        encoding="utf-8"
+    )
+    assert re.search(r"tp1 !== 0", ranked), (
+        "levelsLine must guard against Number(null)===0 rendering 止盈 0"
+    )

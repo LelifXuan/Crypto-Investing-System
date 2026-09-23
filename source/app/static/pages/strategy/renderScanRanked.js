@@ -11,6 +11,32 @@ function riskRewardText(value) {
     : "盈亏比待确认";
 }
 
+function formatLevelsPrice(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+// The card's job is to answer "where do I enter, where am I wrong, where do
+// I take profit" at a glance. The old summary quoted the bundle validator's
+// verdict line ("CONTEXT_ALIGNED_SHORT：当前策略状态为…"), which spends the
+// user's attention on process chatter instead of actionable numbers.
+// Point levels come from the tactical plan matching the cell direction
+// (backend _cell_execution_levels); missing levels hide the line.
+function levelsLine(item) {
+  const zone = Array.isArray(item?.entry_zone) ? item.entry_zone.map(Number).filter(Number.isFinite) : [];
+  if (!zone.length) return "";
+  const stop = Number(item?.stop_loss);
+  const tp1 = Number(item?.take_profit_1);
+  const zoneText = zone.map(formatLevelsPrice).join(" – ");
+  const stopText = Number.isFinite(stop) ? formatLevelsPrice(stop) : "—";
+  // A missing TP1 is not a zero target: hide it instead of printing 止盈 0.
+  const tp1Text = Number.isFinite(tp1) && tp1 !== 0 ? formatLevelsPrice(tp1) : "—";
+  const dirWord = item?.direction === "LONG" ? "做多" : item?.direction === "SHORT" ? "做空" : "";
+  const prefix = dirWord ? `${dirWord} ` : "";
+  return `${prefix}${zoneText}｜止损 ${stopText}｜止盈 ${tp1Text}`;
+}
+
 /**
  * Render the ranked opportunity list (only items with direction, sorted by score).
  * @param {Array} ranked - ScanItem[] already sorted by score desc
@@ -37,6 +63,7 @@ export function renderScanRanked(ranked, hasPending = false, meta = {}) {
       const arrow = item.direction === "LONG" ? "↑" : "↓";
       const timeframe = TIMEFRAME_LABELS[item.timeframe] || item.timeframe;
       const code = item.instrument_code || appState.instruments.find((i) => i.id === item.instrument_id)?.code || item.instrument_id;
+      const levels = levelsLine(item);
       return `
         <article class="card scan-ranked-card" data-tone="${tone}" data-instrument="${escapeHtml(item.instrument_id)}" data-timeframe="${escapeHtml(item.timeframe)}" style="cursor:pointer">
           <div class="scan-ranked-head">
@@ -49,7 +76,7 @@ export function renderScanRanked(ranked, hasPending = false, meta = {}) {
               <small>分</small>
             </div>
           </div>
-          <p class="scan-ranked-summary">${escapeHtml(item.summary || "暂无摘要")}</p>
+          ${levels ? `<p class="scan-ranked-levels">${escapeHtml(levels)}</p>` : ""}
           <div class="scan-ranked-meta">
             <span>置信度 ${escapeHtml(String(Math.round(item.confidence)))}%</span>
             <span>${escapeHtml(riskRewardText(item.risk_reward))}</span>

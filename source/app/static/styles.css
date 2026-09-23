@@ -11444,6 +11444,19 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   line-height: 1.4;
 }
 
+/* Ranked levels line (2026-09-24): the actionable numbers — entry zone /
+   stop / TP1 — rendered larger than the summary line it replaced, because
+   this is what the eye should land on first. Monospace numerals so digit
+   columns align across cards. */
+.scan-ranked-levels {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 8px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
 .scan-ranked-meta {
   display: flex;
   gap: 16px;
