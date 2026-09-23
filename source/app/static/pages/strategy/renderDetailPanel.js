@@ -340,10 +340,30 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     const instCode = model.instrument_code || instrumentId;
     const td = model.trade_decision || {};
     const pending = !hasPublishedDetail(model);
+    // The drawer is opened from a specific matrix cell (instrument ×
+    // timeframe): the title names the *cell's own* timeframe node direction
+    // from timeframe_stack, not the global trade decision. The decision is
+    // always the 4h tactical plan, so "HYPE · 1w · 做空" used to open a
+    // drawer titled 做空 and then show 4h levels (96.90–97.29 → TP 89.86).
+    // When the cell node disagrees with the decision, say so in the title.
+    const cellNode = (model.timeframe_stack || []).find(
+      (node) => String(node?.timeframe || "") === String(timeframe || "")
+    );
+    const cellDir = String(cellNode?.direction || "").toUpperCase();
+    const decisionSide = String(td.side || "").toUpperCase();
+    const cellDirLabel = cellDir === "LONG" ? "做多" : cellDir === "SHORT" ? "做空" : "";
+    const decisionDirLabel = decisionSide === "LONG" ? "做多" : decisionSide === "SHORT" ? "做空" : "等待确认";
     const dirLabel = pending
       ? "数据准备中"
-      : td.side === "LONG" ? "做多" : td.side === "SHORT" ? "做空" : "等待确认";
-    if (title) title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
+      : cellDirLabel || decisionDirLabel;
+    if (title) {
+      title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
+      if (!pending && cellDirLabel && cellDir !== decisionSide) {
+        title.title = `本周期方向${cellDirLabel}，当前主计划（4H 战术）方向${decisionDirLabel}，下方为 4H 计划价位`;
+      } else {
+        title.removeAttribute("title");
+      }
+    }
 
     // A cold-cache response is system availability, not a market conclusion.
     // Do not manufacture a 0.00 price, "high risk", empty evidence tables and
