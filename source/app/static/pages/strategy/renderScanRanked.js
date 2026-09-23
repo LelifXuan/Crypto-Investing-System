@@ -15,8 +15,9 @@ function riskRewardText(value) {
  * Render the ranked opportunity list (only items with direction, sorted by score).
  * @param {Array} ranked - ScanItem[] already sorted by score desc
  * @param {boolean} hasPending - whether any visible matrix cell is still warming
+ * @param {object} meta - { scannedAt, servedAt } ISO strings for the scan age label
  */
-export function renderScanRanked(ranked, hasPending = false) {
+export function renderScanRanked(ranked, hasPending = false, meta = {}) {
   if (!ranked.length) {
     const emptyMsg = hasPending
       ? "数据补齐中，稍后将有方向出现。"
@@ -24,6 +25,12 @@ export function renderScanRanked(ranked, hasPending = false) {
     return `<div class="data-state data-state-empty">${escapeHtml(emptyMsg)}</div>`;
   }
 
+  // A cached scan row can be hours old (scan TTL is 2h; the client also
+  // caches 60 s). The drawer behind a card always shows the *current*
+  // unified snapshot, so a card built long ago must say so — otherwise a
+  // 94.6 分 made at 04:47 reads as a live recommendation against a drawer
+  // that moved to "方向未确认" by 05:14.
+  const ageLabel = scanAgeLabel(meta.scannedAt);
   const cards = ranked
     .map((item) => {
       const tone = item.direction === "LONG" ? "bullish" : "bearish";
@@ -47,6 +54,7 @@ export function renderScanRanked(ranked, hasPending = false) {
             <span>置信度 ${escapeHtml(String(Math.round(item.confidence)))}%</span>
             <span>${escapeHtml(riskRewardText(item.risk_reward))}</span>
             <span>${escapeHtml(item.leverage_hint === "spot" ? "现货" : item.leverage_hint)}</span>
+            ${ageLabel ? `<span title="该评分生成时间，抽屉显示当前快照，两者可能不同代">${escapeHtml(ageLabel)}</span>` : ""}
           </div>
         </article>
       `;
@@ -54,6 +62,18 @@ export function renderScanRanked(ranked, hasPending = false) {
     .join("");
 
   return `<div class="scan-ranked-list">${cards}</div>`;
+}
+
+function scanAgeLabel(scannedAt) {
+  if (!scannedAt) return "";
+  const scanned = Date.parse(scannedAt);
+  if (!Number.isFinite(scanned)) return "";
+  const minutes = Math.max(0, Math.round((Date.now() - scanned) / 60000));
+  if (minutes < 1) return "刚刚扫描";
+  if (minutes < 60) return `${minutes} 分钟前扫描`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} 小时 ${rest} 分钟前扫描` : `${hours} 小时前扫描`;
 }
 
 /**

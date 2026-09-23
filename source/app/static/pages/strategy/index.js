@@ -96,7 +96,13 @@ function renderScanResults(data) {
   if (rankedEl) {
     // 2026-07-24 v3: pass hasPending to renderScanRanked so the
     // empty-state copy matches the banner.
-    rankedEl.innerHTML = renderScanRanked(ranked, cellsPending > 0);
+    // 2026-09-23: pass the scan age through so a cached matrix built hours
+    // ago is labelled as such — a ranked card must not read as a live
+    // recommendation when the drawer behind it already moved on.
+    rankedEl.innerHTML = renderScanRanked(ranked, cellsPending > 0, {
+      scannedAt: data.scanned_at,
+      servedAt: data.cache_meta?.served_at,
+    });
     bindScanRanked(onSelectOpportunity);
   }
 }

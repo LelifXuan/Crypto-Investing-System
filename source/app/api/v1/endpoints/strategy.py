@@ -610,6 +610,14 @@ async def get_strategy_scan(
             # after the warming short-circuit fires.
             if payload["cache_meta"].get("source") != "warming":
                 payload["cache_meta"]["source"] = "cache"
+            # 2026-09-23: stamp the serve time so the frontend can tell how
+            # old the cached matrix is. A ranked card built hours ago must
+            # not read as a live recommendation — the drawer shows the
+            # current unified snapshot, and the two can legitimately differ
+            # after the scan row ages (e.g. OKB 1d scored 94.6 at 04:47 but
+            # its direction dissolved by 05:14). Without this stamp the
+            # frontend cannot distinguish "fresh scan" from "old scan".
+            payload["cache_meta"]["served_at"] = now.isoformat()
             return payload
 
     # Cold-load short-circuit: kick off the background prewarm (so fresher

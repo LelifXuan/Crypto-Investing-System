@@ -770,3 +770,24 @@ def test_strategy_detail_panel_emits_all_reasoning_sections_even_when_no_directi
         "renderExecutionPlan already produce a precise status line "
         "from trade_decision.primary_reason.message"
     )
+
+
+def test_strategy_scan_ranked_shows_scan_age():
+    """A ranked card built hours ago must say so — the drawer behind it
+    shows the current unified snapshot and the two can legitimately differ
+    (OKB 1d scored 94.6 at 04:47, direction dissolved by 05:14)."""
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
+        encoding="utf-8"
+    )
+    assert "scanAgeLabel" in ranked
+    assert "分钟前扫描" in ranked
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
+    assert "scannedAt" in index
+    assert "servedAt" in index or "scanned_at" in index
+
+
+def test_strategy_scan_cache_response_stamps_serve_time():
+    """GET /strategy/scan cache hits carry served_at so the frontend can
+    age-label ranked cards."""
+    endpoint = (ROOT / "app/api/v1/endpoints/strategy.py").read_text(encoding="utf-8")
+    assert '"served_at"' in endpoint or "'served_at'" in endpoint
