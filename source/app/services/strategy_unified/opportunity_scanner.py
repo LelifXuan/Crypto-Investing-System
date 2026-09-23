@@ -5,7 +5,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 
 from app.core.config import settings
 from app.repositories.market_repository import MarketRepository
@@ -91,6 +91,15 @@ class ScanItem:
     data_quality: float = 0.0      # 0-100, from payload.confidence_report.confidence_score
     qualified: bool = False
     qualification_reasons: list[str] = field(default_factory=list)
+    # 2026-09-24: execution levels for the ranked card. The ranked summary
+    # used to quote the bundle validator's verdict line ("当前策略状态为…"),
+    # which wastes the user's attention on process chatter. The card now
+    # prints the actionable numbers instead: entry zone / stop / TP1 taken
+    # from the tactical plan that matches the cell direction. Empty when the
+    # cell has no direction or no matching plan.
+    entry_zone: list[float] = field(default_factory=list)
+    stop_loss: float | None = None
+    take_profit_1: float | None = None
 
 
 @dataclass(slots=True)
@@ -366,6 +375,10 @@ def _extract_scan_item(
         conflicts=conflicts,
     )
 
+    entry_zone, stop_loss, take_profit_1 = _cell_execution_levels(
+        payload, direction
+    )
+
     return ScanItem(
         instrument_id=instrument_id,
         instrument_code=code,
@@ -384,6 +397,9 @@ def _extract_scan_item(
         data_quality=round(data_quality, 1),
         qualified=qualified,
         qualification_reasons=qualification_reasons,
+        entry_zone=entry_zone,
+        stop_loss=stop_loss,
+        take_profit_1=take_profit_1,
     )
 
 
@@ -436,6 +452,61 @@ def _timeframe_direction_tally(
     if timeframe == decision.get("trade_timeframe") or timeframe in direction_timeframes:
         _add_direction_vote(tally, decision.get("side"))
     return tally
+
+
+def _cell_execution_levels(
+    payload: dict[str, Any],
+    direction: str,
+) -> tuple[list[float], float | None, float | None]:
+    """Pick the tactical plan matching the cell direction and lift its levels.
+
+    The ranked card prints these numbers instead of the bundle validator's
+    verdict line. Candidates: ``TACTICAL_{direction}`` first (the executable
+    plan), then any plan whose ``direction`` matches the cell. Plans with an
+    empty entry zone are skipped — a stop without an entry is not actionable.
+    No direction or no matching plan → empty levels (card hides the line).
+    """
+    if direction not in {"LONG", "SHORT"}:
+        return [], None, None
+    plans = payload.get("trade_plans") or []
+    if not isinstance(plans, list):
+        return [], None, None
+
+    def _levels(plan: Mapping[str, Any]) -> tuple[list[float], float | None, float | None]:
+        zone = [
+            value
+            for raw in (plan.get("entry_zone") or [])
+            if (value := _number(raw)) is not None
+        ]
+        stop = _number(plan.get("stop_loss"))
+        take_profit = plan.get("take_profit") or []
+        tp1 = None
+        if isinstance(take_profit, list):
+            for row in take_profit:
+                if isinstance(row, Mapping):
+                    tp1 = _number(row.get("price"))
+                    if tp1 is not None:
+                        break
+        if tp1 is None:
+            tp1 = _number(plan.get("take_profit_1"))
+        return zone, stop, tp1
+
+    tactical_type = f"TACTICAL_{direction}"
+    ordered = sorted(
+        (plan for plan in plans if isinstance(plan, Mapping)),
+        key=lambda plan: (
+            0 if str(plan.get("plan_type") or plan.get("type")) == tactical_type
+            else 1 if str(plan.get("direction")) == direction
+            else 2
+        ),
+    )
+    for plan in ordered:
+        if str(plan.get("direction")) != direction:
+            continue
+        zone, stop, tp1 = _levels(plan)
+        if zone:
+            return zone, stop, tp1
+    return [], None, None
 
 
 def _timeframe_risk_reward(

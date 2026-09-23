@@ -268,3 +268,70 @@ def test_ranked_summary_skips_plan_validation_line():
     assert "策略价位无效" not in item.summary
     assert item.summary.startswith("CONTEXT_ALIGNED_SHORT")
     assert "多头分" in item.summary
+
+
+def test_cell_execution_levels_come_from_matching_tactical_plan():
+    """Ranked cards print the tactical plan's entry/stop/TP1 for the cell
+    direction — not the validator's verdict line."""
+    from app.services.strategy_unified.opportunity_scanner import (
+        _cell_execution_levels,
+        _extract_scan_item,
+    )
+
+    payload = {
+        "status": "ready",
+        "degraded_components": [],
+        "timeframe_stack": [
+            {
+                "timeframe": "1d",
+                "direction": "SHORT",
+                "confidence": 100.0,
+                "current_price": 97.4,
+                "key_support": 90.3,
+                "key_resistance": 97.7,
+                "invalidation": 100.5,
+                "long_score": 33.0,
+                "short_score": 60.0,
+                "freshness": "fresh",
+                "verdict_label": "CONTEXT_ALIGNED_SHORT",
+                "evidence": ["偏空观察"],
+            }
+        ],
+        "signal_coverage": [],
+        "evidence_trace": [],
+        "trade_decision": {
+            "side": "SHORT",
+            "trade_timeframe": "4h",
+            "direction_timeframes": ["1d", "4h"],
+            "position_cap": "standard",
+            "risk_reward": {"value": 2.2},
+            "primary_reason": {"message": "等待触发"},
+        },
+        "direction_resolution": {},
+        "trade_plans": [
+            {
+                "plan_type": "STRATEGIC_RISK_REDUCTION",
+                "direction": "SHORT",
+                "entry_zone": [98.12],
+                "stop_loss": 98.12,
+                "take_profit": [],
+            },
+            {
+                "plan_type": "TACTICAL_SHORT",
+                "direction": "SHORT",
+                "entry_zone": [97.34, 97.73],
+                "stop_loss": 100.54,
+                "take_profit": [
+                    {"label": "TP1", "price": 90.3},
+                    {"label": "TP2", "price": 76.64},
+                ],
+            },
+        ],
+    }
+    assert _cell_execution_levels(payload, "SHORT") == ([97.34, 97.73], 100.54, 90.3)
+    assert _cell_execution_levels(payload, "WAIT") == ([], None, None)
+    assert _cell_execution_levels({"trade_plans": []}, "SHORT") == ([], None, None)
+    item = _extract_scan_item(payload, "hype-usdt-perp", "HYPE", "1d")
+    assert item.entry_zone == [97.34, 97.73]
+    assert item.stop_loss == 100.54
+    assert item.take_profit_1 == 90.3
