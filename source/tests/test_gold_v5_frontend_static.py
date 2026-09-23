@@ -456,3 +456,40 @@ class TestGoldV5AmountCurrency:
         assert "} 元`" not in body, (
             "money() must not append 元 unconditionally; only CNY/RMB map to 元"
         )
+
+
+class TestGoldPolicyForm:
+    """The workbench setup_required empty state must offer a working write
+    path on the same page — previously it pointed at a flow that did not
+    exist ("请先在策略页配置"), so a lost policy row was unrecoverable."""
+
+    def test_no_dead_strategy_page_pointer(self):
+        src = _read(JS_PATH)
+        assert "请先在策略页配置" not in src
+
+    def test_form_renders_with_setup_hint(self):
+        src = _read(JS_PATH)
+        assert "gold-policy-form" in src
+        assert "保存即追加新版本" in src
+
+    def test_form_posts_and_reloads(self):
+        src = _read(JS_PATH)
+        assert "api.saveGoldPolicy(" in src
+        assert "await loadData({ force: true })" in src
+
+    def test_numeric_inputs_allow_decimals(self):
+        src = _read(JS_PATH)
+        assert src.count('step="any"') >= 1, (
+            "policy money inputs must carry step=any (type=number defaults "
+            "to step=1 and rejects decimals, cf. spot_price lesson)"
+        )
+
+    def test_api_exports_saveGoldPolicy(self):
+        src = _read(API_PATH)
+        assert "saveGoldPolicy(payload, options = {})" in src
+        assert '"/gold/policy"' in src
+
+    def test_form_styles_exist(self):
+        css = _read(CSS_PATH)
+        assert ".gold-policy-form" in css
+        assert ".gold-policy-actions" in css

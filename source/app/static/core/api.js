@@ -305,6 +305,16 @@ export const api = {
     });
   },
 
+  saveGoldPolicy(payload, options = {}) {
+    invalidateCache("/gold/workbench");
+    return requestJson("/gold/policy", {
+      method: "POST",
+      body: payload,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 12000,
+    });
+  },
+
   getBtcDerivativesDashboard(query = {}, options = {}) {
     return requestJson("/btc-derivatives/dashboard", {
       params: {

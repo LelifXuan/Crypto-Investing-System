@@ -163,7 +163,7 @@ function renderHero(data) {
   // DATA_DEGRADED when the snapshot itself is not healthy (error / missing).
   const snapshotOk = data?.snapshot?.status === "ok";
   const subtitle = setupRequired
-    ? "请先在策略页配置组合与执行纪律。"
+    ? "尚未配置组合策略。请在下方表单填写并保存，保存后本页自动刷新。"
     : `宏观判断: ${scenarioLabel(active || (snapshotOk ? "MACRO_NEUTRAL" : "DATA_DEGRADED"))}`;
   const shock = activeList.includes("LIQUIDITY_SHOCK");
 
@@ -484,7 +484,159 @@ function renderShell(data) {
     </section>
     ${hasChartSeries ? renderChartGrid() : renderChartGridEmptyState(data)}
     ${renderGovernance(data)}
+    ${renderPolicyForm(data)}
   `;
+}
+
+// ----- Policy form — the write path for gold_policy_versions ----------------
+
+function policyField(name, label, value, attrs = "") {
+  // step="any": spot_price taught us that type=number defaults to step=1 and
+  // browsers reject any decimal as "not a valid value". Policy money fields
+  // are floats on the wire, so every numeric input carries step="any".
+  return `
+    <label><span>${escapeHtml(label)}</span><input name="${name}" type="number" step="any" value="${escapeHtml(String(value ?? ""))}" ${attrs}></label>
+  `;
+}
+
+function renderPolicyForm(data) {
+  const portfolio = data?.portfolio || {};
+  const strategic = data?.strategic_allocation || {};
+  const base = data?.base_dca || {};
+  const dip = data?.dip_add || {};
+  const current = {
+    base_currency: portfolio.base_currency || "USD",
+    portfolio_total: portfolio.portfolio_total || "",
+    gold_current_value: portfolio.gold_current_value || "",
+    available_cash: portfolio.available_cash || "",
+    target_min: strategic.target_min || "",
+    target_max: strategic.target_max || "",
+    base_dca_amount: base.amount || "",
+    fixed_dip_add_amount: dip.amount && dip.amount !== "0" ? dip.amount : "",
+    cooldown_days: dip.cooldown_until ? "" : "14",
+    quote_max_age_seconds: "300",
+    confirmations_required: dip.confirmations?.required || "3",
+    drawdown_threshold: dip.drawdown_threshold || "0.08",
+  };
+  const hasPolicy = !!(data?.snapshot?.status === "ok" || portfolio.policy_id);
+  return `
+    <section class="card gold-policy-form-card" aria-label="组合策略配置">
+      <div class="card-head-inline">
+        <div>
+          <p class="eyebrow">POLICY</p>
+          <p class="gold-card-title">${hasPolicy ? "组合策略（保存即生成新版本）" : "组合策略（首次配置）"}</p>
+        </div>
+        ${hasPolicy ? `<span class="chip">${impactChip("neutral", "当前版本", "版本 " + escapeHtml(String(portfolio.policy_version ?? "—")))}</span>` : ""}
+      </div>
+      <form class="gold-policy-form" id="gold-policy-form" novalidate>
+        <fieldset class="gold-policy-section">
+          <legend>组合</legend>
+          ${policyField("portfolio_total", "组合总值", current.portfolio_total, "min=\"1\" required")}
+          ${policyField("gold_current_value", "当前黄金市值", current.gold_current_value, "min=\"0\" required")}
+          ${policyField("available_cash", "可用现金（可选）", current.available_cash, "min=\"0\"")}
+          <label><span>计价币种</span><input name="base_currency" value="${escapeHtml(current.base_currency)}" maxlength="16" required></label>
+        </fieldset>
+        <fieldset class="gold-policy-section">
+          <legend>目标权重带</legend>
+          ${policyField("target_min", "下限（0-1）", current.target_min, "min=\"0\" max=\"1\" required")}
+          ${policyField("target_max", "上限（0-1）", current.target_max, "min=\"0\" max=\"1\" required")}
+        </fieldset>
+        <fieldset class="gold-policy-section">
+          <legend>执行纪律</legend>
+          ${policyField("base_dca_amount", "基础定投金额", current.base_dca_amount, "min=\"1\" required")}
+          ${policyField("fixed_dip_add_amount", "回撤加仓金额", current.fixed_dip_add_amount, "min=\"1\" required")}
+          ${policyField("cooldown_days", "加仓冷却天数", current.cooldown_days, "min=\"0\" max=\"365\"")}
+          ${policyField("quote_max_age_seconds", "行情最大延迟秒", current.quote_max_age_seconds, "min=\"30\" max=\"86400\"")}
+          ${policyField("confirmations_required", "确认数", current.confirmations_required, "min=\"1\" max=\"10\"")}
+          ${policyField("drawdown_threshold", "回撤阈值（0-1）", current.drawdown_threshold, "min=\"0\" max=\"1\"")}
+        </fieldset>
+        <div class="gold-policy-actions">
+          <button class="button" type="submit"><span>保存策略</span></button>
+          <p class="gold-policy-hint" data-policy-hint>保存即追加新版本，历史版本保留；保存后本页自动刷新。</p>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+function readPolicyForm(form) {
+  const get = (name) => form.elements.namedItem(name)?.value;
+  const num = (name) => {
+    const raw = String(get(name) ?? "").trim();
+    return raw === "" ? null : Number(raw);
+  };
+  return {
+    base_currency: String(get("base_currency") ?? "USD").trim() || "USD",
+    portfolio_total: num("portfolio_total"),
+    gold_current_value: num("gold_current_value"),
+    available_cash: num("available_cash"),
+    target_min: num("target_min"),
+    target_max: num("target_max"),
+    base_dca_amount: num("base_dca_amount"),
+    fixed_dip_add_amount: num("fixed_dip_add_amount"),
+    cooldown_days: num("cooldown_days") ?? 14,
+    quote_max_age_seconds: num("quote_max_age_seconds") ?? 300,
+    confirmations_required: num("confirmations_required") ?? 3,
+    drawdown_threshold: num("drawdown_threshold") ?? 0.08,
+  };
+}
+
+function validatePolicyForm(values) {
+  // Client-side mirror of GoldPolicyWriteRequest: fail fast with a readable
+  // message instead of round-tripping a 422. The backend remains the gate.
+  const errors = [];
+  const money = (key, label, { min = 0, required = true } = {}) => {
+    const value = values[key];
+    if (value === null) {
+      if (required) errors.push(`${label}必填`);
+      return;
+    }
+    if (!Number.isFinite(value)) errors.push(`${label}必须是数字`);
+    else if (value < min) errors.push(`${label}不能小于 ${min}`);
+  };
+  money("portfolio_total", "组合总值", { min: 1 });
+  money("gold_current_value", "当前黄金市值");
+  if (values.available_cash !== null && !(values.available_cash >= 0)) errors.push("可用现金不能为负");
+  money("target_min", "目标下限");
+  money("target_max", "目标上限");
+  money("base_dca_amount", "基础定投金额", { min: 1 });
+  money("fixed_dip_add_amount", "回撤加仓金额", { min: 1 });
+  if (values.target_min !== null && values.target_max !== null && values.target_min > values.target_max) {
+    errors.push("目标下限不能大于上限");
+  }
+  if (
+    values.portfolio_total !== null && values.gold_current_value !== null
+    && values.gold_current_value > values.portfolio_total
+  ) {
+    errors.push("当前黄金市值不能超过组合总值");
+  }
+  return errors;
+}
+
+function bindGoldPolicyForm() {
+  const form = document.getElementById("gold-policy-form");
+  if (!form || form.dataset.bound === "true") return;
+  form.dataset.bound = "true";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const hint = form.querySelector("[data-policy-hint]");
+    const values = readPolicyForm(form);
+    const errors = validatePolicyForm(values);
+    if (errors.length) {
+      if (hint) hint.textContent = errors[0];
+      return;
+    }
+    if (hint) hint.textContent = "正在保存…";
+    try {
+      const saved = await api.saveGoldPolicy(values, { signal: controller.signal, timeoutMs: 12000 });
+      if (hint) hint.textContent = `已保存为版本 ${saved?.version ?? "新"}，正在刷新…`;
+      await loadData({ force: true });
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      const detail = error?.detail || error?.message || "保存失败，请稍后重试";
+      if (hint) hint.textContent = String(detail);
+    }
+  }, { signal: controller.signal });
 }
 
 function renderGoldLoading() {
@@ -538,6 +690,7 @@ async function renderGoldSnapshot(data, version, signal) {
   applyPostMountStyles();
   replayPageEnter();
   bindGoldRefreshButton();
+  bindGoldPolicyForm();
   const chartToken = data?.chart_series_or_chart_token;
   if (chartToken?.path && (chartToken.count || 0) > 0) {
     try {
@@ -642,6 +795,7 @@ async function loadData({ force = false, requestCoreRefresh = false } = {}) {
     applyPostMountStyles();
     replayPageEnter();
     bindGoldRefreshButton();
+    bindGoldPolicyForm();
   }
 }
 
@@ -858,6 +1012,7 @@ export async function renderGoldV5() {
   await loadData();
   applyPostMountStyles();
   bindGoldRefreshButton();
+  bindGoldPolicyForm();
   // Return a controller so the SPA router (main.js normalizeController)
   // calls unmount() on navigation — previously the page returned undefined
   // and the abort controller / charts were never torn down.
