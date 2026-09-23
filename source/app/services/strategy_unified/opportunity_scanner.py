@@ -305,10 +305,22 @@ def _extract_scan_item(
     primary_reason = decision.get("primary_reason") or {}
     node_evidence = (node or {}).get("evidence") or []
     node_label = str((node or {}).get("verdict_label") or "").strip()
+    # Ranked summary must describe the market conclusion, not the plan
+    # validator's verdict: node evidence[0] is the bundle's _explain line
+    # ("当前策略状态为…"), which reports INVALID_PLAN_LEVELS when the raw
+    # per-timeframe plan geometry fails validation — even though the unified
+    # trade plan (built on other timeframes' levels) is perfectly executable.
+    # The drawer shows the unified decision for this reason. Skip evidence
+    # lines that describe plan validation, fall back to the next line, and
+    # only then to the unified primary reason.
     if node_label:
         summary = node_label
-        if node_evidence:
-            summary = f"{summary}：{node_evidence[0]}"
+        for line in node_evidence:
+            text = str(line or "")
+            if "策略价位无效" in text or "INVALID_PLAN_LEVELS" in text:
+                continue
+            summary = f"{summary}：{text}"
+            break
     else:
         summary = (
             primary_reason.get("message")
@@ -458,14 +470,14 @@ def _timeframe_risk_reward(
     if risk is not None and reward is not None and risk > 0 and reward > 0:
         return round(reward / risk, 2)
 
-    decision = payload.get("trade_decision") or {}
-    direction_timeframes = set(decision.get("direction_timeframes") or [])
-    if (
-        direction == decision.get("side")
-        and (timeframe == decision.get("trade_timeframe") or timeframe in direction_timeframes)
-    ):
-        value = _number((decision.get("risk_reward") or {}).get("value"))
-        return round(max(value or 0.0, 0.0), 2)
+    # Timeframe-cell RR must come from that cell's own node geometry. The old
+    # decision-level fallback copied the *trade plan's* RR (computed on the
+    # trade_timeframe, e.g. 4h) into the 1d/4h cells of the same side — so a
+    # cell whose own geometry was invalid displayed "2.19" while the drawer
+    # for that same cell showed the decision-level number built on another
+    # timeframe's levels. The drawer shows the decision-level RR; the matrix
+    # must not launder it into a per-timeframe number. No valid geometry →
+    # 0.0.
     return 0.0
 
 

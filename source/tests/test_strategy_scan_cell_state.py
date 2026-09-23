@@ -156,3 +156,106 @@ def test_matrix_drops_raw_gate_codes_from_the_visible_cell():
     # Reasons surface as Chinese labels through the tooltip, never as raw codes.
     assert "GATE_REASON_LABELS" in source
     assert "未通过门禁：" in source
+
+
+def _scan_item(**overrides):
+    from app.services.strategy_unified.opportunity_scanner import (
+        _extract_scan_item,
+    )
+
+    payload = {
+        "status": "ready",
+        "degraded_components": [],
+        "timeframe_stack": [
+            {
+                # NOTE: the cell under test is 1d (not 1w) on purpose — the
+                # removed fallback only fired for the trade_timeframe and
+                # direction_timeframes (["1d", "4h"]), so a 1w cell never
+                # borrowed anything and cannot guard the regression.
+                "timeframe": "1d",
+                "direction": "SHORT",
+                "confidence": 94.1,
+                # Invalid SHORT geometry: support/resistance ABOVE current —
+                # no valid risk or reward can be built from this cell.
+                "current_price": 86519.8,
+                "key_support": 89548.78,
+                "key_resistance": 89907.69,
+                "invalidation": 99932.44,
+                "long_score": 42.0,
+                "short_score": 60.4,
+                "freshness": "fresh",
+                "verdict_label": "CONTEXT_ALIGNED_SHORT",
+                "evidence": ["偏空观察"],
+            }
+        ],
+        "signal_coverage": [],
+        "evidence_trace": [],
+        "trade_decision": {
+            "side": "SHORT",
+            "trade_timeframe": "4h",
+            "direction_timeframes": ["1d", "4h"],
+            "position_cap": "standard",
+            "risk_reward": {"value": 2.17},
+        },
+        "direction_resolution": {},
+    }
+    return _extract_scan_item(payload, "btc-usdt-perp", "BTC", "1d", **overrides)
+
+
+def test_timeframe_cell_never_borrows_decision_level_rr():
+    """The 1d cell must not display the 4h trade plan's 2.17: its own
+    geometry is invalid (support above price for a SHORT), so RR is 0
+    and the gate rejects it — instead of showing a passing number that
+    the drawer cannot reproduce for this timeframe."""
+    item = _scan_item()
+    assert item.risk_reward == 0.0
+    assert "risk_reward_below_gate" in item.qualification_reasons
+    assert item.qualified is False
+
+
+def test_ranked_summary_skips_plan_validation_line():
+    """The ranked summary must not say "策略价位无效": node evidence[0]
+    is the bundle validator's verdict on the raw per-timeframe plan, not
+    the unified trade plan the drawer shows. Skip it, use the next line."""
+    from app.services.strategy_unified.opportunity_scanner import (
+        _extract_scan_item,
+    )
+
+    payload = {
+        "status": "ready",
+        "degraded_components": [],
+        "timeframe_stack": [
+            {
+                "timeframe": "1d",
+                "direction": "SHORT",
+                "confidence": 100.0,
+                "current_price": 125.0,
+                "key_support": 116.55,
+                "key_resistance": 126.04,
+                "invalidation": 129.61,
+                "long_score": 37.0,
+                "short_score": 62.0,
+                "freshness": "fresh",
+                "verdict_label": "CONTEXT_ALIGNED_SHORT",
+                "evidence": [
+                    "当前策略状态为“策略价位无效”，策略倾向为“偏空”。",
+                    "多头分 37.14，空头分 62.25，中性分 41.43。",
+                ],
+            }
+        ],
+        "signal_coverage": [],
+        "evidence_trace": [],
+        "trade_decision": {
+            "side": "SHORT",
+            "trade_timeframe": "4h",
+            "direction_timeframes": ["1d", "4h"],
+            "position_cap": "standard",
+            "risk_reward": {"value": 2.2},
+            "primary_reason": {"message": "1H 尚未与日线方向一致，等待触发。"},
+        },
+        "direction_resolution": {},
+    }
+    item = _extract_scan_item(payload, "okb-usdt-perp", "OKB", "1d")
+    assert "策略价位无效" not in item.summary
+    assert item.summary.startswith("CONTEXT_ALIGNED_SHORT")
+    assert "多头分" in item.summary
