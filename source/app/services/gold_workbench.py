@@ -16,20 +16,38 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.market import GoldExecutionEvent, GoldPolicyVersion
+from app.schemas.gold_policy import GoldPolicyWriteRequest
 
 
 def decimal_string(value: Decimal | None) -> str | None:
-    """Stable JSON-safe Decimal serialization (no scientific notation)."""
-    return format(value, "f") if value is not None else None
+    """Stable JSON-safe Decimal serialization (no scientific notation).
+
+    Trailing zeros are stripped so ``Numeric(38,18)`` storage (e.g. the
+    ``500.000000000000000000`` a policy amount round-trips as) does not
+    leak onto the page as ``500.000000000000000000 USD``. ``Decimal("0")``
+    and integers keep a single ``"0"`` / plain digits; only the fraction
+    padding is removed — precision itself is preserved in the row.
+    """
+    if value is None:
+        return None
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 class GoldPolicyRepository:
-    """Read-side repository for versioned gold policy + execution events."""
+    """Read-side repository for versioned gold policy + execution events.
+
+    Writes go through :meth:`save_policy`, which appends a new versioned
+    row and never mutates history (AGENTS.md §三: append-only facts).
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -45,6 +63,54 @@ class GoldPolicyRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def save_policy(
+        self,
+        tenant_id: str,
+        user_id: str,
+        payload: GoldPolicyWriteRequest,
+    ) -> GoldPolicyVersion:
+        """Append the next versioned policy row for this tenant+user.
+
+        The version is ``max(existing) + 1`` scoped to the tenant+user so
+        two users never share a version sequence. The caller owns the
+        transaction boundary (writer session); flush here so constraint
+        violations surface inside the request, commit stays with the
+        session owner.
+        """
+        current = await self.session.execute(
+            select(func.max(GoldPolicyVersion.version)).where(
+                GoldPolicyVersion.tenant_id == tenant_id,
+                GoldPolicyVersion.user_id == user_id,
+            )
+        )
+        version = int(current.scalar() or 0) + 1
+        model = GoldPolicyVersion(
+            policy_id=f"gold-policy-{uuid4()}",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            version=version,
+            base_currency=payload.base_currency.strip().upper(),
+            portfolio_total=Decimal(str(payload.portfolio_total)),
+            gold_current_value=Decimal(str(payload.gold_current_value)),
+            available_cash=(
+                Decimal(str(payload.available_cash))
+                if payload.available_cash is not None
+                else None
+            ),
+            target_min=Decimal(str(payload.target_min)),
+            target_max=Decimal(str(payload.target_max)),
+            base_dca_amount=Decimal(str(payload.base_dca_amount)),
+            fixed_dip_add_amount=Decimal(str(payload.fixed_dip_add_amount)),
+            cooldown_days=payload.cooldown_days,
+            quote_max_age_seconds=payload.quote_max_age_seconds,
+            confirmations_required=payload.confirmations_required,
+            drawdown_threshold=Decimal(str(payload.drawdown_threshold)),
+            pause_base_when_overweight=payload.pause_base_when_overweight,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
 
     async def execution_state(self, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Derive ``executed_today`` / ``last_dip_add_date`` from append-only events.

@@ -260,3 +260,17 @@ class TestWorkbenchEndpoint:
         with _client() as client:
             resp = client.get("/api/v1/gold/workbench/charts/does-not-exist")
         assert resp.status_code == 404
+
+
+class TestDecimalStringStripsStoragePadding:
+    """Numeric(38,18) stores 500 as 500.000000000000000000; the page must
+    show "500 USD", not the 18-decimal storage form (2026-09-23 visual)."""
+
+    def test_trailing_zeros_stripped(self):
+        from app.services.gold_workbench import decimal_string
+
+        assert decimal_string(Decimal("500.000000000000000000")) == "500"
+        assert decimal_string(Decimal("200000.000000000000000000")) == "200000"
+        assert decimal_string(Decimal("0.05000000")) == "0.05"
+        assert decimal_string(Decimal("0")) == "0"
+        assert decimal_string(None) is None

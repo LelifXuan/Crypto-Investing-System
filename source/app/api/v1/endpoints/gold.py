@@ -7,7 +7,12 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser, get_db_session, require_roles
+from app.api.dependencies import (
+    CurrentUser,
+    get_db_session,
+    get_db_writer_session,
+    require_roles,
+)
 from app.repositories.market_repository import MarketRepository
 from app.schemas.gold_allocation import (
     GoldAllocationPlanRequest,
@@ -16,6 +21,7 @@ from app.schemas.gold_allocation import (
     GoldExecutionPlanResponse,
     GoldMarketStateResponse,
 )
+from app.schemas.gold_policy import GoldPolicyWriteRead, GoldPolicyWriteRequest
 from app.schemas.gold_v3 import (
     GoldContractRef,
     GoldIndicatorConfirmation,
@@ -218,6 +224,27 @@ async def _execution_inputs(
     diagnostics["candle_count"] = len(candles)
     diagnostics["has_indicators"] = indicators is not None
     return quote, indicators, diagnostics
+
+
+@router.post("/policy", response_model=GoldPolicyWriteRead)
+async def save_gold_policy(
+    payload: GoldPolicyWriteRequest,
+    user: CurrentUser = Depends(require_roles("admin", "trader", "analyst")),
+    session: AsyncSession = Depends(get_db_writer_session),
+) -> GoldPolicyWriteRead:
+    """Append the next versioned gold allocation policy for this user.
+
+    Versions are append-only: the new row gets ``max(version) + 1`` scoped
+    to tenant+user and history rows are never mutated. Callers that lose
+    their data recover by POSTing a fresh policy — this is the write path
+    the workbench ``setup_required`` empty state points to.
+    """
+    from app.services.gold_workbench import policy_dict
+
+    model = await GoldPolicyRepository(session).save_policy(
+        user.tenant_id, user.user_id, payload
+    )
+    return GoldPolicyWriteRead.model_validate(policy_dict(model))
 
 
 @router.post("/allocation/plan", response_model=GoldAllocationPlanResponse)
