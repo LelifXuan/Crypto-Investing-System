@@ -1,4 +1,4 @@
-"""Guards for the opportunity-matrix cell vocabulary (2026-09-22).
+"""Guards for the opportunity-matrix cell vocabulary (2026-09-22, stale-serving 2026-09-23).
 
 What went wrong, and what these tests pin:
 
@@ -10,6 +10,11 @@ What went wrong, and what these tests pin:
    instrument × timeframe showed 做空 / 看空. Two surfaces, two stories.
 3. The same "no result" situation appeared under two different words
    ("数据构建中" for missing cells, "等待确认" for the rest).
+4. (2026-09-23 stale-serving) A stale cell hid its last good direction behind
+   "数据准备中". Per AGENTS.md §九.1 a stale snapshot with last-known-good
+   must render the old conclusion first: stale-directional cells now show
+   the direction with neutral tone + "数据更新中", never bullish/bearish
+   (that would read as a fresh signal) and never blank.
 """
 
 from __future__ import annotations
@@ -70,23 +75,35 @@ def _fresh(**overrides) -> dict:
     return base
 
 
-def test_stale_payload_is_not_reported_as_a_market_conclusion():
+def test_stale_directional_cell_serves_last_good_direction():
+    """Stale-serving (2026-09-23): a stale cell with a direction shows it —
+    neutral tone, update label, still clickable — instead of hiding it."""
     state = _cell_state(_fresh(cache_state="stale", direction="LONG", direction_label="做多"))
+
+    assert state["kind"] == "stale"
+    assert state["label"] == "数据更新中"
+    assert state["direction"] == "做多"
+    assert state["tone"] == "neutral", "stale must never wear a fresh-signal tone"
+    assert state["clickable"] is True
+    assert "过期" in state["tooltip"] or "上次有效" in state["tooltip"]
+
+
+def test_stale_directionless_cell_stays_pending():
+    """A stale cell with no direction has nothing to serve — pending."""
+    state = _cell_state(_fresh(cache_state="stale", direction="WAIT", direction_label="等待"))
 
     assert state["kind"] == "pending"
     assert state["label"] == "数据准备中"
     assert state["direction"] == ""
-    assert "过期" in state["tooltip"]
 
 
-def test_missing_and_stale_share_the_same_visible_label():
+def test_missing_warming_error_share_the_same_visible_label():
     labels = {
         state
         for state in (
             _cell_state(_fresh(cache_state="missing"))["label"],
             _cell_state(_fresh(cache_state="warming"))["label"],
             _cell_state(_fresh(cache_state="error"))["label"],
-            _cell_state(_fresh(cache_state="stale"))["label"],
         )
     }
     assert labels == {"数据准备中"}, f"data states must share one word, got {labels}"
@@ -97,6 +114,9 @@ def test_cells_without_a_payload_stay_closed_but_stale_stays_openable():
     assert _cell_state(_fresh(cache_state="warming"))["clickable"] is False
     assert _cell_state(_fresh(cache_state="error"))["clickable"] is False
     assert _cell_state(_fresh(cache_state="stale"))["clickable"] is True
+    assert _cell_state(
+        _fresh(cache_state="stale", direction="WAIT", direction_label="等待")
+    )["clickable"] is True
 
 
 def test_rejected_directional_cell_still_reports_its_direction():

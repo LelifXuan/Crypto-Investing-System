@@ -6,22 +6,26 @@ const TIMEFRAME_LABELS = { "1w": "周线", "1d": "日线", "4h": "4H" };
 // One label per meaning, for the whole matrix.
 //
 // A cell may only state a market conclusion when the payload behind it is
-// usable. Missing / warming / error / stale payloads are system availability,
-// not "no opportunity" (AGENTS.md §九.1) — they all share the single label
-// below, so the matrix never reads as two different things at once. The
-// per-state reason stays in the cell tooltip instead of adding a second
-// visible word.
-const DATA_PENDING_STATES = ["missing", "warming", "error", "stale", "unknown"];
+// usable. Missing / warming / error payloads are system availability, not
+// "no opportunity" (AGENTS.md §九.1) — they share the single label below.
+// A stale snapshot is different: it carries a real direction from the last
+// good computation, only older than its TTL. Per §九.1 ("stale_revalidating
+// 且存在 last-known-good 时必须先渲染旧快照") it renders as stale-serving:
+// direction + neutral tone + "数据更新中" corner label, never as a fresh
+// signal and never as "no data". Unknown keeps the old pending behaviour.
+const DATA_PENDING_STATES = ["missing", "warming", "error", "unknown"];
+const DATA_STALE_STATE = "stale";
 // Only these three mean "there is no report to open". A stale snapshot serves
 // last-known-good and an unknown state is worth inspecting, so both stay
 // clickable — the drawer owns the per-state explanation.
 const DATA_CLOSED_STATES = ["missing", "warming", "error"];
 const DATA_PENDING_LABEL = "数据准备中";
+const DATA_STALE_LABEL = "数据更新中";
 const DATA_PENDING_HINT = {
   missing: "该周期快照尚未生成，后台正在补齐",
   warming: "首次生成中，完成后自动更新",
   error: "上次生成失败，后台将重试",
-  stale: "快照已过期，正在重新推演",
+  stale: "快照已过期，显示上次有效结论，后台正在刷新",
   unknown: "数据状态未知，等待后台确认",
 };
 const DATA_PENDING_TOOLTIP = "数据未就绪时不代表没有机会，仅表示本单元还不可用";
@@ -46,7 +50,9 @@ const GATE_REASON_LABELS = {
  * Describe one matrix cell in the single shared vocabulary.
  *
  * Kinds:
- *   "pending"   — payload is missing / warming / error / stale: not a market view
+ *   "pending"   — payload is missing / warming / error: not a market view
+ *   "stale"     — payload is stale but carries a direction: last-known-good,
+ *                 rendered with direction + neutral tone + update label
  *   "qualified" — payload is fresh and passed every execution gate
  *   "candidate" — payload is fresh with a direction, but the gate rejected it
  *   "idle"      — payload is fresh and there is no direction at all
@@ -82,6 +88,34 @@ export function cellState(item) {
   const directional = direction === "LONG" || direction === "SHORT";
   const directionLabel = item.direction_label
     || (direction === "LONG" ? "做多" : direction === "SHORT" ? "做空" : "等待确认");
+
+  // Stale-serving: the snapshot expired but the direction inside it is the
+  // last good computation. Show it (neutral tone — never bullish/bearish,
+  // so it cannot be mistaken for a fresh signal) with the update label and
+  // keep the cell open: the drawer explains the per-state staleness. A
+  // directionless stale cell falls back to the pending vocabulary.
+  if (cacheState === DATA_STALE_STATE) {
+    if (!directional) {
+      return {
+        kind: "pending",
+        label: DATA_PENDING_LABEL,
+        direction: "",
+        directionKey: "",
+        tone: "neutral",
+        clickable: true,
+        tooltip: `${pendingHint}${gateText ? `（${gateText}）` : ""}。${DATA_PENDING_TOOLTIP}`,
+      };
+    }
+    return {
+      kind: "stale",
+      label: DATA_STALE_LABEL,
+      direction: directionLabel,
+      directionKey: direction,
+      tone: "neutral",
+      clickable: true,
+      tooltip: `上次有效结论：${directionLabel}${gateText ? `（${gateText}）` : ""}。${pendingHint}`,
+    };
+  }
 
   // The gate decides promotion only. The direction is reported either way,
   // because the detail drawer shows the same direction for the same cell —
@@ -166,6 +200,7 @@ function renderCell(item, instrumentId, timeframe) {
   const state = cellState(item);
   const cls = ["scan-cell"];
   if (state.kind === "pending") cls.push("scan-cell-pending");
+  if (state.kind === "stale") cls.push("scan-cell-stale");
   if (state.kind === "idle") cls.push("scan-cell-wait");
   if (state.kind === "candidate") cls.push("scan-cell-wait", "scan-cell-unqualified");
   const attrs = state.clickable
