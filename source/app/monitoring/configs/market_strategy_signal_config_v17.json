@@ -188,6 +188,12 @@
     "liquidation_buffer_block_pct": 1.5,
     "description": "基于 ATR 百分比和默认杠杆（10x BTC 默认）计算 one_atr_margin_impact / stop_margin_impact / liquidation_buffer，并将压力分四档：ok < downsize < small < block。"
   },
+  "leverage_sizing": {
+    "risk_budget_pct": 15.0,
+    "liquidation_buffer_min_pct": 1.5,
+    "atr_buffer_min_pct": 0.0,
+    "description": "止损冲击预算：止损触发时最多损失配置保证金的 15%；强平缓冲下限沿用 futures_risk 的 1.5%。收紧/放宽只改这三个数，不动代码。"
+  },
   "entry_modes": {
     "pullback_confirm": {
       "label": "反抽/回踩确认",

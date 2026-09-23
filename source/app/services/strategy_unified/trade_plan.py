@@ -44,6 +44,11 @@ class UnifiedTradePlanEngine:
             plans.append(self._wait_range_plan(execution, nodes, governance))
         plans.append(self._execution_trigger_plan(execution, tactical, nodes, governance))
         decision = trade_decision or {}
+        # V2.2: carry the sizing audit onto the matching tactical plan so the
+        # drawer table can render per-leverage stop impact / liq buffer rows
+        # without recomputing. Only the plan whose direction matches the
+        # decision side gets it; other plans keep their own (empty) detail.
+        sizing_detail = decision.get("leverage_detail") or {}
         if decision.get("order_type") in {"MARKET", "CONDITIONAL_LIMIT"} and not any(
             plan.direction == decision.get("side") and str(plan.type).startswith("TACTICAL_")
             for plan in plans
@@ -53,6 +58,16 @@ class UnifiedTradePlanEngine:
             plan.recommended_leverage = float(decision.get("recommended_leverage") or 0)
             plan.max_leverage = float(decision.get("max_leverage") or 0)
             plan.leverage_status = str(decision.get("leverage_status") or "blocked")
+            if (
+                sizing_detail
+                and plan.direction == decision.get("side")
+                and (
+                    str(plan.type).startswith("TACTICAL_")
+                    or plan.type == "CURRENT_ORDER_PLAN"
+                )
+            ):
+                plan.leverage_detail = dict(sizing_detail)
+                plan.stop_distance_pct = float(decision.get("stop_distance_pct") or 0.0)
             plan.leverage_reason = str(
                 decision.get("leverage_reason") or "当前计划不建议使用杠杆。"
             )

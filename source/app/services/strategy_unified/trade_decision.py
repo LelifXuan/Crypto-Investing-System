@@ -10,6 +10,7 @@ from typing import Any, Mapping, Sequence
 from app.services.strategy_signal.config_loader import load_strategy_signal_config
 
 from .contracts import TimeframeNode, as_mapping, first_float, list_floats, node_by_tf
+from .leverage_sizing import evaluate_leverage, sizing_config_from_mapping
 
 UTC = timezone.utc
 
@@ -92,6 +93,13 @@ class TradeDecision:
     plan_stale_score: int = 0
     plan_stale_reason: str = ""
     planned_leverage: float = 0.0
+    # Sizing inputs/outputs from the leverage_sizing engine (V2.2): the
+    # stop-distance percent the recommendation was computed from, the ATR
+    # percent when known, and the full per-leverage audit table the drawer
+    # renders so each leverage step shows its own stop impact / liq buffer.
+    stop_distance_pct: float = 0.0
+    atr_pct: float | None = None
+    leverage_detail: dict[str, Any] = field(default_factory=dict)
     trade_timeframe: str = "4h"
     direction_timeframes: list[str] = field(default_factory=lambda: ["1d", "4h"])
     execution_timeframes: list[str] = field(default_factory=lambda: ["1h", "15m"])
@@ -218,8 +226,21 @@ class TradeDecisionEngine:
             threshold=threshold,
         )
         rr = first_float(rr_payload.get("value"))
-        thresholds = load_strategy_signal_config().get("thresholds", {})
+        config = load_strategy_signal_config()
+        thresholds = config.get("thresholds", {})
         price_protection = self._price_protection(plan, thresholds)
+        # Leverage sizing inputs (V2.2): the sizing engine needs the plan's
+        # stop distance in percent and, when a 4h snapshot is available, the
+        # normalised ATR percent. Both ride in ``common`` so every decision
+        # branch (READY / WAIT_TRIGGER / BLOCKED ...) carries them.
+        sizing_cfg = sizing_config_from_mapping(config)
+        sizing_entry = first_float(
+            rr_payload.get("entry_price_used"),
+            (max(entry_zone) if entry_zone else None),
+            current_price,
+        )
+        sizing_stop_pct = self._stop_distance_pct(sizing_entry, invalidation)
+        sizing_atr = self._snapshot_atr_pct(bundles)
         common = {
             "entry_condition": entry_condition,
             "entry_zone": entry_zone,
@@ -232,6 +253,9 @@ class TradeDecisionEngine:
             "risk_downgraded": bool(warnings) or position_cap == "reduced",
             "execution_price": current_price,
             "price_protection": price_protection,
+            "stop_distance_pct": sizing_stop_pct,
+            "atr_pct": sizing_atr,
+            "leverage_sizing_config": sizing_cfg,
         }
 
         lifecycle_state = str(
@@ -514,6 +538,9 @@ class TradeDecisionEngine:
         plan_stale_score: int = 0,
         plan_stale_reason: str = "",
         planned_leverage: float = 0.0,
+        stop_distance_pct: float = 0.0,
+        atr_pct: float | None = None,
+        leverage_sizing_config: dict[str, Any] | None = None,
         lifecycle_state: str = "SETUP_DETECTED",
         activated_at: str = "",
         invalidated_at: str = "",
@@ -528,13 +555,74 @@ class TradeDecisionEngine:
             upstream_max=upstream_max_leverage,
             risk_downgraded=risk_downgraded,
         )
+        # V2.2 sizing gate: the policy above only knows alignment buckets
+        # (0/3/5x). When it yields a positive recommendation, re-check it
+        # against the plan's stop geometry: the sizing engine keeps the
+        # highest leverage whose stop impact fits the risk budget and whose
+        # liquidation buffer survives, and can only tighten (never widen).
+        sizing_cfg = dict(leverage_sizing_config or {})
+        # Size against the upstream platform cap, not the policy bucket:
+        # WAIT_TRIGGER / WAIT_SETUP return 0x from the policy but still need
+        # a planned multiple + detail table for the drawer. Tests pin the
+        # legacy geometry (stop 105 vs entry edge 99); keep the fixture
+        # comment in sync if the engine's conservative-edge rule changes.
+        sizing = evaluate_leverage(
+            stop_distance_pct=float(stop_distance_pct or 0.0),
+            atr_pct=atr_pct,
+            risk_budget_pct=float(sizing_cfg.get("risk_budget_pct", 15.0)),
+            liquidation_buffer_min_pct=float(
+                sizing_cfg.get("liquidation_buffer_min_pct", 1.5)
+            ),
+            atr_buffer_min_pct=float(sizing_cfg.get("atr_buffer_min_pct", 0.0)),
+            hard_cap=float(upstream_max_leverage or 0.0),
+        )
+        sizing_dict = sizing.as_dict()
+        if float(leverage.get("recommended_leverage") or 0.0) > 0:
+            if sizing.recommended_leverage <= 0:
+                leverage = {
+                    "recommended_leverage": 0.0,
+                    "max_leverage": 0.0,
+                    "leverage_status": "blocked",
+                    "leverage_reason": (
+                        "止损几何不支持当前杠杆档位，已降为 0×："
+                        + sizing.leverage_reason
+                    ),
+                }
+            else:
+                tightened = min(
+                    float(leverage["recommended_leverage"]),
+                    float(sizing.recommended_leverage),
+                )
+                leverage = {
+                    "recommended_leverage": tightened,
+                    "max_leverage": tightened,
+                    "leverage_status": sizing.leverage_status,
+                    "leverage_reason": sizing.leverage_reason,
+                }
         if order_type == "CONDITIONAL_LIMIT":
+            # planned_cap mirrors the sizing optimum (capped at 3x for
+            # untriggered setups) so WAIT_TRIGGER rows can still show the
+            # per-leverage table. When sizing has no safe level, fall back
+            # to the legacy min(3, hard_cap) so the drawer still names a
+            # planned multiple instead of 0x.
+            if sizing.recommended_leverage > 0:
+                planned_cap = min(3.0, float(sizing.recommended_leverage))
+            else:
+                planned_cap = min(3.0, float(leverage.get("max_leverage") or 0.0))
             leverage = {
                 "recommended_leverage": 0.0,
                 "max_leverage": 0.0,
                 "leverage_status": "planned",
-                "leverage_reason": "条件尚未同时满足；当前不使用杠杆，激活后按计划上限执行。",
+                "leverage_reason": (
+                    "条件尚未同时满足；当前不使用杠杆"
+                    + (
+                        f"，激活后按 sizing 上限 {planned_cap:.0f}× 执行。"
+                        if planned_cap > 0
+                        else "。"
+                    )
+                ),
             }
+            planned_leverage = planned_cap
         return TradeDecision(
             side=side,
             status=status,
@@ -588,6 +676,9 @@ class TradeDecisionEngine:
             plan_stale_score=plan_stale_score,
             plan_stale_reason=plan_stale_reason,
             planned_leverage=planned_leverage,
+            stop_distance_pct=float(stop_distance_pct or 0.0),
+            atr_pct=atr_pct,
+            leverage_detail=sizing_dict.get("leverage_detail") or {},
             lifecycle_state=lifecycle_state,
             activated_at=activated_at,
             invalidated_at=invalidated_at,
@@ -595,6 +686,41 @@ class TradeDecisionEngine:
             levels_active=levels_active,
             **leverage,
         )
+
+    @staticmethod
+    def _stop_distance_pct(entry: float | None, stop: float | None) -> float:
+        # Entry comes from the RR payload's conservative edge (or the zone
+        # max) so sizing uses the same fill assumption as the RR gate.
+        if entry is None or stop is None or entry <= 0 or stop <= 0:
+            return 0.0
+        return abs(entry - stop) / abs(entry) * 100.0
+
+    @staticmethod
+    def _snapshot_atr_pct(
+        bundles: Mapping[str, Mapping[str, Any]],
+    ) -> float | None:
+        # Prefer the 4h snapshot's normalised ATR (natr_14, percent). The
+        # bundle embeds the full snapshot under ``snapshot``; fall back to
+        # the flattened ``atr_pct`` when present. Missing ATR is not fatal:
+        # the sizing engine then skips only the ATR buffer check.
+        for timeframe in ("4h", "1d", "1h"):
+            bundle = bundles.get(timeframe) or {}
+            snapshot = bundle.get("snapshot") or {}
+            for key in ("atr_pct",):
+                try:
+                    value = float(snapshot.get(key))
+                except (TypeError, ValueError):
+                    value = float("nan")
+                if value == value and value > 0:
+                    return value
+            for key in ("atr_pct",):
+                try:
+                    value = float(bundle.get(key))
+                except (TypeError, ValueError):
+                    value = float("nan")
+                if value == value and value > 0:
+                    return value
+        return None
 
     @staticmethod
     def _leverage_policy(

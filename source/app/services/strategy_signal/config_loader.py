@@ -97,6 +97,11 @@ DEFAULT_STRATEGY_SIGNAL_CONFIG: dict[str, Any] = {
         "entry_max_distance_atr": 3.0,
         "setup_valid_bars": {"1w": 8, "1d": 10, "4h": 12, "1h": 16, "15m": 20},
     },
+    "leverage_sizing": {
+        "risk_budget_pct": 15.0,
+        "liquidation_buffer_min_pct": 1.5,
+        "atr_buffer_min_pct": 0.0,
+    },
     "state_permissions": {
         "NO_EDGE": "observe_only",
         "OBSERVE": "observe_only",

@@ -7795,6 +7795,12 @@ ul.terminal-summary-watch li {
 .strategy-plan-table .numeric,
 .strategy-timeframe-table .numeric { font-variant-numeric: tabular-nums; }
 .strategy-leverage-reason { margin: -4px 0 0; color: var(--muted); font-size: 0.9rem; }
+/* V2.2 leverage sizing table: reuses the shared data-table shell; blocked
+   rows reuse the danger tint, allowed rows stay un-tinted (direction color
+   already lives on the card, no second signal needed). */
+.strategy-leverage-table .numeric { font-variant-numeric: tabular-nums; }
+.strategy-leverage-table tr.is-blocked td { color: var(--muted); }
+.strategy-leverage-detail { margin-top: 12px; }
 
 /* Primary-plan card: a compact, dedicated shell for the main plan so the
    legacy 11-column table can shrink to 6 detail columns and the primary

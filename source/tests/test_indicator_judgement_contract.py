@@ -41,9 +41,12 @@ def _node(timeframe: str, direction: str, *, freshness: str = "fresh") -> Timefr
 
 
 def _bundles(rr: float | None = 2.0, *, max_leverage: float = 5.0) -> dict:
+    # Stop sits 1.4% above the conservative entry edge (99): the V2.2 sizing
+    # gate keeps 5x alive here (5 x 1.41% = 7.07% < 15% budget). Tests that
+    # need a sizing-blocked geometry override stop_price afterwards.
     plan = {
         "entry_zone": [99, 101],
-        "stop_price": 105,
+        "stop_price": 100.4,
         "take_profit_1": 100 - (rr * 5 if rr is not None else 10),
         "entry_condition": "等待反抽失败",
         "max_leverage": max_leverage,
@@ -54,6 +57,13 @@ def _bundles(rr: float | None = 2.0, *, max_leverage: float = 5.0) -> dict:
     if rr is not None:
         plan["risk_reward_ratio"] = rr
     return {"4h": {"decision": {"short_plan": plan}}}
+
+
+def _bundles_wide_stop(rr: float | None = 2.0, *, max_leverage: float = 5.0) -> dict:
+    """Variant with the legacy wide stop (105) for geometry-gated tests."""
+    bundles = _bundles(rr, max_leverage=max_leverage)
+    bundles["4h"]["decision"]["short_plan"]["stop_price"] = 105
+    return bundles
 
 
 def test_registry_marks_non_directional_indicators() -> None:
@@ -128,6 +138,8 @@ def test_aligned_daily_4h_waits_for_1h_trigger() -> None:
     assert decision.recommended_leverage == 0
     assert decision.max_leverage == 0
     assert decision.planned_leverage == 3
+    assert "sizing" in decision.leverage_reason
+    assert decision.leverage_detail["optimal"] == 5
     assert decision.order_type == "CONDITIONAL_LIMIT"
     assert decision.trade_timeframe == "4h"
     assert decision.direction_timeframes == ["1d", "4h"]
@@ -186,6 +198,7 @@ def test_first_lower_timeframe_conflict_builds_conditional_limit(
     assert decision.direction_source == "1d+4h"
     assert decision.recommended_leverage == 0
     assert decision.planned_leverage == 3
+    assert decision.leverage_detail["optimal"] == 5
     assert len(decision.activation_conditions) == 2
 
 
@@ -235,7 +248,7 @@ def test_low_risk_reward_blocks_aligned_setup() -> None:
             _node("1h", "SHORT"),
             _node("15m", "SHORT"),
         ],
-        bundles=_bundles(1.0),
+        bundles=_bundles_wide_stop(1.0),
         risk_alerts=[],
         position_cap="standard",
         next_check=None,
@@ -277,7 +290,10 @@ def test_warning_downgrades_ready_trade_to_three_x() -> None:
     assert decision.status == "READY"
     assert decision.recommended_leverage == 3
     assert decision.max_leverage == 3
-    assert decision.leverage_status == "risk_adjusted"
+    # Policy downgraded 5x -> 3x by the warning; sizing optimum (5x) only
+    # tightens, so the 3x cap survives with the sizing reason attached.
+    assert "止损距离" in decision.leverage_reason
+    assert decision.leverage_detail["optimal"] == 5
 
 
 def test_upstream_hard_cap_is_never_exceeded() -> None:

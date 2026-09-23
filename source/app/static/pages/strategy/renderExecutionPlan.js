@@ -57,6 +57,44 @@ function orderTypeLabel(value) {
   return { MARKET: "市价执行计划", CONDITIONAL_LIMIT: "条件限价计划", NONE: "暂无订单计划" }[value] || "暂无订单计划";
 }
 
+function sizingDetail(plan, decision) {
+  const detail = plan.leverage_detail && plan.leverage_detail.levels
+    ? plan.leverage_detail
+    : decision.leverage_detail || null;
+  return detail && Array.isArray(detail.levels) && detail.levels.length ? detail : null;
+}
+
+function leverageTable(plan, decision, escapeHtml) {
+  // Per-leverage margin table: each candidate multiple shows its own stop
+  // impact / liquidation buffer so the user sees WHY e.g. 5x is blocked
+  // while 2x survives. Source is the backend sizing audit (no recompute).
+  const detail = sizingDetail(plan, decision);
+  if (!detail) return "";
+  const rows = detail.levels.map((level) => {
+    const lev = Number(level.leverage || 0);
+    const stopImpact = Number(level.stop_margin_impact_pct);
+    const liqBuffer = Number(level.liquidation_buffer_pct);
+    const atrImpact = level.one_atr_margin_impact_pct === null || level.one_atr_margin_impact_pct === undefined
+      ? "-" : `${Number(level.one_atr_margin_impact_pct).toFixed(2)}%`;
+    const verdict = level.allowed ? "可用" : escapeHtml(level.block_reason || "不可用");
+    return `<tr class="${level.allowed ? "is-ok" : "is-blocked"}">`
+      + `<td class="numeric">${lev > 0 ? `${lev}×` : "-"}</td>`
+      + `<td class="numeric">${Number.isFinite(stopImpact) ? `${stopImpact.toFixed(2)}%` : "-"}</td>`
+      + `<td class="numeric">${atrImpact}</td>`
+      + `<td class="numeric">${Number.isFinite(liqBuffer) ? `${liqBuffer.toFixed(2)}%` : "-"}</td>`
+      + `<td>${verdict}</td></tr>`;
+  }).join("");
+  const stopPct = Number(plan.stop_distance_pct ?? decision.stop_distance_pct ?? 0);
+  const caption = stopPct > 0 ? `止损距离 ${stopPct.toFixed(2)}% · ` : "";
+  return `<details class="strategy-collapsible strategy-leverage-detail">`
+    + `<summary class="strategy-collapsible-summary"><div><strong>各杠杆止损 / 强平影响</strong>`
+    + `<small>${escapeHtml(caption)}止损触发损失 / 强平缓冲</small></div>`
+    + `<span class="strategy-collapse-control" aria-hidden="true"></span></summary>`
+    + `<div class="strategy-collapsible-body"><div class="table-shell"><table class="data-table strategy-leverage-table">`
+    + `<thead><tr><th>杠杆</th><th>止损触发损失</th><th>单根 ATR 回撤</th><th>强平缓冲</th><th>结论</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table></div></div></details>`;
+}
+
 function orderStatusLabel(value) {
   return {
     READY: "可执行",
@@ -158,6 +196,7 @@ function primaryPlanCard(plan, decision, escapeHtml) {
         <div><dt>触发条件</dt><dd>${escapeHtml(triggerText(plan, decision))}</dd></div>
         <div><dt>状态</dt><dd>${escapeHtml(orderStatusLabel(decision.order_status))}</dd></div>
       </dl>
+      ${leverageTable(plan, decision, escapeHtml)}
     </div>
   `;
 }

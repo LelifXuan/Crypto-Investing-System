@@ -195,6 +195,10 @@ class TradePlan:
     max_leverage: float = 0.0
     leverage_status: str = "blocked"
     leverage_reason: str = "当前计划不建议使用杠杆。"
+    # V2.2 sizing audit (mirrors TradeDecision): per-leverage rows the drawer
+    # renders so each multiple shows its own stop impact / liq buffer.
+    stop_distance_pct: float = 0.0
+    leverage_detail: dict[str, Any] = field(default_factory=dict)
     order_type: str = "NONE"
     order_status: str = "NO_DIRECTION"
     execution_price: float | None = None

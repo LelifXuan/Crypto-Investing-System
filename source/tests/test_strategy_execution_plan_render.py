@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Behavioural tests for ``renderExecutionPlan``.
 
 The frontend renderer is a native ES module that takes a ``model`` + ``helpers``
@@ -84,6 +85,18 @@ def _full_model() -> dict:
                 {"label": "TP2", "price": 61938.43},
             ],
             "risk_reward": {"legacy_rr": 2.97},
+            "stop_distance_pct": 3.03,
+            "leverage_detail": {
+                "optimal": 3,
+                "max_allowed": 3,
+                "binding_constraint": "risk_budget",
+                "levels": [
+                    {"leverage": 1, "stop_margin_impact_pct": 3.03, "one_atr_margin_impact_pct": None, "liquidation_buffer_pct": 96.97, "allowed": True, "block_reason": ""},
+                    {"leverage": 2, "stop_margin_impact_pct": 6.06, "one_atr_margin_impact_pct": None, "liquidation_buffer_pct": 46.97, "allowed": True, "block_reason": ""},
+                    {"leverage": 3, "stop_margin_impact_pct": 9.09, "one_atr_margin_impact_pct": None, "liquidation_buffer_pct": 30.3, "allowed": True, "block_reason": ""},
+                    {"leverage": 5, "stop_margin_impact_pct": 15.15, "one_atr_margin_impact_pct": None, "liquidation_buffer_pct": 16.97, "allowed": False, "block_reason": "止损冲击 15.15% 超出单笔风险预算 15.00%"},
+                ],
+            },
         },
         "trade_plans": [
             {
@@ -106,6 +119,7 @@ def _full_model() -> dict:
                 "recommended_leverage": 3.0,
                 "max_leverage": 3.0,
                 "planned_leverage": 3.0,
+                "stop_distance_pct": 3.03,
                 "permission": "WAIT",
             },
             {
@@ -218,3 +232,20 @@ def test_render_execution_plan_secondary_table_is_collapsed_and_keeps_eleven_col
     assert '<th>交易级别</th>' in html
     assert '<th>方向</th>' in html
     assert '<th>杠杆</th>' in html
+
+def test_render_execution_plan_shows_per_leverage_sizing_table() -> None:
+    out = _run_renderer(_full_model())
+    html = out["html"]
+    assert "各杠杆止损 / 强平影响" in html, "drawer must carry the per-leverage sizing table"
+    for head in ("止损触发损失", "单根 ATR 回撤", "强平缓冲"):
+        assert head in html, f"sizing table must carry column {head!r}"
+    assert "3×" in html and "5×" in html, "table must list candidate multiples"
+    assert "止损冲击 15.15%" in html, "blocked 5x row must name its binding constraint"
+
+
+def test_render_execution_plan_hides_sizing_table_without_detail() -> None:
+    model = _full_model()
+    model["trade_decision"].pop("leverage_detail", None)
+    model["trade_plans"][0].pop("leverage_detail", None)
+    out = _run_renderer(model)
+    assert "各杠杆止损 / 强平影响" not in out["html"], "no audit detail -> no table, no empty shell"
