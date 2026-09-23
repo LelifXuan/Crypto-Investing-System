@@ -559,7 +559,13 @@ def adjacent_timeframes(timeframe: str) -> list[str]:
 
 def strategy_stack_timeframes(page: str, timeframe: str) -> list[str]:
     if page == "strategy":
-        return ["30d", "1w", "1d", "4h", "1h", "15m"]
+        # Queue arithmetic (2026-09-23): "strategy" bundles fan out to the
+        # full six-timeframe stack per hint. The unified synthesis only reads
+        # the timeframe the caller asked for (UnifiedDataLoader loads all six
+        # horizons but each bundle read is cache-first and cheap when fresh),
+        # so refresh only the requested timeframe here. The periodic worker
+        # already walks every timeframe explicitly via its FAST/SLOW plans.
+        return [timeframe]
     return [timeframe]
 
 

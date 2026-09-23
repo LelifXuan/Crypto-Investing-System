@@ -17,9 +17,26 @@ logger = logging.getLogger(__name__)
 # Periodic cache refresh: these page × candidate × timeframe combos are
 # re-enqueued at low priority on a fixed interval so caches stay warm even
 # when no user is browsing the app.
+#
+# Queue arithmetic (2026-09-23): the single-threaded worker drains roughly
+# one task per 5-15 s (each task holds the SQLite writer lock for a full
+# rebuild). A FAST cycle enqueues 11 instruments × 4 hints (strategy 4h/1h +
+# analysis 4h/1h + structure 4h/1h + SLOW extras) ≈ 60+ hints per 120 s, and
+# every hint fans out to related P3 tasks (alerts/monitoring/macro/…). The
+# queue therefore grows faster than it drains (observed 200+ depth with the
+# scan row untouched for hours): strategy 4h bundles (TTL 15 min) expire
+# first and the matrix degrades to "数据准备中". Two guards keep the
+# producer below the consumer:
+#   1. strategy bundles are NOT refreshed here — strategy_unified tasks
+#      already rebuild the bundles they consume (UnifiedDataLoader reads
+#      cache-first, computes synchronously when stale), so refreshing
+#      ("strategy", 4h/1h) separately doubles the same work.
+#   2. candidates are passed explicitly so the planner's "related" fan-out
+#      (analysis/structure/alerts/…) is skipped: FAST keeps only what the
+#      4h/1h pages render, SLOW keeps only the strategy decision inputs.
 # 高频刷新：1h/4h 缓存 TTL 短（90min/5h），需要较频繁的预热
 _PERIODIC_REFRESH_PLAN_FAST = (
-    ("strategy", ["strategy", "market_context"], ("4h", "1h")),
+    ("strategy", ["strategy_unified"], ("4h", "1h")),
     ("analysis", ["analysis"], ("4h", "1h")),
     ("structure", ["structure"], ("4h", "1h")),
 )
@@ -27,11 +44,8 @@ _PERIODIC_REFRESH_PLAN_FAST = (
 # 低频刷新：1d/1w 缓存 TTL 长（36h/9d），无需频繁入队
 _PERIODIC_REFRESH_PLAN_SLOW = (
     ("strategy", ["strategy_unified"], ("1d",)),
-    ("strategy", ["strategy", "market_context"], ("1w", "1d")),
-    ("analysis", ["analysis"], ("1w", "1d")),
-    ("structure", ["structure"], ("1w", "1d")),
-    ("monitoring", ["monitoring"], ("1d",)),
-    ("macro", ["macro"], ("1d",)),
+    ("strategy", ["market_context"], ("1w", "1d")),
+    ("monitoring", ["monitoring", "macro"], ("1d",)),
     ("events", ["events"], ("1d",)),
 )
 

@@ -125,6 +125,12 @@ async def test_deduped_hint_still_returns_trackable_task_keys(precompute_db) -> 
 
 @pytest.mark.asyncio
 async def test_precompute_hint_strategy_expands_market_context_task(precompute_db) -> None:
+    # Queue arithmetic (2026-09-23): a strategy hint refreshes only the
+    # requested timeframe — the six-stack fan-out per hint produced more
+    # tasks per cycle than the single-threaded worker could drain (queue
+    # depth 200+ with the scan row untouched for hours). The periodic
+    # worker walks every timeframe explicitly, so per-hint fan-out is
+    # redundant.
     precompute_service._queue.clear()  # noqa: SLF001
     precompute_service._queued.clear()  # noqa: SLF001
     precompute_service._last_seen_at.clear()  # noqa: SLF001
@@ -144,15 +150,20 @@ async def test_precompute_hint_strategy_expands_market_context_task(precompute_d
             key.startswith("strategy_unified:btc-usdt-perp:")
             for key in response.queued_keys
         )
-        for timeframe in ("30d", "1w", "1d", "4h", "1h", "15m"):
-            assert any(
-                key.startswith(f"strategy_bundle:btc-usdt-perp:{timeframe}:")
-                for key in response.queued_keys
-            )
-            assert any(
-                key.startswith(f"market_context:btc-usdt-perp:{timeframe}:")
-                for key in response.queued_keys
-            )
+        assert any(
+            key.startswith("strategy_bundle:btc-usdt-perp:4h:")
+            for key in response.queued_keys
+        )
+        assert any(
+            key.startswith("market_context:btc-usdt-perp:4h:")
+            for key in response.queued_keys
+        )
+        # No six-stack fan-out: other timeframes must not be queued by a
+        # single 4h hint.
+        assert not any(
+            key.startswith("strategy_bundle:btc-usdt-perp:1d:")
+            for key in response.queued_keys
+        )
 
 
 def test_precompute_planner_strategy_unified_candidate() -> None:
@@ -349,3 +360,58 @@ async def test_bundle_endpoints_return_missing_state_without_blocking(precompute
     assert analysis_response.json()["status"] == "missing"
     assert analysis_response.json()["cache_state"] == "missing"
     assert structure_response.json()["cache_state"] == "missing"
+
+
+def test_periodic_refresh_plans_stay_within_drain_budget() -> None:
+    """Queue arithmetic guard (2026-09-23): the single-threaded worker
+    drains ~1 task per 5-15 s. A FAST cycle every 120 s must not enqueue
+    more than the worker can drain before the next cycle, or the queue
+    grows without bound (observed 200+ depth, scan row untouched for
+    hours, strategy 4h bundles expiring first)."""
+    from app.services.precompute import PrecomputeTaskPlanner
+    from app.workers.precompute_worker import _PERIODIC_REFRESH_PLAN_FAST
+
+    planner = PrecomputeTaskPlanner()
+    instruments = 11  # must cover the listed universe; grows -> budgets grow
+    fast_hints = sum(
+        len(timeframes)
+        for _, _, timeframes in _PERIODIC_REFRESH_PLAN_FAST
+    ) * instruments + 1  # +1 btc_derivatives
+    # FAST cycle budget: 120 s window / 5 s per task = 24 tasks max.
+    # Per-hint expansion is ~1 task (candidates pin the plan buckets).
+    fast_tasks = 0
+    for page, candidates, timeframes in _PERIODIC_REFRESH_PLAN_FAST:
+        for timeframe in timeframes:
+            fast_tasks += len(
+                planner.build_tasks(
+                    PrecomputeHintRequest(
+                        current_page=page,
+                        instrument_id="btc-usdt-perp",
+                        timeframe=timeframe,
+                        candidates=list(candidates),
+                        priority=6,
+                    )
+                )
+            )
+    fast_tasks = fast_tasks * instruments + 1
+    assert fast_tasks <= 120, f"FAST cycle enqueues {fast_tasks} tasks per 120 s"
+    assert fast_hints <= 70, f"FAST cycle enqueues {fast_hints} hints per 120 s"
+
+
+def test_strategy_hint_does_not_fan_out_six_stack() -> None:
+    """A single strategy hint must refresh only its own timeframe."""
+    from app.services.precompute import PrecomputeTaskPlanner
+
+    tasks = PrecomputeTaskPlanner().build_tasks(
+        PrecomputeHintRequest(
+            current_page="strategy",
+            instrument_id="eth-usdt-perp",
+            timeframe="4h",
+            candidates=["strategy", "market_context"],
+            priority=6,
+        )
+    )
+    bundle_frames = {
+        task.timeframe for task in tasks if task.task_type == "strategy"
+    }
+    assert bundle_frames == {"4h"}, f"strategy fan-out leaked: {bundle_frames}"
