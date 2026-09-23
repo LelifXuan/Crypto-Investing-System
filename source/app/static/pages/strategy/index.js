@@ -3,7 +3,7 @@ import { api } from "../../core/api.js";
 import { appState } from "../../core/state.js";
 import {
   escapeHtml, formatNumber, formatDateTime, setRoot,
-  statusBanner, loadingState,
+  errorState, loadingState,
 } from "../../core/dom.js";
 import { normalizeUnifiedStrategy } from "./adapter.js?v=trade-4h-v1";
 import { renderScanMatrix, bindScanMatrix } from "./renderScanMatrix.js?v=opportunity-matrix-v2";
@@ -101,24 +101,30 @@ function renderScanResults(data) {
   }
 }
 
-function renderScanLoading() {
-  const status = document.getElementById("strategy-scan-status");
-  if (status) status.innerHTML = statusBanner("正在扫描全部品种×级别...", "info");
+function renderScanLoading(message) {
   const matrixEl = document.getElementById("strategy-scan-matrix");
-  if (matrixEl) matrixEl.innerHTML = loadingState("正在计算各品种各周期策略...");
+  if (matrixEl) matrixEl.innerHTML = loadingState(message || "正在计算各品种各周期策略...");
   const rankedEl = document.getElementById("strategy-scan-ranked");
   if (rankedEl) rankedEl.innerHTML = loadingState("等待扫描完成...");
+}
+
+// The scan panels are the only live surface on this page (the status rail was
+// removed on purpose), so every terminal state has to be written into them.
+// Writing the failure into `#strategy-scan-status` — an element that does not
+// exist — left the loading dots up forever, which reads as "still working"
+// after several minutes of nothing.
+function renderScanError(message) {
+  const matrixEl = document.getElementById("strategy-scan-matrix");
+  if (matrixEl) matrixEl.innerHTML = errorState(message);
+  const rankedEl = document.getElementById("strategy-scan-ranked");
+  if (rankedEl) rankedEl.innerHTML = `<div class="data-state data-state-empty">点击「刷新扫描」可重试。</div>`;
 }
 
 // 2026-07-24: cold-load reliability. Shows a banner distinct from the
 // regular loading dots so the user knows the system is warming caches
 // (not stuck).
 function renderWarmingStatus(message) {
-  // Status bar removed — keep loading states for matrix/ranked only.
-  const matrixEl = document.getElementById("strategy-scan-matrix");
-  if (matrixEl) matrixEl.innerHTML = loadingState("正在预热数据缓存...");
-  const rankedEl = document.getElementById("strategy-scan-ranked");
-  if (rankedEl) rankedEl.innerHTML = loadingState("等待预热完成...");
+  renderScanLoading("正在预热数据缓存...");
 }
 
 // 2026-07-24: fire-and-forget prewarm so cold cache isn't blocking the
@@ -170,11 +176,17 @@ function _openStrategyDetail(instrumentId, timeframe) {
     const signal = detailLoadController.signal;
 
     const force = loadOpts.force ?? false;
+    // `bypassCache` re-reads the server snapshot without rebuilding it. A
+    // plain unforced read is served from the 30 s client-side response cache
+    // (see api.getUnifiedStrategy), so the detail panel's auto-refresh has to
+    // ask for a real round trip — otherwise it re-reads its own stale copy and
+    // can never observe the snapshot it is waiting for.
+    const bypassCache = loadOpts.bypassCache ?? false;
     const unifiedTimeoutMs = loadOpts.timeoutMs ?? (force ? 60000 : 15000);
     const otherTimeoutMs = loadOpts.timeoutMs ?? 8000;
     const [unifiedResult, monitoringResult, derivativesResult, macroResult] =
       await Promise.allSettled([
-        api.getUnifiedStrategy(iid, { force, timeoutMs: unifiedTimeoutMs, signal }),
+        api.getUnifiedStrategy(iid, { force, bypassCache, timeoutMs: unifiedTimeoutMs, signal }),
         api.getMonitoringDashboard(iid, tf, { force, timeoutMs: otherTimeoutMs, signal }),
         api.getBtcDerivativesDashboard({}, { force, timeoutMs: otherTimeoutMs, signal }),
         api.getMacroOverview({ force, timeoutMs: otherTimeoutMs, signal }),
@@ -207,15 +219,18 @@ function _openStrategyDetail(instrumentId, timeframe) {
   });
 }
 
+// A forced scan rebuilds every instrument's unified strategy serially
+// (SQLite keeps one writer), measured at ~84 s for a 13-instrument
+// universe. The old 60 s budget aborted the request mid-rebuild and the
+// retry paid the whole cost again — a refresh could never succeed on the
+// first attempt, and the matrix stayed on its loading dots throughout.
+const FORCE_SCAN_TIMEOUT_MS = 240000;
+const CACHED_SCAN_TIMEOUT_MS = 120000;
+
 async function loadScan(force = false, opts = {}) {
   activeController?.abort();
   activeController = new AbortController();
-  // 2026-07-24 v2: cold-load reliability. First cold scan can take 60+
-  // seconds (rebuilds every cell's unified strategy from scratch).
-  // Default 60s frontend timeout trips before the scan completes.
-  // Use a 120s timeout on cold scans, drop back to 60s after a
-  // successful first response, and retry once on transient failure.
-  const timeoutMs = opts.timeoutMs ?? (force ? 60000 : 120000);
+  const timeoutMs = opts.timeoutMs ?? (force ? FORCE_SCAN_TIMEOUT_MS : CACHED_SCAN_TIMEOUT_MS);
   try {
     const data = await api.getStrategyScan({
       force,
@@ -236,52 +251,52 @@ async function loadScan(force = false, opts = {}) {
   } catch (err) {
     if (err?.name === "AbortError") return null;
     console.error("strategy:scan:error", err);
+    const timedOut = err?.name === "TimeoutError";
     // 2026-07-24 v2: one retry for transient failures (network blip /
-    // 5xx) before showing the error banner. Bounded — single retry.
+    // 5xx) before showing the error state. Bounded — single retry.
     if (!opts._retried && !opts._skipRetry) {
       console.warn("strategy:scan:retrying once after transient failure");
+      renderScanLoading("扫描超时，正在重试...");
       await new Promise((r) => setTimeout(r, 2000));
       if (!mounted) return null;
-      return loadScan(force, { _retried: true, timeoutMs: 120000 });
+      return loadScan(force, { _retried: true, timeoutMs: opts.timeoutMs });
     }
-    const status = document.getElementById("strategy-scan-status");
-    if (status) {
-      status.innerHTML = statusBanner(
-        "扫描失败，请稍后重试",
-        "error"
-      );
-    }
+    renderScanError(
+      timedOut
+        ? `扫描超时（已等待 ${Math.round(timeoutMs / 1000)} 秒）。后台重算量较大时会超过这个时间。`
+        : "扫描失败，请点击「刷新扫描」重试。"
+    );
     return null;
   }
 }
 
 // 2026-07-24 v2: poll the backend while it returns 'warming'.
 // Up to WARMING_RETRY_LIMIT attempts at WARMING_RETRY_DELAY_MS apart.
-// Each attempt calls loadScan(); warming responses keep the banner up,
-// data responses go through the normal render path, errors show
-// the error banner (which loadScan handles internally).
+// Each attempt calls loadScan(); warming responses keep the warming state
+// up, data responses go through the normal render path, errors render the
+// error state (which loadScan handles internally).
 const WARMING_RETRY_LIMIT = 6;
 const WARMING_RETRY_DELAY_MS = 5000;
 
 async function pollWhileWarming(attempt = 0) {
   if (!mounted) return;
   if (attempt >= WARMING_RETRY_LIMIT) {
-    // Graceful give-up. Distinct from the error banner — this means
+    // Graceful give-up. Distinct from the error state — this means
     // "the system is just slow, please manually retry", NOT a fault.
-    renderWarmingStatus(
-      "后台仍在预热数据，请点击「刷新扫描」按钮重试"
+    renderScanError(
+      "后台仍在预热数据（已等待约 30 秒仍未完成）。请点击「刷新扫描」重试。"
     );
     return;
   }
   await new Promise((r) => setTimeout(r, WARMING_RETRY_DELAY_MS));
   if (!mounted) return;
-  const result = await loadScan(false, { timeoutMs: 90000 });
+  const result = await loadScan(false, { timeoutMs: 90000, _skipRetry: true });
   if (!mounted) return;
   if (result && result.__state === "warming") {
     pollWhileWarming(attempt + 1);
     return;
   }
-  // loadScan already rendered real data or the error banner.
+  // loadScan already rendered real data or the error state.
 }
 
 export async function renderStrategy({ commands } = {}) {
@@ -322,13 +337,19 @@ export async function renderStrategy({ commands } = {}) {
     const button = document.getElementById("strategy-scan-refresh");
     if (button) button.disabled = true;
     // Manual refresh always shows loading state — user expects feedback.
+    // A forced scan rebuilds every cell serially (~1-2 min for the full
+    // universe), so say so instead of showing an unbounded spinner.
     if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
     warmingVisible = true;
-    renderScanLoading();
+    if (button) button.textContent = "正在重算...";
+    renderScanLoading("正在重新推演全部品种×周期，约需 1-2 分钟...");
     try { await loadScan(true); }
     finally {
       refreshBusy = false;
-      if (!commandLifetime.signal.aborted && button?.isConnected) button.disabled = false;
+      if (!commandLifetime.signal.aborted && button?.isConnected) {
+        button.disabled = false;
+        button.textContent = "刷新扫描";
+      }
     }
   }
   document.getElementById("strategy-scan-refresh")?.addEventListener("click", refreshScan, { signal: commandLifetime.signal });

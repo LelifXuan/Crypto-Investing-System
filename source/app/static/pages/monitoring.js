@@ -827,7 +827,7 @@ function renderTopbar(data, macro) {
             <span>数据置信度</span>
             <span class="monitoring-confidence-chip" data-confidence-tone="${confidenceTone}">${escapeHtml(confidence)}</span>
           </article>
-          <article class="monitoring-topbar-item" title="有有效数据的宏观指标占比；不足 100% 意味着部分指标缺失或过期，决策置信度会相应降低">
+          <article class="monitoring-topbar-item" title="可评分宏观指标中已完成评分的占比；不足 100% 意味着部分指标缺失或过期，决策置信度会相应降低（展示型指标不计入分母）">
             <span>宏观数据覆盖</span>
             <strong>${escapeHtml(formatNumber(macroCoverage, 0))}%</strong>
           </article>

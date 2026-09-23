@@ -11437,9 +11437,35 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   flex-shrink: 0;
 }
 
+.strategy-detail-breadcrumb {
+  min-width: 0;
+}
+
 .strategy-detail-breadcrumb h2 {
   font-size: 1.1rem;
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Refresh state + the manual re-derive action. The drawer needs to say when
+   work is genuinely in flight, and must always offer a way out of a terminal
+   "plan invalidated" state (nothing is queued in that case). */
+.strategy-detail-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.strategy-detail-refresh {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.strategy-detail-refresh[hidden] {
+  display: none;
 }
 
 .strategy-detail-body {

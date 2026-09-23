@@ -67,7 +67,6 @@
   --canvas-gutter: clamp(20px, 1.5vw, 36px);
   --topbar-height: 64px;
   --workbench-gap: 18px;
-  --context-rail-min-height: 66px;
   --inspector-width: clamp(328px, 21vw, 400px);
   --layer-shell: 1000;
   --layer-inspector: 2000;
@@ -4145,7 +4144,7 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
    templates now share this single base + variant layer. Per-page
    micro-differences (grid column density, head background, h2 font-size,
    snapshot support) live under .governance-ledger--{variant}.
-   
+
    See docs/design-guidelines.md §7.7 (governance ledger) for the
    canonical structure and docs/source/tests/test_governance_ledger_unified.py
    for the regression guard. */
@@ -4424,58 +4423,6 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
   box-shadow: var(--glass-shadow);
 }
 
-.workbench-context-rail {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-  min-height: var(--context-rail-min-height);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--surface-elevated) 74%, transparent);
-  border-block: 1px solid var(--border);
-}
-
-.workbench-context-item {
-  position: relative;
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  min-width: 0;
-  padding: 10px 16px;
-}
-.workbench-context-item + .workbench-context-item { border-left: 1px solid var(--border-light); }
-.workbench-context-item > span {
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-.workbench-context-item > strong {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.workbench-context-item > small { color: var(--text-tertiary); font-size: 10px; }
-.workbench-context-item[data-context-status="live"]::before,
-.workbench-context-item[data-context-status="fresh"]::before,
-.workbench-context-item[data-context-status="stale"]::before,
-.workbench-context-item[data-context-status="degraded"]::before,
-.workbench-context-item[data-context-status="unavailable"]::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 6px;
-  height: 6px;
-  background: var(--info);
-  border-radius: 50%;
-}
-.workbench-context-item[data-context-status="stale"]::before,
-.workbench-context-item[data-context-status="degraded"]::before { background: var(--warning); }
-.workbench-context-item[data-context-status="unavailable"]::before { background: var(--neutral); }
-
 .workbench-page-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -4662,8 +4609,6 @@ body[data-page="market-analysis"] .workbench-primary .analysis-chart-card { box-
 }
 
 @media (max-width: 900px) {
-  .workbench-context-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .workbench-context-item:nth-child(odd) { border-left: 0; }
   .workbench-inspector {
     top: auto;
     left: 0;

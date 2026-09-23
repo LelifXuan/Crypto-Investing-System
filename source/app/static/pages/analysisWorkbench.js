@@ -1,17 +1,18 @@
 import { animateStateChange, animateValueChange, clearRelated } from '../ui/semanticMotion.js';
-import { mountContextRail } from '../ui/contextRail.js';
 import { buildAnalysisInspections } from './analysisInspection.js';
 
 /** Page adapter for context, scoped actions, and stable chart updates. */
 export function mountAnalysisWorkbench({ root, signal, commands, refresh, busy, observeCharts }) {
-  const railHost = document.createElement('div');
-  railHost.id = 'analysis-context-rail';
   const primary = document.createElement('div');
   primary.className = 'workbench-primary';
   while (root.firstChild) primary.append(root.firstChild);
   // Technical indicators are already self-contained evidence cards and charts.
   // A second detail sidebar duplicated that content and reduced chart width.
-  root.append(railHost, primary);
+  // The context rail that used to sit above this strip was removed for the same
+  // reason: instrument / timeframe / regime / data / source were already carried
+  // by the hero, the statusbar and the per-chart captions, so the rail cost a
+  // full row of vertical space to repeat them.
+  root.append(primary);
   const currentUrl = new URL(window.location.href);
   if (currentUrl.searchParams.has('inspect') || currentUrl.searchParams.has('keep')) {
     currentUrl.searchParams.delete('inspect');
@@ -19,12 +20,10 @@ export function mountAnalysisWorkbench({ root, signal, commands, refresh, busy, 
     window.history.replaceState(window.history.state, '', currentUrl);
   }
 
-  const rail = mountContextRail(railHost, {});
   const observer = observeCharts(primary, 'analysis-', { signal });
   let contextKey = null;
   let destroyed = false;
   let hasData = false;
-  let railModel = {};
   let previous = new Map();
   const chartSnapshots = new Map();
   const disposers = [];
@@ -55,7 +54,7 @@ export function mountAnalysisWorkbench({ root, signal, commands, refresh, busy, 
   return {
     syncRelations() { clearRelated(primary); },
     hasData: () => hasData,
-    beginContext(key, model) {
+    beginContext(key) {
       if (contextKey !== null && key !== contextKey) {
         previous.clear();
         chartSnapshots.clear();
@@ -64,28 +63,12 @@ export function mountAnalysisWorkbench({ root, signal, commands, refresh, busy, 
       contextKey = key;
       root.dataset.analysisContext = key;
       root.dataset.analysisAvailability = hasData ? 'ready' : 'pending';
-      if (!hasData) {
-        rail.update({ ...model, freshness: { value: '等待分析快照', status: 'unavailable' } });
-      }
     },
     update(model) {
       if (destroyed) return;
       primary.querySelector('.analysis-recovery-note')?.remove();
       const items = buildAnalysisInspections(model);
       const current = new Map(items.map((item) => [item.id, item]));
-      railModel = {
-        ...model.context,
-        regime: model.bundle.mode || undefined,
-        freshness: {
-          value: model.bundle.data_ts || model.bundle.snapshot_at || '时间未知',
-          status: items[0]?.sources[0]?.status || 'unavailable',
-        },
-        sourceSummary: {
-          value: '分析快照',
-          status: items[0]?.sources[0]?.status || 'unavailable',
-        },
-      };
-      rail.update(railModel);
       primary.querySelectorAll('[data-workbench-id]').forEach((element) => {
         const dto = current.get(element.dataset.workbenchId);
         const old = previous.get(dto?.id);
@@ -116,11 +99,6 @@ export function mountAnalysisWorkbench({ root, signal, commands, refresh, busy, 
     failed() {
       if (destroyed) return;
       if (hasData) {
-        rail.update({
-          ...railModel,
-          freshness: { ...railModel.freshness, status: 'stale' },
-          sourceSummary: { value: '分析快照 · 刷新失败', status: 'stale' },
-        });
         note('刷新失败，保留最近有效分析快照。');
       } else {
         root.dataset.analysisAvailability = 'unavailable';
@@ -140,7 +118,6 @@ export function mountAnalysisWorkbench({ root, signal, commands, refresh, busy, 
       delete root.dataset.analysisContext;
       delete root.dataset.analysisAvailability;
       observer.disconnect();
-      rail.destroy();
       previous.clear();
       chartSnapshots.clear();
       clearRelated(primary);

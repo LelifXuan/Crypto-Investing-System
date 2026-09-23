@@ -593,10 +593,85 @@ const adaptiveAxisPlugin = {
   },
 };
 
+// Resolve `annotation.x` to a pixel position on the x scale.
+//
+// These x axes are Chart.js category scales, so getPixelForValue() takes an
+// index (fractional is supported), not a value. The axes here are also
+// irregular: the strike_surface grid runs "62000.0", "64000.0", "66000.0",
+// then 1000-wide steps. An annotation that did not land exactly on a label
+// used to be dropped, so the "Spot" line — spot 86010.14 against a strike grid
+// — never rendered at all, while the walls did only because walls are reported
+// at strikes by definition.
+//
+// Resolve an exact label match first (date annotations, and wall prices that
+// already sit on a strike; string equality is tried before numeric because the
+// old ``Number(label) === Number(annotation.x)`` comparison returned
+// NaN===NaN → false for every ISO date label), then interpolate between the
+// two bracketing numeric labels. Values outside the labelled range return null
+// rather than being clamped to an edge the user would misread as a real level.
+function resolveReferenceLineX(chart, xScale, rawValue) {
+  const labels = chart.data.labels || [];
+  const exactIndex = labels.findIndex((label) => String(label) === String(rawValue));
+  if (exactIndex >= 0) return xScale.getPixelForValue(exactIndex);
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) return null;
+  const numericMatch = labels.findIndex((label) => Number(label) === value);
+  if (numericMatch >= 0) return xScale.getPixelForValue(numericMatch);
+  let lower = -1;
+  let upper = -1;
+  labels.forEach((label, index) => {
+    const numeric = Number(label);
+    if (!Number.isFinite(numeric) || numeric === value) return;
+    if (numeric < value) {
+      if (lower < 0 || numeric > Number(labels[lower])) lower = index;
+    } else if (upper < 0 || numeric < Number(labels[upper])) {
+      upper = index;
+    }
+  });
+  if (lower < 0 || upper < 0) return null;
+  const low = Number(labels[lower]);
+  const high = Number(labels[upper]);
+  const fraction = high === low ? 0 : (value - low) / (high - low);
+  return xScale.getPixelForValue(lower + fraction);
+}
+
+// referenceLines label placement.
+// Every vertical line anchors its label at chartArea.top + 12, so two
+// annotations sitting on nearby strikes printed on top of each other — on the
+// strike_surface chart Max Pain ($79k) and Call Wall ($80k) collapsed into one
+// unreadable string. Keep the boxes already drawn in this pass and drop a
+// colliding label one text line lower.
+const REFERENCE_LABEL_FONT = "600 10px IBM Plex Sans, Noto Sans SC, sans-serif";
+const REFERENCE_LABEL_LINE_HEIGHT = 12;
+const REFERENCE_LABEL_MAX_ROWS = 4;
+
+function referenceLabelRectsOverlap(a, b) {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
+// Returns the baseline y to draw at and records the box it occupies.
+// ctx.font must already be set — the width is measured for the collision test.
+function reserveReferenceLabelY(ctx, text, left, baseY, placed) {
+  const right = left + ctx.measureText(text).width;
+  let y = baseY;
+  for (let row = 0; row < REFERENCE_LABEL_MAX_ROWS; row += 1) {
+    const rect = { left, right, top: y - 9, bottom: y + 3 };
+    if (!placed.some((other) => referenceLabelRectsOverlap(rect, other))) {
+      placed.push(rect);
+      return y;
+    }
+    y += REFERENCE_LABEL_LINE_HEIGHT;
+  }
+  // Cap at REFERENCE_LABEL_MAX_ROWS: past that the label drifts into the plot.
+  placed.push({ left, right, top: y - 9, bottom: y + 3 });
+  return y;
+}
+
 const referenceLines = {
   id: "referenceLines",
   afterDatasetsDraw(chart) {
     const config = chart.options.plugins?.referenceLines || {};
+    const placedLabels = [];
     (config.annotations || []).forEach((annotation) => {
       const { ctx, chartArea, scales } = chart;
       let start;
@@ -611,22 +686,7 @@ const referenceLines = {
       } else if (annotation.type === "verticalLine") {
         const xScale = scales.x;
         if (!xScale) return;
-        const labels = chart.data.labels || [];
-        // Accept both numeric indices (legacy callers passing index strings)
-        // and date/string labels. The previous implementation did
-        // ``Number(label) === Number(annotation.x)`` which always returned
-        // NaN===NaN → false for ISO date labels, silently dropping every
-        // string-x annotation. Try string equality first, then numeric.
-        let index = labels.findIndex(
-          (label) => String(label) === String(annotation.x),
-        );
-        if (index < 0) {
-          index = labels.findIndex(
-            (label) => Number(label) === Number(annotation.x),
-          );
-        }
-        if (index < 0) return;
-        const x = xScale.getPixelForValue(index);
+        const x = resolveReferenceLineX(chart, xScale, annotation.x);
         if (!Number.isFinite(x)) return;
         start = { x, y: chartArea.top };
         end = { x, y: chartArea.bottom };
@@ -644,12 +704,16 @@ const referenceLines = {
       if (annotation.label) {
         ctx.setLineDash([]);
         ctx.fillStyle = annotation.color || CHART_THEME.referenceLabel;
-        ctx.font = "600 10px IBM Plex Sans, Noto Sans SC, sans-serif";
-        ctx.fillText(
-          annotation.label,
-          Math.min(start.x + 5, chartArea.right - 72),
+        ctx.font = REFERENCE_LABEL_FONT;
+        const labelLeft = Math.min(start.x + 5, chartArea.right - 72);
+        const labelY = reserveReferenceLabelY(
+          ctx,
+          String(annotation.label),
+          labelLeft,
           Math.max(chartArea.top + 12, start.y - 5),
+          placedLabels,
         );
+        ctx.fillText(annotation.label, labelLeft, labelY);
       }
       ctx.restore();
     });

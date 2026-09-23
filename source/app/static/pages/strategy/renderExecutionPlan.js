@@ -64,7 +64,7 @@ function orderStatusLabel(value) {
     WAIT_CONFIRMATION: "等待小周期反转确认",
     BLOCKED: "暂不可执行",
     NO_DIRECTION: "方向未确认",
-    INVALIDATED: "候选计划已失效，正在重新推演",
+    INVALIDATED: "候选计划已失效",
     STOP_HIT: "已入场计划触及止损",
     PRICE_STALE: "实时价格已过期，暂停执行",
   }[value] || "状态待确认";
@@ -200,7 +200,7 @@ export function renderExecutionPlan(model, helpers) {
         <div class="wide"><span>主要原因</span><strong>${escapeHtml(decision.primary_reason?.message || "等待交易条件确认。")}</strong></div>
       </div>
       <p class="strategy-leverage-reason">${escapeHtml(decision.leverage_reason || `杠杆：${displayedLeverage}。`)}</p>
-      ${levelsActive ? "" : `<div class="strategy-invalidated-banner" role="status">${escapeHtml(decision.invalidation_reason || decision.primary_reason?.message || "旧计划已失效，正在重新推演。")}</div>`}
+      ${levelsActive ? "" : `<div class="strategy-invalidated-banner" role="status">${escapeHtml(decision.invalidation_reason || decision.primary_reason?.message || "旧计划已失效；可点击「重新推演」基于最新数据重算。")}</div>`}
       ${primary ? primaryPlanCard(primary, decision, escapeHtml) : helpers.emptyState("暂无交易计划")}
       ${secondary.length ? `
         <details class="strategy-collapsible strategy-secondary-plans">

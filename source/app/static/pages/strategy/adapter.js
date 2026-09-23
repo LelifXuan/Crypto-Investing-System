@@ -377,6 +377,12 @@ export function normalizeUnifiedStrategy(payload = {}, extras = {}) {
     price_as_of: safe.price_as_of || null,
     price_source: safe.price_source || "",
     recompute_status: safe.recompute_status || "complete",
+    // Read-path freshness marker set by GET /strategy/unified: "fresh" |
+    // "stale" | "missing" (a forced rebuild does not set one). The drawer uses
+    // it to tell "the snapshot is still being built" (worth waiting for) apart
+    // from "the snapshot is fresh but the live price left the plan behind"
+    // (terminal — re-reading returns the same answer).
+    cache_state: safe.cache_state || "",
     market_decision_snapshot: ensureObject(safe.market_decision_snapshot),
     signal_coverage: ensureArray(safe.signal_coverage).map((item) => ({ ...ensureObject(item) })),
     cross_validation: ensureObject(safe.cross_validation),
@@ -485,7 +491,11 @@ export function decisionStatusLabel(status, side = "NONE") {
     WAIT_TRIGGER: sideText ? `${sideText}，等待1H触发` : "等待1H触发",
     BLOCKED: "暂停交易",
     NO_DIRECTION: "方向未确认",
-    SETUP_INVALIDATED: "候选计划已失效，正在重新推演",
+    // The plan's levels are structural: a rebuild reproduces the same geometry,
+    // so "正在重新推演" promised a result that never arrived and read as a stuck
+    // loading state. The drawer's own refresh indicator says when work is
+    // actually in flight.
+    SETUP_INVALIDATED: "候选计划已失效",
     STOP_HIT: "已入场计划触及止损",
     INVALID_PLAN_LEVELS: "计划价位无效",
     PRICE_STALE: "实时价格已过期，暂停执行",

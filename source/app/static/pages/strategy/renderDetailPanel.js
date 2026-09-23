@@ -12,7 +12,11 @@ import { registerOverlay, LAYER, isTopOverlay } from "../../ui/overlayCoordinato
 const helpers = {
   escapeHtml,
   formatNumber: (v, d) => { const n = Number(v); return Number.isNaN(n) ? "-" : n.toFixed(d ?? 2); },
-  formatDateTime: (v) => v || "-",
+  // The drawer used to re-stub this as a pass-through, so the overview printed
+  // raw ISO strings ("2026-09-22T09:20:45.583117+00:00") for 生成时间 /
+  // 策略时间 / 价格时间. core/dom.js owns the user-facing time policy
+  // (Beijing, minute precision, no zone suffix) — use it.
+  formatDateTime,
   emptyState: (msg) => `<div class="data-state data-state-empty">${escapeHtml(msg)}</div>`,
   errorState: (msg) => `<div class="data-state data-state-error">${escapeHtml(msg)}</div>`,
 };
@@ -79,6 +83,24 @@ function hasPublishedDetail(model) {
   const hasCrossValidation = Array.isArray(model.cross_validation?.matrix)
     && model.cross_validation.matrix.length > 0;
   return hasSnapshot || hasTimeframes || hasCoverage || hasCrossValidation;
+}
+
+// Two different situations both render as "the plan is not actionable", and the
+// drawer has to tell them apart:
+//
+//   1. The snapshot itself is missing / warming / expired. The read path
+//      enqueues precompute work, so re-reading a few seconds later returns the
+//      new snapshot. Waiting is the right move.
+//   2. The snapshot is fresh, but the live mark price has left the plan's
+//      levels behind (recompute_status=enqueued from the price guard). The
+//      plan's levels are structural, so a rebuild reproduces the same
+//      geometry: the answer will not change by waiting. Polling here is what
+//      kept "正在重新推演" on screen for minutes with nothing behind it.
+function detailRebuildPending(model) {
+  if (!model) return true;
+  const cacheState = String(model.cache_state || "").toLowerCase();
+  if (["missing", "warming", "error", "stale"].includes(cacheState)) return true;
+  return !cacheState && !hasPublishedDetail(model);
 }
 
 function renderPendingDetail(model) {
@@ -163,6 +185,10 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
         <span class="eyebrow">STRATEGY DETAIL</span>
         <h2 id="strategy-detail-title">加载中...</h2>
       </div>
+      <div class="strategy-detail-header-actions">
+        <span class="strategy-detail-refresh" id="strategy-detail-refresh" role="status" hidden></span>
+        <button type="button" class="secondary-button" id="strategy-detail-rebuild">重新推演</button>
+      </div>
     </div>
     <div class="strategy-detail-body" id="strategy-detail-body">
       ${loadingState("正在加载完整策略推演...")}
@@ -208,6 +234,103 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
   let mountedAt = Date.now();
   let lastModel = null;
   let forcePending = false;
+  let refreshTimer = null;
+  let refreshAttempts = 0;
+
+  // A stale/unpublished snapshot resolves on its own once the queued precompute
+  // finishes, so the panel re-reads instead of leaving the user to guess
+  // whether anything is happening. Bounded: after the attempts are spent the
+  // panel stops polling and points at the manual rebuild.
+  const REFRESH_INTERVAL_MS = 5000;
+  const REFRESH_MAX_ATTEMPTS = 9;
+
+  function setRefreshNote(text) {
+    const note = document.getElementById("strategy-detail-refresh");
+    if (!note) return;
+    note.textContent = text || "";
+    note.hidden = !text;
+  }
+
+  function stopRefreshPoll() {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
+  }
+
+  function modelKey(model) {
+    return [
+      model?.snapshot_key || model?.generated_at || "",
+      model?.cache_state || "",
+      model?.recompute_status || "",
+    ].join("|");
+  }
+
+  function scheduleRefreshPoll() {
+    stopRefreshPoll();
+    if (forcePending || !detailRebuildPending(lastModel)) return;
+    if (!document.getElementById("strategy-detail-body")?.isConnected) return;
+    if (refreshAttempts >= REFRESH_MAX_ATTEMPTS) {
+      setRefreshNote("后台仍在重算，可点击「重新推演」");
+      return;
+    }
+    if (refreshAttempts === 0) {
+      // Say it before the first tick: a panel that shows a stale plan with no
+      // hint of activity is what made the user wait minutes on nothing.
+      setRefreshNote("数据尚未就绪，本面板会自动刷新");
+    }
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      void refreshDetail();
+    }, REFRESH_INTERVAL_MS);
+  }
+
+  async function refreshDetail() {
+    const previousKey = modelKey(lastModel);
+    refreshAttempts += 1;
+    setRefreshNote(`数据更新中，本面板会自动刷新（${refreshAttempts}/${REFRESH_MAX_ATTEMPTS}）`);
+    let next = null;
+    try {
+      // bypassCache: the client keeps a 30 s copy of /strategy/unified. Without
+      // it this poll would re-read that copy, see no change, and give up while
+      // the fresh snapshot was already published server-side.
+      next = await loadStrategy(instrumentId, timeframe, { bypassCache: true });
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      console.warn("strategy:detail:refresh:error", err);
+    }
+    const body = document.getElementById("strategy-detail-body");
+    if (!body?.isConnected) return;
+    if (!next) {
+      scheduleRefreshPoll();
+      return;
+    }
+    if (modelKey(next) !== previousKey) {
+      applyModel(next);
+    } else {
+      lastModel = next;
+    }
+    if (!detailRebuildPending(lastModel)) {
+      // The snapshot arrived — say so once, then get out of the way. Scoped to
+      // this panel: a reload during the 4 s must not clear the new drawer's note.
+      setRefreshNote("已更新为最新快照");
+      setTimeout(() => {
+        if (panel.isConnected) setRefreshNote("");
+      }, 4000);
+      return;
+    }
+    scheduleRefreshPoll();
+  }
+
+  function applyModel(model) {
+    lastModel = model;
+    renderBody(model);
+    if (!detailRebuildPending(model)) {
+      refreshAttempts = 0;
+      if (!forcePending) setRefreshNote("");
+    }
+    scheduleRefreshPoll();
+  }
 
   function renderBody(model) {
     const title = document.getElementById("strategy-detail-title");
@@ -218,7 +341,7 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     const td = model.trade_decision || {};
     const pending = !hasPublishedDetail(model);
     const dirLabel = pending
-      ? "数据构建中"
+      ? "数据准备中"
       : td.side === "LONG" ? "做多" : td.side === "SHORT" ? "做空" : "等待确认";
     if (title) title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
 
@@ -277,34 +400,56 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
   async function triggerRebuild() {
     if (forcePending) return;
     forcePending = true;
+    stopRefreshPoll();
+    refreshAttempts = 0;
     const body = document.getElementById("strategy-detail-body");
     const btn = body?.querySelector("[data-strategy-rebuild]");
+    const headerBtn = document.getElementById("strategy-detail-rebuild");
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "正在重建...";
+      btn.textContent = "正在推演...";
     }
+    if (headerBtn) {
+      headerBtn.disabled = true;
+      headerBtn.textContent = "正在推演...";
+    }
+    setRefreshNote("正在基于最新数据重新推演...");
     try {
       const next = await loadStrategy(instrumentId, timeframe, {
         force: true,
         timeoutMs: 60000,
       });
       if (!body?.isConnected) return; // panel was closed during the wait
-      lastModel = next;
-      renderBody(next);
       forcePending = false;
+      applyModel(next);
     } catch (err) {
       forcePending = false;
       if (btn) {
         btn.disabled = false;
         btn.textContent = "立即重建本单元";
       }
+      setRefreshNote("重新推演失败，请稍后重试");
       console.error("strategy:rebuild:error", err);
+    } finally {
+      if (headerBtn?.isConnected) {
+        headerBtn.disabled = false;
+        headerBtn.textContent = "重新推演";
+      }
     }
   }
+
+  // The drawer needs a way out of every state, including the terminal one:
+  // a fresh snapshot whose plan levels the live price has already left behind
+  // has no queued work and no automatic recovery, so the user must be able to
+  // ask for a re-derivation on demand.
+  document.getElementById("strategy-detail-rebuild")?.addEventListener("click", () => {
+    void triggerRebuild();
+  });
 
   // Close handler
   const close = () => {
     if (!panel.isConnected && !overlay.isConnected) return;
+    stopRefreshPoll();
     panel.classList.remove("is-open");
     overlay.classList.remove("is-visible");
     // Detach immediately after the close intent. The visual exit is brief,
@@ -345,8 +490,7 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
   loadStrategy(instrumentId, timeframe)
     .then((model) => {
       if (!document.getElementById("strategy-detail-body")?.isConnected) return;
-      lastModel = model;
-      renderBody(model);
+      applyModel(model);
     })
     .catch((err) => {
       // 2026-08-11: AbortError means a new panel was opened before this

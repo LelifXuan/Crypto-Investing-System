@@ -45,6 +45,21 @@ function humanizePriceSource(source) {
   return `${provider} · ${detail}`;
 }
 
+// `recompute_status` is an internal code. Printing it raw ("enqueued") in the
+// audit table told the user a rebuild was running when the read path had only
+// marked the plan as superseded.
+function humanizeRecomputeStatus(value) {
+  const map = {
+    complete: "已完成",
+    enqueued: "本轮不再重算（等新 K 线）",
+    running: "重算中",
+    queued: "排队中",
+    failed: "重算失败",
+  };
+  const key = String(value || "").toLowerCase();
+  return map[key] || "—";
+}
+
 function labelRole(value) {
   return {
     direction_input: "方向输入",
@@ -114,7 +129,7 @@ export function renderDecisionAudit(model, helpers) {
         <article><span>候选模型</span><strong>${escapeHtml(humanizeModelVersion(model.candidate_model_version))}</strong></article>
         <article><span>策略时间</span><strong>${escapeHtml(formatDateTime(model.strategy_as_of))}</strong></article>
         <article><span>价格时间</span><strong>${escapeHtml(formatDateTime(model.price_as_of))}</strong><small>${escapeHtml(humanizePriceSource(model.price_source))}</small></article>
-        <article><span>重算状态</span><strong>${escapeHtml(model.recompute_status)}</strong></article>
+        <article><span>重算状态</span><strong>${escapeHtml(humanizeRecomputeStatus(model.recompute_status))}</strong></article>
       </div>
       <div class="strategy-audit-columns">
         <article>

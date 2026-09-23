@@ -1226,8 +1226,7 @@ function analysisLoadingCards() {
 }
 
 function beginAnalysisTransition(message = "正在准备目标标的与周期") {
-  const instrument = appState.instruments.find((item) => item.id === appState.selectedInstrumentId);
-  workbench?.beginContext(analysisContextKey(), { instrument: instrument?.code || appState.selectedInstrumentId, timeframe: appState.selectedTimeframe });
+  workbench?.beginContext(analysisContextKey());
   if (workbench?.hasData()) { renderAnalysisStatus(message, "loading"); return; }
   const root = document.getElementById("page-root");
   root?.classList.add("analysis-is-transitioning");
@@ -1664,9 +1663,15 @@ async function publishAnalysisBundle(bundle, token) {
       }],
     ], token);
     if (!isRunActive(token)) return { status: "aborted" };
+    // Only degraded reads announce themselves. A healthy load renders no
+    // banner at all: the charts, the mark price and the regime badge below
+    // already show the data arrived, so "数据已就绪" spent a full row of
+    // attention confirming what the user can see. statusBanner() returns ""
+    // for an empty message, leaving just the mode badge in the statusbar.
+    const degradedSamples = allCandles.length < minCandles;
     renderAnalysisStatus(
-      allCandles.length < minCandles ? "样本较少，已使用可用 K 线进行降级分析" : "数据已就绪",
-      allCandles.length < minCandles ? "warning" : "success",
+      degradedSamples ? "样本较少，已使用可用 K 线进行降级分析" : "",
+      degradedSamples ? "warning" : "success",
       bundleMode,
       bundleSecondary,
     );

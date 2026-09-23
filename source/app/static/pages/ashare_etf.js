@@ -1523,7 +1523,9 @@ async function planRebalance() {
   // changes read as a continuous transition.
   try {
     latestPlan = await api.planEtfRebalance(buildPlanPayload(), { signal: planController.signal });
-    renderAll(statusBanner("执行计划已生成", "success"));
+    // Success is the re-rendered plan itself — no confirmation banner. The
+    // empty argument also clears the in-flight "正在更新执行计划" note.
+    renderAll();
   } catch (error) {
     if (error?.name === "AbortError") return;
     latestPlan = null;

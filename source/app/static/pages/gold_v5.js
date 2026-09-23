@@ -106,9 +106,28 @@ function labelForFreshness(state) {
 }
 
 // ----- Numeric helpers
-function money(v, d) {
+// Amounts are denominated in the policy's own currency
+// (gold_policy_versions.base_currency), so the unit comes from the payload
+// rather than a hard-coded 元. The configured policy reports in USD, and
+// labelling a USD 500 order "500 元" misstates the size of the action.
+const CURRENCY_LABELS = { CNY: "元", RMB: "元" };
+
+function currencyLabel(code) {
+  const key = String(code ?? "").trim().toUpperCase();
+  if (!key) return "";
+  return CURRENCY_LABELS[key] || key;
+}
+
+function money(v, d, currency) {
+  // null / "" mean "no amount yet". Number(null) is 0, so without this guard a
+  // missing amount rendered as a real "0" order instead of "—" — the same
+  // coercion rule monitoring.js's macroDisplayValue documents.
+  if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
-  return Number.isFinite(n) ? `${formatNumber(n, d || 0)} 元` : "—";
+  if (!Number.isFinite(n)) return "—";
+  const amount = formatNumber(n, d || 0);
+  const label = currencyLabel(currency);
+  return label ? `${amount} ${label}` : amount;
 }
 
 // ----- Subtitle / "macro scenario" Chinese label.
@@ -217,14 +236,14 @@ function renderWeightRow(strategic) {
   `;
 }
 
-function renderFormulaBox(base, dip) {
+function renderFormulaBox(base, dip, currency) {
   // V4 had inline font-size:10px labels; V5 spec bumps to 13/18 (styles.css .gold-formula-item).
   const baseAmount = base?.amount;
   const dipAmount = dip?.amount;
   return `
     <div class="gold-formula-box">
-      <div class="gold-formula-item"><span>基础定投</span><b>${money(baseAmount)}</b></div>
-      <div class="gold-formula-item"><span>回撤加仓</span><b>${money(dipAmount)}</b></div>
+      <div class="gold-formula-item"><span>基础定投</span><b>${money(baseAmount, 0, currency)}</b></div>
+      <div class="gold-formula-item"><span>回撤加仓</span><b>${money(dipAmount, 0, currency)}</b></div>
     </div>
   `;
 }
@@ -241,7 +260,7 @@ function renderGateRow(num, label, chipCode, hint) {
   `;
 }
 
-function renderRecommendRow(base, dip) {
+function renderRecommendRow(base, dip, currency) {
   const code = base?.status === "EXECUTE"
     ? "EXECUTE"
     : (dip?.status === "READY_FIXED_ADD" ? "READY_FIXED_ADD" : base?.status);
@@ -250,7 +269,7 @@ function renderRecommendRow(base, dip) {
       <div>
         <p class="eyebrow">TODAY</p>
         <span class="gold-recommend-label">今日建议金额</span>
-        <div class="gold-recommend-amount">${money(base?.amount)}</div>
+        <div class="gold-recommend-amount">${money(base?.amount, 0, currency)}</div>
       </div>
       <span class="chip">${chipForStatus(code, "今日最优基础动作")}</span>
     </div>
@@ -261,6 +280,7 @@ function renderSpotDca(data) {
   const strategic = data?.strategic_allocation || {};
   const base = data?.base_dca || {};
   const dip = data?.dip_add || {};
+  const currency = data?.portfolio?.base_currency;
   const drawdownCode = dip?.status || "WAIT_DRAWDOWN";
   // Macro/liquidity gate: explicit LIQUIDITY_SHOCK from market_scenarios
   // wins; otherwise we use base_dca.status as a proxy for "macro permits
@@ -277,11 +297,11 @@ function renderSpotDca(data) {
         <p class="gold-card-title">战略配置与今日动作</p>
       </div>
       <div class="gold-dca-overview">
-        ${renderRecommendRow(base, dip)}
+        ${renderRecommendRow(base, dip, currency)}
         ${renderWeightRow(strategic)}
       </div>
       <div class="gold-dca-detail-grid">
-        ${renderFormulaBox(base, dip)}
+        ${renderFormulaBox(base, dip, currency)}
         <div class="gold-dca-gates">
           ${renderGateRow("①", "回撤确认", drawdownCode, "60 日回撤阈值与连续确认门禁")}
           ${renderGateRow("②", "宏观门禁", macroCode, "宏观与流动性风险阻断基础定投")}
@@ -681,7 +701,10 @@ async function renderGoldCharts(data, signal) {
     data: {
       labels,
       datasets: [
-        lineDataset("XAUT", priceSeries, getSeriesColor("XAUT"), { borderWidth: 1.2 }),
+        // The VEGAS short line is EMA12, not the raw close (analysis.js:1551
+        // and the 知识百科 VEGAS entry both read EMA12 as the line that
+        // crosses 快轨/慢轨). Price already has its own TREND card above.
+        lineDataset("EMA12", emaSeries(candles, 12), getSeriesColor("EMA12"), { borderWidth: 1.6 }),
         lineDataset("快轨 144", emaSeries(candles, 144), getSeriesColor("MA50"), { borderWidth: 1.8 }),
         lineDataset("快轨 169", emaSeries(candles, 169), getSeriesColor("MA50"), { fill: "-1", backgroundColor: "rgba(91, 138, 131, 0.10)", borderWidth: 1.8 }),
         lineDataset("慢轨 576", emaSeries(candles, 576), getSeriesColor("EMA20-Gold"), { borderDash: [7, 4], borderWidth: 1.7 }),
