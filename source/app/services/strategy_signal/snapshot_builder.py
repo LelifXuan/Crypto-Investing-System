@@ -13,6 +13,7 @@ from app.services.cache_registry import (
     CACHE_SOURCE_VERSION,
     expires_at_for_strategy,
     strategy_bundle_cache_key,
+    strategy_snapshot_cache_key,
 )
 from app.services.market_context import MarketContextBuilder
 from app.services.monitoring_dashboard import MonitoringDashboardService
@@ -988,15 +989,23 @@ class StrategySnapshotBuilder:
     ) -> None:
         """Best-effort write of the strategy snapshot to PageSnapshotCache.
 
-        The strategy decision is what the monitoring overview decision_brief
-        reuses. If the write fails (e.g. transient DB issue), the caller
-        still gets the snapshot in memory; the next refresh will retry.
+        Cache key namespacing (2026-09-23): this row MUST NOT share
+        ``strategy_bundle_cache_key`` with the decision bundle. That key is
+        owned by ``StrategySignalService.refresh_bundle`` and validated
+        against ``StrategyBundleRead`` (decision.strategy_state required).
+        Writing the raw snapshot under ``decision`` poisoned 46/66 rows:
+        ``GET /strategy/bundle`` then 500s on ResponseValidationError
+        whenever the poisoned row is fresher than the last good decision
+        row. The snapshot keeps its own key; same TTL, same reader
+        (monitoring dashboard reads ``payload["decision"]`` either way).
+        If the write fails (e.g. transient DB issue), the caller still
+        gets the snapshot in memory; the next refresh will retry.
         """
 
         now = datetime.now(UTC)
         try:
             await self.repository.upsert_page_snapshot_cache(
-                cache_key=strategy_bundle_cache_key(instrument_id, timeframe),
+                cache_key=strategy_snapshot_cache_key(instrument_id, timeframe),
                 page_type="strategy",
                 instrument_id=instrument_id,
                 timeframe=timeframe,
@@ -1369,6 +1378,9 @@ class StrategySnapshotBuilder:
         """
 
         cache_key = strategy_bundle_cache_key(instrument, lower_tf)
+        # NOTE: reads the *decision* bundle key (not the snapshot key):
+        # lower-TF trigger needs the validated decision, and refresh_bundle
+        # owns that key. Snapshot-shaped rows live under strategy_snapshot:.
         try:
             cached = await self.repository.get_page_snapshot_cache(cache_key)
         except Exception as exc:

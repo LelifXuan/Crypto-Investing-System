@@ -160,6 +160,25 @@ def strategy_bundle_cache_key(
     )
 
 
+def strategy_snapshot_cache_key(
+    instrument_id: str,
+    timeframe: str,
+    source_version: str = CACHE_SOURCE_VERSION,
+) -> str:
+    """Cache key for the raw strategy *snapshot* (feature bundle).
+
+    Namespaced apart from ``strategy_bundle_cache_key`` (the validated
+    decision bundle): the snapshot has no ``strategy_state`` and must
+    never be served as a ``StrategyBundleRead``. Readers that accept
+    either shape (monitoring dashboard) try the bundle key first.
+    """
+    return (
+        "strategy_snapshot:"
+        f"{normalize_instrument_id(instrument_id)}:"
+        f"{normalize_timeframe_for_cache(timeframe)}:{source_version}"
+    )
+
+
 def strategy_unified_cache_key(
     instrument_id: str,
     source_version: str = CACHE_SOURCE_VERSION,

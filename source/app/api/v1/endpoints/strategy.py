@@ -52,6 +52,48 @@ def _timeframe(value: str) -> str:
     return normalize_timeframe_for_cache(value)
 
 
+async def _scan_inputs_newer_than_scan(
+    repository: MarketRepository,
+    scan_cache,
+) -> bool:
+    """True when any strategy_unified row is newer than the scan row.
+
+    The scan row is a pure function of the unified rows (scan_all reads
+    each instrument's unified payload and extracts cells). If any input
+    is newer than the output, the matrix is older than its own inputs
+    and its ranked cards can contradict the drawers — rebuild it inline.
+    Missing scan row or missing inputs → False (the cold path below
+    already handles those).
+    """
+    if scan_cache is None or not getattr(scan_cache, "snapshot_at", None):
+        return False
+    scan_ts = scan_cache.snapshot_at
+    if getattr(scan_ts, "tzinfo", None) is None:
+        scan_ts = scan_ts.replace(tzinfo=timezone.utc)
+    try:
+        instruments = await repository.list_instruments()
+    except Exception:
+        return False
+    for inst in instruments:
+        iid = getattr(inst, "instrument_id", None)
+        if not iid:
+            continue
+        try:
+            row = await repository.get_page_snapshot_cache(
+                strategy_unified_cache_key(iid)
+            )
+        except Exception:
+            continue
+        if row is None or not getattr(row, "snapshot_at", None):
+            continue
+        row_ts = row.snapshot_at
+        if getattr(row_ts, "tzinfo", None) is None:
+            row_ts = row_ts.replace(tzinfo=timezone.utc)
+        if row_ts > scan_ts:
+            return True
+    return False
+
+
 def _block_cached_strategy_for_price(
     payload: dict[str, object], *, status: str, message: str
 ) -> dict[str, object]:
@@ -157,10 +199,30 @@ async def get_strategy_bundle(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    return await StrategySignalService(MarketRepository(session)).get_bundle(
+    """Read one validated decision bundle.
+
+    Poisoned-row guard (2026-09-23): ``strategy_bundle:*`` rows written
+    before the snapshot/bundle key split carry the raw *snapshot* under
+    ``decision`` (no ``strategy_state``) and fail ``StrategyBundleRead``
+    validation with 15 errors → HTTP 500. If the cached row is not a
+    decision, rebuild synchronously instead of serving it: the rebuild
+    path (refresh_bundle → build_bundle_uncached) always produces a
+    validated decision and overwrites the bad row.
+    """
+    service = StrategySignalService(MarketRepository(session))
+    bundle = await service.get_bundle(
         _instrument(instrument_id),
         _timeframe(timeframe),
     )
+    if not isinstance((bundle or {}).get("decision"), dict) or not (
+        bundle.get("decision") or {}
+    ).get("strategy_state"):
+        bundle = await service.refresh_bundle(
+            _instrument(instrument_id),
+            _timeframe(timeframe),
+            reason="bundle_shape_guard",
+        )
+    return bundle
 
 
 @router.get("/decision")
@@ -568,6 +630,10 @@ async def get_strategy_scan(
     it as missing and runs one cache-only scan (returns a real matrix in
     ~2-3 s on a warm DB) instead of returning the empty warming payload
     forever. force=true rebuilds every cell from source data.
+
+    Live-scan (2026-09-23): when the cached scan row is older than the
+    unified rows behind it, the ranked cards contradict the drawers.
+    Rebuild inline (cache-only, ~2-3 s) and serve the fresh matrix.
     """
     from app.schemas.market import PrecomputeHintRequest
     from app.services.strategy_unified.opportunity_scanner import (
@@ -580,6 +646,7 @@ async def get_strategy_scan(
     now = datetime.now(timezone.utc)
 
     # Cache-first
+    live_rebuild = False
     if not force:
         try:
             cache = await repository.get_page_snapshot_cache(cache_key)
@@ -601,31 +668,45 @@ async def get_strategy_scan(
             if expires_at is not None and expires_at <= now:
                 status = "missing"
         if cache is not None and cache.payload_json and status not in {"missing", "error"}:
-            payload = dict(cache.payload_json)
-            payload.setdefault("cache_meta", {})
-            # 2026-07-24 v2: preserve the warming signal so the
-            # frontend's poll loop keeps the warming banner up.
-            # Otherwise the empty matrix would be misinterpreted as
-            # "no opportunities found" on the very first request
-            # after the warming short-circuit fires.
-            if payload["cache_meta"].get("source") != "warming":
-                payload["cache_meta"]["source"] = "cache"
-            # 2026-09-23: stamp the serve time so the frontend can tell how
-            # old the cached matrix is. A ranked card built hours ago must
-            # not read as a live recommendation — the drawer shows the
-            # current unified snapshot, and the two can legitimately differ
-            # after the scan row ages (e.g. OKB 1d scored 94.6 at 04:47 but
-            # its direction dissolved by 05:14). Without this stamp the
-            # frontend cannot distinguish "fresh scan" from "old scan".
-            payload["cache_meta"]["served_at"] = now.isoformat()
-            return payload
+            # Live-scan (2026-09-23): when the cached scan row is older than
+            # the unified rows behind it, the ranked cards contradict the
+            # drawers (OKB 1d 94.6 @ 04:47 vs dissolved direction @ 05:14).
+            # Fall through to the rebuild path below instead of serving the
+            # stale matrix. The rebuilt row is written back with a fresh
+            # TTL, so the next reader gets it for free.
+            try:
+                inputs_newer = await _scan_inputs_newer_than_scan(repository, cache)
+            except Exception:
+                logger.exception("strategy/scan freshness probe failed")
+                inputs_newer = False
+            if not inputs_newer:
+                payload = dict(cache.payload_json)
+                payload.setdefault("cache_meta", {})
+                # 2026-07-24 v2: preserve the warming signal so the
+                # frontend's poll loop keeps the warming banner up.
+                # Otherwise the empty matrix would be misinterpreted as
+                # "no opportunities found" on the very first request
+                # after the warming short-circuit fires.
+                if payload["cache_meta"].get("source") != "warming":
+                    payload["cache_meta"]["source"] = "cache"
+                # 2026-09-23: stamp the serve time so the frontend can tell how
+                # old the cached matrix is. A ranked card built hours ago must
+                # not read as a live recommendation — the drawer shows the
+                # current unified snapshot, and the two can legitimately differ
+                # after the scan row ages. Without this stamp the
+                # frontend cannot distinguish "fresh scan" from "old scan".
+                payload["cache_meta"]["served_at"] = now.isoformat()
+                return payload
+            logger.info("strategy/scan live-rebuild: inputs newer than scan row")
+            live_rebuild = True
 
     # Cold-load short-circuit: kick off the background prewarm (so fresher
     # cells arrive), then run ONE cache-only scan immediately. scan_all
     # reads every cell from its bundle cache — on a warm DB that returns a
     # real matrix in ~2-3 s, which is far better than an infinite warming
     # banner. If the scan fails for any reason, fall back to the warming
-    # response so the frontend's poll loop keeps its banner up.
+    # response so the frontend's poll loop keeps its banner up. The
+    # live-rebuild path above lands here too (live_rebuild=True).
     if not force:
         try:
             await precompute_service.enqueue_hint(
@@ -665,9 +746,16 @@ async def get_strategy_scan(
             import dataclasses
             result_dict = dataclasses.asdict(result)
             result_dict["cache_meta"] = dict(result_dict.get("cache_meta") or {})
-            result_dict["cache_meta"]["message"] = (
-                "基于当前缓存生成；后台正在补齐最新数据，可稍后手动刷新。"
-            )
+            if live_rebuild:
+                result_dict["cache_meta"]["source"] = "live"
+                result_dict["cache_meta"]["message"] = (
+                    "检测到更新的策略快照，已实时重算；与各抽屉同代。"
+                )
+            else:
+                result_dict["cache_meta"]["message"] = (
+                    "基于当前缓存生成；后台正在补齐最新数据，可稍后手动刷新。"
+                )
+            result_dict["cache_meta"]["served_at"] = now.isoformat()
             try:
                 await repository.upsert_page_snapshot_cache(
                     cache_key=cache_key,
