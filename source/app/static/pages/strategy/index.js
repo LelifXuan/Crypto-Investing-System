@@ -375,6 +375,36 @@ export async function renderStrategy({ commands } = {}) {
   // Auto-scan on mount (force=false). If the first scan returns
   // 'warming', kick off the bounded poll loop instead of treating the
   // empty matrix as a real "no opportunities" result.
+  //
+  // Live refresh (2026-09-23): the backend rebuilds the scan row inline
+  // whenever its unified inputs moved (source=live), so a plain re-read
+  // converges without a 50 s force. Re-read every 60 s while mounted:
+  // silent when nothing changed (same scanned_at), seamless re-render
+  // when the backend rebuilt. visibilitychange pauses the timer; unmount
+  // clears it (AbortController cancels the in-flight read).
+  const LIVE_REFRESH_MS = 60000;
+  let liveRefreshTimer = null;
+  function scheduleLiveRefresh() {
+    if (liveRefreshTimer) clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = setTimeout(async () => {
+      liveRefreshTimer = null;
+      if (!mounted || document.hidden) { scheduleLiveRefresh(); return; }
+      try {
+        const data = await api.getStrategyScan({ signal: commandLifetime.signal, timeoutMs: 30000 });
+        if (!mounted || !data || data?.cache_meta?.source === "warming") { scheduleLiveRefresh(); return; }
+        if (data.scanned_at && data.scanned_at !== scanData?.scanned_at) {
+          renderScanResults(data);
+        }
+      } catch (err) {
+        if (err?.name !== "AbortError") console.warn("strategy:scan:live-refresh", err?.message || err);
+      }
+      scheduleLiveRefresh();
+    }, LIVE_REFRESH_MS);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && mounted && !liveRefreshTimer) scheduleLiveRefresh();
+  }, { signal: commandLifetime.signal });
+  scheduleLiveRefresh();
   const scanPromise = (async () => {
     const first = await loadScan(false);
     // Data arrived — cancel the delayed-warming timer so the banner
@@ -410,6 +440,7 @@ export async function renderStrategy({ commands } = {}) {
       guideFab.unmount();
       mounted = false;
       if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
+      if (liveRefreshTimer) { clearTimeout(liveRefreshTimer); liveRefreshTimer = null; }
       activeDetailPanelClose?.();
       activeDetailPanelClose = null;
       if (strategyDebounceTimer) { clearTimeout(strategyDebounceTimer); strategyDebounceTimer = null; }
