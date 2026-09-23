@@ -337,3 +337,122 @@ class TestGoldV5Css:
             ".governance-ledger__grid base class must default to "
             "repeat(4, minmax(0, 1fr)) per spec §2.5"
         )
+
+
+class TestGoldV5VegasComposition:
+    """The VEGAS tunnel's short line is EMA12, not the raw close price.
+
+    Canonical definition lives on the analysis page (analysis.js:1551 —
+    EMA12 + 快轨 144/169 + 慢轨 576/676, with no price series) and in the
+    知识百科 VEGAS entry, which reads EMA12 crossing 快轨/慢轨 as the signal.
+    The gold page was the only VEGAS renderer that substituted priceSeries
+    for EMA12, which made its short line a spiky close plot instead of the
+    documented momentum line.
+    """
+
+    @staticmethod
+    def _vegas_block() -> str:
+        src = _read(JS_PATH)
+        start = src.index('renderInto("vegas", {')
+        end = src.index('renderInto("macd", {')
+        assert start < end, "vegas chart must be rendered before the MACD chart"
+        return src[start:end]
+
+    def test_vegas_plots_ema12(self):
+        block = self._vegas_block()
+        assert 'lineDataset("EMA12", emaSeries(candles, 12)' in block, (
+            "VEGAS short line must be EMA12 (analysis.js:1551 parity)"
+        )
+        assert 'getSeriesColor("EMA12")' in block, (
+            "VEGAS EMA12 must use the registered --series-ema-short colour"
+        )
+
+    def test_vegas_does_not_plot_close_price(self):
+        block = self._vegas_block()
+        assert "priceSeries" not in block, (
+            "VEGAS must not draw the raw close; price belongs to the TREND card"
+        )
+        assert 'lineDataset("XAUT"' not in block
+
+    def test_vegas_keeps_all_four_tunnel_rails(self):
+        block = self._vegas_block()
+        for period in (144, 169, 576, 676):
+            assert f"emaSeries(candles, {period})" in block, (
+                f"VEGAS tunnel must keep EMA{period}"
+            )
+
+    def test_price_card_still_plots_close(self):
+        """Guard the guard: the TREND card must keep the XAUT close series, so
+        the EMA12 swap above stays scoped to the VEGAS card."""
+        src = _read(JS_PATH)
+        block = src[src.index('renderInto("price", {') : src.index('renderInto("vegas", {')]
+        assert 'lineDataset("XAUT", priceSeries' in block
+
+
+class TestGoldV5AmountCurrency:
+    """Amounts must carry the policy's currency, not a hard-coded 元.
+
+    The configured policy reports in USD (``gold_policy_versions.base_currency``
+    is "USD"), but ``money()`` appended 元 unconditionally, so the SPOT DCA card
+    rendered a USD 500 base order as "500 元" — a ~7x misstatement of the action
+    the user is being told to take.
+    """
+
+    @staticmethod
+    def _money_helpers() -> str:
+        src = _read(JS_PATH)
+        start = src.index("const CURRENCY_LABELS")
+        end = src.index("// ----- Subtitle")
+        assert start < end, "money helpers must precede the subtitle helpers"
+        return src[start:end]
+
+    @staticmethod
+    def _run(amount: float, currency) -> str:
+        import json
+        import shutil
+        import subprocess
+
+        if shutil.which("node") is None:
+            import pytest
+
+            pytest.skip("node not available")
+        args = f"{json.dumps(amount)}, 0, {json.dumps(currency)}"
+        script = (
+            # gold_v5 imports formatNumber from core/dom.js; stub it so the
+            # helpers run standalone.
+            "const formatNumber = (value, digits) => Number(value).toFixed(digits);\n"
+            + TestGoldV5AmountCurrency._money_helpers()
+            + f"\nconsole.log(JSON.stringify(money({args})));\n"
+        )
+        result = subprocess.run(
+            ["node", "-e", script], capture_output=True, text=True, timeout=30, check=False
+        )
+        assert result.returncode == 0, f"node failed: {result.stderr}"
+        import json as _json
+
+        return _json.loads(result.stdout.strip())
+
+    def test_usd_policy_amount_is_not_labelled_as_yuan(self):
+        assert self._run(500, "USD") == "500 USD"
+
+    def test_cny_still_uses_the_yuan_label(self):
+        assert self._run(500, "CNY") == "500 元"
+        assert self._run(500, "rmb") == "500 元"
+
+    def test_missing_amount_stays_a_dash(self):
+        assert self._run(None, "USD") == "—"
+
+    def test_currency_comes_from_the_payload(self):
+        """The unit must be read from the policy, not defaulted in the helper."""
+        src = _read(JS_PATH)
+        assert "data?.portfolio?.base_currency" in src, (
+            "renderSpotDca must read the policy currency from portfolio.base_currency"
+        )
+        assert "renderRecommendRow(base, dip, currency)" in src
+        assert "renderFormulaBox(base, dip, currency)" in src
+
+    def test_money_has_no_hardcoded_yuan_suffix(self):
+        body = self._money_helpers()
+        assert "} 元`" not in body, (
+            "money() must not append 元 unconditionally; only CNY/RMB map to 元"
+        )

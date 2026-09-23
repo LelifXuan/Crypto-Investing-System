@@ -149,7 +149,11 @@ def test_analysis_cards_are_read_only_and_sidebar_is_absent(width):
         assert page.locator(".analysis-regime-objects").count() == 0
         assert page.locator('[data-workbench-id="analysis:volatility-phase"]').count() == 0
         assert page.locator('[data-workbench-id="analysis:directional-bias"]').count() == 0
-        expect(page.locator("#analysis-statusbar .status-banner")).to_be_visible()
+        # A healthy load announces nothing. The message banner is reserved for
+        # loading / degraded / failure states — printing "数据已就绪" spent a row
+        # of attention confirming what the charts already show. The regime badge
+        # is functional UI (RANGE / TRANSITION) and must survive.
+        assert page.locator("#analysis-statusbar .status-banner").count() == 0
         expect(page.locator("#analysis-statusbar .status-mode-badge")).to_be_visible()
         hero_width = page.locator(".analysis-hero-card").evaluate(
             "element => element.getBoundingClientRect().width"
@@ -204,7 +208,14 @@ def test_analysis_lkg_cold_failure_and_late_recovery():
         assert "inspect=" not in page.url
         state.update(cold=True, task="running")
         page.reload()
-        expect(page.locator("#analysis-context-rail")).to_contain_text("等待分析快照")
+        # Cold load with the refresh task still running must read as "waiting for
+        # a snapshot", not as a fake zero. The context rail that used to carry
+        # this message was deleted; the statusbar and the availability flag on
+        # #page-root are the surviving contract.
+        expect(page.locator("#analysis-statusbar")).to_contain_text("当前快照准备中")
+        expect(page.locator("#page-root")).to_have_attribute(
+            "data-analysis-availability", "pending"
+        )
         state["task"] = "error"
         expect(page.locator(".analysis-recovery-note")).to_contain_text("暂不可用")
         expect(page.get_by_role("status", name="图表加载中", exact=True)).to_have_count(0)

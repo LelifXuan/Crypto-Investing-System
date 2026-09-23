@@ -12,13 +12,22 @@ Covers three defects found on 2026-08-19:
 
 from __future__ import annotations
 
-from app.schemas.market import MacroOverviewLayerRead
+from decimal import Decimal
+
+import pytest
+
+from app.schemas.market import MacroOverviewIndicatorRead, MacroOverviewLayerRead
 from app.services.macro.indicator_key_aliases import canonical_macro_key
-from app.services.macro.scoring_engine import DEFAULT_MACRO_SCORING_ENGINE
+from app.services.macro.scoring_engine import (
+    DEFAULT_MACRO_SCORING_ENGINE,
+    DISPLAY_ONLY_REASON,
+)
 from app.services.macro_overview import (
     LAYER_CONTRIBUTION_WEIGHTS,
     _confidence,
+    _data_completeness,
     _layer_contributions,
+    _scored_share,
     _total_score,
 )
 
@@ -142,3 +151,151 @@ def test_confidence_capped_by_sparsest_scored_layer() -> None:
     # Fallback when no layer detail is passed stays on global ratio.
     assert _confidence({"ratio": 0.85}, None) == "high"
     assert _confidence({"ratio": 0.3}, None) == "low"
+
+
+# ---------------------------------------------------------------------------
+# Data coverage vs scoring eligibility.
+#
+# Regression (2026-09-22): the macro overview reported "数据置信度 不足" while
+# every one of its 48 indicators carried live FRED values and the dashboard
+# snapshot was 'ready'. The cause was a denominator, not the data:
+# ``_confidence`` and ``_data_completeness`` divided scored indicators by the
+# full layer size, so the 11 display-only indicators (Fed balance sheet, M2,
+# SPY…) counted as missing data. ``fed_operations`` is 6/11 display-only, so
+# its scored share sat at 45.5% < 0.5 forever and pinned the whole overview to
+# low confidence no matter how complete the underlying data was.
+# ---------------------------------------------------------------------------
+
+def _indicator(key: str, *, scored: bool, reason: str | None) -> MacroOverviewIndicatorRead:
+    return MacroOverviewIndicatorRead(
+        indicator_key=key,
+        label=key,
+        tooltip=key,
+        insight="",
+        is_scored=scored,
+        score=60 if scored else None,
+        score_reason=reason,
+    )
+
+
+def _layer_with_display_only(
+    key: str,
+    *,
+    scored: int,
+    display_only: int,
+    unscored_with_data_gap: int = 0,
+    score: int = 60,
+) -> MacroOverviewLayerRead:
+    """A layer whose unscored indicators are a mix of by-design (display_only)
+    and genuine gaps (any other reason)."""
+    indicators = [
+        _indicator(f"{key}-s{i}", scored=True, reason=None) for i in range(scored)
+    ]
+    indicators += [
+        _indicator(f"{key}-d{i}", scored=False, reason=DISPLAY_ONLY_REASON)
+        for i in range(display_only)
+    ]
+    indicators += [
+        _indicator(f"{key}-g{i}", scored=False, reason="缺少可用观测")
+        for i in range(unscored_with_data_gap)
+    ]
+    total = len(indicators)
+    return MacroOverviewLayerRead(
+        layer_key=key,
+        label_cn=key,
+        score=score,
+        bias="中性",
+        summary="",
+        effective_count=scored,
+        total_count=total,
+        missing_count=unscored_with_data_gap,
+        stale_count=0,
+        cached_count=0,
+        is_scored=scored > 0,
+        not_scored_reason=None,
+        contribution=0.0,
+        indicators=indicators,
+    )
+
+
+def test_display_only_indicators_are_not_counted_as_a_coverage_gap() -> None:
+    """The reported bug: a layer that is fully populated but partly
+    display-only must not read as thinly covered."""
+    layer = _layer_with_display_only("fed_operations", scored=5, display_only=6)
+    assert _scored_share(layer) == 1.0
+
+
+def test_genuine_gaps_still_lower_the_scored_share() -> None:
+    """Guard the guard: excluding display-only from the denominator must not
+    blind the metric to indicators that are missing for real."""
+    layer = _layer_with_display_only(
+        "fed_operations", scored=3, display_only=6, unscored_with_data_gap=2
+    )
+    assert _scored_share(layer) == pytest.approx(3 / 5)
+    thin = _layer_with_display_only(
+        "rates_policy", scored=1, display_only=0, unscored_with_data_gap=3
+    )
+    assert _scored_share(thin) == pytest.approx(0.25)
+
+
+def test_fed_operations_alone_no_longer_caps_confidence() -> None:
+    """The exact live composition that produced 数据置信度 不足 next to a ready
+    snapshot: liquidity_credit 2/4 and fed_operations 5/11, both fully
+    populated with display-only members."""
+    layers = [
+        _layer_with_display_only("rates_policy", scored=9, display_only=0),
+        _layer_with_display_only("liquidity_credit", scored=2, display_only=2),
+        _layer_with_display_only("fed_operations", scored=5, display_only=6),
+        _layer_with_display_only("cross_asset_confirmation", scored=4, display_only=3),
+    ]
+    completeness = _data_completeness(layers)
+    assert completeness["percent"] == 100.0
+    assert _confidence(completeness, layers) == "high"
+
+
+def test_confidence_still_capped_when_a_layer_has_real_gaps() -> None:
+    layers = [
+        _layer_with_display_only("rates_policy", scored=9, display_only=0),
+        _layer_with_display_only(
+            "liquidity_credit", scored=1, display_only=0, unscored_with_data_gap=3
+        ),
+    ]
+    assert _scored_share(layers[1]) == pytest.approx(0.25)
+    assert _confidence(_data_completeness(layers), layers) == "low"
+
+
+def test_all_display_only_layer_is_skipped_not_treated_as_empty() -> None:
+    """A layer with nothing scoreable has no scoring to be short of; it must not
+    force low confidence on the rest of the overview."""
+    layers = [
+        _layer_with_display_only("rates_policy", scored=9, display_only=0),
+        _layer_with_display_only("fed_operations", scored=0, display_only=4),
+    ]
+    assert _confidence(_data_completeness(layers), layers) == "high"
+
+
+def test_completeness_keeps_the_full_catalogue_total() -> None:
+    """``_regime_summary`` still prints "参与评分指标 37/48", so total_count must
+    stay the full indicator catalogue while ratio excludes display-only."""
+    layer = _layer_with_display_only("fed_operations", scored=5, display_only=6)
+    completeness = _data_completeness([layer])
+    assert completeness["total_count"] == 11
+    assert completeness["scorable_count"] == 5
+    assert completeness["effective_count"] == 5
+    assert completeness["percent"] == 100.0
+
+
+def test_scoring_engine_reason_string_is_the_shared_constant() -> None:
+    """``_display_only_count`` matches on the reason string, so the engine and
+    the coverage maths must agree on one spelling. A rename would otherwise
+    silently restore the bug rather than fail.
+
+    Uses a real registry key (fed_balance_sheet carries
+    ``scoring_policy: "display_only"``) so this pins the shipped registry, not a
+    stand-in.
+    """
+    item = _indicator("fed_balance_sheet", scored=False, reason=None)
+    item.value_num = Decimal("6746548")
+    result = DEFAULT_MACRO_SCORING_ENGINE.score(item)
+    assert result.reason == DISPLAY_ONLY_REASON
+    assert result.is_scored is False

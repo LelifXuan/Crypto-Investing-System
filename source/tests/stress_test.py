@@ -144,7 +144,11 @@ STRESS_PAGES = {
             },
             {
                 "type": "click",
-                "selector": "button:has-text('刷新扫描'), button:has-text('刷新')",
+                # Target the stable id, not the label: the refresh button
+                # relabels itself to "正在重算..." and disables itself while a
+                # scan is in flight, so `button:has-text('刷新')` both missed
+                # it and matched unrelated buttons by DOM order.
+                "selector": "#strategy-scan-refresh",
                 "label": "refresh-scan",
             },
         ],
@@ -475,11 +479,23 @@ def _rapid_buttons_click(page, action_cfg: dict, count: int, result: dict):
 
 
 def _rapid_click(page, action_cfg: dict, count: int, result: dict):
-    """Rapidly click the same element multiple times."""
+    """Rapidly click the same element multiple times.
+
+    A control that disables itself while its work is in flight cannot be
+    clicked again — that is the control working, not a wedged page. Those
+    attempts are recorded as a skip (the same convention as
+    `_rapid_workbench_selection`'s no-selectable-data) instead of turning any
+    self-disabling button into a guaranteed ACTION_FAILED.
+    """
     selector = action_cfg["selector"]
     label = action_cfg["label"]
+    skipped = 0
 
     for i in range(count):
+        element = page.query_selector(selector)
+        if element is not None and element.is_disabled():
+            skipped += 1
+            continue
         try:
             t0 = time.monotonic()
             page.click(selector, timeout=2000)
@@ -501,6 +517,11 @@ def _rapid_click(page, action_cfg: dict, count: int, result: dict):
                     "error": str(error)[:80],
                 }
             )
+
+    if skipped:
+        result["actions"].append(
+            {"label": label, "status": f"skipped-disabled[{skipped}/{count}]"}
+        )
 
 
 def _rapid_workbench_selection(page, action_cfg: dict, count: int, result: dict):

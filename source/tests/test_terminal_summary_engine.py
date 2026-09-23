@@ -718,3 +718,70 @@ def test_decision_brief_partial_evidence_keeps_directional_tone() -> None:
             assert "证据强度" not in row["summary"], row
         else:
             assert row["tone"] == "warning"
+
+
+def test_display_only_indicators_do_not_lower_macro_confidence() -> None:
+    """Unscored is not the same as missing.
+
+    Regression (2026-09-22): the macro overview carries 48 indicators of which
+    11 are display-only (Fed balance sheet, M2, SPY…) — real data, no scoring
+    rule. Charging them against confidence as missing data pulled the module
+    confidence down while every indicator was live, and it is what produced
+    "数据置信度 不足" next to a ready snapshot on the monitoring page.
+    """
+    summary = TerminalSummaryEngine().build(
+        macro_overview={
+            "total_score": 61,
+            "score_band": "温和偏暖",
+            # 37/37 scorable scored, 11 display-only of 48 total.
+            "data_completeness": {
+                "effective_count": 37,
+                "scorable_count": 37,
+                "total_count": 48,
+            },
+            "layers": [],
+        },
+    )
+
+    macro = summary["module_scores"]["macro"]
+    assert macro["confidence"] == 0.75, (
+        "a full scorable set must not be penalised for display-only members"
+    )
+    assert macro["impact"] == "neutral" or macro["impact"] in {
+        "mild_bullish",
+        "risk_support",
+        "neutral",
+    }
+
+
+def test_genuine_macro_gaps_still_lower_confidence_with_scorable_count() -> None:
+    """Guard the guard: with scorable_count present, real gaps must still bite."""
+    summary = TerminalSummaryEngine().build(
+        macro_overview={
+            "total_score": 50,
+            "score_band": "宏观中性",
+            "data_completeness": {
+                "effective_count": 2,
+                "scorable_count": 10,
+                "total_count": 20,
+            },
+            "layers": [],
+        },
+    )
+
+    macro = summary["module_scores"]["macro"]
+    assert macro["confidence"] <= 0.42
+
+
+def test_macro_confidence_falls_back_for_payloads_without_scorable_count() -> None:
+    """Cached macro payloads written before scorable_count existed must keep the
+    previous semantics rather than silently reading as perfect coverage."""
+    summary = TerminalSummaryEngine().build(
+        macro_overview={
+            "total_score": 50,
+            "score_band": "宏观中性",
+            "data_completeness": {"effective_count": 1, "total_count": 10},
+        },
+    )
+
+    assert summary["module_scores"]["macro"]["confidence"] <= 0.42

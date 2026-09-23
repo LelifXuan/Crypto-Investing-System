@@ -253,3 +253,45 @@ class TestGovernanceFooter:
         assert "ready: loadPromise" in src
         assert "async mount() { await loadPromise; }" not in src
         assert "activeController?.abort();" in src
+
+
+class TestNoPlanSuccessBanner:
+    """The plan success path clears #etf-status instead of drawing a banner.
+
+    A full-width "执行计划已生成" bar was pure chrome: the re-rendered plan is
+    the confirmation, and the bar re-appeared above the workbench on every
+    debounced input edit. Same decision already taken on the btc-derivatives
+    page (see test_btc_derivatives_frontend_static.py:43), and the same pattern
+    the equity-curve path already uses (statusRoot.innerHTML = "" on success).
+    Loading / warning banners stay — only the success tone is retired.
+    """
+
+    def test_no_execution_plan_success_banner(self):
+        src = _read()
+        assert "执行计划已生成" not in src, (
+            "the plan success path must not render a confirmation banner"
+        )
+
+    def test_success_branch_clears_the_status_area(self):
+        """Guard the guard: dropping the banner is only correct if the success
+        branch still clears #etf-status — otherwise the in-flight
+        "正在更新执行计划" note would stay on screen forever."""
+        src = _read()
+        start = src.index("latestPlan = await api.planEtfRebalance(")
+        end = src.index("} catch (error) {", start)
+        branch = src[start:end]
+        assert "statusBanner(" not in branch, (
+            "the plan success branch must not render any status banner"
+        )
+        assert "renderAll()" in branch, (
+            "the plan success branch must clear the status area via renderAll()"
+        )
+
+    def test_loading_and_warning_banners_survive(self):
+        """Removing the success bar must not take the diagnostics with it."""
+        src = _read()
+        assert 'statusBanner("正在更新执行计划", "loading")' in src
+        assert 'statusBanner(force ? "正在刷新行情" : "正在读取行情", "loading")' in src
+        assert '"行情读取失败；将保留最新可用收盘价生成计划。", "warning"' in src
+        # Inside a template literal, so the prefix is a backtick not a quote.
+        assert "执行计划暂不可用：" in src

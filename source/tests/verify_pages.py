@@ -175,14 +175,18 @@ def wait_for_real_content(page: Page, page_id: str, timeout_ms: int = 10_000):
 def verify_ai_strategy_data(page: Page) -> tuple[bool, str]:
     """Open one strategy and validate semantic data, not just the page shell."""
     try:
+        # Cells without a usable payload are rendered disabled ("数据准备中").
+        # Pick the first cell that actually has a report behind it, otherwise
+        # a cold matrix would time out clicking a disabled button.
+        cell_selector = ".scan-cell-btn:not([disabled])"
         try:
-            page.wait_for_selector(".scan-cell-btn", state="visible", timeout=5_000)
+            page.wait_for_selector(cell_selector, state="visible", timeout=5_000)
         except Exception:
             warming = page.locator(".strategy-scan-page").inner_text()
             if "预热" in warming or "warming" in warming.lower():
                 return True, "warming-index-shell"
             raise
-        page.locator(".scan-cell-btn").first.click()
+        page.locator(cell_selector).first.click()
         # Strategy cell selection is intentionally debounced so rapid matrix
         # scanning only opens the final choice. Wait for the drawer itself
         # before querying its semantic descendants.
