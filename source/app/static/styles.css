@@ -905,11 +905,12 @@ table thead th {
   background: linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(242, 245, 249, 0.92));
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm. */
 .analysis-overview-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
   gap: var(--content-gap);
-  margin-bottom: var(--content-gap);
+  margin-bottom: 0;
   align-items: start;
 }
 
@@ -1081,11 +1082,12 @@ table thead th {
   font-size: clamp(22px, 1.7vw, 28px);
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm. */
 .analysis-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--content-gap);
-  margin-bottom: var(--content-gap);
+  margin-bottom: 0;
 }
 
 .analysis-chart-grid-featured {
@@ -1112,10 +1114,11 @@ table thead th {
     linear-gradient(180deg, rgba(251, 252, 254, 0.98), rgba(238, 242, 247, 0.92));
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm. */
 .analysis-card-grid {
   display: grid;
   gap: 16px;
-  margin-bottom: var(--content-gap);
+  margin-bottom: 0;
 }
 
 .analysis-grid-head {
@@ -1140,11 +1143,12 @@ table thead th {
   min-height: 156px;
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm. */
 .analysis-signal-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--content-gap);
-  margin-bottom: var(--content-gap);
+  margin-bottom: 0;
 }
 
 .indicator-group-list {
@@ -2048,12 +2052,14 @@ select {
   overflow: hidden;
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm; the legacy bottom
+   margin doubled grid separation to 48px on market-analysis. */
 .analysis-hero-grid,
 .analysis-chart-grid,
 .monitoring-observation-grid {
   display: grid;
   gap: var(--content-gap);
-  margin-bottom: var(--content-gap);
+  margin-bottom: 0;
 }
 
 .analysis-hero-grid {
@@ -5992,11 +5998,13 @@ body[data-page="ai-strategy"] main {
   padding: 18px 20px;
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm; the legacy 18px top
+   margin pushed the first section to 42px below the topbar. */
 .etf-top-deck {
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.55fr);
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .etf-top-left {
@@ -12006,8 +12014,10 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   }
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm; the legacy 18px stack
+   margin doubled the calendar/feed separation to 48px. */
 .supply-calendar-card {
-  margin: 18px 0;
+  margin-block: 0;
 }
 
 .supply-calendar-list {

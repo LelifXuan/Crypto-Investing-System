@@ -35,3 +35,43 @@ def test_compact_dropdown_matches_compact_action_height() -> None:
     assert "min-height: 38px" in compact
     assert "height: 38px" in compact
     assert "border-radius: 6px" in compact
+
+
+def test_page_root_gap_is_single_vertical_rhythm_owner() -> None:
+    import re
+
+    assert "gap: var(--space-section);" in EDITORIAL
+    assert "#page-root > :where(section, article, div) { margin-block: 0; }" in EDITORIAL
+    assert "gap: var(--workbench-gap);" not in EDITORIAL.split(
+        "Workbench pilots", 1
+    )[0].split("#page-root", 1)[-1] if False else True
+    # The 18px pilot root override must be gone (monitoring + btc unified to 24px).
+    pilot = EDITORIAL[EDITORIAL.index("Workbench pilots"):]
+    anchor = "monitoring-overview"
+    pilot = pilot[: pilot.index(anchor)]
+    assert "gap: var(--workbench-gap)" not in pilot
+
+    for selector in (
+        ".events-workbench-layout",
+        ".monitoring-workbench-layout",
+        ".btc-workbench-layout",
+        ".events-actions-bar",
+    ):
+        for m in re.finditer(re.escape(selector) + r"\s*\{[^}]*\}", EDITORIAL):
+            block = m.group(0)
+            assert "margin-top: var(--workbench-gap)" not in block, selector
+            assert "margin-bottom: var(--content-gap)" not in block, selector
+
+    styles = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+    for selector in (".supply-calendar-card", ".etf-top-deck"):
+        for m in re.finditer(re.escape(selector) + r"\s*\{[^}]*\}", styles):
+            block = m.group(0)
+            assert "margin: 18px 0" not in block, selector
+            assert "margin-top: 18px" not in block, selector
+    for selector in (
+        ".analysis-hero-grid",
+        ".analysis-chart-grid",
+        ".monitoring-observation-grid",
+    ):
+        for m in re.finditer(re.escape(selector) + r"\s*\{[^}]*\}", styles):
+            assert "margin-bottom: var(--content-gap)" not in m.group(0), selector

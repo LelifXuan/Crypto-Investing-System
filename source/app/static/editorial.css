@@ -836,7 +836,9 @@ body[data-page="market-events"] .events-context-bar {
   align-items: center;
   gap: var(--space-section);
   min-height: 0;
-  margin-bottom: var(--content-gap);
+  /* 2026-09-24: dead rule (no DOM producer); margin neutralized so any
+     future reuse inherits page-root gap instead of stacking. */
+  margin-bottom: 0;
   padding: 18px 22px;
 }
 
@@ -905,8 +907,10 @@ body[data-page="market-events"] .events-feed-actions {
 
 /* Market events use a feed-ingestion motion rather than a chart fade. Rows
    arrive in reading order, then remain as a stable skeleton until data lands. */
+/* 2026-09-24: page-root gap owns vertical rhythm; the inner 18px top
+   margin is removed so calendar/feed separation equals one root gap. */
 body[data-page="market-events"] .events-workbench-layout {
-  margin-top: var(--workbench-gap);
+  margin-top: 0;
 }
 body[data-page="market-events"] .events-feed-shell {
   position: relative;
@@ -1118,7 +1122,8 @@ body[data-page="market-events"] .events-actions-bar {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin: 8px 0;
+  /* 2026-09-24: empty anchor today; zero margin so it contributes no gap. */
+  margin: 0;
 }
 
 /* The translate + refresh buttons now live inside the feed-card
@@ -4327,6 +4332,14 @@ body .disclosure-toggle.disclosure-toggle--inline:hover {
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
 }
 
+/* 2026-09-24: page-root gap owns vertical rhythm. Ledgers rendered as
+   direct page-root children (ashare-etf, btc-derivatives) must not stack
+   the 16px page-footer margin on top of the 24px/18px root gap. */
+body[data-page="ashare-etf"] #page-root > .governance-ledger,
+body[data-page="btc-derivatives"] #page-root > .governance-ledger {
+  margin-top: 0;
+}
+
 .governance-ledger--strategy {
   /* 2026-09-01: panel-embedded; overrides the page-level margin-top from
      the base class so it sits flush inside its drawer container. */
@@ -4625,11 +4638,14 @@ body[data-page="market-analysis"] .workbench-primary .analysis-chart-card { box-
 
 /* Workbench pilots: remove report-card repetition while preserving every
    existing data section and selector used by the regression suite. */
+/* 2026-09-24: page-root gap is the single vertical-rhythm owner
+   (manual §3.3/§7.1: major page sections = 24px). The 18px pilot value
+   made monitoring/btc sections visibly tighter than every other page. */
 body[data-page="monitoring-overview"] #page-root,
-body[data-page="btc-derivatives"] #page-root { gap: var(--workbench-gap); }
+body[data-page="btc-derivatives"] #page-root { gap: var(--space-section); }
 
 body[data-page="monitoring-overview"] .monitoring-workbench-layout,
-body[data-page="btc-derivatives"] .btc-workbench-layout { margin-top: var(--workbench-gap); }
+body[data-page="btc-derivatives"] .btc-workbench-layout { margin-top: 0; }
 
 body[data-page="monitoring-overview"] .monitoring-topbar,
 body[data-page="monitoring-overview"] .monitoring-detail-panel,
