@@ -90,10 +90,11 @@ export function cellState(item) {
     || (direction === "LONG" ? "做多" : direction === "SHORT" ? "做空" : "等待确认");
 
   // Stale-serving: the snapshot expired but the direction inside it is the
-  // last good computation. Show it (neutral tone — never bullish/bearish,
-  // so it cannot be mistaken for a fresh signal) with the update label and
-  // keep the cell open: the drawer explains the per-state staleness. A
-  // directionless stale cell falls back to the pending vocabulary.
+  // last good computation. Show it with the directional tone (same bottom
+  // color as a fresh signal — an explicit direction must always wear its
+  // color) plus the update label; the dashed stale border and the label
+  // distinguish it from a fresh signal. A directionless stale cell falls
+  // back to the pending vocabulary.
   if (cacheState === DATA_STALE_STATE) {
     if (!directional) {
       return {
@@ -111,7 +112,7 @@ export function cellState(item) {
       label: DATA_STALE_LABEL,
       direction: directionLabel,
       directionKey: direction,
-      tone: "neutral",
+      tone: direction === "LONG" ? "bullish" : "bearish",
       clickable: true,
       tooltip: `上次有效结论：${directionLabel}${gateText ? `（${gateText}）` : ""}。${pendingHint}`,
     };
@@ -120,13 +121,16 @@ export function cellState(item) {
   // The gate decides promotion only. The direction is reported either way,
   // because the detail drawer shows the same direction for the same cell —
   // hiding it here made the matrix say "等待确认" while the drawer said 做空.
+  // An explicit direction always wears its bottom color (bullish/bearish):
+  // candidate and qualified share the tone; the small label ("等待确认" vs
+  // none) and the dashed candidate border tell promotion apart from signal.
   if (item.qualified !== true || !directional) {
     return {
       kind: directional ? "candidate" : "idle",
       label: "等待确认",
       direction: directional ? directionLabel : "",
       directionKey: directional ? direction : "",
-      tone: "neutral",
+      tone: directional ? (direction === "LONG" ? "bullish" : "bearish") : "neutral",
       clickable: true,
       tooltip: gateText
         ? `未通过门禁：${gateText}`
@@ -202,7 +206,11 @@ function renderCell(item, instrumentId, timeframe) {
   if (state.kind === "pending") cls.push("scan-cell-pending");
   if (state.kind === "stale") cls.push("scan-cell-stale");
   if (state.kind === "idle") cls.push("scan-cell-wait");
-  if (state.kind === "candidate") cls.push("scan-cell-wait", "scan-cell-unqualified");
+  // Candidate keeps the directional tone (bottom color) but drops the
+  // muted wait treatment: "做空 + 等待确认" must read as a signal first,
+  // a gate verdict second. The dashed border + small label carry the
+  // "not promoted" meaning instead of bleaching the whole cell.
+  if (state.kind === "candidate") cls.push("scan-cell-unqualified");
   const attrs = state.clickable
     ? `data-instrument="${escapeHtml(instrumentId)}" data-timeframe="${escapeHtml(timeframe)}"`
     : 'disabled aria-disabled="true"';

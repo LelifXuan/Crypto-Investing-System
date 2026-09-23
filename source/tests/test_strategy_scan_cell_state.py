@@ -13,8 +13,13 @@ What went wrong, and what these tests pin:
 4. (2026-09-23 stale-serving) A stale cell hid its last good direction behind
    "数据准备中". Per AGENTS.md §九.1 a stale snapshot with last-known-good
    must render the old conclusion first: stale-directional cells now show
-   the direction with neutral tone + "数据更新中", never bullish/bearish
-   (that would read as a fresh signal) and never blank.
+   the direction with its directional tone + "数据更新中"; the dashed
+   stale border (not a bleached tone) tells it apart from a fresh signal.
+5. (2026-09-23 directional tone) An explicit direction always wears its
+   bottom color — candidate, stale and qualified share bullish/bearish;
+   only directionless cells (idle/pending) stay neutral. Promotion is told
+   by the small label ("等待确认"/"数据更新中" vs none) and the dashed
+   border, never by bleaching the signal color.
 """
 
 from __future__ import annotations
@@ -76,14 +81,15 @@ def _fresh(**overrides) -> dict:
 
 
 def test_stale_directional_cell_serves_last_good_direction():
-    """Stale-serving (2026-09-23): a stale cell with a direction shows it —
-    neutral tone, update label, still clickable — instead of hiding it."""
+    """Stale-serving (2026-09-23, directional tone): a stale cell with a
+    direction shows it with its directional tone + update label — the
+    dashed stale border tells it apart from a fresh signal."""
     state = _cell_state(_fresh(cache_state="stale", direction="LONG", direction_label="做多"))
 
     assert state["kind"] == "stale"
     assert state["label"] == "数据更新中"
     assert state["direction"] == "做多"
-    assert state["tone"] == "neutral", "stale must never wear a fresh-signal tone"
+    assert state["tone"] == "bullish", "an explicit direction must wear its color"
     assert state["clickable"] is True
     assert "过期" in state["tooltip"] or "上次有效" in state["tooltip"]
 
@@ -126,7 +132,10 @@ def test_rejected_directional_cell_still_reports_its_direction():
     assert state["kind"] == "candidate"
     assert state["direction"] == "做空"
     assert state["label"] == "等待确认"
-    assert state["tone"] == "neutral", "a rejected candidate must not be painted bullish/bearish"
+    assert state["tone"] == "bearish", (
+        "an explicit direction must wear its color; "
+        "promotion is told by label+border"
+    )
     assert state["clickable"] is True
     assert "盈亏比不足" in state["tooltip"]
 
