@@ -1,6 +1,51 @@
 # CHANGELOG
 
-## V2.3（2026-08-31）
+## V2.2（现行正式版，2026-09-23 增补）
+
+> 版本口径：本仓库最新正式版为 **V2.2**。V2.2 基线为 2026-08-27（commit `38932ee`）；本节汇总基线之后到 `f205c35` 的演进，均记在 V2.2 名下。下一节 V2.3（2026-08-31）是当时的内部 hygiene 验证包记录，未发布为正式版。
+> 应用运行版本仍为 `pyproject.toml` 的 `1.8.1`，与 UI 版本分开记录。
+
+### AI 策略页（9-22 十问题修复 + 9-23 跟进）
+
+- 机会矩阵口径统一：非 fresh 格只报"数据准备中 / 数据更新中"，不再把"没数据"说成"没机会"；有方向但未过门禁的格显示方向 + 中性说明，stale 格显示旧方向（last-known-good）。
+- 抽屉（详情面板）有界自动刷新（5 秒 × 9 次）+ 常驻"重新推演"按钮；轮询 bypass 客户端 30 秒缓存；force 扫描超时放宽到 240 秒。
+- 计划"出生即死"修复：结构入场位必须距现价 ≤ 3 ATR（`entry_max_distance_atr`，`market_strategy_signal_config_v17.json`）且止损不被现价穿过，否则退回现价相对入场；价格溯源只用本周期 mark / 收盘 / 库内最新标记价，不再取 structure 包 K 线尾；ATR 后备止盈与 `min_rr_trade: 1.5` 对齐。
+- 矩阵格盈亏比只用本格几何，不再借用 4h 交易计划的决策级 RR；ranked 摘要跳过 bundle 校验行"策略价位无效"；ranked 卡片标扫描年龄（`served_at`）。
+- live-scan：scan 行比 unified 输入旧时就地重算（`source=live`）；策略页每 60 秒静默刷新（`scanned_at` 变化才重绘，切后台暂停，卸载清理）。
+- `/strategy/bundle` 毒行隔离：快照改写 `strategy_snapshot:*` 独立 key，端点对非决策行同步重建（此前 46/66 行缺 `strategy_state`，读到即 500）。
+- 矩阵方向格统一底色：候选 / 过期 / 过门禁共享牛熊色，门禁只用虚线边框 + 小字区分。
+- ranked 卡片改点位行：`做空 区间｜止损｜止盈`（与抽屉战术计划同源），缺失隐藏，TP1 缺失不再显示"止盈 0"。
+
+### 黄金配置页
+
+- VEGAS 通道短轨改用 EMA12（原误用收盘价）；金额单位读 `portfolio.base_currency`（USD 不再显示"元"）；空金额显示"—"（`Number(null)===0` 防护）。
+- 新增策略写入路径：`POST /gold/policy`（版本追加、Decimal 全链路）+ 页内策略表单（保存即新版本、自动刷新）；空态指引不再指向不存在的流程；`decimal_string` 去 18 位小数填充。
+
+### 预热队列与缓存治理
+
+- 单 hint 只刷所要周期（不再六栈扇出）；FAST/SLOW 计划裁剪 related 连带；新增队列预算守卫（FAST 周期任务数上限）。
+- `display_only` 指标不计入宏观置信度分母（`fed_operations` 展示型指标不再把整页置信度钉在 low）；宏观总分与偏差口径不变。
+
+### 前端清理
+
+- 技术指标页移除已弃用的上下文横栏（删除 `ui/contextRail.js`）与"数据已就绪"噪音横幅；A股 ETF 页移除多余的"执行计划已生成"横栏；衍生品行权价图表标签碰撞避让（`resolveReferenceLineX` + 参考线标签布局守卫）。
+
+### UI 审计与设计收敛
+
+- P1（手机单列 / 抽屉 / 结构 SVG / 报价 stale 语义 / ETF 待态）与 P2（审计详情脱术语 / 成交量整数轴 / 冷启动骨架占位 / 44px 触屏命中）清偿；`editorial.css` 为 token 唯一权威；响应式断点 17→6；治理底栏共享化。
+
+### 工程门禁
+
+- Ruff 5101 → 0（vendor 排除 + auto-fix + 手工清偿 + per-file-ignores 豁免）；pre-commit 加强 + AGENTS.md §六.6 Lint 门禁；`runtime_python/` 取消跟踪（5283 文件）；price-lag 五件套（mark 新鲜度 helper / 600s 丢弃 WS 残值 / WS 断开清缓存 / stale 阈值对齐 15s / 守卫单测）。
+
+### 验证记录（2026-09-23）
+
+- `pytest tests/ -q`：**2200 passed, 4 skipped, 0 failed**；`ruff check app/ tests/ scripts/`：All checks passed。
+- `verify_pages.py`：冷启动 11/11、SPA 切换 10/10，0 pageerror；`stress_test.py`：策略页 2 PASS（全量偶发 LOADING_STUCK 单页重跑通过）。
+
+## V2.3（2026-08-31，内部验证包，未发布为正式版）
+
+> 本节记录 08-31 内部 hygiene 验证包（见 `dist/` 下 V2.3 包与 `.verification.json`），未发布为正式版；现行正式版仍为上面的 V2.2。正文保留原记录。
 
 - 发布卫生补验：2013 passed、4 既有 skip、0 warnings；11/11 冷启动、10/10 SPA、8/8 压力通过。指南 `[hidden]` 恢复真实隐藏语义；FAB 三页三视口操作链替换旧 Knowledge skip。
 - 增加 `pytest --acceptance` 后端预检与禁止缺后端 skip 的守卫；修复六个测试脚本入口导入、旧 Pydantic/JWT 测试警告和手册测试的固定字符窗口。本轮修复文件 Ruff 为 0，项目遗留降至 221；第三方源码未改。
