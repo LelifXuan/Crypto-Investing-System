@@ -300,24 +300,29 @@ async def get_unified_strategy(
                 "stale_revalidating" if status == "stale" else "cache_only"
             )
             payload["prewarm_status"] = "ready" if status == "fresh" else "enqueued"
-            payload, price_invalidated = await _guard_cached_strategy(
+            # The live-price guard's invalidation flag is deliberately dropped.
+            #
+            # The guard also reports an invalidation when the plan's own levels
+            # have been left behind by the mark price. Those levels are
+            # structural — they come from the candles, not from the current
+            # price — so `build_unified_strategy` reproduces the same geometry
+            # and the guard invalidates it again. Enqueueing on every read
+            # therefore re-derived the same dead plan forever (a full rebuild is
+            # 10-18 s per instrument) while the payload kept claiming a
+            # recompute was in flight. The scheduled precompute refresh (120 s /
+            # 600 s per timeframe) already re-derives on new candles, and the
+            # detail drawer offers an explicit rebuild button.
+            payload, _ = await _guard_cached_strategy(
                 repository, normalized_instrument, payload
             )
-            if (
-                status != "fresh"
-                or price_invalidated
-                or payload.get("price_freshness") in {"stale", "price_stale", "price_unavailable"}
-            ):
+            # Only a cache-freshness problem is worth a rebuild here.
+            if status != "fresh":
                 await precompute_service.enqueue_hint(
                     PrecomputeHintRequest(
                         current_page="strategy",
                         instrument_id=normalized_instrument,
                         timeframe="1d",
-                        reason=(
-                            "strategy_unified_price_invalidated"
-                            if price_invalidated
-                            else "strategy_unified_stale_read"
-                        ),
+                        reason="strategy_unified_stale_read",
                         visible=False,
                         candidates=[
                             "strategy_unified",
@@ -327,7 +332,7 @@ async def get_unified_strategy(
                             "macro",
                             "btc_derivatives",
                         ],
-                        priority=1 if price_invalidated else 3,
+                        priority=3,
                     )
                 )
             return payload

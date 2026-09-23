@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Mapping
 
 from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for_cache
 from app.repositories.market_repository import MarketRepository
@@ -34,6 +34,103 @@ from app.services.technical_risk import build_divergence_risk, score_divergence_
 
 logger = logging.getLogger(__name__)
 
+# Distance from the entry to its protective stop, in ATR. Shared by the
+# snapshot's long/short stop defaults and by the entry-level acceptance check
+# below so the two can never disagree about what a plan's stop would be.
+STOP_ATR_MULTIPLE = 1.6
+# Target distance in ATR for the fallback take-profit, used when the structure
+# service reports no usable opposite level. The effective distance is raised to
+# `min_rr_trade * STOP_ATR_MULTIPLE` when that is larger, so an ATR-only plan is
+# admissible under this module's own minimum risk/reward policy: 2.2 ATR against
+# a 1.6 ATR stop is only 1.375, which the 1.50 gate rejects by construction.
+TP_ATR_MULTIPLE = 2.2
+
+
+def select_entry_levels(
+    levels: Mapping[str, Any],
+    *,
+    price: float,
+    atr: float,
+    max_distance_atr: float,
+) -> tuple[Decimal | None, Decimal | None]:
+    """Pick which structure levels may select the long / short entry.
+
+    Returns ``(support, resistance)``: the level to use, or ``None`` meaning
+    "fall back to the price-relative default". See
+    ``_reject_unusable_entry_level`` for why a level is refused.
+    """
+    support = _decimal(levels.get("support_price") or levels.get("val_price"))
+    resistance = _decimal(levels.get("resistance_price") or levels.get("vah_price"))
+    max_distance = atr * max_distance_atr
+    if not price or max_distance <= 0:
+        return support, resistance
+    # `_num(None)` is 0.0, which would read as a stop the price has crossed —
+    # keep "no structure stop" as an explicit None.
+    long_structure_stop = _optional_num(levels.get("structure_invalid_long"))
+    short_structure_stop = _optional_num(levels.get("structure_invalid_short"))
+    return (
+        _reject_unusable_entry_level(
+            support,
+            price,
+            atr,
+            side="long",
+            structure_stop=long_structure_stop,
+            max_distance=max_distance,
+        ),
+        _reject_unusable_entry_level(
+            resistance,
+            price,
+            atr,
+            side="short",
+            structure_stop=short_structure_stop,
+            max_distance=max_distance,
+        ),
+    )
+
+
+def _reject_unusable_entry_level(
+    level: Decimal | None,
+    price: float,
+    atr: float,
+    *,
+    side: str,
+    structure_stop: float | None,
+    max_distance: float,
+) -> Decimal | None:
+    """Drop a structure level that cannot serve as this plan's entry.
+
+    Two ways a level is unusable, both observed in the 2026-09-22 audit of the
+    AI strategy page:
+
+    1. The market has moved away from it. ``support``/``resistance`` fall back
+       to the volume-profile value area (VAL/VAH), a range measured over a long
+       window; in a trending market it sits many ATR from the traded price.
+    2. The plan it produces is already dead: the price has crossed the stop that
+       would be derived from it. That is exactly the state the read path's
+       live-price guard invalidates, so publishing such a plan only ever
+       produced "候选计划已失效" on every read.
+
+    Rejecting the level is enough: the entry then falls back to the
+    price-relative default, which is what this module already uses when the
+    structure service reports no support/resistance at all.
+    """
+    if level is None:
+        return None
+    level_f = float(level)
+    if abs(level_f - price) > max_distance:
+        return None
+    stop = (
+        structure_stop
+        if structure_stop is not None
+        else (
+            level_f - atr * STOP_ATR_MULTIPLE
+            if side == "long"
+            else level_f + atr * STOP_ATR_MULTIPLE
+        )
+    )
+    crossed = price <= stop if side == "long" else price >= stop
+    return None if crossed else level
+
 
 def _field(item: Any, key: str, default: Any = None) -> Any:
     if item is None:
@@ -55,6 +152,12 @@ def _decimal(value: Any) -> Decimal | None:
 def _num(value: Any, default: float = 0.0) -> float:
     parsed = _decimal(value)
     return float(parsed) if parsed is not None else default
+
+
+def _optional_num(value: Any) -> float | None:
+    """Like `_num`, but a missing value stays None instead of becoming 0.0."""
+    parsed = _decimal(value)
+    return float(parsed) if parsed is not None else None
 
 
 def _last_value(series: dict[str, Any], *keys: str) -> Any:
@@ -546,11 +649,22 @@ class StrategySnapshotBuilder:
         analysis_payload = analysis.model_dump(mode="json")
         alerts_payload = alerts.model_dump(mode="json")
         monitoring_payload = monitoring.model_dump(mode="json")
+        # Candle count is informational; the structure bundle's series is
+        # accepted here only for that count.
         candles = analysis_payload.get("candles") or structure_payload.get("candles") or []
         mark = analysis_payload.get("mark") or {}
         current_price = _decimal(mark.get("mark_price") or mark.get("price"))
-        if current_price is None and candles:
-            current_price = _decimal(_field(candles[-1], "close"))
+        if current_price is None:
+            analysis_candles = analysis_payload.get("candles") or []
+            if analysis_candles:
+                current_price = _decimal(_field(analysis_candles[-1], "close"))
+        if current_price is None:
+            # Never fall back to the structure bundle's candle tail: that series
+            # can be arbitrarily old, and the 2026-09-22 audit found ETH's
+            # strategy bundles carrying a 13-day-old "current price" (2493 vs a
+            # 2744 market) purely from this fallback. A stored mark is the
+            # cheapest fresh source and needs no provider round trip.
+            current_price = await self._stored_mark_price(instrument)
 
         core = analysis_payload.get("core_indicator_series") or {}
         secondary = analysis_payload.get("secondary_indicator_series") or {}
@@ -589,10 +703,39 @@ class StrategySnapshotBuilder:
         confidence_score = _num(final_decision.get("confidence_score"), 50)
         conflict_level = _num(final_decision.get("conflict_level"), 0)
         atr = max(_num(indicators.get("atr_14"), price * 0.025), price * 0.006) if price else 0
-        support = _decimal(levels.get("support_price") or levels.get("val_price"))
-        resistance = _decimal(levels.get("resistance_price") or levels.get("vah_price"))
+        # Both sides keep their raw structure level: the bounded copy selects
+        # the entry, the raw copy stays available as the take-profit target.
+        support_level = _decimal(levels.get("support_price") or levels.get("val_price"))
+        resistance_level = _decimal(levels.get("resistance_price") or levels.get("vah_price"))
+        # A level the market has left behind is not an *entry* level.
+        #
+        # `support`/`resistance` fall back to the volume-profile value area
+        # (VAL/VAH), a *range* measured over a long window: in a trending market
+        # it sits far from the traded price, and the plan it produced was
+        # internally consistent but unreachable. The 2026-09-22 audit found
+        # ETH's short entry zone at 2531-2542 (4h VAH) while the market traded
+        # at 2744 — 8% away — so the live-price guard invalidated every plan on
+        # read and the page could never show an executable setup.
+        #
+        # Only the entry is bounded: a distant target is the reward side of the
+        # trade (a mean-reversion short targets the value-area low), and
+        # dropping it collapsed the risk/reward onto the ATR fallback and got
+        # the plan rejected by the 1.50 gate instead.
+        support, resistance = select_entry_levels(
+            levels,
+            price=price,
+            atr=atr,
+            max_distance_atr=_num(
+                (config.get("thresholds") or {}).get("entry_max_distance_atr"), 3.0
+            ),
+        )
         long_entry = float(support) if support is not None else price * 0.995
         short_entry = float(resistance) if resistance is not None else price * 1.005
+        min_rr = _num((config.get("thresholds") or {}).get("min_rr_trade"), 1.5)
+        tp_distance = max(TP_ATR_MULTIPLE, min_rr * STOP_ATR_MULTIPLE) * atr
+        # Targets read from the raw levels, never from the entry-scoped copy.
+        long_target = float(resistance_level) if resistance_level is not None else None
+        short_target = float(support_level) if support_level is not None else None
 
         macro_status = macro_overview.get("event_window_status") or "normal"
         macro_bias = (
@@ -657,7 +800,7 @@ class StrategySnapshotBuilder:
         futures_risk_long = _compute_futures_risk(
             atr_pct=atr_pct,
             entry=long_entry,
-            stop=_num(levels.get("structure_invalid_long"), long_entry - atr * 1.6),
+            stop=_num(levels.get("structure_invalid_long"), long_entry - atr * STOP_ATR_MULTIPLE),
             leverage=leverage,
             thresholds=thresholds,
             liq_warn_pct=liq_warn_pct,
@@ -666,7 +809,7 @@ class StrategySnapshotBuilder:
         futures_risk_short = _compute_futures_risk(
             atr_pct=atr_pct,
             entry=short_entry,
-            stop=_num(levels.get("structure_invalid_short"), short_entry + atr * 1.6),
+            stop=_num(levels.get("structure_invalid_short"), short_entry + atr * STOP_ATR_MULTIPLE),
             leverage=leverage,
             thresholds=thresholds,
             liq_warn_pct=liq_warn_pct,
@@ -774,22 +917,18 @@ class StrategySnapshotBuilder:
                         long_entry=long_entry,
                         long_stop=_num(
                             levels.get("structure_invalid_long"),
-                            long_entry - atr * 1.6,
+                            long_entry - atr * STOP_ATR_MULTIPLE,
                         ),
                         long_tp1=(
-                            float(resistance)
-                            if resistance is not None
-                            else price + atr * 2.2
+                            long_target if long_target is not None else long_entry + tp_distance
                         ),
                         short_entry=short_entry,
                         short_stop=_num(
                             levels.get("structure_invalid_short"),
-                            short_entry + atr * 1.6,
+                            short_entry + atr * STOP_ATR_MULTIPLE,
                         ),
                         short_tp1=(
-                            float(support)
-                            if support is not None
-                            else price - atr * 2.2
+                            short_target if short_target is not None else short_entry - tp_distance
                         ),
                     ),
                     regime=structure_overall.get("regime"),
@@ -814,12 +953,12 @@ class StrategySnapshotBuilder:
                 "short_trigger_ready": bool(levels.get("breakout_down"))
                 or (direction_metrics["bearish"] >= 65 and confidence_score >= 72),
                 "long_entry": long_entry,
-                "long_stop": _num(levels.get("structure_invalid_long"), long_entry - atr * 1.6),
-                "long_tp1": float(resistance) if resistance is not None else price + atr * 2.2,
+                "long_stop": _num(levels.get("structure_invalid_long"), long_entry - atr * STOP_ATR_MULTIPLE),
+                "long_tp1": long_target if long_target is not None else long_entry + tp_distance,
                 "long_tp2": price + atr * 3.6,
                 "short_entry": short_entry,
-                "short_stop": _num(levels.get("structure_invalid_short"), short_entry + atr * 1.6),
-                "short_tp1": float(support) if support is not None else price - atr * 2.2,
+                "short_stop": _num(levels.get("structure_invalid_short"), short_entry + atr * STOP_ATR_MULTIPLE),
+                "short_tp1": short_target if short_target is not None else short_entry - tp_distance,
                 "short_tp2": price - atr * 3.6,
                 "market_regime": str(structure_overall.get("regime") or "unknown"),
                 "atr_14": indicators.get("atr_14"),
@@ -1160,9 +1299,27 @@ class StrategySnapshotBuilder:
             "vwap_slope_long_10": _last_value(secondary, "vwap_slope_long_10"),
         }
 
+    async def _stored_mark_price(self, instrument: str) -> Decimal | None:
+        """Latest stored mark price — no provider round trip.
+
+        Used only when the analysis bundle cannot supply a price. `prefer_live`
+        stays False on purpose: this runs once per timeframe per refresh cycle
+        in the precompute worker, and a live fetch here would multiply provider
+        calls by the timeframe count.
+        """
+        try:
+            from app.services.market import MarketService
+
+            mark = await MarketService(self.repository).get_best_mark(
+                instrument, prefer_live=False
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("strategy stored mark unavailable: %s", exc)
+            return None
+        return _decimal(getattr(mark, "mark_price", None)) if mark is not None else None
+
     @staticmethod
-    def _levels(structure_payload: dict[str, Any]) -> dict[str, Any]:
-        return {
+    def _levels(structure_payload: dict[str, Any]) -> dict[str, Any]:        return {
             "support_price": _find_value(structure_payload, "support_price", "support"),
             "resistance_price": _find_value(structure_payload, "resistance_price", "resistance"),
             "poc_price": _find_value(structure_payload, "poc", "poc_price"),

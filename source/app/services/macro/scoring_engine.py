@@ -27,6 +27,15 @@ class MacroScoreResult:
     reason: str | None = None
 
 
+# Reason returned for indicators whose registry rule sets
+# ``scoring_policy: "display_only"``. Such an indicator has real data and is
+# displayed, but can never be scored (absolute-quantity series with no
+# threshold), so "not scored" must not be read as "data missing".
+# Exported because macro_overview.py needs to tell the two apart when it
+# computes data coverage.
+DISPLAY_ONLY_REASON = "display_only"
+
+
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
@@ -138,9 +147,9 @@ class MacroScoringEngine:
         canonical_key = canonical_macro_key(orig_key)
         rule = self._rules.get(canonical_key)
         formula = str(rule.get("formula_id") or "") if rule else None
-        if rule and rule.get("scoring_policy") == "display_only":
+        if rule and rule.get("scoring_policy") == DISPLAY_ONLY_REASON:
             return MacroScoreResult(
-                orig_key, canonical_key, None, False, formula, "display_only"
+                orig_key, canonical_key, None, False, formula, DISPLAY_ONLY_REASON
             )
 
         if formula == "event_window_penalty":

@@ -586,14 +586,21 @@ class MacroSummaryAdapter:
         )
         valid = int(_num(completeness.get("effective_count"), 0))
         total = int(_num(completeness.get("total_count"), 0))
-        missing = max(total - valid, 0)
+        # Unscored is not the same as missing. ``total_count`` includes
+        # display-only indicators (Fed balance sheet, M2, SPY…) that have real
+        # data but no scoring rule, so ``total - valid`` charged them against
+        # confidence as if they were gaps. ``scorable_count`` is the set we
+        # could actually score; fall back to ``total_count`` for cached macro
+        # payloads written before that field existed.
+        scorable = int(_num(completeness.get("scorable_count"), total))
+        missing = max(scorable - valid, 0)
         stale = sum(
             int(_num(layer.get("stale_count"), 0)) for layer in _iter_dicts(macro.get("layers"))
         )
         confidence = 0.75
-        if total > 0:
-            confidence -= min(0.35, (missing / total) * 0.25 + (stale / total) * 0.15)
-        if total and valid < max(3, total * 0.5):
+        if scorable > 0:
+            confidence -= min(0.35, (missing / scorable) * 0.25 + (stale / scorable) * 0.15)
+        if scorable and valid < max(3, scorable * 0.5):
             confidence = min(confidence, 0.42)
 
         if score >= 65:
@@ -640,6 +647,7 @@ class MacroSummaryAdapter:
             ["利率与美元是否回落", "信用利差是否收敛", "跨资产风险偏好是否修复"],
             {
                 "valid_count": valid,
+                "scorable_count": scorable,
                 "total_count": total,
                 "missing_count": missing,
                 "stale_count": stale,

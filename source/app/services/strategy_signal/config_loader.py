@@ -92,6 +92,9 @@ DEFAULT_STRATEGY_SIGNAL_CONFIG: dict[str, Any] = {
         "strong_trend_atr_expansion_min": 60,
         "strong_trend_flow_min": 55,
         "chase_max_distance_atr": 1.5,
+        # A structure level further than this many ATR from the traded price is
+        # not usable as a tactical entry (the market has left its regime).
+        "entry_max_distance_atr": 3.0,
         "setup_valid_bars": {"1w": 8, "1d": 10, "4h": 12, "1h": 16, "15m": 20},
     },
     "state_permissions": {

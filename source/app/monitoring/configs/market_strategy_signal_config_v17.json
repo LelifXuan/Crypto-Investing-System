@@ -174,7 +174,8 @@
     "strong_trend_atr_expansion_min": 60,
     "strong_trend_flow_min": 55,
     "chase_max_distance_atr": 1.5,
-    "retest_wait_distance_atr": 1.0
+    "retest_wait_distance_atr": 1.0,
+    "entry_max_distance_atr": 3.0
   },
   "futures_risk": {
     "default_leverage": 10,

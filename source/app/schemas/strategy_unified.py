@@ -14,6 +14,16 @@ class StrategyUnifiedRead(BaseModel):
     status: str = "ready"
     refresh_state: str | None = None
     refresh_limitations: list[str] = Field(default_factory=list)
+    cache_state: str | None = Field(
+        default=None,
+        description=(
+            "Read-path freshness of the served snapshot: 'fresh' | 'stale' | "
+            "'missing'. Only the cached read branch sets it — a forced rebuild "
+            "returns none. The detail drawer uses it to distinguish 'the "
+            "snapshot is still being built' from 'the snapshot is fresh but the "
+            "live price has left the plan behind'."
+        ),
+    )
     snapshot_key: str | None = None
     payload_hash: str | None = None
     unified_state: dict[str, Any] = Field(default_factory=dict)

@@ -1008,7 +1008,10 @@ def reconcile_cached_strategy(
     reason = (
         "已激活计划的实时价格越过止损位。"
         if stopped
-        else "候选计划尚未入场，实时价格已越过失效位；旧计划已作废，正在重新推演。"
+        # No "正在重新推演" here: the plan's levels are structural, so a rebuild
+        # reproduces the same geometry. Promising a recompute that cannot change
+        # the verdict left the detail drawer reading as a stuck loading state.
+        else "候选计划尚未入场，实时价格已越过失效位；旧计划已作废。"
     )
     decision.update(
         {

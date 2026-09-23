@@ -17,7 +17,10 @@ from app.schemas.market import (
 from app.services.macro import transforms
 from app.services.macro.fallback_resolver import fallback_for_indicator
 from app.services.macro.provider_registry import MacroProviderRegistry
-from app.services.macro.scoring_engine import DEFAULT_MACRO_SCORING_ENGINE
+from app.services.macro.scoring_engine import (
+    DEFAULT_MACRO_SCORING_ENGINE,
+    DISPLAY_ONLY_REASON,
+)
 
 UTC = timezone.utc
 CONFIG_DIR = app_paths.resource_root / "app" / "monitoring" / "configs"
@@ -1080,6 +1083,11 @@ def _layer_contributions(
     indicators (e.g. 2/4) still shows its real mean score but pulls the
     total proportionally less, so sparse coverage cannot masquerade as a
     confident signal.
+
+    This scaling deliberately keeps ``total_count`` in the denominator, unlike
+    ``_scored_share``: it answers "how much of the layer stands behind this
+    score", where a display-only indicator genuinely does not stand behind it.
+    Data *coverage* is a different question and is not measured here.
     """
     total_weight = sum(LAYER_CONTRIBUTION_WEIGHTS.values())
     coverages: dict[str, float] = {}
@@ -1104,15 +1112,55 @@ def _total_score(contributions: dict[str, float]) -> int:
 
 
 def _data_completeness(layers: list[MacroOverviewLayerRead]) -> dict[str, float]:
+    # ``total_count`` stays the full catalogue so ``_regime_summary`` can still
+    # print "参与评分指标 37/48". ``ratio`` is scored/scorable: the share of the
+    # indicators we *could* score that we did score. Display-only indicators are
+    # excluded from the denominator because their absence from the score is a
+    # rule decision, not missing data — including them made this read 77% while
+    # all 48 indicators carried live values.
     total = sum(layer.total_count for layer in layers)
+    scorable = sum(_scorable_count(layer) for layer in layers)
     effective = sum(layer.effective_count for layer in layers)
-    ratio = effective / total if total else 0.0
+    ratio = effective / scorable if scorable else 0.0
     return {
         "effective_count": effective,
+        "scorable_count": scorable,
         "total_count": total,
         "ratio": round(ratio, 4),
         "percent": round(ratio * 100, 2),
     }
+
+
+def _display_only_count(layer: MacroOverviewLayerRead) -> int:
+    """Indicators in this layer that can never be scored, by design.
+
+    Their registry rule carries ``scoring_policy: "display_only"``: real data,
+    displayed, but no threshold to score against (Fed balance sheet, M2, SPY…).
+    They are counted in ``total_count`` but must not be counted as a data gap.
+    """
+    return sum(
+        1
+        for item in layer.indicators
+        if item.score_reason == DISPLAY_ONLY_REASON
+    )
+
+
+def _scorable_count(layer: MacroOverviewLayerRead) -> int:
+    """Indicators in this layer that a scoring rule exists for."""
+    return max(0, (layer.total_count or 0) - _display_only_count(layer))
+
+
+def _scored_share(layer: MacroOverviewLayerRead) -> float:
+    """Share of *scorable* indicators that actually produced a score.
+
+    Dividing by ``total_count`` instead conflates "no scoring rule" with "no
+    data": ``fed_operations`` is 6/11 display-only, so its scored share sat at
+    45.5% permanently and pinned the whole macro overview to low confidence no
+    matter how complete the underlying data was. 0.0 when the layer has nothing
+    scoreable — callers must skip such a layer rather than treat it as empty.
+    """
+    scorable = _scorable_count(layer)
+    return (layer.effective_count or 0) / scorable if scorable else 0.0
 
 
 def _confidence(
@@ -1121,15 +1169,13 @@ def _confidence(
 ) -> str:
     ratio = float(completeness.get("ratio") or 0)
     if layers:
-        # A layer with fewer than half its indicators scored should not
-        # keep the overview at "high" confidence; cap by the sparsest
-        # scored layer.
-        scored_layers = [layer for layer in layers if layer.total_count]
+        # A layer that scored fewer than half of its scorable indicators should
+        # not keep the overview at "high" confidence; cap by the sparsest such
+        # layer. Layers with nothing scoreable are skipped: there is no scoring
+        # to be short of.
+        scored_layers = [layer for layer in layers if _scorable_count(layer)]
         if scored_layers:
-            min_coverage = min(
-                (layer.effective_count or 0) / layer.total_count
-                for layer in scored_layers
-            )
+            min_coverage = min(_scored_share(layer) for layer in scored_layers)
             if min_coverage < 0.5:
                 return "low"
     if ratio >= 0.75:
@@ -1186,7 +1232,7 @@ def _warnings(layers: list[MacroOverviewLayerRead]) -> list[str]:
     for layer in layers:
         if not layer.is_scored:
             warnings.append(f"{layer.label_cn}暂无可评分数据。")
-        elif layer.effective_count < max(1, layer.total_count // 3):
+        elif layer.effective_count < max(1, _scorable_count(layer) // 3):
             warnings.append(f"{layer.label_cn}参与评分指标偏少，置信度较低。")
     return warnings[:6]
 
