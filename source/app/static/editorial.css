@@ -305,7 +305,7 @@ body.is-sidebar-collapsed .app-sidebar-brand { grid-template-columns: 36px; just
 body.is-sidebar-collapsed .app-sidebar-brand > div,
 body.is-sidebar-collapsed .editorial-nav-group h2,
 body.is-sidebar-collapsed .editorial-nav a > span:last-child,
-body.is-sidebar-collapsed .app-sidebar-foot span:last-child,
+body.is-sidebar-collapsed .app-sidebar-foot span[data-shell-health-label],
 body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab span { display: none; }
 body.is-sidebar-collapsed .editorial-nav a { grid-template-columns: 24px; justify-content: center; padding-inline: 10px; }
 body.is-sidebar-collapsed .sidebar-close { position: absolute; top: 68px; left: 10px; }
@@ -494,9 +494,31 @@ body.is-sidebar-collapsed .app-sidebar-guide .page-guide-fab {
   display: inline-block;
   width: 7px;
   height: 7px;
-  background: var(--info);
+  background: var(--muted);
   border-radius: 50%;
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+/* P1-STATE-001: chip color is a projection of observable state — unknown is
+   gray, never green. Service and data dots are independent. */
+.app-sidebar-foot [data-shell-health-dot="service"][data-state="ready"],
+.app-sidebar-foot [data-shell-health-dot="data"][data-state="ok"] {
+  background: var(--info);
   box-shadow: 0 0 0 3px var(--info-soft);
+  opacity: 1;
+}
+
+.app-sidebar-foot [data-shell-health-dot][data-state="degraded"] {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-soft);
+  opacity: 1;
+}
+
+.app-sidebar-foot [data-shell-health-dot="service"][data-state="unreachable"] {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+  opacity: 1;
 }
 
 .app-main {

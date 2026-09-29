@@ -67,6 +67,21 @@ function isAbortLikeError(error) {
   return error?.name === "AbortError" || error?.name === "TimeoutError";
 }
 
+// P1-STATE-001: observable data-quality evidence for the shell health chips.
+// Counts final request outcomes (cache hits included — they are proof of a
+// past successful response). Health endpoints are excluded: service health
+// and market-data quality must stay separate concepts.
+export const dataQualityTracker = {
+  successCount: 0,
+  failureCount: 0,
+  lastSuccessAt: 0,
+  lastFailureAt: 0,
+};
+
+function isHealthRequest(url) {
+  return url.split("?")[0].endsWith("/health") || url.includes("/health/");
+}
+
 export async function requestJson(
   path,
   {
@@ -127,10 +142,26 @@ export async function requestJson(
     }
     throw new Error("request_failed");
   })().finally(() => inflightStore.delete(cacheKey));
+  const tracked = request.then(
+    (value) => {
+      if (!isHealthRequest(url)) {
+        dataQualityTracker.successCount += 1;
+        dataQualityTracker.lastSuccessAt = Date.now();
+      }
+      return value;
+    },
+    (error) => {
+      if (!isHealthRequest(url) && !isAbortLikeError(error)) {
+        dataQualityTracker.failureCount += 1;
+        dataQualityTracker.lastFailureAt = Date.now();
+      }
+      throw error;
+    },
+  );
   if (!signal) {
-    inflightStore.set(cacheKey, request);
+    inflightStore.set(cacheKey, tracked);
   }
-  return request;
+  return tracked;
 }
 
 export function invalidateCache(prefix = "") {

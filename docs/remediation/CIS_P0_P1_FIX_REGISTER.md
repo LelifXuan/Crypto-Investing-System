@@ -71,13 +71,19 @@
 
 ### P1-STATE-001 — Shell 全局健康状态写死为健康
 
-- **Status**: IN_PROGRESS（2026-09-30）
-- **Current behavior**: Shell 模板静态写「系统在线 / 数据连接正常」，无前端逻辑更新；可与页面级 stale/error/degraded 同时出现，构成系统级事实冲突。
-- **Root cause**: 全局状态是静态乐观默认值，不是可观测状态的投影；Service Health 与 Market Data Quality 被混成一个绿灯。
-- **Files affected**: 调查后回填（预期 `templates/page.html` + 新 shell 健康状态模块）
-- **Proposed minimal fix**: Shell mount 时轻量检查 `/health`（30–60s 低频轮询），区分「服务正常/降级/不可达/未知」；数据质量来自页面实际数据（正常/部分降级/过期/不可用）；请求失败显示「服务状态未知」，禁止保留绿色在线。
-- **Tests added**: `test_shell_does_not_hardcode_healthy_data_state`、`test_shell_health_{ready,degraded,unreachable}_state`、page-degraded + service-online 组合
-- **Evidence**: 见 §3（回填）
+- **Status**: FIXED（2026-09-30）
+- **Root cause**: 全局状态是静态乐观默认值（`page.html:53-56` 硬编码「系统在线」+ 绿点），不是可观测状态的投影；Service Health 与 Market Data Quality 被混成一个绿灯。
+- **Files affected**: `app/templates/page.html`、`app/static/core/shellHealth.js`（新增）、`app/static/core/api.js`、`app/static/main.js`、`app/static/editorial.css`
+- **Proposed minimal fix**: 已实施——侧栏页脚改双 chip：`服务` 状态来自 `/health` 轮询（45s 低频 + 启动即测 + 4s 早期 settle；ready/degraded/unreachable/unknown 四态，请求失败显示服务不可达，绝不保留绿色）；`数据` 状态来自 api.js `dataQualityTracker` 的真实请求成败计数（成功/失败最终结果、缓存命中计入成功、health 端点排除、abort 不计失败），与 `/health` 完全独立；两 chip 初始均为「未知」灰色，无证据不给绿；CSS 按观测状态着色（unknown 灰/ready 青绿/degraded 琥珀/unreachable 红），折叠侧栏隐藏两个文字标签。
+- **Tests added**: `test_shell_health_truthfulness.py`（6，覆盖 §7.6 要求的 4 个状态 + 硬编码守卫 + ready-service×degraded-data 组合可表达 + unknown 无正向色）
+- **Remaining limitations**: 数据质量 chip 是「近期请求成败」的粗粒度投影（失败后保持「部分数据降级」直到下一次成功请求），不是按数据源的细分健康面板；监测页自身的细分降级仍由页面内数据源状态卡表达。
+
+#### Evidence — P1-STATE-001
+
+- **Before**: `page.html:53-56` `<span class="health-dot"></span><span>系统在线</span>` 纯静态，无任何 JS 更新路径；可与页面级 stale/error/degraded 同时出现。
+- **Change**: 见 Proposed minimal fix。早期 Playwright 冒烟抓到并修复 `registerDataQualityTracker` 引用闭包函数未定义的真实 pageerror（这正是实例检查门禁的价值）。
+- **Test**: `pytest tests/test_shell_health_truthfulness.py` **6 passed**；`node --check` 通过。
+- **After**: 2560×1440 实例冒烟：`/monitoring-page` pageerror=0；chip 渲染 `服务正常`（dot ready，来自 /health 证据）+ `数据状态未知`（dot unknown，初始诚实态）；全量 verify_pages 见回归章节。
 
 ## 2. Deferred（P2，本轮不改）
 

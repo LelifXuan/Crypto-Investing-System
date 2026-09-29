@@ -1,5 +1,13 @@
 import { setRoot, bindTooltipEscape, renderNavSkeleton, revealStagger, updatePageContext } from "./core/dom.js";
 import { createCommandRegistry } from "./core/commandRegistry.js";
+import { dataQualityTracker } from "./core/api.js";
+import { registerDataQualityTracker, startShellHealth } from "./core/shellHealth.js";
+
+// P1-STATE-001: shell health chips start as "unknown" and turn truthful on
+// evidence — service state from /health polls, data state from api.js's
+// request-outcome tracker. startShellHealth() is idempotent across SPA boots.
+startShellHealth();
+registerDataQualityTracker(dataQualityTracker);
 import { mountCommandPalette } from "./ui/commandPalette.js";
 import { registerOverlay, LAYER, isTopOverlay } from "./ui/overlayCoordinator.js";
 

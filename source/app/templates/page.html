@@ -50,9 +50,11 @@
       </nav>
 
       <div class="app-sidebar-guide" id="app-sidebar-guide" aria-live="polite"></div>
-      <div class="app-sidebar-foot">
-        <span class="health-dot" aria-hidden="true"></span>
-        <span>系统在线</span>
+      <div class="app-sidebar-foot" id="app-shell-health" role="status" aria-live="polite">
+        <span class="health-dot" data-shell-health-dot="service" data-state="unknown" aria-hidden="true" title="服务健康：来自 /health 的可观测状态"></span>
+        <span data-shell-health-label="service">服务状态未知</span>
+        <span class="health-dot" data-shell-health-dot="data" data-state="unknown" aria-hidden="true" title="数据质量：来自实际数据请求结果，与服务健康相互独立"></span>
+        <span data-shell-health-label="data">数据状态未知</span>
       </div>
     </aside>
 
