@@ -25,20 +25,20 @@
 ## 3. P0 验收标准
 
 ### Security（P0-SEC-001）
-- [ ] 新构建 ZIP：无 `.env`、无嵌入 secret 值、无 credential artifact
-- [ ] secret scanner：PASS（BUILD FAIL 语义，非 warning）
-- [ ] 历史 credential 轮换状态已登记（`SECRET_ROTATION_REQUIRED.md`，只记键名）
-- [ ] 临时解压目录 try/verify/finally cleanup；cleanup 失败显式上报
+- [x] 新构建 ZIP：无 `.env`、无嵌入 secret 值、无 credential artifact（NONSECRET-20260930 包验证）
+- [x] secret scanner：PASS（构建前后双扫描，命中即删产物）
+- [x] 历史 credential 轮换状态已登记（只记键名；15 组 MANUAL ROTATION REQUIRED + 2 组本地自管 REQUIRED，均未冒充已完成）
+- [x] verify_portable_package.py 实施；本轮验证 cleanup=clean
 
 ### Cross-Asset（P0-QNT-001）
-- [ ] BTC derivatives → BTC 方向链路正常工作（positive control）
-- [ ] BTC derivatives ⇏ ETH / BNB / HYPE / OKB direction（除非未来显式 proxy policy）
+- [x] test_btc_derivatives_can_affect_btc_strategy PASS（bearish flip 下 BTC tactical LONG→SHORT）
+- [x] 4 个不变性测试 PASS（bullish/bearish flip 下方向/计划输入/权限/仓位上限全不变）
 
 ## 4. P1 验收标准
 
-- [ ] Capital Flow：不再存在「positive absolute level = inflow」路径；只用 change/trend/deviation 或 neutralize
-- [ ] Confidence：用户不会自然把评分理解成预测成功概率；API/UI/Knowledge 语义一致
-- [ ] Health：Shell 不得无证据地常显「正常/在线」；Service Health 与 Market Data Quality 语义分离
+- [x] Case A–E 测试 PASS；正 level → DATA_INSUFFICIENT
+- [x] 「证据质量 N/100」+ confidence_kind 字段 + 知识库非概率声明，5 守卫 PASS
+- [x] 双 chip 初始未知 + 双来源（/health 与请求成败），6 守卫 PASS + 实例冒烟
 
 ## 5. 最终验证（不得只跑新增测试）
 
