@@ -16,6 +16,7 @@ def test_private_bundle_source_and_runtime_cache_are_distinct():
         "source/runtime/data/a.db",
         "source/tests/screenshots/a.png",
         "source/.env",
+        "source/.env.local",
         "dist/old.zip",
     ]:
         assert not include_source(name), name

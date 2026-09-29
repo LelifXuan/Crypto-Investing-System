@@ -7,7 +7,8 @@ services:
     environment:
       POSTGRES_DB: trading_system
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # P0-SEC-001: placeholder only; a real value must come from the environment.
+      POSTGRES_PASSWORD: CHANGE_ME
     ports:
       - "5432:5432"
     volumes:

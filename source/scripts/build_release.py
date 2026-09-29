@@ -22,8 +22,9 @@ def run_script(script_name: str) -> None:
 def main() -> int:
     run_script("clean_release.py")
     run_script("create_release_zip.py")
-    run_script("build_portable_bundle.py")
-    run_script("portable_smoke.py")
+    # The private portable bundle is an explicit delivery act, never part of the
+    # generic release flow: build_private_portable.py --output <zip> then
+    # verify_portable_package.py --archive <zip> --extract.
     return 0
 
 

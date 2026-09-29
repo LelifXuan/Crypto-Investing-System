@@ -186,6 +186,7 @@ def test_package_security_notice_uses_manifest(secrets, encrypted):
         }
     )
     assert ("ZIP 已加密" if encrypted else "ZIP 未加密") in notes
-    assert ("包含原样 source/.env 和密钥" if secrets else "不包含密钥") in notes
+    # P0-SEC-001 contract: the False branch must state no credentials are included.
+    assert ("包含原样 source/.env 和密钥" if secrets else "不包含任何密钥或凭证") in notes
     assert "Monitoring、BTC" in notes
     assert "Ctrl+Shift+R" in notes
