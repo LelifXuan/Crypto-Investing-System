@@ -356,6 +356,8 @@ class UnifiedStrategyService:
                 "payload": {
                     "unified_state": dict(active_state),
                     "trade_decision": dict(trade_decision),
+                    "confidence_kind": "evidence_quality",
+                    "confidence_is_probability": False,
                 },
                 "conflicts": [],
                 "confidence": active_confidence,
@@ -368,6 +370,8 @@ class UnifiedStrategyService:
                 "payload": {
                     "direction_resolution": dict(shadow_resolution),
                     "cross_validation": dict(cross_validation),
+                    "confidence_kind": "evidence_quality",
+                    "confidence_is_probability": False,
                 },
                 "conflicts": list(shadow_resolution.get("conflicts") or []),
                 "confidence": shadow_confidence,

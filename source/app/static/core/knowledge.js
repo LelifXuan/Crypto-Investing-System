@@ -581,11 +581,12 @@ const alertItems = [
       "告警中心已显示证据不足，但策略页仍按 confirmed 给出方向：两页状态不一致时优先以证据质量页为准。",
     ],
   }),
-  term("confidence_label", "Confidence Label / 置信标签", {
-    aliases: ["state confidence", "状态置信"],
+  term("confidence_label", "Evidence Quality Score / 证据质量评分", {
+    aliases: ["state confidence", "状态置信", "置信度"],
     family: "decision",
-    summary: "置信标签说明状态判断的证据完整度，不是胜率。",
-    how_to_use: "状态置信较高但交易触发未完成时，仍应等待；状态置信较高但盘口执行差时，合约仓位仍应为 0。",
+    summary: "证据质量评分衡量数据新鲜度、证据覆盖和信号一致性，不代表预测胜率或盈利概率。",
+    how_to_use: "证据质量较高但交易触发未完成时，仍应等待；证据质量较高但盘口执行差时，合约仓位仍应为 0。",
+    risk_note: "该评分是启发式证据质量分（0-100），不是校准概率；系统当前不输出成功概率（p_success）。",
     page_refs: ["alert-center"],
     tags: ["decision"],
   }),

@@ -89,7 +89,7 @@ export function renderScanRanked(ranked, hasPending = false, meta = {}) {
           </div>
           ${levels ? `<p class="scan-ranked-levels">${escapeHtml(levels)}</p>` : ""}
           <div class="scan-ranked-meta">
-            <span>置信度 ${escapeHtml(String(Math.round(item.confidence)))}%</span>
+            <span title="证据质量：衡量数据新鲜度、证据覆盖与信号一致性，不代表预测胜率或盈利概率">证据质量 ${escapeHtml(String(Math.round(item.confidence)))}/100</span>
             <span>${escapeHtml(riskRewardText(item.risk_reward))}</span>
             ${item.qualified && item.first_risk_reward ? `<span>${escapeHtml(riskRewardText(item.first_risk_reward, "首目标盈亏比"))}</span>` : ""}
             ${item.qualified && item.expected_move_pct ? `<span>预期波动 ${escapeHtml(formatNumber(item.expected_move_pct, 2))}%</span>` : ""}

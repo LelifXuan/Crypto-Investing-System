@@ -29,7 +29,7 @@ const GATE_REASON_LABELS = {
   unified_direction_not_aligned: "跨周期执行方向尚未确认",
   timeframe_not_executable: "该周期仅供结构研判",
   trade_permission_not_granted: "当前没有开仓许可",
-  confidence_below_gate: "置信度不足",
+  confidence_below_gate: "证据质量未达门槛",
   score_below_gate: "综合评分不足",
   risk_reward_below_gate: "盈亏比不足",
   direction_gap_below_gate: "多空分歧不足",

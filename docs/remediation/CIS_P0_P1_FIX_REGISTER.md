@@ -55,13 +55,19 @@
 
 ### P1-SEM-001 — 启发式证据分被呈现为「置信度 %」
 
-- **Status**: IN_PROGRESS（2026-09-30）
-- **Current behavior**: strategy confidence 由 freshness/consistency/coverage 启发式合成，是证据质量分；UI 以「置信度 87%」「高确定性机会」呈现，自然被读成 87% 成功概率。
-- **Root cause**: 字段名与文案沿用了概率语义，未声明评分种类。
-- **Files affected**: 调查后回填（预期 schemas + strategy 前端 render 模块 + 知识库文案）
-- **Proposed minimal fix**: 用户可见文案改「证据质量 87/100」；扫描 copy 改「高证据质量候选」；API 增加 `confidence_kind="evidence_quality"`、`confidence_is_probability=false`（兼容保留 `confidence` 字段）；tooltip/知识库明确「不代表预测胜率或盈利概率」。
-- **Tests added**: 证据分不得显示为概率/胜率的静态与 UI 守卫
-- **Evidence**: 见 §3（回填）
+- **Status**: FIXED（2026-09-30）
+- **Root cause**: 字段名与文案沿用概率语义（`置信度 87%`），未声明评分种类；用户自然读成 87% 成功概率，而实际是 freshness/consistency/coverage 启发式合成的证据质量分。
+- **Files affected**: `app/services/strategy_unified/opportunity_scanner.py`、`app/services/strategy_unified/unified_service.py`、`app/static/pages/strategy/renderScanRanked.js`、`app/static/pages/strategy/renderTimeframeFocus.js`、`app/static/pages/strategy/renderScanMatrix.js`、`app/static/core/knowledge.js`
+- **Proposed minimal fix**: 已实施——ScanItem 增加 `confidence_kind="evidence_quality"`、`confidence_is_probability=false`（经 asdict 进入 API）；决策审计两行 payload 带同样语义字段；ranked 卡/周期聚焦 chip 改「证据质量 N/100」（无 % 号，附 tooltip「衡量数据新鲜度、证据覆盖与信号一致性，不代表预测胜率或盈利概率」）；矩阵门禁文案改「证据质量未达门槛」；知识库 `confidence_label` 词条更名「Evidence Quality Score / 证据质量评分」并补 risk_note「不是校准概率；系统当前不输出成功概率」。
+- **Tests added**: `test_evidence_quality_semantics.py`（5 项静态守卫，INV-003）
+- **Remaining limitations**: alerts/monitoring 页的「置信度」用于数据源质量与宏观覆盖度语义（无 % 概率表述），不属于策略评分概率化呈现，本轮不改；p_success 概率模型按指令明确不做。
+
+#### Evidence — P1-SEM-001
+
+- **Before**: `renderScanRanked.js:92` `置信度 ${n}%`；`renderTimeframeFocus.js:45` `置信度 ${n}`；`renderScanMatrix.js:32` `confidence_below_gate: "置信度不足"`；ScanItem/API/审计 payload 均无语义标注；知识库词条名「置信标签」。
+- **Change**: 见 Proposed minimal fix。
+- **Test**: `pytest tests/test_evidence_quality_semantics.py` **5 passed**（策略渲染器禁「置信度」、必须「证据质量 N/100」、ScanItem/审计 payload 语义字段存在、知识库非概率表述存在）。
+- **After**: 关键词回归（scanner/ranked/matrix/knowledge）**187 passed、1 skipped、0 failed**；改动 JS 全部 `node --check` 通过；ruff 改动范围 All checks passed。
 
 ### P1-STATE-001 — Shell 全局健康状态写死为健康
 

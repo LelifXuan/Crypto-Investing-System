@@ -129,6 +129,12 @@ class ScanItem:
     horizon_target: float | None = None
     first_risk_reward: float | None = None
     expected_move_pct: float | None = None
+    # P1-SEM-001: this number is a heuristic evidence-quality score (data
+    # freshness, coverage, signal consistency) — never a calibrated success
+    # probability. Fields travel through dataclasses.asdict to the API so the
+    # frontend and future consumers cannot mistake the semantics.
+    confidence_kind: str = "evidence_quality"
+    confidence_is_probability: bool = False
 
 
 @dataclass(slots=True)

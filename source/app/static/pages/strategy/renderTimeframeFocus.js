@@ -42,7 +42,7 @@ export function renderTimeframeFocus(model, timeframe, helpers) {
         <h2>${escapeHtml(period)}判断：${escapeHtml(conclusion)}</h2>
         <p>该周期的结构证据用于上方独立交易机会的方向判断；执行价位来自下一交易级别。</p>
       </div>
-      <span class="strategy-timeframe-focus-confidence">置信度 ${escapeHtml(confidence)}</span>
+      <span class="strategy-timeframe-focus-confidence" title="证据质量：衡量数据新鲜度、证据覆盖与信号一致性，不代表预测胜率或盈利概率">证据质量 ${escapeHtml(confidence)}/100</span>
     </div>
     <div class="strategy-timeframe-focus-metrics">
       ${metrics.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
