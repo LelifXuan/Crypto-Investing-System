@@ -5204,7 +5204,6 @@ button:hover,
   line-height: 1.65;
 }
 
-.knowledge-hero,
 .knowledge-section-card {
   margin-bottom: var(--content-gap);
 }
@@ -7387,7 +7386,7 @@ ul.terminal-summary-watch li {
 }
 
 .monitoring-detail-panel {
-  margin-top: 18px;
+  margin-top: var(--space-section);
 }
 
 .macro-indicator-grid {
@@ -11598,6 +11597,42 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .strategy-detail-body .table-wrap {
   overflow-x: auto;
   max-width: 100%;
+}
+
+.strategy-timeframe-focus {
+  padding: 24px 28px;
+  border-left: 4px solid var(--border);
+}
+.strategy-timeframe-focus[data-tone="bullish"] { border-left-color: var(--success, #3c8a75); }
+.strategy-timeframe-focus[data-tone="bearish"] { border-left-color: var(--danger, #a85e6a); }
+.strategy-timeframe-focus-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+.strategy-timeframe-focus-head h2 { margin: 8px 0; }
+.strategy-timeframe-focus-head p:last-child { margin: 0; color: var(--muted); }
+.strategy-timeframe-focus-confidence { white-space: nowrap; color: var(--muted); }
+.strategy-timeframe-focus-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.strategy-timeframe-focus-metrics > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.strategy-timeframe-focus-metrics span,
+.strategy-timeframe-focus-metrics strong { display: block; }
+.strategy-timeframe-focus-metrics span { font-size: 0.78rem; color: var(--muted); }
+.strategy-timeframe-focus-metrics strong { margin-top: 5px; }
+.strategy-timeframe-focus-evidence { margin: 16px 0 0; padding-left: 20px; color: var(--muted); }
+@media (max-width: 1180px) {
+  .strategy-timeframe-focus-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strategy-timeframe-focus-head { flex-direction: column; }
 }
 
 /* 2026-07-25: prominent banner shown at the top of the detail panel

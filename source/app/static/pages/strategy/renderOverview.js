@@ -44,7 +44,7 @@ export function renderOverview(model, helpers) {
   return `
     <section class="strategy-unified-overview card">
       <div class="strategy-overview-main">
-        <p class="eyebrow">UNIFIED STRATEGY</p>
+        <p class="eyebrow">CROSS-TIMEFRAME EXECUTION · 跨周期执行决策</p>
         <h2>${escapeHtml(headline)}</h2>
         <p>${escapeHtml(decisionHeadline)}</p>
         <small>生成时间 ${escapeHtml(formatDateTime(model.generated_at))}</small>

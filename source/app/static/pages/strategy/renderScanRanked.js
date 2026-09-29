@@ -4,11 +4,11 @@ import { appState } from "../../core/state.js";
 
 const TIMEFRAME_LABELS = { "1w": "周线", "1d": "日线", "4h": "4H" };
 
-function riskRewardText(value) {
+function riskRewardText(value, label = "交易级别盈亏比") {
   const ratio = Number(value);
   return Number.isFinite(ratio) && ratio > 0
-    ? `盈亏比 ${formatNumber(ratio, 2)}:1`
-    : "盈亏比待确认";
+    ? `${label} ${formatNumber(ratio, 2)}:1`
+    : label === "交易级别盈亏比" ? "盈亏比待确认" : `${label}待确认`;
 }
 
 function formatLevelsPrice(value) {
@@ -24,17 +24,27 @@ function formatLevelsPrice(value) {
 // Point levels come from the tactical plan matching the cell direction
 // (backend _cell_execution_levels); missing levels hide the line.
 function levelsLine(item) {
+  // Only the selected period's validated execution plan may display levels.
+  if (item?.qualified !== true) return "";
   const zone = Array.isArray(item?.entry_zone) ? item.entry_zone.map(Number).filter(Number.isFinite) : [];
   if (!zone.length) return "";
-  const stop = Number(item?.stop_loss);
+  if (item?.stop_loss == null) return "";
+  const stop = Number(item.stop_loss);
+  if (!Number.isFinite(stop)
+    || (item.direction === "LONG" && stop >= Math.min(...zone))
+    || (item.direction === "SHORT" && stop <= Math.max(...zone))) return "";
   const tp1 = Number(item?.take_profit_1);
+  const horizonTarget = Number(item?.horizon_target);
   const zoneText = zone.map(formatLevelsPrice).join(" – ");
   const stopText = Number.isFinite(stop) ? formatLevelsPrice(stop) : "—";
   // A missing TP1 is not a zero target: hide it instead of printing 止盈 0.
   const tp1Text = Number.isFinite(tp1) && tp1 !== 0 ? formatLevelsPrice(tp1) : "—";
   const dirWord = item?.direction === "LONG" ? "做多" : item?.direction === "SHORT" ? "做空" : "";
   const prefix = dirWord ? `${dirWord} ` : "";
-  return `${prefix}${zoneText}｜止损 ${stopText}｜止盈 ${tp1Text}`;
+  const tradeTf = TIMEFRAME_LABELS[item.timeframe] || item.timeframe;
+  const executionTf = { "1w": "日线", "1d": "4H", "4h": "1H" }[item.timeframe] || "入场周期";
+  const horizonText = Number.isFinite(horizonTarget) && horizonTarget > 0 ? formatLevelsPrice(horizonTarget) : "—";
+  return `${prefix}${zoneText}｜止损 ${stopText}｜${executionTf}首目标 ${tp1Text}｜${tradeTf}目标 ${horizonText}`;
 }
 
 /**
@@ -46,8 +56,8 @@ function levelsLine(item) {
 export function renderScanRanked(ranked, hasPending = false, meta = {}) {
   if (!ranked.length) {
     const emptyMsg = hasPending
-      ? "数据补齐中，稍后将有方向出现。"
-      : "当前无交易机会，市场处于震荡行情或等待确认阶段。";
+      ? "部分数据仍在后台补齐；当前没有通过完整交易门禁的机会。"
+      : "当前没有通过完整交易门禁的机会。";
     return `<div class="data-state data-state-empty">${escapeHtml(emptyMsg)}</div>`;
   }
 
@@ -70,6 +80,7 @@ export function renderScanRanked(ranked, hasPending = false, meta = {}) {
             <div>
               <span class="impact-chip impact-${tone}">${escapeHtml(code)} ${escapeHtml(item.direction_label)} ${arrow}</span>
               <span class="status-chip chip-neutral">${escapeHtml(timeframe)}</span>
+              ${item.qualified === true ? "" : '<span class="status-chip chip-neutral">待确认</span>'}
             </div>
             <div class="scan-ranked-score">
               <strong>${escapeHtml(String(item.score))}</strong>
@@ -80,6 +91,8 @@ export function renderScanRanked(ranked, hasPending = false, meta = {}) {
           <div class="scan-ranked-meta">
             <span>置信度 ${escapeHtml(String(Math.round(item.confidence)))}%</span>
             <span>${escapeHtml(riskRewardText(item.risk_reward))}</span>
+            ${item.qualified && item.first_risk_reward ? `<span>${escapeHtml(riskRewardText(item.first_risk_reward, "首目标盈亏比"))}</span>` : ""}
+            ${item.qualified && item.expected_move_pct ? `<span>预期波动 ${escapeHtml(formatNumber(item.expected_move_pct, 2))}%</span>` : ""}
             <span>${escapeHtml(item.leverage_hint === "spot" ? "现货" : item.leverage_hint)}</span>
             ${ageLabel ? `<span title="该评分生成时间，抽屉显示当前快照，两者可能不同代">${escapeHtml(ageLabel)}</span>` : ""}
           </div>

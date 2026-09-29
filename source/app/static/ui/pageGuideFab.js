@@ -101,6 +101,16 @@ export function mountPageGuide(termId) {
     setExpanded(panel.hidden);
   }
 
+  function handleFabKeydown(event) {
+    // Space's synthesized click can be lost when the mobile navigation focus
+    // trap moves focus during keyup. Handle it on keydown and suppress the
+    // browser's delayed click so a single keypress always toggles once.
+    if (event.key === " " || event.code === "Space") {
+      event.preventDefault();
+      toggle();
+    }
+  }
+
   function closeGuide({ restoreFocus = false } = {}) {
     if (panel.hidden) return;
     setExpanded(false);
@@ -119,6 +129,7 @@ export function mountPageGuide(termId) {
   }
 
   fab.addEventListener("click", toggle);
+  fab.addEventListener("keydown", handleFabKeydown);
   document.addEventListener("pointerdown", handleOutsidePointer, true);
   document.addEventListener("keydown", handleKeydown);
 
@@ -132,6 +143,7 @@ export function mountPageGuide(termId) {
   return {
     unmount() {
       fab.removeEventListener("click", toggle);
+      fab.removeEventListener("keydown", handleFabKeydown);
       document.removeEventListener("pointerdown", handleOutsidePointer, true);
       document.removeEventListener("keydown", handleKeydown);
       fab.remove();

@@ -1,11 +1,7 @@
 import { escapeHtml, loadingState, errorState, formatNumber, formatDateTime, emptyState } from "../../core/dom.js";
-import { renderOverview } from "./renderOverview.js?v=trade-4h-v1";
-import { renderExecutionPlan } from "./renderExecutionPlan.js?v=trade-4h-v1";
-import { renderDecisionAudit } from "./renderDecisionAudit.js?v=auditable-v1";
-import { renderEvidenceStack } from "./renderEvidenceStack.js?v=compact-v3";
-import { renderMarketOperation } from "./renderMarketOperation.js?v=decision-text-cleanup";
-import { renderRiskPanel } from "./renderRiskPanel.js?v=compact-v3";
 import { renderEventWatch } from "./renderEventWatch.js?v=compact-v3";
+import { renderTimeframeFocus } from "./renderTimeframeFocus.js?v=period-v1";
+import { renderPeriodOpportunity } from "./renderPeriodOpportunity.js?v=period-v1";
 import { buildDataDegradedCard } from "./adapter.js?v=trade-4h-v1";
 import { registerOverlay, LAYER, isTopOverlay } from "../../ui/overlayCoordinator.js";
 
@@ -76,6 +72,7 @@ function renderDegradedBanner(model) {
 }
 
 function hasPublishedDetail(model) {
+  if (model?.selected_timeframe) return Boolean(model.opportunity_decisions?.[model.selected_timeframe]);
   const snapshotId = String(model.market_decision_snapshot?.snapshot_id || "");
   const hasSnapshot = Boolean(snapshotId && snapshotId !== "-" && !snapshotId.startsWith("missing:"));
   const hasTimeframes = Array.isArray(model.timeframe_stack) && model.timeframe_stack.length > 0;
@@ -338,31 +335,22 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     if (!body) return;
 
     const instCode = model.instrument_code || instrumentId;
-    const td = model.trade_decision || {};
-    const pending = !hasPublishedDetail(model);
-    // The drawer is opened from a specific matrix cell (instrument ×
-    // timeframe): the title names the *cell's own* timeframe node direction
-    // from timeframe_stack, not the global trade decision. The decision is
-    // always the 4h tactical plan, so "HYPE · 1w · 做空" used to open a
-    // drawer titled 做空 and then show 4h levels (96.90–97.29 → TP 89.86).
-    // When the cell node disagrees with the decision, say so in the title.
+    const opportunity = model.opportunity_decisions?.[timeframe];
+    const pending = !hasPublishedDetail(model) || !opportunity;
+    // The matrix and the selected-period section both use this node. The
+    // unified trade decision below it answers a different question: whether
+    // the complete cross-period gate permits an order.
     const cellNode = (model.timeframe_stack || []).find(
       (node) => String(node?.timeframe || "") === String(timeframe || "")
     );
-    const cellDir = String(cellNode?.direction || "").toUpperCase();
-    const decisionSide = String(td.side || "").toUpperCase();
+    const cellDir = String(opportunity?.side || cellNode?.direction || "").toUpperCase();
     const cellDirLabel = cellDir === "LONG" ? "做多" : cellDir === "SHORT" ? "做空" : "";
-    const decisionDirLabel = decisionSide === "LONG" ? "做多" : decisionSide === "SHORT" ? "做空" : "等待确认";
     const dirLabel = pending
       ? "数据准备中"
-      : cellDirLabel || decisionDirLabel;
+      : cellDirLabel || "等待确认";
     if (title) {
       title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
-      if (!pending && cellDirLabel && cellDir !== decisionSide) {
-        title.title = `本周期方向${cellDirLabel}，当前主计划（4H 战术）方向${decisionDirLabel}，下方为 4H 计划价位`;
-      } else {
-        title.removeAttribute("title");
-      }
+      title.removeAttribute("title");
     }
 
     // A cold-cache response is system availability, not a market conclusion.
@@ -387,12 +375,8 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     // even when there is no direction, so we must surface those so
     // the user can see why the engine concluded there is no edge.
     const sections = [
-      renderOverview(model, helpers),
-      renderExecutionPlan(model, helpers),
-      renderDecisionAudit(model, helpers),
-      renderEvidenceStack(model, helpers),
-      renderMarketOperation(model, helpers),
-      renderRiskPanel(model, helpers),
+      renderPeriodOpportunity(opportunity, model, helpers),
+      renderTimeframeFocus(model, timeframe, helpers),
       renderEventWatch(model, helpers),
       buildDataDegradedCard(model),
     ];

@@ -16,9 +16,18 @@ let activeController = null;
 let detailLoadController = null; // 2026-08-11: abort previous detail panel requests
 let activeDetailPanelClose = null;
 let scanData = null; // cached ScanResult for resume
-let prewarmed = false; // 2026-07-24: only fire prewarm once per page module load
 // 2026-08-11: debounce matrix cell clicks to prevent rapid-fire panel opens
 let strategyDebounceTimer = null;
+
+function hasInvalidExecutionLevels(item) {
+  const zone = Array.isArray(item?.entry_zone) ? item.entry_zone.map(Number).filter(Number.isFinite) : [];
+  if (!zone.length) return false;
+  if (item?.stop_loss == null) return true;
+  const stop = Number(item.stop_loss);
+  if (!Number.isFinite(stop)) return true;
+  return item.direction === "LONG" ? stop >= Math.min(...zone)
+    : item.direction === "SHORT" ? stop <= Math.max(...zone) : false;
+}
 
 function renderScanShell() {
   setRoot(`
@@ -27,7 +36,7 @@ function renderScanShell() {
         <div>
           <p class="eyebrow">OPPORTUNITY SCANNER</p>
           <h2 class="page-display-title">跨品种跨周期机会扫描</h2>
-          <p>自动扫描全部品种 · 周线/日线/4H · 综合评分排序</p>
+          <p>5 个品种 × 3 个交易级别 · 15 个独立扫描单元 · 仅展示已通过交易门禁的机会</p>
         </div>
         <div class="strategy-v2-actions">
           <button type="button" class="primary-button compact" id="strategy-scan-refresh">刷新扫描</button>
@@ -38,8 +47,8 @@ function renderScanShell() {
           <div class="section-head">
             <div>
               <p class="eyebrow">MATRIX</p>
-              <h2>机会矩阵</h2>
-              <p class="section-summary">仅显示通过严格门禁的高确定性机会</p>
+              <h2>交易机会矩阵</h2>
+              <p class="section-summary">仅展示已具备入场、止损、目标、盈亏比及风险许可的机会</p>
             </div>
           </div>
           <div id="strategy-scan-matrix"></div>
@@ -48,8 +57,8 @@ function renderScanShell() {
           <div class="section-head">
             <div>
               <p class="eyebrow">RANKED</p>
-              <h2>机会排序</h2>
-              <p class="section-summary">候选信号按综合评分降序，保留置信度</p>
+              <h2>交易机会排序</h2>
+              <p class="section-summary">仅排列通过完整交易门禁的机会</p>
             </div>
           </div>
           <div id="strategy-scan-ranked"></div>
@@ -71,24 +80,21 @@ function renderScanResults(data) {
   const visibleMatrix = matrix.filter((item) => visibleInstrumentIds.has(item?.instrument_id));
   const ranked = visibleMatrix
     .filter((item) => (
-      item?.cache_state === "fresh" && ["LONG", "SHORT"].includes(item?.direction)
+      item?.cache_state === "fresh"
+      && item?.qualified === true
+      && !hasInvalidExecutionLevels(item)
+      && ["LONG", "SHORT"].includes(item?.direction)
     ))
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
-  const qualified = visibleMatrix.filter((item) => item?.qualified === true);
-  const oppCount = qualified.length;
-  const candidateCount = ranked.length;
-  const totalCells = appState.instruments.length * (data.timeframes?.length || 0);
-  const sourceLabel = data.cache_meta?.source === "cache" ? "（缓存）" : "";
-  // 2026-07-24 v3: per-cell readiness from backend.
-  const meta = data.cache_meta || {};
-  const cellsReady = visibleMatrix.filter((item) => item.cache_state === "fresh").length;
   const cellsPending = visibleMatrix.filter((item) =>
     ["missing", "warming", "error"].includes(item?.cache_state)
   ).length;
-
   const matrixEl = document.getElementById("strategy-scan-matrix");
   if (matrixEl) {
-    matrixEl.innerHTML = renderScanMatrix(visibleMatrix, appState.instruments, onSelectOpportunity);
+    const staleNotice = data.cache_meta?.source === "stale_revalidating"
+      ? '<div class="data-state data-state-stale">后台正在更新扫描；下方为上次快照，暂不作为交易信号。</div>'
+      : "";
+    matrixEl.innerHTML = staleNotice + renderScanMatrix(visibleMatrix, appState.instruments, onSelectOpportunity);
     bindScanMatrix(onSelectOpportunity);
   }
 
@@ -130,28 +136,7 @@ function renderScanError(message) {
 // regular loading dots so the user knows the system is warming caches
 // (not stuck).
 function renderWarmingStatus(message) {
-  renderScanLoading("正在预热数据缓存...");
-}
-
-// 2026-07-24: fire-and-forget prewarm so cold cache isn't blocking the
-// first scan for 60+ s. Module-level guard via `prewarmed` flag.
-// 2026-08-11: prewarm ALL instruments (not just BTC) so the matrix
-// doesn't show "无明确方向" for every cell on cold start.
-async function tryPrewarm() {
-  if (prewarmed) return;
-  prewarmed = true;
-  const instruments = appState.instruments || [];
-  // Prewarm first 3 instruments in parallel (fire-and-forget)
-  const prewarmTargets = instruments.slice(0, 3);
-  if (prewarmTargets.length === 0) {
-    prewarmTargets.push({ id: "btc-usdt-perp" });
-  }
-  for (const inst of prewarmTargets) {
-    const instId = inst.id || inst.code || "btc-usdt-perp";
-    api.prewarmStrategy(instId, { timeoutMs: 5000 }).catch((err) => {
-      console.warn("strategy:prewarm:noop", instId, err?.message || err);
-    });
-  }
+  renderScanLoading(message || "等待后台发布扫描快照...");
 }
 
 function onSelectOpportunity(instrumentId, timeframe) {
@@ -202,6 +187,7 @@ function _openStrategyDetail(instrumentId, timeframe) {
     const payload = unifiedResult.status === "fulfilled" ? unifiedResult.value : null;
     const model = normalizeUnifiedStrategy(payload || {}, {});
     model.instrument_code = code;
+    model.selected_timeframe = tf;
 
     model.data_access = {
       unified: payload,
@@ -231,7 +217,7 @@ function _openStrategyDetail(instrumentId, timeframe) {
 // retry paid the whole cost again — a refresh could never succeed on the
 // first attempt, and the matrix stayed on its loading dots throughout.
 const FORCE_SCAN_TIMEOUT_MS = 240000;
-const CACHED_SCAN_TIMEOUT_MS = 120000;
+const CACHED_SCAN_TIMEOUT_MS = 15000;
 
 async function loadScan(force = false, opts = {}) {
   activeController?.abort();
@@ -244,7 +230,7 @@ async function loadScan(force = false, opts = {}) {
       timeoutMs,
     });
     if (!mounted) return data;
-    // 2026-07-24 v2: Backend signals "warming" via cache_meta.source
+    // Backend signals "warming" via cache_meta.source
     // when cache is empty + force=false. The warming response has
     // empty matrix / empty ranked — we must NOT treat that as
     // "no opportunities found". Return a tagged object so
@@ -332,11 +318,6 @@ export async function renderStrategy({ commands } = {}) {
 
   showWarmingDelayed();
 
-  // 2026-07-24: fire-and-forget prewarm so the cold-cache scan doesn't
-  // block 60+ seconds before responding. Module-level guard ensures we
-  // only fire this once per page module load (avoids precompute queue spam).
-  await tryPrewarm();
-
   async function refreshScan() {
     if (!mounted || commandLifetime.signal.aborted || refreshBusy) return;
     refreshBusy = true;
@@ -376,12 +357,9 @@ export async function renderStrategy({ commands } = {}) {
   // 'warming', kick off the bounded poll loop instead of treating the
   // empty matrix as a real "no opportunities" result.
   //
-  // Live refresh (2026-09-23): the backend rebuilds the scan row inline
-  // whenever its unified inputs moved (source=live), so a plain re-read
-  // converges without a 50 s force. Re-read every 60 s while mounted:
-  // silent when nothing changed (same scanned_at), seamless re-render
-  // when the backend rebuilt. visibilitychange pauses the timer; unmount
-  // clears it (AbortController cancels the in-flight read).
+  // Read the background-published scan every 60 s. The cross-page verdict
+  // can change without a new scan row, so include its source timestamps in
+  // the render key. Visibility changes pause the timer; unmount cancels it.
   const LIVE_REFRESH_MS = 60000;
   let liveRefreshTimer = null;
   function scheduleLiveRefresh() {
@@ -392,7 +370,11 @@ export async function renderStrategy({ commands } = {}) {
       try {
         const data = await api.getStrategyScan({ signal: commandLifetime.signal, timeoutMs: 30000 });
         if (!mounted || !data || data?.cache_meta?.source === "warming") { scheduleLiveRefresh(); return; }
-        if (data.scanned_at && data.scanned_at !== scanData?.scanned_at) {
+        const renderKey = (item) => JSON.stringify([
+          item?.scanned_at,
+          item?.cache_meta?.source,
+        ]);
+        if (renderKey(data) !== renderKey(scanData)) {
           renderScanResults(data);
         }
       } catch (err) {
@@ -414,7 +396,7 @@ export async function renderStrategy({ commands } = {}) {
       // Genuine cold load — show warming now (data path will replace it
       // once the poll loop gets a real result).
       warmingVisible = true;
-      renderWarmingStatus(first.cache_meta?.message);
+      renderWarmingStatus(first.payload?.cache_meta?.message);
       pollWhileWarming(0);
     }
     return first;

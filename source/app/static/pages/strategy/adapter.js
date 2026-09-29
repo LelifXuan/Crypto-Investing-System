@@ -397,6 +397,7 @@ export function normalizeUnifiedStrategy(payload = {}, extras = {}) {
     market_operation: marketOperation,
     direction_resolution: directionResolution,
     trade_decision: tradeDecision,
+    opportunity_decisions: ensureObject(safe.opportunity_decisions),
     operation_cards: directionResolution.operation_cards.length
       ? directionResolution.operation_cards
       : ensureArray(marketOperation.operation_cards),

@@ -617,12 +617,9 @@ export async function renderMarketEvents({ commands } = {}) {
   lastCalendarFingerprint = "";
   setRoot(`
     <section id="events-supply-calendar"></section>
-    <div class="events-actions-bar">
-      <!-- The translate + refresh buttons live inside the feed-card header
-           (rendered by renderEventFeed / renderEventFeedLoading). This bar
-           is kept as an empty anchor so showContinueTranslationButton() can
-           still insert the queue-join button when translation stalls. -->
-    </div>
+    <!-- The feed-card header owns translate + refresh. Keep this anchor empty
+         until showContinueTranslationButton() inserts the retry control. -->
+    <div class="events-actions-bar"></div>
     <div class="workbench-page-layout events-workbench-layout">
       <section class="events-feed-shell" id="events-feed" aria-busy="true">${renderEventFeedLoading()}</section>
       <aside class="workbench-inspector" id="events-inspector" hidden></aside>

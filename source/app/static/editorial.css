@@ -1126,6 +1126,12 @@ body[data-page="market-events"] .events-actions-bar {
   margin: 0;
 }
 
+/* Keep the translation retry anchor available without giving its empty state
+   a second page-root gap between the calendar and feed. */
+body[data-page="market-events"] .events-actions-bar:empty {
+  display: none;
+}
+
 /* The translate + refresh buttons now live inside the feed-card
    header (right slot of .section-head). 2026-09-01 — keeps the
    actions visually bound to the panel they operate on. */
@@ -2642,7 +2648,8 @@ body[data-page="knowledge-base"] .knowledge-hero {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: var(--space-section);
-  margin: 0 0 var(--space-section);
+  width: 100%;
+  margin: 0;
   padding: 4px 0 22px;
   background: transparent;
   border: 0;

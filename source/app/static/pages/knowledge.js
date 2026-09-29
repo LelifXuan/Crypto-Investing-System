@@ -582,8 +582,7 @@ function renderKnowledgeLayout() {
   const totalTerms = ALL_ITEMS.filter((item) => item.display_mode !== "hidden").length;
   const visibleTerms = sections.reduce((sum, section) => sum + section.items.length, 0);
   setRoot(`
-    <div id="knowledge-top" class="knowledge-top-anchor"></div>
-    <section class="knowledge-hero">
+    <section id="knowledge-top" class="knowledge-hero knowledge-top-anchor">
       <div class="section-head">
         <div>
           <p class="eyebrow">KNOWLEDGE BASE</p>

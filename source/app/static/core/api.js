@@ -716,9 +716,9 @@ export const api = {
   },
   getStrategyScan(options = {}) {
     return requestJson("/strategy/scan", {
-      params: {},
-      ttl: options.force ? 0 : 60,
-      force: options.force ?? false,
+      params: options.force ? { force: true } : {},
+      ttl: 0,
+      force: true,
       timeoutMs: options.timeoutMs ?? 30000,
       signal: options.signal,
       retry: 1,
