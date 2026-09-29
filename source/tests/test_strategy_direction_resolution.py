@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+BTC = "btc-usdt-perp"
+
 
 def test_macro_long_price_short_resolves_to_long_term_watch_short_tactical() -> None:
     from app.services.strategy_unified.direction_resolution import (
@@ -21,6 +23,8 @@ def test_macro_long_price_short_resolves_to_long_term_watch_short_tactical() -> 
                 confidence=75,
                 freshness="fresh",
                 reason="macro supports risk appetite",
+                instrument_id="",
+                asset_scope="global",
             ),
             ModuleSignal(
                 module="price_structure",
@@ -34,9 +38,12 @@ def test_macro_long_price_short_resolves_to_long_term_watch_short_tactical() -> 
                 confidence=82,
                 freshness="fresh",
                 reason="daily and 4h structure are bearish",
+                instrument_id=BTC,
+                asset_scope="exact",
             ),
         ],
         next_check="next_4h_close",
+        target_instrument_id=BTC,
     )
 
     assert result.unified_code == "STRATEGIC_LONG_TACTICAL_SHORT"
@@ -57,7 +64,9 @@ def test_derivatives_funding_hot_and_option_walls_do_not_become_direction() -> N
         {
             "funding_state": "positive_hot",
             "key_levels_axis": {"call_wall": 68000, "put_wall": 60000, "max_pain": 64000},
-        }
+        },
+        instrument_id=BTC,
+        asset_scope="exact",
     )
 
     funding = next(item for item in signals if item.indicator_key == "funding_rate")
@@ -70,7 +79,9 @@ def test_derivatives_funding_hot_and_option_walls_do_not_become_direction() -> N
     assert funding.action_effect == "downgrade"
     assert all(item.direction == "NEUTRAL" and item.action_effect == "level_only" for item in walls)
 
-    result = DirectionResolutionEngine().resolve(signals=signals)
+    result = DirectionResolutionEngine().resolve(
+        signals=signals, target_instrument_id=BTC
+    )
     derivatives_card = next(card for card in result.operation_cards if card.key == "derivatives")
     assert derivatives_card.direction == "NEUTRAL"
     assert derivatives_card.action_effect == "downgrade"
@@ -97,6 +108,8 @@ def test_execution_signal_cannot_override_tactical_short() -> None:
                 confidence=80,
                 freshness="fresh",
                 reason="daily structure is bearish",
+                instrument_id=BTC,
+                asset_scope="exact",
             ),
             ModuleSignal(
                 module="price_structure",
@@ -110,8 +123,11 @@ def test_execution_signal_cannot_override_tactical_short() -> None:
                 confidence=82,
                 freshness="fresh",
                 reason="1h rebound trigger appeared",
+                instrument_id=BTC,
+                asset_scope="exact",
             ),
-        ]
+        ],
+        target_instrument_id=BTC,
     )
 
     assert result.tactical_direction == "SHORT"
@@ -142,8 +158,11 @@ def test_low_timeframe_signal_cannot_create_trade_direction_without_1d_4h() -> N
                 score=90,
                 confidence=90,
                 freshness="fresh",
+                instrument_id=BTC,
+                asset_scope="exact",
             )
-        ]
+        ],
+        target_instrument_id=BTC,
     )
 
     assert result.tactical_direction == "NEUTRAL"
@@ -171,6 +190,8 @@ def test_missing_onchain_degrades_confidence_without_blocking_tactical_plan() ->
                 confidence=76,
                 freshness="fresh",
                 reason="daily structure is bearish",
+                instrument_id=BTC,
+                asset_scope="exact",
             ),
             ModuleSignal(
                 module="onchain",
@@ -184,8 +205,11 @@ def test_missing_onchain_degrades_confidence_without_blocking_tactical_plan() ->
                 confidence=0,
                 freshness="missing",
                 reason="onchain data is not available",
+                instrument_id="",
+                asset_scope="global",
             ),
-        ]
+        ],
+        target_instrument_id=BTC,
     )
 
     assert result.permission != "no_trade"
@@ -215,8 +239,11 @@ def test_data_quality_blocker_forces_no_trade() -> None:
                 confidence=0,
                 freshness="missing",
                 reason="core timeframe data missing",
+                instrument_id="",
+                asset_scope="global",
             )
-        ]
+        ],
+        target_instrument_id=BTC,
     )
 
     assert result.permission == "no_trade"
@@ -242,9 +269,13 @@ def test_expired_signal_contributes_zero_and_is_reported_excluded() -> None:
         score=90,
         confidence=95,
         freshness="expired",
+        instrument_id=BTC,
+        asset_scope="exact",
     )
 
-    result = DirectionResolutionEngine().resolve(signals=[expired])
+    result = DirectionResolutionEngine().resolve(
+        signals=[expired], target_instrument_id=BTC
+    )
 
     assert effective_weight(expired.normalized()) == 0
     assert expired.as_dict()["usage_status"] == "excluded"
@@ -261,7 +292,9 @@ def test_actual_price_oi_states_produce_confirmation_without_overwrite() -> None
             "funding_state": "positive_hot",
             "oi_state": "price_down_oi_up",
             "basis_state": "basis_rising",
-        }
+        },
+        instrument_id=BTC,
+        asset_scope="exact",
     )
 
     by_key = {item.indicator_key: item for item in signals}

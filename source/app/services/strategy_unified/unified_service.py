@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
-from app.core.timeframes import normalize_instrument_id
+from app.core.timeframes import BTC_REFERENCE_INSTRUMENT, normalize_instrument_id
 from app.db.models.market import StrategyDecision
 from app.repositories.market_repository import MarketRepository
 
@@ -137,15 +137,19 @@ class UnifiedStrategyService:
 
         # Risk gate
         try:
-            risk_alerts = self.risk_gate_engine.build(nodes, market_dimensions)
+            risk_alerts = self.risk_gate_engine.build(
+                nodes, market_dimensions, target_instrument_id=instrument
+            )
         except Exception as exc:
             logger.warning("risk_gate_failed: %s", exc, exc_info=True)
             risk_alerts = []
             degraded_components.append("risk_gate")
 
         next_check_time = self._next_check_time(contexts)
-        direction_signals = self._direction_signals(market_dimensions, nodes, risk_alerts)
-        direction_signals.extend(self._technical_signals(contexts))
+        direction_signals = self._direction_signals(
+            market_dimensions, nodes, risk_alerts, instrument
+        )
+        direction_signals.extend(self._technical_signals(contexts, instrument))
         for signal in direction_signals:
             signal.metadata.setdefault("snapshot_id", decision_snapshot["snapshot_id"])
             self._annotate_signal_provenance(
@@ -153,10 +157,18 @@ class UnifiedStrategyService:
             )
         direction_resolution = self.direction_resolution_engine.resolve(
             signals=direction_signals,
+            target_instrument_id=instrument,
             next_check=next_check_time or "next_4h_close",
             next_check_at_iso=next_check_time if next_check_time and "T" in next_check_time else "",
         )
-        cross_validation = self._cross_validation(direction_signals)
+        # Cross-validation mirrors the resolver's eligibility gate: isolated
+        # cross-asset signals must not appear as participating rows (INV-001).
+        eligible_for_validation = [
+            signal
+            for signal in direction_signals
+            if DirectionResolutionEngine._directional_eligibility(signal, instrument)[0]
+        ]
+        cross_validation = self._cross_validation(eligible_for_validation)
         if (
             cross_validation["status"] == "conflicted"
             and direction_resolution.position_cap == "standard"
@@ -574,12 +586,14 @@ class UnifiedStrategyService:
         market_dimensions: Mapping[str, Any],
         nodes: list[Any],
         risk_alerts: list[Any],
+        instrument_id: str,
     ) -> list[ModuleSignal]:
+        target = normalize_instrument_id(instrument_id)
         signals: list[ModuleSignal] = []
         for node in nodes:
-            signals.append(self._signal_from_node(node))
+            signals.append(self._signal_from_node(node, target))
         for key, dimension in market_dimensions.items():
-            signals.extend(self._signals_from_dimension(key, dimension))
+            signals.extend(self._signals_from_dimension(key, dimension, target))
         for alert in risk_alerts:
             signal = self._signal_from_risk_alert(alert)
             if signal is not None:
@@ -878,7 +892,9 @@ class UnifiedStrategyService:
         return [*coverage, *rows]
 
     @staticmethod
-    def _technical_signals(contexts: Mapping[str, Any]) -> list[ModuleSignal]:
+    def _technical_signals(
+        contexts: Mapping[str, Any], instrument_id: str = ""
+    ) -> list[ModuleSignal]:
         signals: list[ModuleSignal] = []
         for timeframe in ("1d", "4h", "1h", "15m"):
             context = contexts.get(timeframe)
@@ -924,6 +940,8 @@ class UnifiedStrategyService:
                     reason="EMA 排列只有在 ADX 达到趋势门槛后才参与方向确认。",
                     source_page="indicators",
                     source_module="AnalysisBundleService",
+                    instrument_id=normalize_instrument_id(instrument_id),
+                    asset_scope="exact",
                     metadata={
                         "transform": "adx_gate_then_piecewise_saturation",
                         "signal_family": f"trend:{horizon}",
@@ -981,6 +999,8 @@ class UnifiedStrategyService:
                     reason="RSI 使用非对称区间并与 MACD 同向后才确认；极值只用于拥挤降级。",
                     source_page="indicators",
                     source_module="AnalysisBundleService",
+                    instrument_id=normalize_instrument_id(instrument_id),
+                    asset_scope="exact",
                     metadata={
                         "transform": (
                             "historical_percentile_asymmetric_rsi_x_macd_gate"
@@ -1030,6 +1050,8 @@ class UnifiedStrategyService:
                     reason="波动率只影响风险和仓位，不单独产生多空方向。",
                     source_page="indicators",
                     source_module="AnalysisBundleService",
+                    instrument_id=normalize_instrument_id(instrument_id),
+                    asset_scope="exact",
                     metadata={
                         "transform": "historical_percentile_risk_gate",
                         "signal_family": "volatility",
@@ -1091,7 +1113,7 @@ class UnifiedStrategyService:
         }
 
     @staticmethod
-    def _signal_from_node(node: Any) -> ModuleSignal:
+    def _signal_from_node(node: Any, instrument_id: str = "") -> ModuleSignal:
         horizon = "strategic" if node.timeframe in {"1M", "1w"} else "tactical" if node.timeframe in {"1d", "4h"} else "execution"
         score = max(float(node.long_score or 0), float(node.short_score or 0), 50.0)
         direction = str(node.direction or "NEUTRAL")
@@ -1124,6 +1146,8 @@ class UnifiedStrategyService:
             reason="价格结构给出周期方向；低周期只用于触发和过滤，高周期决定边界。",
             source_page="strategy_unified",
             source_module="MultiTimeframeStructureEngine",
+            instrument_id=instrument_id,
+            asset_scope="exact",
             key_levels={
                 key: value
                 for key, value in {
@@ -1135,9 +1159,25 @@ class UnifiedStrategyService:
             },
         )
 
-    def _signals_from_dimension(self, key: str, dimension: Any) -> list[ModuleSignal]:
+    def _derivatives_ownership(self, target_instrument_id: str) -> tuple[str, str]:
+        """(asset_scope, data instrument) for BTC-derivatives-derived signals.
+        BTC targets get exact directional evidence; every other instrument
+        gets proxy context only (P0-QNT-001 temporary safety policy)."""
+        if target_instrument_id == BTC_REFERENCE_INSTRUMENT:
+            return "exact", BTC_REFERENCE_INSTRUMENT
+        return "proxy", BTC_REFERENCE_INSTRUMENT
+
+    def _signals_from_dimension(
+        self, key: str, dimension: Any, instrument_id: str = ""
+    ) -> list[ModuleSignal]:
+        target = normalize_instrument_id(instrument_id)
         if key == "derivatives_regime":
-            derived = derivatives_subsignals_from_features(getattr(dimension, "details", {}) or {})
+            scope, data_instrument = self._derivatives_ownership(target)
+            derived = derivatives_subsignals_from_features(
+                getattr(dimension, "details", {}) or {},
+                instrument_id=data_instrument,
+                asset_scope=scope,
+            )
             if derived:
                 return derived
         module = {
@@ -1165,6 +1205,15 @@ class UnifiedStrategyService:
             confidence = 0
             if module == "onchain":
                 role = "data_quality"
+        if module == "derivatives":
+            scope, data_instrument = self._derivatives_ownership(target)
+        elif module in {"macro", "capital_flow", "onchain"}:
+            # Market-wide aggregates: true global conditions.
+            scope, data_instrument = "global", ""
+        else:
+            # price_structure and anything computed from the target's own
+            # bundles belongs to the target asset itself.
+            scope, data_instrument = "exact", target
         return [
             ModuleSignal(
                 module=module,
@@ -1180,6 +1229,8 @@ class UnifiedStrategyService:
                 reason=self._dimension_reason(dimension),
                 source_page="strategy_unified",
                 source_module="/".join(getattr(dimension, "source_modules", []) or []),
+                instrument_id=data_instrument,
+                asset_scope=scope,
             )
         ]
 
@@ -1213,6 +1264,8 @@ class UnifiedStrategyService:
             reason=str(getattr(alert, "message", "") or getattr(alert, "action", "") or ""),
             source_page="strategy_unified",
             source_module=str(getattr(alert, "source_module", "") or "UnifiedRiskGateEngine"),
+            instrument_id="",
+            asset_scope="global",
         )
 
     @staticmethod

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
+from app.core.timeframes import BTC_REFERENCE_INSTRUMENT, normalize_instrument_id
+
 from .contracts import DATA_BLOCK_MISSING_CORE_COUNT, MarketDimension, RiskAlert, TimeframeNode
 
 
@@ -11,6 +13,8 @@ class UnifiedRiskGateEngine:
         self,
         nodes: Sequence[TimeframeNode],
         market_dimensions: Mapping[str, MarketDimension],
+        *,
+        target_instrument_id: str = "",
     ) -> list[RiskAlert]:
         alerts: list[RiskAlert] = []
         missing_core = [
@@ -59,12 +63,19 @@ class UnifiedRiskGateEngine:
                 )
             )
         derivatives = market_dimensions.get("derivatives_regime")
-        if derivatives and str(derivatives.state).lower() in {
-            "data_missing",
-            "missing",
-            "degraded",
-            "data_insufficient",
-        }:
+        # P0-QNT-001: the derivatives inputs observe BTC only. For any other
+        # target they are proxy context — their availability must not degrade
+        # this instrument's plan, so the alert is BTC-only.
+        if (
+            normalize_instrument_id(target_instrument_id) == BTC_REFERENCE_INSTRUMENT
+            and derivatives
+            and str(derivatives.state).lower() in {
+                "data_missing",
+                "missing",
+                "degraded",
+                "data_insufficient",
+            }
+        ):
             alerts.append(
                 RiskAlert(
                     "derivatives",

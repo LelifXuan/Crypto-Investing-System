@@ -427,7 +427,7 @@ export function buildDataDegradedCard(model) {
   const labels = {
     unified: { name: "/strategy/unified", label: "统一策略" },
     monitoring: { name: "/monitoring/dashboard", label: "监控总览" },
-    derivatives: { name: "/btc-derivatives/dashboard", label: "衍生品" },
+    derivatives: { name: "/btc-derivatives/dashboard", label: "BTC 衍生品(代理)" },
     macro: { name: "/monitoring/macro-overview", label: "宏观" },
   };
   const access = model.data_access || {};

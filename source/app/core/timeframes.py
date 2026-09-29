@@ -48,6 +48,13 @@ def normalize_timeframe_for_ui(timeframe: str) -> str:
     return PROVIDER_TO_UI_TIMEFRAME.get(provider_value, provider_value)
 
 
+# Canonical BTC perpetual that BTC-scoped data sources (derivatives regime,
+# options walls, funding) actually observe. P0-QNT-001 asset scope contract:
+# signals carry the instrument they belong to; only exact matches may vote on
+# a target instrument's direction.
+BTC_REFERENCE_INSTRUMENT = "btc-usdt-perp"
+
+
 def normalize_instrument_id(instrument_id: str) -> str:
     return str(instrument_id or "").strip().lower()
 

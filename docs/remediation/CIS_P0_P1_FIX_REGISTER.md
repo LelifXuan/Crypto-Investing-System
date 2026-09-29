@@ -24,13 +24,18 @@
 
 ### P0-QNT-001 — BTC derivatives 信号可污染非 BTC 策略方向
 
-- **Status**: IN_PROGRESS（2026-09-30）
-- **Current behavior**: `MarketContextBuilder` 对任意 instrument 注入 `btc_derivatives` 依赖；策略前端 detail 无条件拉 `getBtcDerivativesDashboard()`；`ModuleSignal.asset_lens` 默认 `btc_perp`；Direction Resolution 无目标资产隔离门禁。
-- **Root cause**: 资产作用域是隐式约定而非显式契约；缺失声明时 fail open。
-- **Files affected**: 调查后回填（预期 `services/market_context.py`、`services/strategy_unified/*`、`schemas/strategy_unified.py`、`static/pages/strategy/*`）
-- **Proposed minimal fix**: Asset Scope Contract（`asset_scope ∈ {exact, proxy, global, unknown}` + `instrument_id`）；Direction Resolution 接收 `target_instrument_id` 并在加权前执行 eligibility gate（exact 不匹配 → 拒绝；proxy → directional_weight=0；unknown → fail closed）；BTC derivatives 对 BTC 保持 exact 可参与方向，对非 BTC 降级为 proxy 观察上下文；期权墙/Max Pain 等 BTC 绝对价位禁止进入非 BTC entry/stop/target/支撑/阻力。
-- **Tests added**: `test_btc_derivatives_can_affect_btc_strategy`、`test_btc_derivatives_cannot_change_{eth,bnb,hype,okb}_direction`
-- **Evidence**: 见 §3（回填）
+- **Status**: FIXED（2026-09-30）
+- **Root cause**: 资产作用域是隐式约定而非显式契约；`ModuleSignal.asset_lens` 默认 `btc_perp` 且 resolver 完全不感知目标资产（fail open）。
+- **Files affected**: `app/core/timeframes.py`（`BTC_REFERENCE_INSTRUMENT`）、`app/services/strategy_unified/direction_resolution.py`、`app/services/strategy_unified/unified_service.py`、`app/services/strategy_unified/risk_gate.py`、`app/services/market_context.py`、`app/static/pages/strategy/renderDecisionAudit.js`、`app/static/pages/strategy/adapter.js`
+- **Tests added/updated**: `test_cross_asset_signal_isolation.py`（7：BTC positive control + ETH/BNB/HYPE/OKB 不变性 ×4 + exact 不匹配隔离 + unknown fail-closed）、`test_cross_asset_frontend_scope_labels.py`（4 静态守卫）、`test_strategy_direction_resolution.py`（8 个既有用例按契约显式声明信号归属）
+- **Remaining limitations**: 本轮未建 ETH/BNB/HYPE/OKB derivatives service（按 §4.5 临时安全政策）；`asset_scope=proxy` 的跨资产代理政策（`CrossAssetProxyPolicy`）留待未来显式建立。
+
+#### Evidence — P0-QNT-001
+
+- **Before**: `market_context.py` 对任意 instrument 注入同一份 BTC derivatives payload（原 `:218-296`，无 scope 标注）；`unified_service.py:154` `resolve(signals=...)` 不传目标资产；`direction_resolution.py:81` `asset_lens: str = "btc_perp"` 默认值；`DerivativesRegimeEngine.compute()` 与 `_signals_from_dimension()` 均不声明数据归属；前端 `index.js:182` 对任意 detail 无条件拉取 BTC dashboard，`renderDecisionAudit.js` 把 `btc_derivatives` 一律标为「BTC 衍生品」，`adapter.js` 数据源卡标「衍生品」。即 BTC OI/funding 的方向票可进入任意非 BTC 目标的加权方向。
+- **Change**: ①`ModuleSignal` 增加 `instrument_id`/`asset_scope`（`exact/proxy/global/unknown`），删除 `btc_perp` 危险默认值（未知 scope fail closed）；②`resolve(target_instrument_id=...)` 在加权前执行 `_directional_eligibility` 门禁：exact 不匹配 / proxy / unknown 一律隔离，且隔离信号不得向 operation card 注入 key_levels（BTC 墙位不进入非 BTC 价位）；③生产信号全部显式声明归属——price_structure/technical=exact+target，macro/capital_flow/onchain=global，derivatives=BTC 数据（BTC 目标 exact、非目标 proxy）；④非 BTC 的 derivatives 卡与交叉验证行转为「BTC 市场代理上下文」显式标注（方向中性、无价位），risk gate 的衍生品降级警告仅对 BTC 生效；⑤`market_context.py` 依赖元数据带 `asset_scope/directional_eligible/source_instrument_id`；⑥前端 proxy 信号标「· BTC 代理上下文」，数据源卡改「BTC 衍生品(代理)」。
+- **Test**: `pytest tests/test_cross_asset_signal_isolation.py tests/test_cross_asset_frontend_scope_labels.py tests/test_strategy_direction_resolution.py …` 全绿；不变性测试设计：BTC derivatives 从 strongly bullish（OI buildup_long+basis_rising）切到 strongly bearish（buildup_short+basis_falling），ETH/BNB/HYPE/OKB 的 direction/entry 链输入/unified_code/position_cap/permission/trade_plan_inputs 全部不变，且无 BTC 墙价位（68000/60000/64000）泄漏进任何卡片；同一 flip 下 BTC 自身 tactical 从 LONG 变 SHORT（positive control）。
+- **After**: 关键词回归（strategy/monitoring/market）**550 passed、1 skipped、0 failed**；ruff（改动范围）All checks passed。
 
 ### P1-QNT-002 — CapitalFlow 消费 onchain metric 的契约错误 + level 当 delta
 

@@ -88,6 +88,14 @@ function sourceLabel(value) {
   }[value] || value || "策略输入";
 }
 
+// P0-QNT-001: proxy-scope signals observe BTC, whatever asset the page shows.
+// They are context only and must be labeled as such, never as the asset's own
+// derivatives evidence.
+function scopedSourceLabel(item) {
+  const base = sourceLabel(item.source_page);
+  return item.asset_scope === "proxy" ? `${base} · BTC 代理上下文` : base;
+}
+
 function usageLabel(value) {
   return {
     used: "已参与",
@@ -135,7 +143,7 @@ export function renderDecisionAudit(model, helpers) {
         <article>
           <h3>影子模型实际使用的证据</h3>
           <ul class="strategy-audit-list">
-            ${used.map((item) => `<li><strong>${escapeHtml(item.indicator_key || item.signal_id)}</strong><span>${escapeHtml(`${sourceLabel(item.source_page)} · ${String(item.window || item.horizon || "-").toUpperCase()} · ${labelRole(item.semantic_role)}`)}</span><small>${escapeHtml(item.usage_reason || item.reason || "已参与影子计算")}</small></li>`).join("") || "<li>当前没有满足有效期和质量门槛的影子信号</li>"}
+            ${used.map((item) => `<li><strong>${escapeHtml(item.indicator_key || item.signal_id)}</strong><span>${escapeHtml(`${scopedSourceLabel(item)} · ${String(item.window || item.horizon || "-").toUpperCase()} · ${labelRole(item.semantic_role)}`)}</span><small>${escapeHtml(item.usage_reason || item.reason || "已参与影子计算")}</small></li>`).join("") || "<li>当前没有满足有效期和质量门槛的影子信号</li>"}
           </ul>
         </article>
         <article>
@@ -154,14 +162,14 @@ export function renderDecisionAudit(model, helpers) {
         <div class="strategy-collapsible-body table-shell">
           <table class="data-table strategy-coverage-table">
             <thead><tr><th>来源</th><th>周期</th><th>指标</th><th>角色</th><th>状态</th><th>变换 / 原因</th></tr></thead>
-            <tbody>${inputs.map((item) => `<tr><td>${escapeHtml(sourceLabel(item.source_page))}</td><td>${escapeHtml(String(item.window || "-").toUpperCase())}</td><td>${escapeHtml(item.indicator_key)}</td><td>${escapeHtml(labelRole(item.semantic_role))}</td><td>${escapeHtml(usageLabel(item.usage_status))}</td><td><strong>${escapeHtml(item.transform || "identity")}</strong><small>${escapeHtml(item.usage_reason || "-")}</small></td></tr>`).join("") || '<tr><td colspan="6">暂无覆盖记录</td></tr>'}</tbody>
+            <tbody>${inputs.map((item) => `<tr><td>${escapeHtml(scopedSourceLabel(item))}</td><td>${escapeHtml(String(item.window || "-").toUpperCase())}</td><td>${escapeHtml(item.indicator_key)}</td><td>${escapeHtml(labelRole(item.semantic_role))}</td><td>${escapeHtml(usageLabel(item.usage_status))}</td><td><strong>${escapeHtml(item.transform || "identity")}</strong><small>${escapeHtml(item.usage_reason || "-")}</small></td></tr>`).join("") || '<tr><td colspan="6">暂无覆盖记录</td></tr>'}</tbody>
           </table>
         </div>
       </details>
       <details class="strategy-collapsible">
         <summary class="strategy-collapsible-summary"><div><strong>输入快照与切换门槛</strong><small>快照 ${escapeHtml(snapshot.snapshot_id || "-")} · 验证状态 ${escapeHtml(validation.status || "collecting")}</small></div><span class="strategy-collapse-control" aria-hidden="true"></span></summary>
         <div class="strategy-collapsible-body strategy-audit-snapshots">
-          ${snapshotInputs.map((item) => `<article><strong>${escapeHtml(`${sourceLabel(item.source_page)} · ${String(item.timeframe || "-").toUpperCase()}`)}</strong><small>${escapeHtml(item.snapshot_id)}</small><span>${escapeHtml(`${formatDateTime(item.observed_at)} → ${formatDateTime(item.expires_at)}`)}</span></article>`).join("") || "<p>输入快照正在积累。</p>"}
+          ${snapshotInputs.map((item) => `<article><strong>${escapeHtml(`${scopedSourceLabel(item)} · ${String(item.timeframe || "-").toUpperCase()}`)}</strong><small>${escapeHtml(item.snapshot_id)}</small><span>${escapeHtml(`${formatDateTime(item.observed_at)} → ${formatDateTime(item.expires_at)}`)}</span></article>`).join("") || "<p>输入快照正在积累。</p>"}
           <p>候选模型只有在至少 90 天历史、30 天影子运行、120 个可评估决策及全部质量门槛通过后，才允许人工切换。</p>
         </div>
       </details>

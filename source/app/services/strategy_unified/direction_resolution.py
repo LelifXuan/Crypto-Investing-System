@@ -4,6 +4,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping, Sequence
 
+# P0-QNT-001 asset scope contract. Every directional signal must declare the
+# asset it belongs to; a signal with an unknown scope is excluded from
+# direction math (fail closed) instead of being treated as BTC by default.
+ASSET_SCOPES = {"exact", "proxy", "global", "unknown"}
+
 DIRECTION_LABELS = {
     "LONG": "看多",
     "SHORT": "看空",
@@ -69,6 +74,11 @@ FRESHNESS_FACTORS = {
 }
 
 
+def normalize_asset_scope(value: str) -> str:
+    scope = str(value or "").strip().lower()
+    return scope if scope in ASSET_SCOPES else "unknown"
+
+
 @dataclass(slots=True)
 class ModuleSignal:
     module: str
@@ -78,7 +88,7 @@ class ModuleSignal:
     direction: str
     signal_role: str
     action_effect: str
-    asset_lens: str = "btc_perp"
+    asset_lens: str = ""
     score: float = 50.0
     confidence: float = 50.0
     freshness: str = "unknown"
@@ -87,12 +97,19 @@ class ModuleSignal:
     source_module: str = ""
     key_levels: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # P0-QNT-001 ownership contract: which instrument this signal observes and
+    # under which scope it may influence direction. No default asset lens:
+    # unknown scope means no directional eligibility.
+    instrument_id: str = ""
+    asset_scope: str = "unknown"
 
     def normalized(self) -> "ModuleSignal":
         return ModuleSignal(
             module=normalize_module(self.module),
             indicator_key=str(self.indicator_key or "unknown"),
-            asset_lens=str(self.asset_lens or "btc_perp"),
+            asset_lens=str(self.asset_lens or ""),
+            instrument_id=str(self.instrument_id or "").strip().lower(),
+            asset_scope=normalize_asset_scope(self.asset_scope),
             horizon=normalize_horizon(self.horizon),
             window=str(self.window or "unknown"),
             direction=normalize_direction(self.direction),
@@ -145,6 +162,8 @@ class ModuleSignal:
                 "snapshot_id": str(metadata.get("snapshot_id") or ""),
                 "observed_at": str(metadata.get("observed_at") or ""),
                 "expires_at": str(metadata.get("expires_at") or ""),
+                "asset_scope": signal.asset_scope,
+                "instrument_id": signal.instrument_id,
                 "semantic_role": signal.signal_role,
                 "transform": transform,
                 "strength": signal.score,
@@ -257,12 +276,25 @@ class DirectionResolutionEngine:
         signals: Sequence[ModuleSignal | Mapping[str, Any]],
         next_check: str = "next_4h_close",
         next_check_at_iso: str = "",
+        target_instrument_id: str = "",
     ) -> DirectionResolutionResult:
         from datetime import datetime, timezone
 
         from .trade_decision import _next_close_iso
 
         normalized = [coerce_signal(signal) for signal in signals]
+        # P0-QNT-001: split signals into directionally eligible vs isolated
+        # BEFORE any weighting. INV-001 — a BTC-specific exact signal cannot
+        # change a non-BTC direction; proxy and unknown scopes never vote.
+        target_id = str(target_instrument_id or "").strip().lower()
+        eligible: list[ModuleSignal] = []
+        isolated: list[tuple[ModuleSignal, str]] = []
+        for signal in normalized:
+            is_eligible, reason = self._directional_eligibility(signal, target_id)
+            if is_eligible:
+                eligible.append(signal)
+            else:
+                isolated.append((signal, reason))
         # Resolve a canonical ISO next-check once for this build. If the
         # caller already supplied an absolute timestamp, trust it; otherwise
         # derive the next 4H bar close from wall clock.
@@ -273,10 +305,12 @@ class DirectionResolutionEngine:
                 else _next_close_iso(datetime.now(timezone.utc), "4h")
             )
         conflicts: list[ConflictRecord] = []
+        if isolated:
+            conflicts.append(self._isolation_conflict(isolated))
         blocker = self._blocking_conflict(normalized)
         if blocker:
             conflicts.append(blocker)
-            operation_cards = self._operation_cards(normalized)
+            operation_cards = self._operation_cards(eligible, isolated)
             governance_cards = self._governance_cards("NEUTRAL", "NEUTRAL", "BLOCK", "no_trade", [], ["暂停新开仓", "暂停提高杠杆", "等待事件落地或核心数据补齐"])
             code = "EVENT_LOCKED" if blocker.conflict_type == "event_window_block" else "DATA_DEGRADED"
             return DirectionResolutionResult(
@@ -298,18 +332,18 @@ class DirectionResolutionEngine:
                 trade_plan_inputs={"mode": "no_trade"},
             )
 
-        strategic = self._weighted_direction(normalized, "strategic")
-        tactical = self._weighted_direction(normalized, "tactical")
-        execution_signal = self._weighted_direction(normalized, "execution")
+        strategic = self._weighted_direction(eligible, "strategic")
+        tactical = self._weighted_direction(eligible, "tactical")
+        execution_signal = self._weighted_direction(eligible, "execution")
         execution = self._execution_direction(execution_signal, tactical)
-        conflicts.extend(self._same_module_conflicts(normalized))
-        conflicts.extend(self._cross_horizon_conflicts(strategic, tactical, normalized))
+        conflicts.extend(self._same_module_conflicts(eligible))
+        conflicts.extend(self._cross_horizon_conflicts(strategic, tactical, eligible))
 
         position_cap = self._position_cap(strategic, tactical)
         permission = "observe" if position_cap == "observe" else "conditional"
         allowed, blocked = self._actions(strategic, tactical, execution, position_cap)
         code = self._unified_code(strategic, tactical)
-        operation_cards = self._operation_cards(normalized)
+        operation_cards = self._operation_cards(eligible, isolated)
         governance_cards = self._governance_cards(strategic, tactical, execution, position_cap, allowed, blocked)
         instruction = self._instruction(code, position_cap, permission)
         return DirectionResolutionResult(
@@ -335,6 +369,42 @@ class DirectionResolutionEngine:
                 "position_cap": position_cap,
                 "requires_legacy_plan": False,
             },
+        )
+
+    @staticmethod
+    def _directional_eligibility(
+        signal: ModuleSignal, target_instrument_id: str
+    ) -> tuple[bool, str]:
+        """INV-001 fail-closed gate: decide whether a signal may vote on the
+        target instrument's direction. Global signals (true market-wide
+        conditions) always pass; exact signals only when the instrument
+        matches; proxy and unknown scopes never contribute direction."""
+        if signal.asset_scope == "global":
+            return True, ""
+        if signal.asset_scope == "exact":
+            if not target_instrument_id:
+                return False, "missing_target_instrument"
+            if signal.instrument_id == target_instrument_id:
+                return True, ""
+            return False, "exact_scope_mismatch"
+        if signal.asset_scope == "proxy":
+            return False, "proxy_scope_context_only"
+        return False, "unknown_scope_fail_closed"
+
+    @staticmethod
+    def _isolation_conflict(isolated: list[tuple[ModuleSignal, str]]) -> ConflictRecord:
+        return ConflictRecord(
+            conflict_type="cross_asset_signal_isolated",
+            scope="asset_isolation",
+            severity="info",
+            title="跨资产信号已隔离",
+            explanation="部分信号属于其他资产（exact 不匹配）、仅为代理上下文或未声明作用域；按 fail-closed 门禁不参与本资产方向计算。",
+            resolution="这些信号只作环境参考；目标资产方向仅由本资产 exact 信号与 global 信号决定。",
+            affected_horizons=["strategic", "tactical", "execution"],
+            involved_signals=[
+                {**signal.as_dict(), "isolation_reason": reason}
+                for signal, reason in isolated[:8]
+            ],
         )
 
     @staticmethod
@@ -484,37 +554,72 @@ class DirectionResolutionEngine:
             suffix = " 当前仓位上限为 reduced，只允许轻仓或分批执行。"
         return mapping.get(unified_code, "等待统一策略重新计算。") + suffix
 
-    def _operation_cards(self, signals: Sequence[ModuleSignal]) -> list[OperationCard]:
+    def _operation_cards(
+        self,
+        signals: Sequence[ModuleSignal],
+        isolated: list[tuple[ModuleSignal, str]] | None = None,
+    ) -> list[OperationCard]:
         from datetime import datetime, timezone
 
         from .trade_decision import _next_close_iso
 
+        isolated = list(isolated or [])
+        isolated_by_module: dict[str, list[ModuleSignal]] = {}
+        for signal, _reason in isolated:
+            isolated_by_module.setdefault(signal.module, []).append(signal)
         now = datetime.now(timezone.utc)
         cards: list[OperationCard] = []
         for module in ("macro", "capital_flow", "technical", "derivatives", "onchain", "price_structure", "event", "data"):
             items = [s for s in signals if s.module == module]
-            if not items:
+            proxy_items = isolated_by_module.get(module, [])
+            if not items and not proxy_items:
                 continue
-            direction = self._module_direction(items)
-            action_effect = self._module_action_effect(items)
+            # Key levels merge from eligible signals only: foreign walls/max
+            # pain are absolute prices of another asset and must never be
+            # presented as this asset's levels (INV-001 key-level isolation).
             levels: dict[str, float] = {}
-            for item in items:
-                levels.update(item.key_levels)
-            confidence = round(sum(s.confidence for s in items) / max(len(items), 1), 2)
+            if items:
+                direction = self._module_direction(items)
+                action_effect = self._module_action_effect(items)
+                trading_meaning = module_trading_meaning(module, direction, action_effect, items)
+                title = MODULE_TITLES.get(module, module)
+                confidence = round(sum(s.confidence for s in items) / max(len(items), 1), 2)
+                for item in items:
+                    levels.update(item.key_levels)
+            else:
+                # Proxy-only module: keep visibility as explicitly labeled
+                # cross-asset context, stripped of direction and levels.
+                direction, action_effect = "NEUTRAL", "observe"
+                trading_meaning = (
+                    "BTC 市场代理上下文：仅供市场环境参考，不参与本资产方向判定。"
+                    if module == "derivatives"
+                    else "跨资产代理上下文：不参与本资产方向判定。"
+                )
+                title = (
+                    f"{MODULE_TITLES.get(module, module)} · BTC 市场代理上下文"
+                    if module == "derivatives"
+                    else f"{MODULE_TITLES.get(module, module)} · 跨资产代理上下文"
+                )
+                confidence = 0.0
+            evidence = [s.reason for s in items if s.reason][:4]
+            if proxy_items and items:
+                evidence.append("含已隔离的跨资产代理信号（不参与方向计算）。")
+            elif proxy_items:
+                evidence = [f"已隔离 {len(proxy_items)} 条跨资产代理信号，仅作环境参考。"]
             cards.append(
                 OperationCard(
                     key=module,
-                    title=MODULE_TITLES.get(module, module),
+                    title=title,
                     direction=direction,
                     action_effect=action_effect,
-                    trading_meaning=module_trading_meaning(module, direction, action_effect, items),
+                    trading_meaning=trading_meaning,
                     permission_effect=permission_effect(action_effect),
                     position_effect=position_effect(action_effect),
                     next_check=next_check_for_module(module, action_effect),
                     next_check_at_iso=_next_close_iso(now, _MODULE_CHECK_TIMEFRAME.get(module, "4h")),
                     confidence=confidence,
                     source_modules=sorted({s.source_module or s.module for s in items}),
-                    evidence=[s.reason for s in items if s.reason][:4],
+                    evidence=evidence,
                     key_levels=levels,
                 )
             )
@@ -608,17 +713,26 @@ class DirectionResolutionEngine:
         ]
 
 
-def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, asset_lens: str = "btc_perp") -> list[ModuleSignal]:
+def derivatives_subsignals_from_features(
+    features: Mapping[str, Any] | None,
+    *,
+    asset_lens: str = "btc_perp",
+    instrument_id: str = "",
+    asset_scope: str = "unknown",
+) -> list[ModuleSignal]:
+    """Build derivative signals with explicit ownership: the features come
+    from the BTC derivatives dashboard, so callers must pass the data's
+    instrument (BTC) and the scope granted for the target asset."""
     features = features or {}
     signals: list[ModuleSignal] = []
     funding_state = str(features.get("funding_state") or "").lower()
     if funding_state in {"positive_hot", "funding_positive_hot", "long_crowded"}:
         signals.append(
-            ModuleSignal("derivatives", "funding_rate", "tactical", "4h", "NEUTRAL", "crowding", "downgrade", asset_lens, 45, 70, "fresh", "Funding is positive-hot: long crowding risk, not a long confirmation.", "btc_derivatives", "DerivativesRegimeEngine")
+            ModuleSignal("derivatives", "funding_rate", "tactical", "4h", "NEUTRAL", "crowding", "downgrade", asset_lens, 45, 70, "fresh", "Funding is positive-hot: long crowding risk, not a long confirmation.", "btc_derivatives", "DerivativesRegimeEngine", instrument_id=instrument_id, asset_scope=asset_scope)
         )
     elif funding_state in {"negative_hot", "funding_negative_hot", "short_crowded"}:
         signals.append(
-            ModuleSignal("derivatives", "funding_rate", "tactical", "4h", "NEUTRAL", "crowding", "downgrade", asset_lens, 45, 70, "fresh", "Funding is negative-hot: short crowding and squeeze risk, not a short confirmation.", "btc_derivatives", "DerivativesRegimeEngine")
+            ModuleSignal("derivatives", "funding_rate", "tactical", "4h", "NEUTRAL", "crowding", "downgrade", asset_lens, 45, 70, "fresh", "Funding is negative-hot: short crowding and squeeze risk, not a short confirmation.", "btc_derivatives", "DerivativesRegimeEngine", instrument_id=instrument_id, asset_scope=asset_scope)
         )
 
     oi_state = str(features.get("oi_state") or features.get("price_oi_state") or "").lower()
@@ -644,7 +758,7 @@ def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, 
             }
             else "downgrade"
         )
-        signals.append(ModuleSignal("derivatives", "open_interest", "tactical", "4h", direction, "derivatives_confirmation", effect, asset_lens, 64, 72, "fresh", reason, "btc_derivatives", "DerivativesRegimeEngine"))
+        signals.append(ModuleSignal("derivatives", "open_interest", "tactical", "4h", direction, "derivatives_confirmation", effect, asset_lens, 64, 72, "fresh", reason, "btc_derivatives", "DerivativesRegimeEngine", instrument_id=instrument_id, asset_scope=asset_scope))
 
     skew_state = str(features.get("skew_state") or "").lower()
     if skew_state in {"call_skew_high", "put_skew_high"}:
@@ -665,6 +779,8 @@ def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, 
                 "25D skew is confirmation only and cannot trigger direction without price structure.",
                 "btc_derivatives",
                 "DerivativesRegimeEngine",
+                instrument_id=instrument_id,
+                asset_scope=asset_scope,
                 metadata={
                     "transform": "asymmetric_confirmation_band",
                     "signal_family": "options_sentiment",
@@ -693,6 +809,8 @@ def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, 
                 "Put/Call OI uses asymmetric confirmation bands and never triggers alone.",
                 "btc_derivatives",
                 "DerivativesRegimeEngine",
+                instrument_id=instrument_id,
+                asset_scope=asset_scope,
                 metadata={
                     "transform": "asymmetric_ratio_band",
                     "signal_family": "options_sentiment",
@@ -719,6 +837,8 @@ def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, 
                 "Protection cost affects risk and position size, not market direction.",
                 "btc_derivatives",
                 "DerivativesRegimeEngine",
+                instrument_id=instrument_id,
+                asset_scope=asset_scope,
                 metadata={
                     "transform": "risk_only_regime_bucket",
                     "signal_family": "options_risk",
@@ -747,6 +867,8 @@ def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, 
                 "Basis is confirmation only; price structure remains the direction authority.",
                 "btc_derivatives",
                 "DerivativesRegimeEngine",
+                instrument_id=instrument_id,
+                asset_scope=asset_scope,
                 metadata={
                     "transform": "state_gate_confirmation_only",
                     "signal_family": "futures_positioning",
@@ -783,6 +905,8 @@ def derivatives_subsignals_from_features(features: Mapping[str, Any] | None, *, 
                     "btc_derivatives",
                     "DerivativesRegimeEngine",
                     {key: level},
+                    instrument_id=instrument_id,
+                    asset_scope=asset_scope,
                 )
             )
     return [signal.normalized() for signal in signals]
@@ -795,7 +919,9 @@ def coerce_signal(item: ModuleSignal | Mapping[str, Any]) -> ModuleSignal:
     return ModuleSignal(
         module=str(payload.get("module") or "unknown"),
         indicator_key=str(payload.get("indicator_key") or payload.get("key") or "unknown"),
-        asset_lens=str(payload.get("asset_lens") or "btc_perp"),
+        asset_lens=str(payload.get("asset_lens") or ""),
+        instrument_id=str(payload.get("instrument_id") or "").strip().lower(),
+        asset_scope=normalize_asset_scope(str(payload.get("asset_scope") or "")),
         horizon=str(payload.get("horizon") or "risk_filter"),
         window=str(payload.get("window") or payload.get("timeframe") or "unknown"),
         direction=str(payload.get("direction") or "NEUTRAL"),

@@ -7,7 +7,11 @@ from typing import Any
 
 from app.cache.shared_query_cache import shared_query_cache
 from app.core.config import settings
-from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for_cache
+from app.core.timeframes import (
+    BTC_REFERENCE_INSTRUMENT,
+    normalize_instrument_id,
+    normalize_timeframe_for_cache,
+)
 from app.repositories.market_repository import MarketRepository
 from app.services.btc_derivatives.live_service import btc_derivatives_live_service
 from app.services.cache_registry import (
@@ -259,13 +263,22 @@ class MarketContextBuilder:
                     if getattr(derivatives_dashboard, "snapshot_state", "") == "live"
                     else getattr(derivatives_dashboard, "snapshot_state", None) or "degraded"
                 )
-                dependencies["btc_derivatives"] = self._dependency_meta(
-                    "btc_derivatives",
-                    cache_state=derivatives_state,
-                    source_updated_at=derivatives_ts,
-                    timeframe="30m",
-                    snapshot_payload=derivatives_features,
-                )
+                dependencies["btc_derivatives"] = {
+                    **self._dependency_meta(
+                        "btc_derivatives",
+                        cache_state=derivatives_state,
+                        source_updated_at=derivatives_ts,
+                        timeframe="30m",
+                        snapshot_payload=derivatives_features,
+                    ),
+                    # P0-QNT-001 asset scope contract: this payload always
+                    # observes BTC, whatever instrument the context serves.
+                    "asset_scope": (
+                        "exact" if instrument_id == BTC_REFERENCE_INSTRUMENT else "proxy"
+                    ),
+                    "directional_eligible": instrument_id == BTC_REFERENCE_INSTRUMENT,
+                    "source_instrument_id": BTC_REFERENCE_INSTRUMENT,
+                }
                 sources.append("btc_derivatives")
             except Exception:
                 derivatives_features = {
@@ -288,11 +301,18 @@ class MarketContextBuilder:
                     "skew_25d": {},
                     "put_call_ratios": {},
                 }
-                dependencies["btc_derivatives"] = self._dependency_meta(
-                    "btc_derivatives",
-                    cache_state="missing",
-                    source_updated_at=None,
-                )
+                dependencies["btc_derivatives"] = {
+                    **self._dependency_meta(
+                        "btc_derivatives",
+                        cache_state="missing",
+                        source_updated_at=None,
+                    ),
+                    "asset_scope": (
+                        "exact" if instrument_id == BTC_REFERENCE_INSTRUMENT else "proxy"
+                    ),
+                    "directional_eligible": instrument_id == BTC_REFERENCE_INSTRUMENT,
+                    "source_instrument_id": BTC_REFERENCE_INSTRUMENT,
+                }
                 sources.append("btc_derivatives")
             try:
                 onchain_read = await OnchainFeatureEngine(self.repository).build(now=now)
