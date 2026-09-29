@@ -11,6 +11,8 @@ V2.3 采用方案 A：保留现有完整 Detail Panel，不迁移成 Workbench I
 
 ## 当前语义与行为
 
+- 详情身份由 `instrument × trade_timeframe` 确定；只有扫描快照中通过完整交易门槛的单元格可打开。未通过门槛或输入待更新的格子保持禁用，不能打开仅有方向倾向、没有执行价位的空面板。
+- 周线、日线、4H 详情分别使用日线、4H、1H 的执行计划；详情的方向、价位和许可必须与所点矩阵单元格的已发布周期决策一致。
 - Detail Panel 使用 `role=dialog`、`aria-modal=true` 和可访问标题；窄屏保留同一完整面板，不叠加第二个 drawer。
 - 共享浮层优先级：Palette 5000 > Detail/modal/navigation 3000 > responsive Inspector 2000 > desktop Inspector 1500。
 - 一次 Escape 仅关闭最上层；Palette 覆盖详情时，Tab 约束于 Palette，关闭后回到详情；滚动锁按所有者释放。

@@ -18,9 +18,10 @@
 |---|---|---|---|---|
 | T1 | 全量 Ruff 存量 | 各轮验证报告 | **P2** | **已偿（2026-09-16，见下方本轮已偿摘要）**。ruff `extend-exclude` 排除 vendor/build 副本（runtime_python 是 Python 3.11 嵌入式解释器副本、4893 项 false-positive），ruff 真实 scope 5101 → 208；ruff --fix 自动清 I001/F401 等 81 项；手工清偿 app/ 16 项 + tests/ 36 项（F841/E402/E741/B007/B011/B905/B023）；tests/ 长字符串字面量（page.evaluate JS / URL fixture）72 项通过 per-file-ignores 豁免——这是 ruff 团队推荐的 false-positive 处理方式（手工拆分 JS 字符串会破坏语法）。 |
 | T2 | 4 个 skip：筹码结构旧模块 1 / pandas-ta 缺失 1 / TA-Lib 缺失 2 | ui23-release-hygiene | **P3** | pandas-ta/TA-Lib 在 Python 3.14 下不可装；等上游支持或固定 CI Python 版本后解除。筹码结构 skip 等 B1 修复后用新合同重写。 |
-| T3 | 测试可移植性：subprocess 文本管道隐式依赖 UTF-8（GBK 环境 reader thread 崩） | ui23-release-hygiene | **P3** | 已用 `PYTHONUTF8=1 + PYTHONIOENCODING=utf-8` 统一环境绕过；根因（测试子进程未显式 encoding）留待清偿。 |
+| T3 | 测试可移植性：subprocess 文本管道隐式依赖 UTF-8（GBK 环境 reader thread 崩） | ui23-release-hygiene | **已偿（2026-09-25）** | 黄金金额与策略矩阵两组 Node 子进程测试显式使用 `encoding="utf-8"`；本机 GBK 环境相关 67 项测试通过，全量 2219 passed、4 skipped。 |
 | T4 | ETF 真实缓存回归检查相对 runtime 路径、却从隔离目录读 | ui23-release-hygiene | **P3** | 已通过复制 6 份历史 JSON 绕过；路径分叉登记为可移植性债务。 |
 | T5 | 历史硬编码动画时长警告 4 项 | V2.2 CHANGELOG | **P3** | 不阻塞页面交接；清偿时统一走 semanticMotion token。 |
+| T6 | AI 策略手动“刷新扫描”仍同步等待全品种强制重算 | 2026-09-28 真实数据压力测试 | **已偿（2026-09-29）** | 刷新接口改为只读已发布 unified 快照并重新投影扫描矩阵，避免同步重算和未发布临时结果与详情抽屉错位。真实数据压力测试 2/2 PASS；后续策略输入的更新继续由后台预计算服务负责。 |
 
 ## 三、UI 审计未尽项（P2/P3，2026-09-04 audit 遗留）
 
