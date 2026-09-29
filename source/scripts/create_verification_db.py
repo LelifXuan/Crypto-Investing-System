@@ -20,6 +20,7 @@ from sqlalchemy import create_engine
 from app.core.db import Base
 
 STRATEGY_PAGE_TYPES = (
+    "analysis",
     "strategy_scan",
     "strategy_unified",
     "strategy",

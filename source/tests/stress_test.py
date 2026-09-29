@@ -575,6 +575,15 @@ def _rapid_matrix_cells(page, action_cfg: dict, count: int, result: dict):
         result["actions"].append({"label": label, "status": "matrix-cells-not-found"})
         return
 
+    # Put directional candidates first so the rapid-click gate checks the
+    # period-specific conclusion, including the LONG/SHORT split that exposed
+    # the original matrix-versus-drawer mismatch.
+    cells.sort(
+        key=lambda cell: 0
+        if any(side in cell.inner_text() for side in ("做多", "做空"))
+        else 1
+    )
+
     cell_count = len(cells)
     issues = []
 
@@ -617,6 +626,25 @@ def _rapid_matrix_cells(page, action_cfg: dict, count: int, result: dict):
                 action_result["zeroRiskReward"] = True
                 issues.append(f"Cell {i}: 盈亏比 0:1")
 
+            cell_direction = next(
+                (side for side in ("做多", "做空") if side in cells[i].inner_text()), None
+            )
+            if panel_open and cell_direction:
+                try:
+                    focus = page.locator(".strategy-timeframe-focus")
+                    focus.wait_for(timeout=8000)
+                    selected_timeframe = cells[i].get_attribute("data-timeframe")
+                    if (
+                        focus.get_attribute("data-timeframe") != selected_timeframe
+                        or cell_direction not in focus.locator("h2").inner_text()
+                    ):
+                        issues.append(
+                            f"Cell {i}: matrix {selected_timeframe}/{cell_direction} "
+                            "does not match selected-period drawer"
+                        )
+                except Exception as error:
+                    issues.append(f"Cell {i}: selected-period drawer missing: {error}")
+
             result["actions"].append(action_result)
 
             # Close panel before next cell
@@ -628,6 +656,11 @@ def _rapid_matrix_cells(page, action_cfg: dict, count: int, result: dict):
                         "#strategy-detail-overlay", state="detached", timeout=2000
                     )
                 cells = page.query_selector_all(f"{selector}:not([disabled])")
+                cells.sort(
+                    key=lambda cell: 0
+                    if any(side in cell.inner_text() for side in ("做多", "做空"))
+                    else 1
+                )
 
         except Exception as e:
             result["actions"].append(
@@ -708,13 +741,7 @@ def _detect_issues(result: dict, before: dict, after: dict, config: dict):
     # Issue 6: Matrix cell data invalid (AI strategy page)
     matrix_issues = result.get("matrix_issues", [])
     if matrix_issues:
-        invalid_cells = [
-            a for a in result["actions"] if a.get("invalidPrices") or a.get("zeroRiskReward")
-        ]
-        issues.append(
-            f"INVALID_STRATEGY_DATA: {len(invalid_cells)}/{len(result['actions'])} cells "
-            f"show invalid prices or 0:1 risk/reward"
-        )
+        issues.append("INVALID_STRATEGY_DATA: " + "; ".join(matrix_issues[:3]))
         result["verdict"] = "FAIL"
 
     # Issue 7: Matrix cell panel not opening

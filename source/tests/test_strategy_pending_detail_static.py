@@ -32,7 +32,7 @@ def test_pending_scan_cells_are_not_clickable_as_complete_reports():
     assert 'disabled aria-disabled="true"' in source
     # Cells with no report behind them stay non-clickable; a stale snapshot
     # (last-known-good) and an unknown state stay openable.
-    assert 'const DATA_CLOSED_STATES = ["missing", "warming", "error"];' in source
+    assert 'const DATA_CLOSED_STATES = ["missing", "warming", "error", "unknown"];' in source
 
 
 def test_scan_backend_requires_published_detail_before_marking_cell_ready():

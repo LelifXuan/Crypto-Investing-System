@@ -259,7 +259,7 @@ def test_monitoring_dashboard_api_defaults_to_btc_daily() -> None:
 
 
 @pytest.mark.asyncio
-async def test_monitoring_dashboard_get_backfills_missing_technical_observations(
+async def test_monitoring_dashboard_get_queues_missing_technical_observations(
     monkeypatch,
 ) -> None:
     from app.services.cache_registry import monitoring_dashboard_cache_key
@@ -302,33 +302,25 @@ async def test_monitoring_dashboard_get_backfills_missing_technical_observations
     service = MonitoringDashboardService(repository=Repo())  # type: ignore[arg-type]
 
     async def backfill(*_args, **_kwargs):
-        return [
-            {
-                "observation_id": "analysis-bundle:btc-usdt-perp:1d:ema_20",
-                "indicator_key": "ema_20",
-                "category": "technical",
-                "instrument_id": "btc-usdt-perp",
-                "timeframe": "1d",
-                "observation_ts": now.isoformat(),
-                "value_num": 100,
-                "value_json": {},
-                "source_provider": "analysis_bundle",
-                "is_preliminary": False,
-                "quality_score": 95,
-            }
-        ]
+        raise AssertionError("GET must not rebuild the analysis bundle")
+
+    async def enqueue(**kwargs):
+        assert kwargs["candidates"] == ["monitoring"]
+        return True, "monitoring:btc-usdt-perp:1d"
 
     async def full_refresh(*_args, **_kwargs):
         raise AssertionError("displayable dashboard cache must not run full refresh")
 
     monkeypatch.setattr(service, "_technical_observations_from_analysis_bundle", backfill)
+    monkeypatch.setattr(service, "_enqueue_refresh_hint", enqueue)
     monkeypatch.setattr(service, "refresh_bundle", full_refresh)
 
     result = await service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)
 
-    assert result.refreshed is True
-    assert result.technical_indicator_count == 1
-    assert result.technical_observations[0].indicator_key == "ema_20"
+    assert result.refreshed is False
+    assert result.refresh_enqueued is True
+    assert result.refresh_task_key == "monitoring:btc-usdt-perp:1d"
+    assert result.technical_indicator_count == 0
 
 
 @pytest.mark.asyncio
@@ -377,10 +369,14 @@ async def test_monitoring_dashboard_get_keeps_snapshot_when_technical_backfill_f
     async def boom(*_args, **_kwargs):
         raise RuntimeError("analysis unavailable")
 
+    async def enqueue(**_kwargs):
+        return True, "monitoring:btc-usdt-perp:1d"
+
     async def full_refresh(*_args, **_kwargs):
         raise AssertionError("technical-only miss must not run full dashboard refresh")
 
     monkeypatch.setattr(service, "_technical_observations_from_analysis_bundle", boom)
+    monkeypatch.setattr(service, "_enqueue_refresh_hint", enqueue)
     monkeypatch.setattr(service, "refresh_bundle", full_refresh)
 
     result = await service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True)

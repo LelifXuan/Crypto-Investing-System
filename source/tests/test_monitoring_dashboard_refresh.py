@@ -152,8 +152,7 @@ def test_get_bundle_with_displayable_stale_cache_returns_immediately() -> None:
     assert result.status_message
 
 
-def test_get_bundle_with_displayable_stale_cache_and_empty_technical_backfills_only() -> None:
-    now = datetime.now(UTC)
+def test_get_bundle_with_displayable_stale_cache_queues_technical_refresh() -> None:
     payload = {
         "macro_overview": {
             "total_score": 45,
@@ -172,35 +171,25 @@ def test_get_bundle_with_displayable_stale_cache_and_empty_technical_backfills_o
     service = MonitoringDashboardService(repository=repo)  # type: ignore[arg-type]
 
     async def backfill(*_args, **_kwargs):
-        return [
-            {
-                "observation_id": "analysis-bundle:btc-usdt-perp:1d:rsi_14",
-                "indicator_key": "rsi_14",
-                "category": "technical",
-                "instrument_id": "btc-usdt-perp",
-                "timeframe": "1d",
-                "observation_ts": now.isoformat(),
-                "value_num": 58,
-                "value_json": {},
-                "source_provider": "analysis_bundle",
-                "is_preliminary": False,
-                "quality_score": 95,
-            }
-        ]
+        raise AssertionError("GET must not rebuild technical observations")
+
+    async def enqueue(**_kwargs):
+        return True, "monitoring:btc-usdt-perp:1d"
 
     async def full_refresh(*_args, **_kwargs):
         raise AssertionError("stale displayable cache should not run full refresh")
 
     service._technical_observations_from_analysis_bundle = backfill  # type: ignore[method-assign]
+    service._enqueue_refresh_hint = enqueue  # type: ignore[method-assign]
     service.refresh_bundle = full_refresh  # type: ignore[method-assign]
 
     result = asyncio.run(service.get_bundle("btc-usdt-perp", "1d", allow_refresh=True))
 
     assert not repo.writes
     assert result.cache_state == "stale"
-    assert result.refreshed is True
-    assert result.technical_indicator_count == 1
-    assert result.technical_observations[0].indicator_key == "rsi_14"
+    assert result.refreshed is False
+    assert result.refresh_enqueued is True
+    assert result.technical_indicator_count == 0
 
 
 def test_get_bundle_with_fresh_cache_skips_refresh() -> None:

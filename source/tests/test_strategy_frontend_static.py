@@ -8,6 +8,7 @@ a slide-in detail panel that consumes `/strategy/unified` for that pair.
 These tests validate the **scan-hub contract** — they no longer assert
 the legacy unified-only renderer architecture.
 """
+
 from __future__ import annotations
 
 import re
@@ -57,9 +58,7 @@ def test_strategy_entry_does_not_expose_mojibake():
     combined = index + shim
 
     for forbidden in ("缁熶竴绛栫暐", "统一策略快照尚未就绪，后台预热中"):
-        assert forbidden not in combined, (
-            f"strategy entry exposes stale copy: {forbidden!r}"
-        )
+        assert forbidden not in combined, f"strategy entry exposes stale copy: {forbidden!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +86,7 @@ def test_strategy_scan_shell_uses_simplified_chinese_titles():
     """User-facing titles in the scan shell are simplified Chinese."""
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
 
-    for label in ("跨品种跨周期机会扫描", "机会矩阵", "机会排序", "刷新扫描"):
+    for label in ("跨品种跨周期机会扫描", "交易机会矩阵", "交易机会排序", "刷新扫描"):
         assert label in index, f"scan shell missing Chinese label: {label!r}"
 
 
@@ -147,27 +146,17 @@ def test_strategy_index_wires_scan_renderers_and_detail_panel():
 def test_strategy_detail_panel_exists_and_exports_opener():
     """renderDetailPanel.js exports openDetailPanel(instrumentId,
     timeframe, loadStrategy, onClose) and renders all sub-modules."""
-    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(
-        encoding="utf-8"
-    )
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(encoding="utf-8")
 
     assert "export function openDetailPanel" in panel
     # Header + close button
     assert '"strategy-detail-panel"' in panel
     assert '"strategy-detail-overlay"' in panel
     assert '"strategy-detail-close"' in panel
-    # 2026-07-25: the detail panel now composes the full multi-horizon
-    # reasoning chain (Overview, ExecutionPlan, DecisionAudit,
-    # EvidenceStack, MarketOperation, RiskPanel, EventWatch) plus the
-    # data-source status card. The previous V1.8.1 minimal-trade-card
-    # contract is gone.
+    # The selected instrument×trade-period decision is the primary detail.
     for renderer in (
-        "renderOverview",
-        "renderExecutionPlan",
-        "renderDecisionAudit",
-        "renderEvidenceStack",
-        "renderMarketOperation",
-        "renderRiskPanel",
+        "renderPeriodOpportunity",
+        "renderTimeframeFocus",
         "renderEventWatch",
         "buildDataDegradedCard",
     ):
@@ -183,9 +172,7 @@ def test_strategy_detail_panel_exists_and_exports_opener():
 def test_strategy_detail_panel_renders_unified_loaded_model():
     """The panel awaits loadStrategy(...) and replaces the body with the
     full set of module outputs."""
-    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(
-        encoding="utf-8"
-    )
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(encoding="utf-8")
     assert "loadStrategy(" in panel
     assert ".then((model)" in panel or ".then(model =>" in panel
     assert "body.innerHTML" in panel
@@ -196,9 +183,7 @@ def test_strategy_detail_panel_surfaces_degraded_state_with_rebuild_button():
     the panel must render a high-contrast '数据预热中' banner ABOVE the seven
     reasoning renderers AND wire a force=true rebuild button that re-calls
     loadStrategy(...)."""
-    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(
-        encoding="utf-8"
-    )
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(encoding="utf-8")
 
     # The function-level helper that emits the banner
     assert "renderDegradedBanner" in panel, (
@@ -228,9 +213,7 @@ def test_strategy_index_loadStrategy_propagates_force_flag():
     user clicks '立即重建本单元'; index.js's loadStrategy must forward the
     force flag to ALL four backend calls (unified, monitoring, derivatives,
     macro) so the rebuild isn't bottlenecked by any one endpoint's cache."""
-    index = (ROOT / "app/static/pages/strategy/index.js").read_text(
-        encoding="utf-8"
-    )
+    index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     # Accept either signature shape
     assert "(iid, tf, loadOpts = {})" in index or "loadOpts = {}" in index, (
         "index.js must accept an options bag in loadStrategy so the panel "
@@ -251,9 +234,7 @@ def test_strategy_index_loadStrategy_propagates_force_flag():
 
 def test_strategy_scan_matrix_renders_table_with_three_timeframes():
     """Matrix renders a 4-column table (品种 + 3 timeframes)."""
-    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(
-        encoding="utf-8"
-    )
+    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(encoding="utf-8")
     assert "scan-matrix-table" in matrix
     assert "周线" in matrix
     assert "日线" in matrix
@@ -261,15 +242,13 @@ def test_strategy_scan_matrix_renders_table_with_three_timeframes():
     assert "data-instrument" in matrix
     assert "data-timeframe" in matrix
     assert "scan-cell-btn" in matrix
-    assert "等待确认" in matrix
+    assert "无机会" in matrix
     assert "item.qualified !== true" in matrix
 
 
 def test_strategy_scan_matrix_bind_clicks_route_to_onSelect():
     """bindScanMatrix attaches click handlers that read data-* attrs."""
-    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(
-        encoding="utf-8"
-    )
+    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(encoding="utf-8")
     assert "export function bindScanMatrix" in matrix
     assert "querySelectorAll" in matrix
     assert "dataset.instrument" in matrix
@@ -286,9 +265,7 @@ def test_strategy_scan_ranked_renders_directional_cards_only():
     """Ranked list renders .scan-ranked-card articles with tone +
     instrument + timeframe data attrs and shows score / confidence /
     risk_reward / leverage_hint."""
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
 
     assert "scan-ranked-list" in ranked
     assert "scan-ranked-card" in ranked
@@ -298,14 +275,12 @@ def test_strategy_scan_ranked_renders_directional_cards_only():
     assert "direction_label" in ranked
     assert "confidence" in ranked
     assert "risk_reward" in ranked
-    assert "震荡行情" in ranked  # V1.8 empty-state copy
+    assert "没有通过完整交易门禁" in ranked
 
 
 def test_strategy_scan_ranked_uses_timeframes_and_never_fabricates_zero_rr():
     """Ranked cards use concrete chart periods and reserve RR for valid ratios."""
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
     assert all(label in ranked for label in ("周线", "日线", "4H"))
     assert all(label not in ranked for label in ("战略级", "战术级", "执行级"))
     assert "ratio > 0" in ranked
@@ -317,16 +292,13 @@ def test_strategy_scan_banner_and_ranking_share_visible_matrix_source():
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     assert "const visibleMatrix = matrix.filter" in index
     assert "const ranked = visibleMatrix" in index
-    assert "const qualified = visibleMatrix.filter" in index
-    assert "const oppCount = qualified.length" in index
+    assert 'item?.qualified === true' in index
     assert "data.ranked?.length" not in index
 
 
 def test_strategy_scan_ranked_bind_clicks_route_to_onSelect():
     """bindScanRanked attaches click handlers on .scan-ranked-card."""
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
     assert "export function bindScanRanked" in ranked
     assert "scan-ranked-card" in ranked
     assert "dataset.instrument" in ranked
@@ -397,9 +369,7 @@ def test_strategy_index_does_not_wire_legacy_renderers():
         "renderNarrative",
         "renderTradeDecision",
     ):
-        assert old_renderer not in index, (
-            f"scan hub must not wire legacy renderer: {old_renderer}"
-        )
+        assert old_renderer not in index, f"scan hub must not wire legacy renderer: {old_renderer}"
 
 
 def test_strategy_does_not_show_position_management_actions():
@@ -430,9 +400,7 @@ def test_strategy_never_uses_pending_risk_reward_copy():
 
 def test_strategy_scan_matrix_handles_cache_state_and_qualification_per_cell():
     """Pending, unqualified and promoted cells remain visibly distinct."""
-    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(
-        encoding="utf-8"
-    )
+    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(encoding="utf-8")
     assert "cache_state" in matrix, (
         "renderScanMatrix must read item.cache_state to render pending cells"
     )
@@ -446,7 +414,7 @@ def test_strategy_scan_matrix_handles_cache_state_and_qualification_per_cell():
         "renderScanMatrix must have a branch for cache_state in missing/warming/error"
     )
     assert "item.qualified !== true" in matrix
-    assert "等待确认" in matrix
+    assert "无机会" in matrix
     assert "item.confidence" not in matrix
     assert "scan-cell-direction-icon" in matrix
 
@@ -461,10 +429,8 @@ def test_strategy_scan_ranked_empty_state_distinguishes_pending_vs_ready():
     V1.8 simplified the empty state to a single message; the pending-vs-ready
     distinction is now handled at the index.js banner level instead.
     """
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
-    assert "当前无交易机会" in ranked, (
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
+    assert "当前没有通过完整交易门禁的机会" in ranked, (
         "renderScanRanked must keep the existing 'no opportunities' copy"
     )
 
@@ -484,16 +450,14 @@ def test_strategy_index_banner_distinguishes_pending_vs_ready_no_edge():
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
     # pending: data still warming — must NOT claim "no opportunities"
-    assert "数据补齐中" in ranked, (
-        "ranked empty state must keep the pending copy"
-    )
+    assert "数据仍在后台补齐" in ranked, "ranked empty state must keep the pending copy"
     # ready, no edge
-    assert "当前无交易机会" in ranked, (
+    assert "当前没有通过完整交易门禁的机会" in ranked, (
         "ranked empty state must keep the no-edge copy"
     )
     # the two states are selected by the same visible-matrix classification
     assert "hasPending" in ranked
-    assert 'item.cache_state === "fresh"' in index
+    assert 'item?.cache_state === "fresh"' in index
     assert '"missing", "warming", "error"' in index
 
 
@@ -512,21 +476,16 @@ def test_strategy_index_banner_distinguishes_pending_vs_ready_no_edge():
 # ---------------------------------------------------------------------------
 
 
-def test_strategy_index_prewarms_on_mount():
-    """index.js must call api.prewarmStrategy() once on mount before
-    loadScan(), with a module-level guard so it only fires once per
-    page module load."""
+def test_strategy_index_only_reads_scan_on_mount():
+    """Opening the page cannot enqueue prewarm or scan jobs."""
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     api = (ROOT / "app/static/core/api.js").read_text(encoding="utf-8")
 
-    assert "api.prewarmStrategy" in index or "prewarmStrategy(" in index, (
-        "strategy page never calls api.prewarmStrategy — cold scan will hang 60+ s"
-    )
-    assert "prewarmStrategy(" in api, "api.js must export prewarmStrategy"
-    # Module-level guard
-    assert ("let prewarmed" in index) or ("const prewarmed" in index), (
-        "prewarm must be guarded by a module-level flag to avoid spamming the precompute queue"
-    )
+    assert "api.prewarmStrategy" not in index
+    assert "tryPrewarm" not in index
+    assert "const first = await loadScan(false)" in index
+    assert "params: options.force ? { force: true } : {}" in api
+    assert "ttl: 0" in api[api.index("getStrategyScan(options") :]
 
 
 def test_strategy_index_uses_extended_timeout_for_cold_scan():
@@ -536,12 +495,8 @@ def test_strategy_index_uses_extended_timeout_for_cold_scan():
     # Either a literal number >= 90000 in a timeoutMs option, or a
     # helper that selects between forced/cold timeoutMs values.
     assert (
-        "timeoutMs: 90000" in index
-        or "timeoutMs: 120000" in index
-        or "timeoutMs: 100000" in index
-    ), (
-        "first scan timeoutMs must be >= 90000 to ride out cold latency"
-    )
+        "timeoutMs: 90000" in index or "timeoutMs: 120000" in index or "timeoutMs: 100000" in index
+    ), "first scan timeoutMs must be >= 90000 to ride out cold latency"
 
 
 def test_strategy_index_auto_scan_is_not_forced():
@@ -557,9 +512,7 @@ def test_strategy_index_retries_once_on_transient_error():
     before showing the "扫描失败" banner."""
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     # The retry must go through loadScan again, not bypass it
-    assert "retry" in index.lower(), (
-        "loadScan must have a retry-once path for transient failures"
-    )
+    assert "retry" in index.lower(), "loadScan must have a retry-once path for transient failures"
 
 
 def test_strategy_index_shows_warming_banner():
@@ -579,6 +532,7 @@ def test_strategy_index_polling_loop_keeps_warming_banner_until_real_data():
     'no opportunities'). The polling loop must have a bounded retry
     limit so we eventually give up gracefully."""
     import re
+
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
 
     # Look for a loop that retries loadScan or itself while warming.
@@ -587,29 +541,19 @@ def test_strategy_index_polling_loop_keeps_warming_banner_until_real_data():
     #   - for (let i = 0; i < N; i++) { ... loadScan(...) ... }
     #   - recursive function pollWhileWarming(attempt + 1)
     #   - setTimeout / setInterval that calls loadScan
-    has_while_loop = bool(
-        re.search(r"while\s*\([^)]*\)\s*\{", index)
-    )
-    has_for_loop = bool(
-        re.search(r"for\s*\([^)]*\b(i|attempt)\b[^)]*\)\s*\{", index)
-    )
+    has_while_loop = bool(re.search(r"while\s*\([^)]*\)\s*\{", index))
+    has_for_loop = bool(re.search(r"for\s*\([^)]*\b(i|attempt)\b[^)]*\)\s*\{", index))
     has_recursion = bool(
         re.search(r"(pollWhileWarming|warmingPoll)\s*\(\s*attempt\s*\+\s*1\s*\)", index)
     )
-    has_settimeout = (
-        "setTimeout" in index and "loadScan" in index
-    )
+    has_settimeout = "setTimeout" in index and "loadScan" in index
     assert has_while_loop or has_for_loop or has_recursion or has_settimeout, (
         "index.js must have a polling loop while backend stays in 'warming' state"
     )
 
     # Must have a bounded retry limit (some form of max-attempts)
-    has_bound = bool(
-        re.search(r"(WARMING_RETRY_LIMIT|MAX_WARMING|MAX_POLL|< \d+\s*;)", index)
-    )
-    assert has_bound, (
-        "polling loop must have a bounded retry limit (e.g. WARMING_RETRY_LIMIT)"
-    )
+    has_bound = bool(re.search(r"(WARMING_RETRY_LIMIT|MAX_WARMING|MAX_POLL|< \d+\s*;)", index))
+    assert has_bound, "polling loop must have a bounded retry limit (e.g. WARMING_RETRY_LIMIT)"
 
 
 def test_strategy_index_warming_giveup_message_is_graceful():
@@ -618,6 +562,7 @@ def test_strategy_index_warming_giveup_message_is_graceful():
     must be distinguishable from genuine backend errors so the user
     knows the system is just slow, not broken."""
     import re
+
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
     # Look for any error-tone message attached to warming give-up state.
     # Search for the pattern: a warming-message string OR a banner
@@ -631,7 +576,7 @@ def test_strategy_index_warming_giveup_message_is_graceful():
     #   - statusBanner("...", "info") with warming-related text
     # but NOT statusBanner("...", "error") in the warming path.
     # Find every statusBanner call. Each one must declare its tone.
-    banner_calls = re.findall(r'statusBanner\(([^)]+)\)', index)
+    banner_calls = re.findall(r"statusBanner\(([^)]+)\)", index)
     for call in banner_calls:
         # Normalize whitespace
         c = " ".join(call.split())
@@ -639,9 +584,7 @@ def test_strategy_index_warming_giveup_message_is_graceful():
         # the actual failure banner, which is fine. But if warming
         # state ever accidentally uses error tone, we want to catch it.
         if "扫描失败" in c:
-            assert '"error"' in c or "'error'" in c, (
-                f"扫描失败 must use tone='error': {c!r}"
-            )
+            assert '"error"' in c or "'error'" in c, f"扫描失败 must use tone='error': {c!r}"
 
 
 def test_strategy_index_does_not_render_warming_as_empty_results():
@@ -658,15 +601,14 @@ def test_strategy_index_does_not_render_warming_as_empty_results():
     # Find every line containing `source === "warming"` and assert the
     # surrounding if-condition does NOT depend on `_retried`.
     warming_lines = [
-        line for line in index.splitlines()
+        line
+        for line in index.splitlines()
         if 'cache_meta?.source === "warming"' in line
         or "cache_meta?.source === 'warming'" in line
         or 'cache_meta.source === "warming"' in line
         or "cache_meta.source === 'warming'" in line
     ]
-    assert warming_lines, (
-        "index.js must contain a cache_meta.source === 'warming' check"
-    )
+    assert warming_lines, "index.js must contain a cache_meta.source === 'warming' check"
     for line in warming_lines:
         # The guard must NOT depend on `_retried` flag — that lets
         # subsequent warming responses bypass the short-circuit.
@@ -685,11 +627,8 @@ def test_strategy_detail_panel_dependencies_exist():
     """Modules imported by the detail panel must still exist on disk."""
     base = ROOT / "app/static/pages/strategy"
     for rel in (
-        "renderOverview.js",
-        "renderExecutionPlan.js",
-        "renderDecisionAudit.js",
-        "renderEvidenceStack.js",
-        "renderMarketOperation.js",
+        "renderPeriodOpportunity.js",
+        "renderTimeframeFocus.js",
         "renderRiskPanel.js",
         "renderEventWatch.js",
         "adapter.js",
@@ -701,84 +640,31 @@ def test_strategy_detail_panel_uses_no_mojibake():
     """renderDetailPanel.js + adapter.js must not contain mojibake."""
     base = ROOT / "app/static/pages/strategy"
     sources = "\n".join(
-        (base / name).read_text(encoding="utf-8")
-        for name in ("renderDetailPanel.js", "adapter.js")
+        (base / name).read_text(encoding="utf-8") for name in ("renderDetailPanel.js", "adapter.js")
     )
     assert "缁熶竴绛栫暐" not in sources
     assert "鑱旇" not in sources  # generic mojibake marker
 
 
 def test_strategy_detail_panel_emits_all_reasoning_sections_even_when_no_direction():
-    # 2026-07-25 user feedback: opening the slide-in detail panel for a
-    # matrix cell whose engine conclusion is "no direction" used to show
-    # only a single "无交易机会 / 当前为震荡行情，无明确方向。" card —
-    # the user could no longer see the multi-horizon reasoning chain
-    # (Overview, ExecutionPlan, DecisionAudit, EvidenceStack,
-    # MarketOperation, RiskPanel, EventWatch). When the engine says
-    # "no direction" the user wants to understand *why*: which
-    # dimensions agreed, which disagreed, what evidence was on hand.
-    #
-    # The fix: renderDetailPanel must compose all 7 reasoning renderers
-    # regardless of trade_decision.side. They already tolerate NONE
-    # gracefully; the bug was the early-return in renderTradeCard.
-    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(
+    # Each matrix cell opens its own period decision. A global one-per-symbol
+    # execution panel would contradict weekly/daily/4H conclusions.
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(encoding="utf-8")
+    detail = (ROOT / "app/static/pages/strategy/renderPeriodOpportunity.js").read_text(
         encoding="utf-8"
     )
-
-    # Imports for every reasoning section must remain (no dead-code
-    # cleanup wins over UX).
-    for renderer in (
-        "renderOverview",
-        "renderExecutionPlan",
-        "renderDecisionAudit",
-        "renderEvidenceStack",
-        "renderMarketOperation",
-        "renderRiskPanel",
-        "renderEventWatch",
-    ):
-        assert f"import {{ {renderer} }}" in panel, (
-            f"{renderer} must still be imported in renderDetailPanel.js"
-        )
-
-    # The body composition must call each renderer.
-    expected_calls = {
-        "renderOverview(model, helpers)",
-        "renderExecutionPlan(model, helpers)",
-        "renderDecisionAudit(model, helpers)",
-        "renderEvidenceStack(model, helpers)",
-        "renderMarketOperation(model, helpers)",
-        "renderRiskPanel(model, helpers)",
-        "renderEventWatch(model, helpers)",
-    }
-    for expected in expected_calls:
-        assert expected in panel, (
-            f"renderDetailPanel must compose {expected!r}; "
-            "the user needs the full reasoning chain even when no direction"
-        )
-
-    # No "early-return when side !== LONG/SHORT" trap. The old code
-    # returned a stub card and skipped the rest; the new code must
-    # not gate any section on side.
-    assert "if (!hasDirection)" not in panel, (
-        "renderDetailPanel must NOT short-circuit on !hasDirection; "
-        "the user must see the full reasoning chain even when the engine "
-        "concluded 'no direction'"
-    )
-    assert "无交易机会" not in panel, (
-        "the legacy '无交易机会' stub message should not live in "
-        "renderDetailPanel.js anymore — the actual renderOverview / "
-        "renderExecutionPlan already produce a precise status line "
-        "from trade_decision.primary_reason.message"
-    )
+    assert "model.opportunity_decisions?.[timeframe]" in panel
+    assert "renderPeriodOpportunity(opportunity, model, helpers)" in panel
+    assert "renderOverview(model, helpers)" not in panel
+    assert "decision.execution_timeframe" in detail
+    assert "decision.setup_evidence" in detail
 
 
 def test_strategy_scan_ranked_shows_scan_age():
     """A ranked card built hours ago must say so — the drawer behind it
     shows the current unified snapshot and the two can legitimately differ
     (OKB 1d scored 94.6 at 04:47, direction dissolved by 05:14)."""
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
     assert "scanAgeLabel" in ranked
     assert "分钟前扫描" in ranked
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
@@ -796,9 +682,7 @@ def test_strategy_scan_cache_response_stamps_serve_time():
 def test_strategy_scan_ranked_shows_execution_levels_not_validator_chatter():
     """Ranked cards must print entry/stop/TP1, not the bundle validator's
     verdict line (CONTEXT_ALIGNED_SHORT：当前策略状态为…)."""
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
     assert "scan-ranked-levels" in ranked
     assert "止损" in ranked and "止盈" in ranked
     assert "levelsLine(item)" in ranked
@@ -810,9 +694,7 @@ def test_strategy_scan_levels_line_hides_missing_tp1():
     """A missing TP1 must render as —, never 止盈 0."""
     import re
 
-    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(
-        encoding="utf-8"
-    )
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
     assert re.search(r"tp1 !== 0", ranked), (
         "levelsLine must guard against Number(null)===0 rendering 止盈 0"
     )

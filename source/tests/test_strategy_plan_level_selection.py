@@ -102,7 +102,7 @@ def test_structure_provided_stop_decides_the_dead_check():
 def test_build_selects_entries_through_the_shared_rule():
     source = _source()
     build = source[
-        source.index("    async def build("):source.index("    async def _stored_mark_price")
+        source.index("    async def build("):source.index("    async def _persist_strategy_cache")
     ]
 
     assert "select_entry_levels(" in build
@@ -122,20 +122,20 @@ def test_current_price_never_comes_from_the_structure_candle_tail():
     assert 'structure_payload.get("candles")' in price_block, (
         "the structure series may still feed the informational candle count"
     )
-    # The price fallback must not touch `candles`; it reads the analysis series
-    # explicitly and then a stored mark.
-    assert "analysis_candles = analysis_payload.get(\"candles\")" in price_block
-    assert "_stored_mark_price" in price_block
+    # Price selection uses dated analysis observations. The structure tail is
+    # informational and cannot silently become a current trading price.
+    assert "select_reference_price(" in price_block
+    assert 'analysis_payload.get("candles"), tf' in price_block
     assert "_decimal(_field(candles[-1], \"close\"))" not in price_block
 
 
-def test_price_fallback_uses_a_stored_mark_without_a_provider_call():
+def test_price_selection_does_not_fetch_one_live_mark_per_timeframe():
     source = _source()
-    helper = source[source.index("async def _stored_mark_price"):source.index("def _levels(")]
-
-    assert "prefer_live=False" in helper, (
-        "one live fetch per timeframe per refresh cycle would multiply provider calls"
-    )
+    price_block = source[
+        source.index("candles = analysis_payload.get"):source.index("core = analysis_payload.get")
+    ]
+    assert "fetch_live_mark" not in price_block
+    assert "get_best_mark" not in price_block
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,21 @@ def test_background_writers_use_full_transaction_writer_gate() -> None:
     for path in files:
         text = path.read_text(encoding="utf-8")
         assert "db_manager.writer_session()" in text, path
-        assert "db_manager.session()" not in text, path
+        if path.name == "precompute_worker.py":
+            # Scan projection reads published inputs outside the write lock.
+            # Its single cache publication still owns the full writer gate.
+            projection = text.split("async def _refresh_scan_cache", 1)[1].split(
+                "async def _enqueue_periodic_refresh", 1
+            )[0]
+            assert text.count("db_manager.session()") == 1
+            assert projection.index("db_manager.session()") < projection.index(
+                "db_manager.writer_session()"
+            )
+            assert "await repository.upsert_page_snapshot_cache(" in projection.split(
+                "db_manager.writer_session()", 1
+            )[1]
+        else:
+            assert "db_manager.session()" not in text, path
 
 
 def test_alert_cooldown_normalizes_sqlite_naive_timestamp() -> None:

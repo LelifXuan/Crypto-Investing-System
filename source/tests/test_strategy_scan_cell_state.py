@@ -55,11 +55,15 @@ def _cell_state(item) -> dict:
     if shutil.which("node") is None:
         pytest.skip("node not available")
     script = (
-        _cell_state_module()
-        + f"\nconsole.log(JSON.stringify(cellState({json.dumps(item)})));\n"
+        _cell_state_module() + f"\nconsole.log(JSON.stringify(cellState({json.dumps(item)})));\n"
     )
     result = subprocess.run(
-        ["node", "-e", script], capture_output=True, text=True, timeout=30, check=False
+        ["node", "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
     )
     assert result.returncode == 0, f"node failed: {result.stderr}"
     return json.loads(result.stdout.strip())
@@ -80,7 +84,7 @@ def _fresh(**overrides) -> dict:
     return base
 
 
-def test_stale_directional_cell_serves_last_good_direction():
+def test_stale_directional_cell_is_not_a_current_opportunity():
     """Stale-serving (2026-09-23, directional tone): a stale cell with a
     direction shows it with its directional tone + update label — the
     dashed stale border tells it apart from a fresh signal."""
@@ -88,18 +92,18 @@ def test_stale_directional_cell_serves_last_good_direction():
 
     assert state["kind"] == "stale"
     assert state["label"] == "数据更新中"
-    assert state["direction"] == "做多"
-    assert state["tone"] == "bullish", "an explicit direction must wear its color"
-    assert state["clickable"] is True
-    assert "过期" in state["tooltip"] or "上次有效" in state["tooltip"]
+    assert state["direction"] == ""
+    assert state["tone"] == "neutral"
+    assert state["clickable"] is False
+    assert "更新" in state["tooltip"]
 
 
 def test_stale_directionless_cell_stays_pending():
     """A stale cell with no direction has nothing to serve — pending."""
     state = _cell_state(_fresh(cache_state="stale", direction="WAIT", direction_label="等待"))
 
-    assert state["kind"] == "pending"
-    assert state["label"] == "数据准备中"
+    assert state["kind"] == "stale"
+    assert state["label"] == "数据更新中"
     assert state["direction"] == ""
 
 
@@ -115,28 +119,27 @@ def test_missing_warming_error_share_the_same_visible_label():
     assert labels == {"数据准备中"}, f"data states must share one word, got {labels}"
 
 
-def test_cells_without_a_payload_stay_closed_but_stale_stays_openable():
+def test_cells_without_current_permission_stay_closed():
     assert _cell_state(_fresh(cache_state="missing"))["clickable"] is False
     assert _cell_state(_fresh(cache_state="warming"))["clickable"] is False
     assert _cell_state(_fresh(cache_state="error"))["clickable"] is False
-    assert _cell_state(_fresh(cache_state="stale"))["clickable"] is True
-    assert _cell_state(
-        _fresh(cache_state="stale", direction="WAIT", direction_label="等待")
-    )["clickable"] is True
+    assert _cell_state(_fresh(cache_state="stale"))["clickable"] is False
+    assert (
+        _cell_state(_fresh(cache_state="stale", direction="WAIT", direction_label="等待"))[
+            "clickable"
+        ]
+        is False
+    )
 
 
-def test_rejected_directional_cell_still_reports_its_direction():
-    """The drawer shows 做空 for this cell; the matrix must not say "—"."""
+def test_rejected_directional_cell_is_not_listed_as_an_opportunity():
     state = _cell_state(_fresh())
 
-    assert state["kind"] == "candidate"
-    assert state["direction"] == "做空"
-    assert state["label"] == "等待确认"
-    assert state["tone"] == "bearish", (
-        "an explicit direction must wear its color; "
-        "promotion is told by label+border"
-    )
-    assert state["clickable"] is True
+    assert state["kind"] == "idle"
+    assert state["direction"] == ""
+    assert state["label"] == "无机会"
+    assert state["tone"] == "neutral"
+    assert state["clickable"] is False
     assert "盈亏比不足" in state["tooltip"]
 
 
@@ -156,7 +159,7 @@ def test_directionless_fresh_cell_is_the_only_wait_state():
 
     assert state["kind"] == "idle"
     assert state["direction"] == ""
-    assert state["label"] == "等待确认"
+    assert state["label"] == "无机会"
     assert "多周期无方向" in state["tooltip"]
 
 
@@ -164,7 +167,7 @@ def test_matrix_drops_raw_gate_codes_from_the_visible_cell():
     source = _matrix_source()
     # Reasons surface as Chinese labels through the tooltip, never as raw codes.
     assert "GATE_REASON_LABELS" in source
-    assert "未通过门禁：" in source
+    assert "本周期未形成完整交易计划：" in source
 
 
 def _scan_item(**overrides):
@@ -270,12 +273,10 @@ def test_ranked_summary_skips_plan_validation_line():
     assert "多头分" in item.summary
 
 
-def test_cell_execution_levels_come_from_matching_tactical_plan():
-    """Ranked cards print the tactical plan's entry/stop/TP1 for the cell
-    direction — not the validator's verdict line."""
+def test_cell_execution_levels_belong_to_selected_execution_period():
+    """Only a qualified 4H cell can expose the matching 4H plan levels."""
     from app.services.strategy_unified.opportunity_scanner import (
         _cell_execution_levels,
-        _extract_scan_item,
     )
 
     payload = {
@@ -283,7 +284,7 @@ def test_cell_execution_levels_come_from_matching_tactical_plan():
         "degraded_components": [],
         "timeframe_stack": [
             {
-                "timeframe": "1d",
+                "timeframe": "4h",
                 "direction": "SHORT",
                 "confidence": 100.0,
                 "current_price": 97.4,
@@ -299,11 +300,13 @@ def test_cell_execution_levels_come_from_matching_tactical_plan():
         ],
         "signal_coverage": [],
         "evidence_trace": [],
+        "horizon_views": {"tactical": {"direction": "SHORT"}},
         "trade_decision": {
             "side": "SHORT",
             "trade_timeframe": "4h",
             "direction_timeframes": ["1d", "4h"],
             "position_cap": "standard",
+            "permission": "allow",
             "risk_reward": {"value": 2.2},
             "primary_reason": {"message": "等待触发"},
         },
@@ -328,10 +331,14 @@ def test_cell_execution_levels_come_from_matching_tactical_plan():
             },
         ],
     }
-    assert _cell_execution_levels(payload, "SHORT") == ([97.34, 97.73], 100.54, 90.3)
-    assert _cell_execution_levels(payload, "WAIT") == ([], None, None)
-    assert _cell_execution_levels({"trade_plans": []}, "SHORT") == ([], None, None)
-    item = _extract_scan_item(payload, "hype-usdt-perp", "HYPE", "1d")
+    assert _cell_execution_levels(payload, "SHORT", "4h") == ([97.34, 97.73], 100.54, 90.3)
+    assert _cell_execution_levels(payload, "SHORT", "1d") == ([], None, None)
+    assert _cell_execution_levels(payload, "WAIT", "4h") == ([], None, None)
+    assert _cell_execution_levels({"trade_plans": []}, "SHORT", "4h") == ([], None, None)
+    from app.services.strategy_unified.opportunity_scanner import _extract_scan_item_legacy
+
+    item = _extract_scan_item_legacy(payload, "hype-usdt-perp", "HYPE", "4h")
+    assert item.qualified
     assert item.entry_zone == [97.34, 97.73]
     assert item.stop_loss == 100.54
     assert item.take_profit_1 == 90.3

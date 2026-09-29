@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import subprocess
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -160,7 +161,9 @@ def build(root: Path, destination: Path) -> dict:
         "contains_secrets": True,
         "encrypted": False,
         "delivery": "P1 Frozen + P2 Operator Core + Analysis/Structure Migration",
-        "application_version": "1.8.1",
+        "application_version": tomllib.loads(
+            (root / "source/pyproject.toml").read_text(encoding="utf-8")
+        )["project"]["version"],
         "ui_release": "V2.3",
         "workbench_pages": ["Monitoring", "BTC", "Events", "Macro", "Analysis", "Structure"],
         "stage_acceptance": {

@@ -147,22 +147,18 @@ async def test_precompute_hint_strategy_expands_market_context_task(precompute_d
     assert response.status in {"accepted", "deduped"}
     if response.status != "deduped":
         assert any(
-            key.startswith("strategy_unified:btc-usdt-perp:")
-            for key in response.queued_keys
+            key.startswith("strategy_unified:btc-usdt-perp:") for key in response.queued_keys
         )
         assert any(
-            key.startswith("strategy_bundle:btc-usdt-perp:4h:")
-            for key in response.queued_keys
+            key.startswith("strategy_bundle:btc-usdt-perp:4h:") for key in response.queued_keys
         )
         assert any(
-            key.startswith("market_context:btc-usdt-perp:4h:")
-            for key in response.queued_keys
+            key.startswith("market_context:btc-usdt-perp:4h:") for key in response.queued_keys
         )
         # No six-stack fan-out: other timeframes must not be queued by a
         # single 4h hint.
         assert not any(
-            key.startswith("strategy_bundle:btc-usdt-perp:1d:")
-            for key in response.queued_keys
+            key.startswith("strategy_bundle:btc-usdt-perp:1d:") for key in response.queued_keys
         )
 
 
@@ -363,39 +359,116 @@ async def test_bundle_endpoints_return_missing_state_without_blocking(precompute
 
 
 def test_periodic_refresh_plans_stay_within_drain_budget() -> None:
-    """Queue arithmetic guard (2026-09-23): the single-threaded worker
-    drains ~1 task per 5-15 s. A FAST cycle every 120 s must not enqueue
-    more than the worker can drain before the next cycle, or the queue
-    grows without bound (observed 200+ depth, scan row untouched for
-    hours, strategy 4h bundles expiring first)."""
+    """Periodic production must fit the single writer's drain budget."""
     from app.services.precompute import PrecomputeTaskPlanner
-    from app.workers.precompute_worker import _PERIODIC_REFRESH_PLAN_FAST
+    from app.workers.precompute_worker import (
+        _PERIODIC_REFRESH_PLAN_FAST,
+        _PERIODIC_REFRESH_PLAN_MEDIUM,
+        _PERIODIC_REFRESH_PLAN_SLOW,
+    )
 
     planner = PrecomputeTaskPlanner()
     instruments = 11  # must cover the listed universe; grows -> budgets grow
-    fast_hints = sum(
-        len(timeframes)
-        for _, _, timeframes in _PERIODIC_REFRESH_PLAN_FAST
-    ) * instruments + 1  # +1 btc_derivatives
-    # FAST cycle budget: 120 s window / 5 s per task = 24 tasks max.
-    # Per-hint expansion is ~1 task (candidates pin the plan buckets).
-    fast_tasks = 0
-    for page, candidates, timeframes in _PERIODIC_REFRESH_PLAN_FAST:
-        for timeframe in timeframes:
-            fast_tasks += len(
-                planner.build_tasks(
-                    PrecomputeHintRequest(
-                        current_page=page,
-                        instrument_id="btc-usdt-perp",
-                        timeframe=timeframe,
-                        candidates=list(candidates),
-                        priority=6,
+
+    def task_count(plan):
+        return (
+            sum(
+                len(
+                    planner.build_tasks(
+                        PrecomputeHintRequest(
+                            current_page=page,
+                            instrument_id="btc-usdt-perp",
+                            timeframe=timeframe,
+                            candidates=list(candidates),
+                            priority=6,
+                            reason="periodic_cache_refresh",
+                        )
                     )
                 )
+                for page, candidates, timeframes in plan
+                for timeframe in timeframes
             )
-    fast_tasks = fast_tasks * instruments + 1
-    assert fast_tasks <= 120, f"FAST cycle enqueues {fast_tasks} tasks per 120 s"
-    assert fast_hints <= 70, f"FAST cycle enqueues {fast_hints} hints per 120 s"
+            * instruments
+        )
+
+    fast_tasks = task_count(_PERIODIC_REFRESH_PLAN_FAST) + 1
+    medium_tasks = task_count(_PERIODIC_REFRESH_PLAN_MEDIUM)
+    slow_tasks = task_count(_PERIODIC_REFRESH_PLAN_SLOW) + 3
+    # Conservative 15 s/task drain: 40 tasks per 10 min. The slow plan
+    # must also fit its two-hour window while FAST continues to run.
+    assert fast_tasks <= 40, f"FAST enqueues {fast_tasks} tasks per 10 min"
+    # Every period bundle can enqueue one dependent unified synthesis. This
+    # upper bound counts all of them even though the queue dedupes most.
+    dependent_tasks = medium_tasks * 4 + 3 * instruments
+    two_hour_tasks = fast_tasks * 12 + medium_tasks * 4 + slow_tasks + dependent_tasks
+    assert two_hour_tasks <= 480, (
+        f"periodic producer enqueues at most {two_hour_tasks} tasks per two hours"
+    )
+
+
+@pytest.mark.asyncio
+async def test_period_bundle_publication_enqueues_unified_resynthesis(monkeypatch) -> None:
+    calls = []
+
+    async def fake_refresh(self, instrument_id, timeframe, *, reason):  # noqa: ARG001
+        calls.append(("bundle", instrument_id, timeframe, reason))
+
+    async def fake_enqueue(payload):
+        calls.append(("unified", payload.instrument_id, payload.candidates, payload.priority))
+
+    monkeypatch.setattr(
+        "app.services.strategy_signal.service.StrategySignalService.refresh_bundle",
+        fake_refresh,
+    )
+    service = PrecomputeService()
+    monkeypatch.setattr(service, "enqueue_hint", fake_enqueue)
+    tasks = PrecomputeTaskPlanner().build_tasks(
+        PrecomputeHintRequest(
+            current_page="strategy",
+            instrument_id="eth-usdt-perp",
+            timeframe="1h",
+            candidates=["strategy"],
+            reason="periodic_cache_refresh",
+            priority=6,
+        )
+    )
+    assert len(tasks) == 1 and tasks[0].page_type == "strategy"
+    await service._execute_task(object(), tasks[0])  # noqa: SLF001
+    assert calls == [
+        ("bundle", "eth-usdt-perp", "1h", "periodic_cache_refresh"),
+        ("unified", "eth-usdt-perp", ["strategy_unified"], 9),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dependent_unified_task_reads_published_bundles(monkeypatch) -> None:
+    calls = []
+
+    async def fake_build(self, instrument_id, *, force):  # noqa: ARG001
+        calls.append((instrument_id, force))
+        return {"status": "ready", "opportunity_decisions": {}}
+
+    class Repository:
+        async def upsert_page_snapshot_cache(self, **kwargs):
+            assert kwargs["page_type"] == "strategy_unified"
+
+    monkeypatch.setattr(
+        "app.services.strategy_unified.unified_service.UnifiedStrategyService.build_unified_strategy",
+        fake_build,
+    )
+    tasks = PrecomputeTaskPlanner().build_tasks(
+        PrecomputeHintRequest(
+            current_page="strategy",
+            instrument_id="eth-usdt-perp",
+            timeframe="1d",
+            candidates=["strategy_unified"],
+            reason="strategy_bundle_published",
+            priority=9,
+        )
+    )
+    task = next(item for item in tasks if item.page_type == "strategy_unified")
+    await PrecomputeService()._execute_task(Repository(), task)  # noqa: SLF001
+    assert calls == [("eth-usdt-perp", False)]
 
 
 def test_strategy_hint_does_not_fan_out_six_stack() -> None:
@@ -411,7 +484,5 @@ def test_strategy_hint_does_not_fan_out_six_stack() -> None:
             priority=6,
         )
     )
-    bundle_frames = {
-        task.timeframe for task in tasks if task.task_type == "strategy"
-    }
+    bundle_frames = {task.timeframe for task in tasks if task.task_type == "strategy"}
     assert bundle_frames == {"4h"}, f"strategy fan-out leaked: {bundle_frames}"

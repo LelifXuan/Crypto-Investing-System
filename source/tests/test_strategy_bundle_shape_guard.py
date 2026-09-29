@@ -14,6 +14,7 @@ Guards:
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import pytest
@@ -28,6 +29,11 @@ from app.services.cache_registry import (
 
 
 async def _dummy_db_session():
+    yield object()
+
+
+@asynccontextmanager
+async def _scan_db_session():
     yield object()
 
 
@@ -189,6 +195,33 @@ def test_snapshot_key_is_namespaced_apart_from_bundle_key():
     )
 
 
+def test_bundle_cold_cache_returns_nullable_confidence_instead_of_500(monkeypatch):
+    async def no_cache(self, cache_key):  # noqa: ARG001
+        return None
+
+    async def no_enqueue(self, instrument_id, timeframe, *, reason):  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(
+        "app.repositories.market_repository.MarketRepository.get_page_snapshot_cache",
+        no_cache,
+    )
+    monkeypatch.setattr(
+        "app.services.strategy_signal.service.StrategySignalService.enqueue_refresh",
+        no_enqueue,
+    )
+    app = create_app(enable_lifespan=False)
+    app.dependency_overrides[get_db_session] = _dummy_db_session
+    app.dependency_overrides[get_db_writer_session] = _dummy_db_session
+    with TestClient(app) as client:
+        response = client.get("/api/v1/strategy/bundle?instrument_id=eth-usdt-perp&timeframe=4h")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["decision"]["direction_confidence"] is None
+    assert payload["decision"]["confidence_score"] is None
+    assert payload["decision"]["strategy_permission"] == "observe_only"
+
+
 def test_builder_persists_under_snapshot_key():
     """_persist_strategy_cache must address the snapshot key."""
     import inspect
@@ -201,11 +234,8 @@ def test_builder_persists_under_snapshot_key():
 
 
 @pytest.mark.asyncio
-async def test_scan_live_rebuilds_when_inputs_newer(monkeypatch) -> None:
-    """Live-scan (2026-09-23): a cached scan row older than its unified
-    inputs must be rebuilt inline instead of served stale — otherwise the
-    ranked cards contradict the drawers (OKB 1d 94.6 @ 04:47 vs dissolved
-    direction @ 05:14)."""
+async def test_scan_marks_old_output_stale_when_inputs_newer(monkeypatch) -> None:
+    """A newer input cannot trigger inline scan work during a page read."""
     from datetime import timedelta
 
     now = datetime.now(timezone.utc)
@@ -218,6 +248,7 @@ async def test_scan_live_rebuilds_when_inputs_newer(monkeypatch) -> None:
         payload_json = {
             "matrix": [],
             "ranked": [],
+            "instruments": ["btc-usdt-perp"],
             "scanned_at": (now - timedelta(hours=1)).isoformat(),
             "cache_meta": {"source": "cache"},
         }
@@ -233,21 +264,8 @@ async def test_scan_live_rebuilds_when_inputs_newer(monkeypatch) -> None:
             return _UnifiedRow()
         return None
 
-    rebuilt: list[str] = []
-
     async def fake_scan_all(self, instrument_ids, instrument_codes, **kwargs):  # noqa: ARG001
-        rebuilt.append("scan_all")
-
-        from app.services.strategy_unified.opportunity_scanner import ScanResult
-
-        return ScanResult(
-            scanned_at=now.isoformat(),
-            instruments=list(instrument_ids),
-            timeframes=["1w", "1d", "4h"],
-            matrix=[],
-            ranked=[],
-            cache_meta={"source": "live"},
-        )
+        raise AssertionError("page read must not rebuild the scan")
 
     async def fake_instruments(self):
         class _Inst:
@@ -284,6 +302,7 @@ async def test_scan_live_rebuilds_when_inputs_newer(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.precompute.precompute_service.enqueue_hint", noop_hint
     )
+    monkeypatch.setattr("app.api.v1.endpoints.strategy.db_manager.session", _scan_db_session)
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session
@@ -291,8 +310,7 @@ async def test_scan_live_rebuilds_when_inputs_newer(monkeypatch) -> None:
     with TestClient(app) as client:
         response = client.get("/api/v1/strategy/scan")
         assert response.status_code == 200, response.text[:500]
-        assert response.json()["cache_meta"]["source"] == "live"
-    assert rebuilt == ["scan_all"]
+        assert response.json()["cache_meta"]["source"] == "stale_revalidating"
 
 
 @pytest.mark.asyncio
@@ -310,6 +328,7 @@ async def test_scan_serves_cache_when_inputs_not_newer(monkeypatch) -> None:
         payload_json = {
             "matrix": [],
             "ranked": [],
+            "instruments": ["btc-usdt-perp"],
             "scanned_at": now.isoformat(),
             "cache_meta": {"source": "cache"},
         }
@@ -350,6 +369,7 @@ async def test_scan_serves_cache_when_inputs_not_newer(monkeypatch) -> None:
         "app.services.strategy_unified.opportunity_scanner.OpportunityScanner.scan_all",
         exploding_scan_all,
     )
+    monkeypatch.setattr("app.api.v1.endpoints.strategy.db_manager.session", _scan_db_session)
 
     app = create_app(enable_lifespan=False)
     app.dependency_overrides[get_db_session] = _dummy_db_session

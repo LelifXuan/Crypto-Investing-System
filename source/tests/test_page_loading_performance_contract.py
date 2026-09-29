@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from app.api.dependencies import get_db_session
+from app.api.v1.endpoints.monitoring import get_macro_overview, get_monitoring_dashboard
 from app.services.alerts_bundle import AlertsBundleService
 from app.services.macro_overview import MacroOverviewService
 from app.services.page_snapshot_cache import source_freshness
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_monitoring_reads_do_not_wait_for_sqlite_writer_gate() -> None:
+    for endpoint in (get_monitoring_dashboard, get_macro_overview):
+        dependency = inspect.signature(endpoint).parameters["session"].default
+        assert dependency.dependency is get_db_session
 
 
 class _MacroRepo:

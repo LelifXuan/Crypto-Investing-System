@@ -56,7 +56,7 @@ def test_degraded_payload_shows_yellow_banner_not_red(base_url):
     """When /strategy/unified returns degraded, frontend shows the banner, not error-state."""
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1366, "height": 900})
+        context = browser.new_context(viewport={"width": 2560, "height": 1440})
         page = context.new_page()
 
         def fulfill(route):
@@ -95,14 +95,15 @@ def test_degraded_payload_shows_yellow_banner_not_red(base_url):
         browser.close()
 
 
-def test_mount_fires_prewarm_endpoint(base_url):
-    """Opening strategy page must trigger /strategy/prewarm (fire-and-forget)."""
+def test_mount_reads_scan_without_firing_prewarm(base_url):
+    """Opening the page reads a published scan and never starts prewarm."""
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1366, "height": 900})
+        context = browser.new_context(viewport={"width": 2560, "height": 1440})
         page = context.new_page()
 
         prewarm_called = {"count": 0}
+        scan_called = {"count": 0}
 
         def fulfill_unified(route):
             route.fulfill(status=200, json=DEGRADED_UNIFIED_PAYLOAD)
@@ -114,19 +115,29 @@ def test_mount_fires_prewarm_endpoint(base_url):
             prewarm_called["count"] += 1
             route.fulfill(status=200, json={"status": "enqueued", "eta_seconds": 30})
 
+        def fulfill_scan(route):
+            scan_called["count"] += 1
+            route.fulfill(status=200, json={
+                "scanned_at": "2026-09-28T00:00:00+00:00",
+                "instruments": [],
+                "timeframes": ["1w", "1d", "4h"],
+                "matrix": [],
+                "ranked": [],
+                "cache_meta": {"source": "warming"},
+            })
+
         page.route("**/api/v1/strategy/unified**", fulfill_unified)
         page.route("**/api/v1/monitoring/**", fulfill_empty)
         page.route("**/api/v1/btc-derivatives/**", fulfill_empty)
         page.route("**/api/v1/monitoring/macro-overview**", fulfill_empty)
         page.route("**/api/v1/strategy/prewarm**", fulfill_prewarm)
+        page.route("**/api/v1/strategy/scan**", fulfill_scan)
 
         page.goto(f"{base_url}/strategy-page", wait_until="domcontentloaded")
         page.wait_for_timeout(3000)
 
-        # Prewarm must have been called at least once (mount + degraded fallback)
-        assert prewarm_called["count"] >= 1, (
-            f"Expected prewarm to be called, got {prewarm_called['count']}"
-        )
+        assert scan_called["count"] >= 1
+        assert prewarm_called["count"] == 0
 
         context.close()
         browser.close()

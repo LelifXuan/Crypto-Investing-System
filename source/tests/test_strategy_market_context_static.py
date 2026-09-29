@@ -10,6 +10,7 @@ verify:
 - Backend contracts (`verdict_for_node`, confidence scaling) still
   behave as documented.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -57,9 +58,7 @@ def test_hub_uses_strategy_scan_as_primary_source():
     detail-panel loader (inside onSelectOpportunity) calls
     getUnifiedStrategy for the clicked cell."""
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
-    panel = (
-        ROOT / "app/static/pages/strategy/renderDetailPanel.js"
-    ).read_text(encoding="utf-8")
+    panel = (ROOT / "app/static/pages/strategy/renderDetailPanel.js").read_text(encoding="utf-8")
 
     assert "api.getStrategyScan" in index
     assert "api.getUnifiedStrategy" in index  # inside onSelectOpportunity
@@ -71,9 +70,7 @@ def test_detail_panel_uses_no_legacy_horizon_governance_inline():
     """The detail panel no longer renders the legacy inline
     horizon_governance summary into the scan shell."""
     index = (ROOT / "app/static/pages/strategy/index.js").read_text(encoding="utf-8")
-    overview = (
-        ROOT / "app/static/pages/strategy/renderOverview.js"
-    ).read_text(encoding="utf-8")
+    overview = (ROOT / "app/static/pages/strategy/renderOverview.js").read_text(encoding="utf-8")
 
     assert "renderHorizonGovernance" not in index
     assert "model.horizon_governance" not in overview
@@ -86,9 +83,7 @@ def test_detail_panel_uses_no_legacy_horizon_governance_inline():
 
 def test_strategy_snapshot_builder_attaches_market_context():
     """snapshot_builder still emits market_context via MarketContextBuilder."""
-    source = (ROOT / "app/services/strategy_signal/snapshot_builder.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "app/services/strategy_signal/snapshot_builder.py").read_text(encoding="utf-8")
     assert "MarketContextBuilder" in source
     assert '"market_context"' in source
 
@@ -100,18 +95,14 @@ def test_strategy_snapshot_builder_attaches_market_context():
 
 def test_strategy_risk_gate_uses_chinese_labels():
     """risk_gate must use the four canonical Chinese labels."""
-    risk_gate = (ROOT / "app/services/strategy_unified/risk_gate.py").read_text(
-        encoding="utf-8"
-    )
+    risk_gate = (ROOT / "app/services/strategy_unified/risk_gate.py").read_text(encoding="utf-8")
     for label in ("核心周期数据缺失", "高影响事件窗口", "衍生品确认降级", "链上数据缺失"):
         assert label in risk_gate, f"risk_gate must use Chinese label: {label}"
 
 
 def test_strategy_macro_regime_emits_human_explanation():
     """macro_regime emits human_explanation + 宏观 label."""
-    macro = (ROOT / "app/services/strategy_unified/macro_regime.py").read_text(
-        encoding="utf-8"
-    )
+    macro = (ROOT / "app/services/strategy_unified/macro_regime.py").read_text(encoding="utf-8")
     assert "human_explanation" in macro
     assert "宏观" in macro
 
@@ -290,9 +281,7 @@ def test_scan_item_exposes_cache_state_and_data_quality():
         "ScanItem must expose cache_state so renderer can distinguish "
         "'ready, no edge' from 'data pending'"
     )
-    assert hasattr(item, "data_quality"), (
-        "ScanItem must expose data_quality (0-100)"
-    )
+    assert hasattr(item, "data_quality"), "ScanItem must expose data_quality (0-100)"
 
 
 def test_extract_scan_item_populates_cache_state():
@@ -300,7 +289,7 @@ def test_extract_scan_item_populates_cache_state():
     cache_state from payload.status / payload.degraded_components
     and data_quality from payload.signal_coverage.confidence_score."""
     from app.services.strategy_unified.opportunity_scanner import (
-        _extract_scan_item,
+        _extract_scan_item_legacy as _extract_scan_item,
     )
 
     payload = {
@@ -340,7 +329,7 @@ def test_extract_scan_item_marks_ready_with_warnings_as_fresh():
     """status='ready_with_warnings' should still be cache_state='fresh' —
     a warning is not a data dependency failure."""
     from app.services.strategy_unified.opportunity_scanner import (
-        _extract_scan_item,
+        _extract_scan_item_legacy as _extract_scan_item,
     )
 
     payload = {
@@ -363,16 +352,55 @@ def test_scan_result_cache_meta_counts_cells_ready_vs_pending():
 
     items = [
         ScanItem(
-            "x", "x", "1w", "LONG", "做多", 70, 50, "", 0, "spot",
-            "standard", "", [], cache_state="fresh", data_quality=80,
+            "x",
+            "x",
+            "1w",
+            "LONG",
+            "做多",
+            70,
+            50,
+            "",
+            0,
+            "spot",
+            "standard",
+            "",
+            [],
+            cache_state="fresh",
+            data_quality=80,
         ),
         ScanItem(
-            "x", "x", "1d", "WAIT", "等待", 50, 0, "", 0, "spot",
-            "observe", "", [], cache_state="fresh", data_quality=60,
+            "x",
+            "x",
+            "1d",
+            "WAIT",
+            "等待",
+            50,
+            0,
+            "",
+            0,
+            "spot",
+            "observe",
+            "",
+            [],
+            cache_state="fresh",
+            data_quality=60,
         ),
         ScanItem(
-            "x", "x", "4h", "WAIT", "等待", 30, 0, "", 0, "spot",
-            "observe", "", [], cache_state="missing", data_quality=10,
+            "x",
+            "x",
+            "4h",
+            "WAIT",
+            "等待",
+            30,
+            0,
+            "",
+            0,
+            "spot",
+            "observe",
+            "",
+            [],
+            cache_state="missing",
+            data_quality=10,
         ),
     ]
     result = ScanResult(
@@ -388,8 +416,7 @@ def test_scan_result_cache_meta_counts_cells_ready_vs_pending():
             "opportunities_found": 0,
             "cells_ready": sum(1 for it in items if it.cache_state == "fresh"),
             "cells_pending": sum(
-                1 for it in items
-                if it.cache_state in {"missing", "warming", "error"}
+                1 for it in items if it.cache_state in {"missing", "warming", "error"}
             ),
         },
     )
@@ -438,6 +465,16 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
                 {"module": "price_structure", "confidence": 80.0},
             ],
             "market_operation": {"chain": {}},
+            "opportunity_decisions": {
+                tf: {
+                    "side": "LONG" if tf != "1d" else "NONE",
+                    "status": "WAIT_LEVELS",
+                    "permission": "observe",
+                    "confidence": 80,
+                    "primary_reason": {"message": "等待执行价位"},
+                }
+                for tf in ("1w", "1d", "4h")
+            },
             "evidence_trace": [],
         }
 
@@ -449,7 +486,8 @@ def test_scan_all_populates_cells_ready_and_pending_in_cache_meta():
     try:
         result = asyncio.run(
             scanner.scan_all(
-                ["btc-usdt-perp"], {"btc-usdt-perp": "btc-usdt-perp"},
+                ["btc-usdt-perp"],
+                {"btc-usdt-perp": "btc-usdt-perp"},
                 timeframes=("1w", "1d", "4h"),
             )
         )

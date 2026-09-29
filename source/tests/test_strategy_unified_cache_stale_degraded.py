@@ -61,6 +61,10 @@ def _stub_snapshot(*, cache_state: str, payload_status: str):
             "market_operation": {"chain": {}, "summary": ""},
             "timeframe_stack": [],
             "trade_decision": {},
+            "opportunity_decisions": {
+                tf: {"trade_timeframe": tf, "status": "NO_DIRECTION", "side": "NONE"}
+                for tf in ("1w", "1d", "4h")
+            },
             "evidence_trace": [],
             "narrative": {},
         },

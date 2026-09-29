@@ -1,7 +1,9 @@
 from pathlib import Path
 
 from app.services.cache_registry import strategy_scan_cache_key
-from app.services.strategy_unified.opportunity_scanner import _extract_scan_item
+from app.services.strategy_unified.opportunity_scanner import (
+    _extract_scan_item_legacy as _extract_scan_item,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,6 +19,7 @@ def _payload(*, confidence: float = 92.0, risk_reward: float = 2.0) -> dict:
             "direction_timeframes": ["1d", "4h"],
             "risk_reward": {"value": risk_reward},
             "position_cap": "standard",
+            "permission": "allow",
             "recommended_leverage": 0,
         },
         "horizon_views": {
@@ -110,12 +113,8 @@ def test_matrix_gate_promotes_only_complete_high_certainty_setup() -> None:
 
 
 def test_matrix_omits_confidence_but_ranking_keeps_it() -> None:
-    matrix = (
-        ROOT / "app/static/pages/strategy/renderScanMatrix.js"
-    ).read_text(encoding="utf-8")
-    ranked = (
-        ROOT / "app/static/pages/strategy/renderScanRanked.js"
-    ).read_text(encoding="utf-8")
+    matrix = (ROOT / "app/static/pages/strategy/renderScanMatrix.js").read_text(encoding="utf-8")
+    ranked = (ROOT / "app/static/pages/strategy/renderScanRanked.js").read_text(encoding="utf-8")
 
     assert "item.confidence" not in matrix
     assert "Math.round(item.confidence)" in ranked
@@ -124,4 +123,4 @@ def test_matrix_omits_confidence_but_ranking_keeps_it() -> None:
 
 
 def test_scan_cache_key_invalidates_pre_gate_payloads() -> None:
-    assert strategy_scan_cache_key().endswith("v3-opportunity-v2")
+    assert strategy_scan_cache_key().endswith("v3-opportunity-v3")
