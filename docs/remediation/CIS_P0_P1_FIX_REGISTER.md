@@ -39,13 +39,19 @@
 
 ### P1-QNT-002 — CapitalFlow 消费 onchain metric 的契约错误 + level 当 delta
 
-- **Status**: IN_PROGRESS（2026-09-30）
-- **Current behavior**: CapitalFlowEngine 对 `metrics["stablecoin_total_mcap"]` 做 `isinstance(.., (int, float))`，实际取得 dict，结构化信号永远不进入；若按取 `.value` 快修，`stablecoin_total_mcap`/`dex_volume_24h` 这类天然为正的 level 会被当成流入并推出 LONG。
-- **Root cause**: ①消费方未按 OnchainFeatureEngine 的 metric dict 契约读取；②方向逻辑把绝对 level 当变化量。
-- **Files affected**: 调查后回填（预期 onchain/capital flow 引擎 + 统一读取 helper）
-- **Proposed minimal fix**: 新增 metric 读取 helper（返回 value/observation_ts/quality/freshness/usable）；资金流方向只消费 change/trend/deviation 类 feature；历史数据不足以算 delta 时返回 `NEUTRAL / DATA_INSUFFICIENT`、directional contribution=0；metric 级 freshness 独立于 Context 顶层 cache state。
-- **Tests added**: `test_capital_flow_reads_onchain_metric_contract`（Case A–E）
-- **Evidence**: 见 §3（回填）
+- **Status**: FIXED（2026-09-30）
+- **Root cause**: ①消费方对 `metrics[key]` 做数值 isinstance，而实际 payload 是 dict（结构化信号永远进不来，属死代码）；②一旦直取 `.value` 快修，`stablecoin_total_mcap`/`dex_volume_24h` 这类天然为正的 level 会被 `>0` 判成流入并推出 LONG。
+- **Files affected**: `app/services/onchain/metric_reader.py`（新增）、`app/services/onchain/feature_engine.py`、`app/services/strategy_unified/capital_flow.py`
+- **Proposed minimal fix**: 已实施——共享读取 helper `read_metric`（返回 value/quality/age/fresh/usable/unusable_reason，按指标级 freshness 与质量门禁 fail closed）；`OnchainFeatureEngine` 拉取每键 64 条历史、由真实序列派生 `capital_flow_inputs`（stablecoin/dex 的 ~1d/~7d 变化百分比，参考点不存在则显式 None）；`CapitalFlowEngine` 方向只消费变化量（稳定币 ±1%/7d 或 ±0.3%/1d 门槛 → INFLOW/OUTFLOW/NEUTRAL；DEX 放量为弱流入证据、缩量不构成流出），level 仅作展示诊断；无变化样本 → `DATA_INSUFFICIENT`/`CAPITAL_NEUTRAL`、方向贡献 0；文本 `flow_bias` 降级为仅描述，不再推出方向。
+- **Tests added**: `test_capital_flow_reads_onchain_metric_contract.py`（9：契约读取、Case A 正 level 非 inflow、B 正 delta → inflow、C 负 delta → outflow、D stale 不产生方向、E 低质量降级、小 delta 保持中性、文本 bias 仅诊断、历史派生真实 delta）
+- **Remaining limitations**: 观测历史依赖监控面已积累的 onchain observations；历史深度不足时稳定币/DEX 维度如实输出 DATA_INSUFFICIENT，而不是伪造 delta。
+
+#### Evidence — P1-QNT-002
+
+- **Before**: `capital_flow.py:30-43`——`isinstance(stablecoin_change, (int, float))` 永远为 False（metrics 是 dict），三段方向逻辑为死代码；若按「取 `.value`」修复则 `5e10 > 0 → CAPITAL_INFLOW/LONG`（level 当流入）。
+- **Change**: 见 Proposed minimal fix；`_infer_state` 计分改用唯一键数，防止历史深度被误计为覆盖广度。
+- **Test**: `pytest tests/test_capital_flow_reads_onchain_metric_contract.py` **9 passed**；Case A 断言 `bias == NEUTRAL 且 score == 0`（正 level 不产生方向）；Case D/E 断言 stale/低质量观测被 `read_metric` 判 unusable 并在 evidence 中留痕。
+- **After**: 关键词回归（capital/onchain/stablecoin）**26 passed、1 skipped、0 failed**；ruff 改动范围 All checks passed。
 
 ### P1-SEM-001 — 启发式证据分被呈现为「置信度 %」
 
