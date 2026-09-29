@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo ============================================================
-echo   Crypto Research Terminal  V2.2
+echo   Crypto Research Terminal  V2.3
 echo ============================================================
 
 rem --- check code directory ---
