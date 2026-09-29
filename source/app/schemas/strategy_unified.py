@@ -60,3 +60,7 @@ class StrategyUnifiedRead(BaseModel):
     signal_coverage: list[dict[str, Any]] = Field(default_factory=list)
     recompute_status: str = "complete"
     trade_decision: dict[str, Any] = Field(default_factory=dict)
+    opportunity_decisions: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Independent 1w, 1d and 4h trade decisions with next-lower-period execution.",
+    )

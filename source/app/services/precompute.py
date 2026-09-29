@@ -177,6 +177,12 @@ class PrecomputeTaskPlanner:
         for bucket in ("current", "secondary", "related"):
             for task_type, priority_level in page_plan[bucket]:
                 if (
+                    payload.reason == "periodic_cache_refresh"
+                    and selected_candidates
+                    and task_type not in selected_candidates
+                ):
+                    continue
+                if (
                     selected_candidates
                     and task_type not in selected_candidates
                     and bucket != "current"
@@ -845,6 +851,20 @@ class PrecomputeService:
                 task.timeframe,
                 reason=task.reason or "precompute",
             )
+            # Re-synthesise after a source bundle is published. Keep this at
+            # priority 9 so pending period bundles drain before the unified
+            # snapshot reads them; the scan publisher then projects that row.
+            await self.enqueue_hint(
+                PrecomputeHintRequest(
+                    current_page="strategy",
+                    instrument_id=task.instrument_id,
+                    timeframe="1d",
+                    reason="strategy_bundle_published",
+                    visible=False,
+                    candidates=["strategy_unified"],
+                    priority=9,
+                )
+            )
             return
         if task.page_type == "strategy_unified" and task.instrument_id:
             from app.services.strategy_unified.unified_service import UnifiedStrategyService
@@ -852,7 +872,7 @@ class PrecomputeService:
             started = time.perf_counter()
             payload = await UnifiedStrategyService(repository).build_unified_strategy(
                 task.instrument_id,
-                force=True,
+                force=task.reason != "strategy_bundle_published",
             )
             now = datetime.now(timezone.utc)
             await repository.upsert_page_snapshot_cache(
@@ -928,11 +948,11 @@ class PrecomputeService:
         if task.page_type == "btc_derivatives":
             from app.services.btc_derivatives.live_service import btc_derivatives_live_service
 
-            if (
-                task.reason in {"startup_critical_snapshot", "daily_first_page_access"}
-                and btc_derivatives_live_service.collector.cache.read_snapshot(
-                    settings.btc_derivatives_stale_max_seconds
-                )
+            if task.reason in {
+                "startup_critical_snapshot",
+                "daily_first_page_access",
+            } and btc_derivatives_live_service.collector.cache.read_snapshot(
+                settings.btc_derivatives_stale_max_seconds
             ):
                 return
             await btc_derivatives_live_service.dashboard(force=True)

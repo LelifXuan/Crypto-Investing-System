@@ -36,9 +36,7 @@ from app.schemas.market import (
 )
 from app.services.alerts_bundle import AlertsBundleService
 from app.services.cache_registry import (
-    CACHE_SOURCE_VERSION,
     cache_status,
-    expires_at_for_page,
     macro_overview_cache_key,
 )
 from app.services.final_decision import FinalDecisionService
@@ -113,7 +111,7 @@ async def _ensure_monitoring_category_fresh(
 
 @router.get("/monitoring/macro-overview", response_model=MacroOverviewResponse)
 async def get_macro_overview(
-    session: AsyncSession = Depends(get_db_writer_session),
+    session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     repository = MarketRepository(session)
@@ -136,19 +134,14 @@ async def get_macro_overview(
 
     started = datetime.now(UTC)
     overview = await MacroOverviewService(repository).build_overview(now=started)
-    payload = overview.model_dump(mode="json")
-    await repository.upsert_page_snapshot_cache(
-        cache_key=macro_overview_cache_key(),
-        page_type="macro",
-        payload_json={"overview": payload},
-        status="ready",
-        cache_state="fresh",
-        snapshot_at=started,
-        data_ts=started,
-        expires_at=expires_at_for_page("macro", started),
-        source_updated_at=started,
-        source_version=CACHE_SOURCE_VERSION,
-        meta_json={"kind": "macro_overview", "source": "local_observations"},
+    await precompute_service.enqueue_hint(
+        PrecomputeHintRequest(
+            current_page="macro",
+            reason="macro_overview_cold_read",
+            visible=True,
+            candidates=["macro"],
+            priority=2,
+        )
     )
     return overview
 
@@ -212,7 +205,7 @@ async def list_indicator_observations(
 async def get_monitoring_dashboard(
     instrument_id: str = Query(default="btc-usdt-perp"),
     timeframe: str = Query(default="1d"),
-    session: AsyncSession = Depends(get_db_writer_session),
+    session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
     return await MonitoringDashboardService(MarketRepository(session)).get_bundle(

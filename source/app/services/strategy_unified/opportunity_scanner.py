@@ -9,15 +9,45 @@ from typing import Any, Mapping
 
 from app.core.config import settings
 from app.repositories.market_repository import MarketRepository
+from app.services.cache_registry import cache_status, strategy_unified_cache_key
 from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
 logger = logging.getLogger(__name__)
 
 SCAN_TIMEFRAMES = ("1w", "1d", "4h")
 
-# The matrix is deliberately stricter than the ranked list.  A directional
-# candidate can still appear in the ranking for comparison, while the matrix
-# only promotes setups that pass every execution-quality gate below.
+
+async def scan_inputs_newer_than_scan(repository: MarketRepository, scan_cache: Any | None) -> bool:
+    """Compare published input times with the scan's input watermark."""
+    if scan_cache is None:
+        return True
+    payload = getattr(scan_cache, "payload_json", None)
+    scan_meta = payload.get("cache_meta") if isinstance(payload, dict) else {}
+    scan_meta = scan_meta if isinstance(scan_meta, dict) else {}
+    if "input_snapshot_at" in scan_meta:
+        value = scan_meta["input_snapshot_at"]
+        watermark = datetime.fromisoformat(value) if value else None
+    else:
+        watermark = getattr(scan_cache, "data_ts", None) or getattr(scan_cache, "snapshot_at", None)
+    if watermark is not None and watermark.tzinfo is None:
+        watermark = watermark.replace(tzinfo=timezone.utc)
+    instruments = await repository.list_instruments()
+    for instrument in instruments:
+        iid = getattr(instrument, "instrument_id", None)
+        if not iid:
+            continue
+        row = await repository.get_page_snapshot_cache(strategy_unified_cache_key(iid))
+        input_at = getattr(row, "snapshot_at", None)
+        if input_at is None:
+            continue
+        if input_at.tzinfo is None:
+            input_at = input_at.replace(tzinfo=timezone.utc)
+        if watermark is None or input_at > watermark:
+            return True
+    return False
+
+
+# Matrix and ranked rows use the same complete execution-quality gate.
 MATRIX_MIN_CONFIDENCE = 85.0
 MATRIX_MIN_SCORE = 68.0
 MATRIX_MIN_RISK_REWARD = 1.2
@@ -73,33 +103,32 @@ class ScanItem:
     instrument_id: str
     instrument_code: str
     timeframe: str
-    direction: str          # "LONG" | "SHORT" | "WAIT"
-    direction_label: str    # "做多" | "做空" | "等待"
+    direction: str  # "LONG" | "SHORT" | "WAIT"
+    direction_label: str  # "做多" | "做空" | "等待"
     confidence: float
     score: float
     summary: str
     risk_reward: float
-    leverage_hint: str      # "spot" | "3x" | "5x"
-    position_cap: str       # "standard" | "reduced" | "observe"
+    leverage_hint: str  # selected-period recommendation or pending state
+    position_cap: str  # "standard" | "reduced" | "observe"
     primary_driver: str
     conflicts: list[str] = field(default_factory=list)
     # 2026-07-24 v3: per-cell cache_state + data_quality so the renderer
     # can distinguish "data ready, no edge" from "data pending".
     # Without these, "等待" / "无明确交易机会" was conflated with
     # "数据还没准备好" — user thought the system was broken.
-    cache_state: str = "unknown"   # "fresh" | "missing" | "stale" | "warming" | "error" | "unknown"
-    data_quality: float = 0.0      # 0-100, from payload.confidence_report.confidence_score
+    cache_state: str = "unknown"  # "fresh" | "missing" | "stale" | "warming" | "error" | "unknown"
+    data_quality: float = 0.0  # 0-100, from payload.confidence_report.confidence_score
     qualified: bool = False
     qualification_reasons: list[str] = field(default_factory=list)
-    # 2026-09-24: execution levels for the ranked card. The ranked summary
-    # used to quote the bundle validator's verdict line ("当前策略状态为…"),
-    # which wastes the user's attention on process chatter. The card now
-    # prints the actionable numbers instead: entry zone / stop / TP1 taken
-    # from the tactical plan that matches the cell direction. Empty when the
-    # cell has no direction or no matching plan.
+    # Execution levels are published only after the selected period passes
+    # the canonical trade gate and matches the decision's execution period.
     entry_zone: list[float] = field(default_factory=list)
     stop_loss: float | None = None
     take_profit_1: float | None = None
+    horizon_target: float | None = None
+    first_risk_reward: float | None = None
+    expected_move_pct: float | None = None
 
 
 @dataclass(slots=True)
@@ -117,6 +146,66 @@ class OpportunityScanner:
 
     def __init__(self, repository: MarketRepository) -> None:
         self._repository = repository
+
+    async def scan_published(
+        self,
+        instrument_ids: list[str],
+        instrument_codes: dict[str, str],
+        *,
+        timeframes: tuple[str, ...] = SCAN_TIMEFRAMES,
+    ) -> ScanResult:
+        """Project the matrix from published unified snapshots only.
+
+        The background publisher uses this path so a scan never rebuilds
+        strategies, performs network work, or writes audit facts. Missing
+        inputs become pending cells rather than fabricated market conclusions.
+        """
+        items: list[ScanItem] = []
+        latest_input_at: datetime | None = None
+        for iid in instrument_ids:
+            try:
+                cache = await self._repository.get_page_snapshot_cache(
+                    strategy_unified_cache_key(iid)
+                )
+            except Exception:
+                logger.exception("opportunity_scanner: snapshot read failed for %s", iid)
+                cache = None
+            input_at = getattr(cache, "snapshot_at", None)
+            if input_at is not None:
+                if input_at.tzinfo is None:
+                    input_at = input_at.replace(tzinfo=timezone.utc)
+                latest_input_at = max(latest_input_at, input_at) if latest_input_at else input_at
+            payload = cache.payload_json if cache and isinstance(cache.payload_json, dict) else {}
+            source_state = cache_status(cache) if cache else "missing"
+            for tf in timeframes:
+                try:
+                    item = _extract_scan_item(payload, iid, instrument_codes.get(iid, iid), tf)
+                except (KeyError, TypeError, ValueError):
+                    logger.exception("opportunity_scanner: invalid snapshot %s %s", iid, tf)
+                    item = _extract_scan_item({}, iid, instrument_codes.get(iid, iid), tf)
+                    source_state = "error"
+                if source_state in {"missing", "error"}:
+                    item.cache_state = "missing"
+                    item.qualified = False
+                elif source_state != "fresh" and item.cache_state == "fresh":
+                    item.cache_state = "stale"
+                    item.qualified = False
+                    item.qualification_reasons.append("data_not_fresh")
+                if not item.qualified:
+                    item.direction = "WAIT"
+                    item.direction_label = "无机会"
+                    item.risk_reward = 0.0
+                    item.leverage_hint = "仅观察"
+                    item.entry_zone, item.stop_loss, item.take_profit_1 = [], None, None
+                    item.horizon_target = None
+                    item.first_risk_reward = None
+                    item.expected_move_pct = None
+                items.append(item)
+        result = self._result(items, instrument_ids, timeframes, source="published_snapshots")
+        result.cache_meta["input_snapshot_at"] = (
+            latest_input_at.isoformat() if latest_input_at else None
+        )
+        return result
 
     async def scan_all(
         self,
@@ -138,7 +227,6 @@ class OpportunityScanner:
         the SQLite-safe serial instrument boundary, but extracts 1w/1d/4h from
         the single published payload for that instrument.
         """
-        now = datetime.now(timezone.utc)
         items: list[ScanItem] = []
 
         for iid in instrument_ids:
@@ -159,12 +247,25 @@ class OpportunityScanner:
             except Exception:
                 logger.exception("opportunity_scanner: failed %s", iid)
 
+        return self._result(items, instrument_ids, timeframes, source="live")
+
+    @staticmethod
+    def _result(
+        items: list[ScanItem],
+        instrument_ids: list[str],
+        timeframes: tuple[str, ...],
+        *,
+        source: str,
+    ) -> ScanResult:
+        now = datetime.now(timezone.utc)
         ranked = sorted(
             [
                 it
                 for it in items
                 if it.cache_state == "fresh"
-                and it.direction not in ("WAIT", "NO_TRADE", "RANGE_NO_EDGE")
+                and it.qualified
+                and it.direction in {"LONG", "SHORT"}
+                and "invalid_execution_levels" not in it.qualification_reasons
             ],
             key=lambda it: it.score,
             reverse=True,
@@ -179,7 +280,7 @@ class OpportunityScanner:
             ranked=ranked,
             cache_meta={
                 "fresh_until": (now.replace(second=0, microsecond=0)).isoformat(),
-                "source": "live",
+                "source": source,
                 "instruments_scanned": len(instrument_ids),
                 "opportunities_found": qualified_count,
                 "ranked_candidates": len(ranked),
@@ -192,12 +293,9 @@ class OpportunityScanner:
                 # 2026-07-24 v3: per-cell readiness counts so the
                 # frontend banner can distinguish "data补齐中" from
                 # "全部数据已就绪，当前无明确交易方向".
-                "cells_ready": sum(
-                    1 for item in items if item.cache_state == "fresh"
-                ),
+                "cells_ready": sum(1 for item in items if item.cache_state == "fresh"),
                 "cells_pending": sum(
-                    1 for item in items
-                    if item.cache_state in {"missing", "warming", "error"}
+                    1 for item in items if item.cache_state in {"missing", "warming", "error"}
                 ),
             },
         )
@@ -209,7 +307,126 @@ def _extract_scan_item(
     code: str,
     timeframe: str,
 ) -> ScanItem:
-    """从 UnifiedStrategy 响应中提取单条扫描项。"""
+    """Project exactly the decision opened by the corresponding matrix cell."""
+    item = _extract_scan_item_legacy(payload, instrument_id, code, timeframe)
+    opportunity = (payload.get("opportunity_decisions") or {}).get(timeframe)
+    if not isinstance(opportunity, dict):
+        # Old snapshots cannot safely claim executable per-period opportunities.
+        item.cache_state = "missing"
+        item.direction = "WAIT"
+        item.direction_label = "无机会"
+        item.qualified = False
+        item.risk_reward = 0.0
+        item.leverage_hint = "仅观察"
+        item.entry_zone, item.stop_loss, item.take_profit_1 = [], None, None
+        item.horizon_target = None
+        item.qualification_reasons.append("period_decision_missing")
+        return item
+    item.direction = (
+        opportunity.get("side") if opportunity.get("side") in {"LONG", "SHORT"} else "WAIT"
+    )
+    item.direction_label = {"LONG": "做多", "SHORT": "做空"}.get(item.direction, "等待")
+    item.summary = str((opportunity.get("primary_reason") or {}).get("message") or "")
+    item.primary_driver = str(opportunity.get("trade_timeframe") or timeframe)
+    item.conflicts = []
+    period_leverage = int(opportunity.get("recommended_leverage") or 0)
+    planned_leverage = int(opportunity.get("planned_leverage") or 0)
+    item.leverage_hint = (
+        f"{period_leverage}x"
+        if period_leverage > 0
+        else f"计划 {planned_leverage}x"
+        if planned_leverage > 0
+        else "仅观察"
+    )
+    item.confidence = round(float(opportunity.get("confidence") or 0), 1)
+    item.risk_reward = round(float((opportunity.get("risk_reward") or {}).get("value") or 0), 2)
+    item.score = compute_opportunity_score(
+        confidence=item.confidence,
+        risk_reward=item.risk_reward,
+        direction=item.direction,
+        modules_direction_tally={
+            "bullish": int(item.direction == "LONG")
+            + int(opportunity.get("trigger_direction") == "LONG"),
+            "bearish": int(item.direction == "SHORT")
+            + int(opportunity.get("trigger_direction") == "SHORT"),
+            "neutral": 0,
+        },
+        timeframe=timeframe,
+    )
+    item.position_cap = opportunity.get("position_cap") or "observe"
+    item.qualified = bool(
+        opportunity.get("status") == "READY"
+        and opportunity.get("permission") == "allow"
+        and item.cache_state == "fresh"
+    )
+    item.qualification_reasons = (
+        [] if item.qualified else [str(opportunity.get("status") or "period_decision_unavailable")]
+    )
+    item.entry_zone = (
+        [float(value) for value in opportunity.get("entry_zone") or []] if item.qualified else []
+    )
+    item.stop_loss = (
+        float(opportunity["invalidation_price"])
+        if item.qualified and opportunity.get("invalidation_price")
+        else None
+    )
+    item.take_profit_1 = (
+        float(opportunity["take_profit_1"])
+        if item.qualified and opportunity.get("take_profit_1")
+        else None
+    )
+    item.horizon_target = (
+        float(opportunity["horizon_target"])
+        if item.qualified and opportunity.get("horizon_target")
+        else None
+    )
+    item.first_risk_reward = (
+        float(opportunity["first_risk_reward"])
+        if item.qualified and opportunity.get("first_risk_reward")
+        else None
+    )
+    item.expected_move_pct = (
+        float(opportunity["expected_move_pct"])
+        if item.qualified and opportunity.get("expected_move_pct")
+        else None
+    )
+    target_valid = bool(item.entry_zone and item.take_profit_1 is not None) and (
+        (
+            item.direction == "LONG"
+            and item.horizon_target is not None
+            and item.horizon_target > item.take_profit_1 > max(item.entry_zone)
+        )
+        or (
+            item.direction == "SHORT"
+            and item.horizon_target is not None
+            and item.horizon_target < item.take_profit_1 < min(item.entry_zone)
+        )
+    )
+    if item.qualified and (
+        not _valid_stop_geometry(item.direction, item.entry_zone, item.stop_loss)
+        or not target_valid
+    ):
+        item.qualified = False
+        item.qualification_reasons = ["invalid_execution_levels"]
+        item.entry_zone, item.stop_loss, item.take_profit_1 = [], None, None
+        item.horizon_target = None
+        item.first_risk_reward = None
+        item.expected_move_pct = None
+    if not item.qualified:
+        # A research bias is not a trading opportunity. Keep the reason for
+        # audit, but publish no LONG/SHORT in the opportunity scan until all
+        # execution, target, leverage and freshness gates have passed.
+        item.direction = "WAIT"
+        item.direction_label = "无机会"
+        item.risk_reward = 0.0
+        item.leverage_hint = "仅观察"
+    return item
+
+
+def _extract_scan_item_legacy(
+    payload: dict[str, Any], instrument_id: str, code: str, timeframe: str
+) -> ScanItem:
+    """Compatibility projection for older published snapshots."""
     node = _timeframe_node(payload, timeframe)
     decision = payload.get("trade_decision") or {}
     # A matrix cell is a timeframe conclusion, not a copy of the global trade
@@ -285,9 +502,7 @@ def _extract_scan_item(
     # Confidence: average of evidence trace item confidences (range 0-100)
     evidence_trace = payload.get("evidence_trace") or []
     confidences = [
-        float(item.get("confidence", 0))
-        for item in evidence_trace
-        if isinstance(item, dict)
+        float(item.get("confidence", 0)) for item in evidence_trace if isinstance(item, dict)
     ]
     confidence = (
         round(node_confidence, 1)
@@ -365,6 +580,7 @@ def _extract_scan_item(
     qualified, qualification_reasons = _qualify_matrix_opportunity(
         payload=payload,
         node=node,
+        timeframe=timeframe,
         direction=direction,
         confidence=confidence,
         score=score,
@@ -375,9 +591,18 @@ def _extract_scan_item(
         conflicts=conflicts,
     )
 
-    entry_zone, stop_loss, take_profit_1 = _cell_execution_levels(
-        payload, direction
-    )
+    entry_zone, stop_loss, take_profit_1 = _cell_execution_levels(payload, direction, timeframe)
+    if entry_zone and not _valid_stop_geometry(direction, entry_zone, stop_loss):
+        # A stop at or inside the entry zone has zero/negative risk distance.
+        # Keep the directional research cell, but never promote or publish
+        # these numbers as an executable plan.
+        qualified = False
+        qualification_reasons.append("invalid_execution_levels")
+        entry_zone, stop_loss, take_profit_1 = [], None, None
+    if not qualified:
+        # The public scan DTO must not expose another horizon's plan as an
+        # executable level when the selected cell has no trading permission.
+        entry_zone, stop_loss, take_profit_1 = [], None, None
 
     return ScanItem(
         instrument_id=instrument_id,
@@ -457,8 +682,9 @@ def _timeframe_direction_tally(
 def _cell_execution_levels(
     payload: dict[str, Any],
     direction: str,
+    timeframe: str,
 ) -> tuple[list[float], float | None, float | None]:
-    """Pick the tactical plan matching the cell direction and lift its levels.
+    """Expose only the plan whose execution period is the selected cell.
 
     The ranked card prints these numbers instead of the bundle validator's
     verdict line. Candidates: ``TACTICAL_{direction}`` first (the executable
@@ -468,15 +694,15 @@ def _cell_execution_levels(
     """
     if direction not in {"LONG", "SHORT"}:
         return [], None, None
+    if timeframe != (payload.get("trade_decision") or {}).get("trade_timeframe"):
+        return [], None, None
     plans = payload.get("trade_plans") or []
     if not isinstance(plans, list):
         return [], None, None
 
     def _levels(plan: Mapping[str, Any]) -> tuple[list[float], float | None, float | None]:
         zone = [
-            value
-            for raw in (plan.get("entry_zone") or [])
-            if (value := _number(raw)) is not None
+            value for raw in (plan.get("entry_zone") or []) if (value := _number(raw)) is not None
         ]
         stop = _number(plan.get("stop_loss"))
         take_profit = plan.get("take_profit") or []
@@ -495,8 +721,10 @@ def _cell_execution_levels(
     ordered = sorted(
         (plan for plan in plans if isinstance(plan, Mapping)),
         key=lambda plan: (
-            0 if str(plan.get("plan_type") or plan.get("type")) == tactical_type
-            else 1 if str(plan.get("direction")) == direction
+            0
+            if str(plan.get("plan_type") or plan.get("type")) == tactical_type
+            else 1
+            if str(plan.get("direction")) == direction
             else 2
         ),
     )
@@ -507,6 +735,16 @@ def _cell_execution_levels(
         if zone:
             return zone, stop, tp1
     return [], None, None
+
+
+def _valid_stop_geometry(direction: str, zone: list[float], stop: float | None) -> bool:
+    if not zone or stop is None:
+        return False
+    if direction == "LONG":
+        return stop < min(zone)
+    if direction == "SHORT":
+        return stop > max(zone)
+    return False
 
 
 def _timeframe_risk_reward(
@@ -556,6 +794,7 @@ def _qualify_matrix_opportunity(
     *,
     payload: dict[str, Any],
     node: dict[str, Any] | None,
+    timeframe: str,
     direction: str,
     confidence: float,
     score: float,
@@ -572,6 +811,16 @@ def _qualify_matrix_opportunity(
         reasons.append("strategy_degraded")
     if direction not in {"LONG", "SHORT"}:
         reasons.append("no_direction")
+    else:
+        decision = payload.get("trade_decision") or {}
+        if decision.get("side") != direction:
+            reasons.append("unified_direction_not_aligned")
+        executable_timeframes = set(decision.get("direction_timeframes") or [])
+        executable_timeframes.add(decision.get("trade_timeframe"))
+        if timeframe not in executable_timeframes:
+            reasons.append("timeframe_not_executable")
+        if decision.get("permission") not in {"allow", "conditional"}:
+            reasons.append("trade_permission_not_granted")
     if confidence < MATRIX_MIN_CONFIDENCE:
         reasons.append("confidence_below_gate")
     if score < MATRIX_MIN_SCORE:

@@ -470,14 +470,24 @@ def _build_structure_score(structure_overall: dict[str, Any]) -> tuple[float, fl
     missing. Returns ``(bullish, bearish)``.
     """
 
-    bias_score = _num(
-        structure_overall.get("bias_score")
-        or structure_overall.get("bullish_score")
-        or structure_overall.get("overall_score")
-        or structure_overall.get("score")
-    )
-    if bias_score:
-        return clamp(bias_score), clamp(100.0 - bias_score)
+    for key in ("bias_score", "bullish_score"):
+        if structure_overall.get(key) is not None:
+            bias_score = clamp(_num(structure_overall[key]))
+            return bias_score, 100.0 - bias_score
+    # Structure fusion publishes an explicitly signed score in [-1, 1].
+    # Treating +0.19 as 0.19/100 gave a false 99.81 bearish score even when
+    # the trend indicators and the structure's dominant side were bullish.
+    for key in ("overall_score", "score"):
+        if structure_overall.get(key) is not None:
+            raw_score = _num(structure_overall[key])
+            # Legacy structure adapters sometimes provided a 0..100 score.
+            # The canonical fusion output uses -1..1.
+            bias_score = (
+                (max(-1.0, min(1.0, raw_score)) + 1.0) * 50.0
+                if -1.0 <= raw_score <= 1.0
+                else clamp(raw_score)
+            )
+            return bias_score, 100.0 - bias_score
     bias = str(
         structure_overall.get("bias")
         or structure_overall.get("overall_bias")
@@ -653,19 +663,12 @@ class StrategySnapshotBuilder:
         # Candle count is informational; the structure bundle's series is
         # accepted here only for that count.
         candles = analysis_payload.get("candles") or structure_payload.get("candles") or []
-        mark = analysis_payload.get("mark") or {}
-        current_price = _decimal(mark.get("mark_price") or mark.get("price"))
-        if current_price is None:
-            analysis_candles = analysis_payload.get("candles") or []
-            if analysis_candles:
-                current_price = _decimal(_field(analysis_candles[-1], "close"))
-        if current_price is None:
-            # Never fall back to the structure bundle's candle tail: that series
-            # can be arbitrarily old, and the 2026-09-22 audit found ETH's
-            # strategy bundles carrying a 13-day-old "current price" (2493 vs a
-            # 2744 market) purely from this fallback. A stored mark is the
-            # cheapest fresh source and needs no provider round trip.
-            current_price = await self._stored_mark_price(instrument)
+        from app.services.market_reference_price import select_reference_price
+
+        reference_price = select_reference_price(
+            analysis_payload.get("mark"), analysis_payload.get("candles"), tf
+        )
+        current_price = _decimal(reference_price["price"])
 
         core = analysis_payload.get("core_indicator_series") or {}
         secondary = analysis_payload.get("secondary_indicator_series") or {}
@@ -839,6 +842,8 @@ class StrategySnapshotBuilder:
             "timestamp": datetime.now(UTC).isoformat(),
             "generated_at": datetime.now(UTC).isoformat(),
             "current_price": str(current_price) if current_price is not None else None,
+            "price_as_of": reference_price["price_as_of"],
+            "price_source": reference_price["price_source"],
             "data_quality": {
                 "score": data_quality_score,
                 "statuses": dependency_state,
@@ -1307,25 +1312,6 @@ class StrategySnapshotBuilder:
             "vwap_slope_short_10": _last_value(secondary, "vwap_slope_short_10", "vwap_slope_10"),
             "vwap_slope_long_10": _last_value(secondary, "vwap_slope_long_10"),
         }
-
-    async def _stored_mark_price(self, instrument: str) -> Decimal | None:
-        """Latest stored mark price — no provider round trip.
-
-        Used only when the analysis bundle cannot supply a price. `prefer_live`
-        stays False on purpose: this runs once per timeframe per refresh cycle
-        in the precompute worker, and a live fetch here would multiply provider
-        calls by the timeframe count.
-        """
-        try:
-            from app.services.market import MarketService
-
-            mark = await MarketService(self.repository).get_best_mark(
-                instrument, prefer_live=False
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("strategy stored mark unavailable: %s", exc)
-            return None
-        return _decimal(getattr(mark, "mark_price", None)) if mark is not None else None
 
     @staticmethod
     def _levels(structure_payload: dict[str, Any]) -> dict[str, Any]:        return {

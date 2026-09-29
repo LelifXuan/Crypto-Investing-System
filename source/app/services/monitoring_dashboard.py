@@ -26,7 +26,12 @@ from app.services.cache_registry import (
     monitoring_decision_brief_cache_key,
     source_freshness,
     strategy_bundle_cache_key,
+    strategy_unified_cache_key,
     structure_bundle_cache_key,
+)
+from app.services.cross_page_consistency import (
+    apply_check_to_monitoring_summary,
+    compare_published_conclusions,
 )
 from app.services.indicator_judgement import attach_indicator_judgement
 from app.services.indicator_monitoring import IndicatorMonitoringService
@@ -99,8 +104,10 @@ class MonitoringDashboardService:
         )
         refresh_enqueued = False
         refresh_task_key = None
-        if allow_refresh and displayable_cache and (
-            status == "stale" or freshness.state in {"expired", "missing"}
+        if (
+            allow_refresh
+            and displayable_cache
+            and (status == "stale" or freshness.state in {"expired", "missing"})
         ):
             refresh_enqueued, refresh_task_key = await self._enqueue_refresh_hint(
                 instrument_id=instrument_id,
@@ -136,7 +143,6 @@ class MonitoringDashboardService:
         macro_overview = payload.get("macro_overview")
         if isinstance(macro_overview, dict) and macro_overview.get("status") == "unavailable":
             macro_overview = None
-        technical_backfilled = False
         if (
             allow_refresh
             and displayable_cache
@@ -145,38 +151,18 @@ class MonitoringDashboardService:
                 technical_observations,
             )
         ):
-            try:
-                backfilled_technical = await self._technical_observations_from_analysis_bundle(
-                    instrument_id,
-                    timeframe,
-                    now,
-                )
-                backfilled_technical = self._fresh_technical_observations(
-                    backfilled_technical,
-                    now,
-                )
-            except Exception:
-                backfilled_technical = []
-                logger.warning(
-                    "monitoring technical backfill failed for %s/%s",
-                    instrument_id,
-                    timeframe,
-                    exc_info=True,
-                )
-            if backfilled_technical:
-                technical_observations = backfilled_technical
-                technical_backfilled = True
-            else:
-                refresh_enqueued = True
-                queued, task_key = await self._enqueue_refresh_hint(
-                    instrument_id=instrument_id,
-                    timeframe=timeframe,
-                    reason="monitoring_technical_observations_missing",
-                    candidates=["analysis", "monitoring"],
-                    priority=2,
-                )
-                refresh_enqueued = refresh_enqueued or queued
-                refresh_task_key = refresh_task_key or task_key
+            # A GET must stay on the read lane. AnalysisBundleService can
+            # rebuild and publish snapshots, so request that work from the
+            # precompute queue and return the displayable macro snapshot now.
+            queued, task_key = await self._enqueue_refresh_hint(
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                reason="monitoring_technical_observations_missing",
+                candidates=["monitoring"],
+                priority=2,
+            )
+            refresh_enqueued = refresh_enqueued or queued
+            refresh_task_key = refresh_task_key or task_key
         # T08: prefer the in-payload structure (written by refresh_bundle)
         # but fall back to a direct structure_bundle cache load when the
         # caller is reading a stale snapshot that pre-dates this change.
@@ -191,13 +177,18 @@ class MonitoringDashboardService:
                 alerts_bundle=None,
             )
         )
-        alerts_bundle, strategy_bundle, timeframe_snapshots, structure_payload = (
-            await asyncio.gather(
-                self._load_cached_alerts_bundle(instrument_id, timeframe),
-                self._load_cached_strategy_bundle(instrument_id, timeframe),
-                self._load_cached_analysis_timeframes(instrument_id),
-                structure_task,
-            )
+        (
+            alerts_bundle,
+            strategy_bundle,
+            timeframe_snapshots,
+            structure_payload,
+            unified_cache,
+        ) = await asyncio.gather(
+            self._load_cached_alerts_bundle(instrument_id, timeframe),
+            self._load_cached_strategy_bundle(instrument_id, timeframe),
+            self._load_cached_analysis_timeframes(instrument_id),
+            structure_task,
+            self._load_cached_unified_row(instrument_id),
         )
         if payload_structure:
             structure_payload = payload_structure
@@ -210,6 +201,21 @@ class MonitoringDashboardService:
             timeframe_snapshots=timeframe_snapshots,
             structure=structure_payload,
         )
+        unified_payload = unified_cache.payload_json if unified_cache else None
+        terminal_summary = apply_check_to_monitoring_summary(
+            terminal_summary,
+            compare_published_conclusions(
+                terminal_summary,
+                unified_payload,
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                monitoring_snapshot_at=cache.snapshot_at if cache else None,
+                strategy_snapshot_at=unified_cache.snapshot_at if unified_cache else None,
+                monitoring_cache_state=status,
+                strategy_cache_state=cache_status(unified_cache),
+            ),
+            unified_payload,
+        )
         response_dict = {
             "instrument_id": instrument_id,
             "timeframe": timeframe,
@@ -217,9 +223,7 @@ class MonitoringDashboardService:
             "terminal_summary": terminal_summary,
             "technical_observations": technical_observations,
             "technical_indicator_count": len(technical_observations),
-            "alert_events": self._filter_monitoring_alert_events(
-                payload.get("alert_events", [])
-            ),
+            "alert_events": self._filter_monitoring_alert_events(payload.get("alert_events", [])),
             "cross_asset": payload.get("cross_asset", []),
             "source_status": self._normalize_source_status(payload.get("source_status", {})),
             "status": "ready" if status == "fresh" else status,
@@ -234,7 +238,7 @@ class MonitoringDashboardService:
             "expires_at": cache.expires_at if cache else None,
             "source_version": cache.source_version if cache else CACHE_SOURCE_VERSION,
             "cost_ms": cache.cost_ms if cache else None,
-            "refreshed": technical_backfilled,
+            "refreshed": False,
             "status_message": bundle_status_message(status),
         }
         return await self._validate_monitoring_dashboard(
@@ -336,11 +340,14 @@ class MonitoringDashboardService:
             for item in technical_items
             if isinstance(item, dict)
         )
+        summary = response_dict.get("terminal_summary") or {}
+        alignment = (summary.get("decision_brief") or {}).get("source_alignment") or {}
         key = (
             f"monitoring_dashboard_validated:v1:"
             f"{instrument_id}:{timeframe}:{data_ts}:{cache_state}:"
             f"refreshed={bool(response_dict.get('refreshed'))}:"
-            f"tech={technical_count}:{technical_signature}"
+            f"tech={technical_count}:{technical_signature}:"
+            f"direction={summary.get('bias')}:{alignment.get('canonical_strategy_snapshot_id')}"
         )
         ttl = 60
 
@@ -424,6 +431,22 @@ class MonitoringDashboardService:
             timeframe_snapshots=timeframe_snapshots,
             structure=structure_payload,
         )
+        unified_cache = await self._load_cached_unified_row(instrument_id)
+        unified_payload = unified_cache.payload_json if unified_cache else None
+        terminal_summary = apply_check_to_monitoring_summary(
+            terminal_summary,
+            compare_published_conclusions(
+                terminal_summary,
+                unified_payload,
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                monitoring_snapshot_at=now,
+                strategy_snapshot_at=unified_cache.snapshot_at if unified_cache else None,
+                monitoring_cache_state="fresh",
+                strategy_cache_state=cache_status(unified_cache),
+            ),
+            unified_payload,
+        )
         await self._persist_decision_brief_snapshot(
             instrument_id=instrument_id,
             timeframe=timeframe,
@@ -485,6 +508,15 @@ class MonitoringDashboardService:
                 "status_message": bundle_status_message("fresh"),
             }
         )
+
+    async def _load_cached_unified_row(self, instrument_id: str) -> Any | None:
+        try:
+            return await self.repository.get_page_snapshot_cache(
+                strategy_unified_cache_key(instrument_id)
+            )
+        except Exception:
+            logger.warning("monitoring unified snapshot read failed", exc_info=True)
+            return None
 
     @classmethod
     def _is_effectively_empty(cls, payload: dict[str, Any] | None) -> bool:
@@ -657,7 +689,9 @@ class MonitoringDashboardService:
                 item.setdefault("freshness_label", "unknown")
                 fresh.append(item)
                 continue
-            max_age = cls._technical_max_age(str(item.get("timeframe") or MONITORING_TECH_TIMEFRAME))
+            max_age = cls._technical_max_age(
+                str(item.get("timeframe") or MONITORING_TECH_TIMEFRAME)
+            )
             if now - ts <= max_age:
                 fresh.append(item)
         return fresh
@@ -865,11 +899,7 @@ class MonitoringDashboardService:
         # module_scores.structure row honest — it surfaces the only
         # structure data the system has, with a clear "proxy" label, so
         # the user no longer sees the permanent 待确认 placeholder.
-        chip = (
-            alerts_bundle.get("chip_structure")
-            if isinstance(alerts_bundle, Mapping)
-            else None
-        )
+        chip = alerts_bundle.get("chip_structure") if isinstance(alerts_bundle, Mapping) else None
         if isinstance(chip, Mapping) and chip:
             regime = str(chip.get("regime") or chip.get("state") or "low_confidence")
             evidence_quality = str(chip.get("evidence_quality") or "proxy_only")
@@ -939,7 +969,9 @@ class MonitoringDashboardService:
                     analysis_cache_key(instrument_id, timeframe, 240)
                 )
             except Exception as exc:
-                logger.debug("analysis cache read failed for %s/%s: %s", instrument_id, timeframe, exc)
+                logger.debug(
+                    "analysis cache read failed for %s/%s: %s", instrument_id, timeframe, exc
+                )
                 return None
             if cache is None:
                 return None
@@ -954,9 +986,7 @@ class MonitoringDashboardService:
                 "regime": trend.get("state"),
             }
 
-        results = await asyncio.gather(
-            *(_one(tf) for tf in MONITORING_SUMMARY_TIMEFRAMES)
-        )
+        results = await asyncio.gather(*(_one(tf) for tf in MONITORING_SUMMARY_TIMEFRAMES))
         snapshots: dict[str, dict[str, Any]] = {}
         for item in results:
             if item is None:
@@ -989,9 +1019,7 @@ class MonitoringDashboardService:
         meta = {
             "consistency": consistency,
             "row_keys": [
-                row.get("key")
-                for row in decision_brief.get("rows", [])
-                if isinstance(row, dict)
+                row.get("key") for row in decision_brief.get("rows", []) if isinstance(row, dict)
             ],
         }
         try:

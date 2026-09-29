@@ -12,6 +12,7 @@ from app.api.dependencies import (
     get_db_writer_session,
     require_roles,
 )
+from app.core.db import db_manager
 from app.core.timeframes import normalize_instrument_id, normalize_timeframe_for_cache
 from app.repositories.market_repository import MarketRepository
 from app.schemas.market import PrecomputeHintRequest, PrecomputeHintResponse
@@ -52,48 +53,6 @@ def _timeframe(value: str) -> str:
     return normalize_timeframe_for_cache(value)
 
 
-async def _scan_inputs_newer_than_scan(
-    repository: MarketRepository,
-    scan_cache,
-) -> bool:
-    """True when any strategy_unified row is newer than the scan row.
-
-    The scan row is a pure function of the unified rows (scan_all reads
-    each instrument's unified payload and extracts cells). If any input
-    is newer than the output, the matrix is older than its own inputs
-    and its ranked cards can contradict the drawers — rebuild it inline.
-    Missing scan row or missing inputs → False (the cold path below
-    already handles those).
-    """
-    if scan_cache is None or not getattr(scan_cache, "snapshot_at", None):
-        return False
-    scan_ts = scan_cache.snapshot_at
-    if getattr(scan_ts, "tzinfo", None) is None:
-        scan_ts = scan_ts.replace(tzinfo=timezone.utc)
-    try:
-        instruments = await repository.list_instruments()
-    except Exception:
-        return False
-    for inst in instruments:
-        iid = getattr(inst, "instrument_id", None)
-        if not iid:
-            continue
-        try:
-            row = await repository.get_page_snapshot_cache(
-                strategy_unified_cache_key(iid)
-            )
-        except Exception:
-            continue
-        if row is None or not getattr(row, "snapshot_at", None):
-            continue
-        row_ts = row.snapshot_at
-        if getattr(row_ts, "tzinfo", None) is None:
-            row_ts = row_ts.replace(tzinfo=timezone.utc)
-        if row_ts > scan_ts:
-            return True
-    return False
-
-
 def _block_cached_strategy_for_price(
     payload: dict[str, object], *, status: str, message: str
 ) -> dict[str, object]:
@@ -122,6 +81,32 @@ def _block_cached_strategy_for_price(
                 "primary_reason": {"code": status, "message": message},
             }
         )
+    opportunities = payload.get("opportunity_decisions")
+    if isinstance(opportunities, dict):
+        for opportunity in opportunities.values():
+            if not isinstance(opportunity, dict):
+                continue
+            opportunity.update(
+                {
+                    "status": status,
+                    "permission": "observe",
+                    "order_type": "NONE",
+                    "order_status": status,
+                    "levels_active": False,
+                    "entry_zone": [],
+                    "invalidation_price": None,
+                    "take_profit_1": None,
+                    "horizon_target": None,
+                    "expected_move_pct": None,
+                    "stop_distance_pct": None,
+                    "first_risk_reward": None,
+                    "risk_reward": {"value": None, "passed": False},
+                    "recommended_leverage": 0,
+                    "planned_leverage": 0,
+                    "max_leverage": 0,
+                    "primary_reason": {"code": status, "message": message},
+                }
+            )
     for plan in payload.get("trade_plans") or []:
         if not isinstance(plan, dict):
             continue
@@ -320,10 +305,17 @@ async def get_unified_strategy(
         # refresh_limitations + the proper banner-visible prewarm_status.
         if cache is not None and cache.payload_json:
             cached_payload_status = (cache.payload_json or {}).get("status")
-            if (
-                cached_payload_status == "degraded"
-                and status not in {"missing", "error", "warming", "stale"}
+            if not all(
+                tf in ((cache.payload_json or {}).get("opportunity_decisions") or {})
+                for tf in ("1w", "1d", "4h")
             ):
+                status = "stale"
+            if cached_payload_status == "degraded" and status not in {
+                "missing",
+                "error",
+                "warming",
+                "stale",
+            }:
                 logger.info(
                     "strategy_unified_cache_stale_degraded: instrument=%s, "
                     "row_state=%s, components=%s — falling through to cold read",
@@ -340,7 +332,13 @@ async def get_unified_strategy(
         # (the frontend banner lists the failing components).
         payload_is_degraded = bool(
             cache is not None
-            and (cache.payload_json or {}).get("status") == "degraded"
+            and (
+                (cache.payload_json or {}).get("status") == "degraded"
+                or not all(
+                    tf in ((cache.payload_json or {}).get("opportunity_decisions") or {})
+                    for tf in ("1w", "1d", "4h")
+                )
+            )
         )
         if (
             cache is not None
@@ -374,9 +372,7 @@ async def get_unified_strategy(
             # recompute was in flight. The scheduled precompute refresh (120 s /
             # 600 s per timeframe) already re-derives on new candles, and the
             # detail drawer offers an explicit rebuild button.
-            payload, _ = await _guard_cached_strategy(
-                repository, normalized_instrument, payload
-            )
+            payload, _ = await _guard_cached_strategy(repository, normalized_instrument, payload)
             # Only a cache-freshness problem is worth a rebuild here.
             if status != "fresh":
                 await precompute_service.enqueue_hint(
@@ -612,250 +608,125 @@ async def get_strategy_review(
 @router.get("/scan")
 async def get_strategy_scan(
     force: bool = Query(default=False),
-    session: AsyncSession = Depends(get_db_writer_session),
     _: CurrentUser = Depends(require_roles("admin", "trader", "analyst", "viewer")),
 ):
-    """Scan all configured instruments × core timeframes for opportunities.
+    """Read or reproject a matrix from the same published strategies as detail."""
+    import dataclasses
 
-    Cold-load reliability (2026-07-24):
-    - On a cold cache + force=false, do NOT block the request for the
-      ~60+ s it takes to rebuild every cell's unified strategy. Instead,
-      enqueue a prewarm and return a fast `warming` response.
-    - Wrap every operation in try/except so any unhandled error degrades
-      to HTTP 200 with cache_meta.source="error" rather than a 5xx that
-      the frontend flattens into the "扫描失败" banner.
-
-    Bounded warming (2026-08-07): a warming cache row is authoritative
-    only for its 10s short-circuit window. After that the endpoint treats
-    it as missing and runs one cache-only scan (returns a real matrix in
-    ~2-3 s on a warm DB) instead of returning the empty warming payload
-    forever. force=true rebuilds every cell from source data.
-
-    Live-scan (2026-09-23): when the cached scan row is older than the
-    unified rows behind it, the ranked cards contradict the drawers.
-    Rebuild inline (cache-only, ~2-3 s) and serve the fresh matrix.
-    """
-    from app.schemas.market import PrecomputeHintRequest
     from app.services.strategy_unified.opportunity_scanner import (
-        SCAN_TIMEFRAMES,
         OpportunityScanner,
+        scan_inputs_newer_than_scan,
     )
 
-    repository = MarketRepository(session)
-    cache_key = strategy_scan_cache_key()
     now = datetime.now(timezone.utc)
-
-    # Cache-first
-    live_rebuild = False
-    if not force:
+    cache_key = strategy_scan_cache_key()
+    if force:
+        # A fresh scan must never publish transient unified calculations: the
+        # detail drawer reads published unified snapshots. Otherwise clicking
+        # refresh can make the matrix disagree with the drawer immediately.
         try:
-            cache = await repository.get_page_snapshot_cache(cache_key)
-        except Exception:
-            logger.exception("strategy/scan cache lookup failed")
-            cache = None
-        status = cache_status(cache) if cache else "missing"
-        # A warming cache row is only authoritative while its short-circuit
-        # window is open (10s). Once it expires, treat it as missing so the
-        # cold-load branch below produces a real matrix instead of returning
-        # the warming payload forever — the pre-2026-08-07 behaviour looped
-        # the frontend's warming poll with an empty matrix indefinitely.
-        if cache is not None and (cache.cache_state or cache.status) in {
-            "warming",
-            "updating",
-            "refreshing",
-        }:
-            expires_at = getattr(cache, "expires_at", None)
-            if expires_at is not None and expires_at <= now:
-                status = "missing"
-        if cache is not None and cache.payload_json and status not in {"missing", "error"}:
-            # Live-scan (2026-09-23): when the cached scan row is older than
-            # the unified rows behind it, the ranked cards contradict the
-            # drawers (OKB 1d 94.6 @ 04:47 vs dissolved direction @ 05:14).
-            # Fall through to the rebuild path below instead of serving the
-            # stale matrix. The rebuilt row is written back with a fresh
-            # TTL, so the next reader gets it for free.
-            try:
-                inputs_newer = await _scan_inputs_newer_than_scan(repository, cache)
-            except Exception:
-                logger.exception("strategy/scan freshness probe failed")
-                inputs_newer = False
-            if not inputs_newer:
-                payload = dict(cache.payload_json)
-                payload.setdefault("cache_meta", {})
-                # 2026-07-24 v2: preserve the warming signal so the
-                # frontend's poll loop keeps the warming banner up.
-                # Otherwise the empty matrix would be misinterpreted as
-                # "no opportunities found" on the very first request
-                # after the warming short-circuit fires.
-                if payload["cache_meta"].get("source") != "warming":
-                    payload["cache_meta"]["source"] = "cache"
-                # 2026-09-23: stamp the serve time so the frontend can tell how
-                # old the cached matrix is. A ranked card built hours ago must
-                # not read as a live recommendation — the drawer shows the
-                # current unified snapshot, and the two can legitimately differ
-                # after the scan row ages. Without this stamp the
-                # frontend cannot distinguish "fresh scan" from "old scan".
-                payload["cache_meta"]["served_at"] = now.isoformat()
-                return payload
-            logger.info("strategy/scan live-rebuild: inputs newer than scan row")
-            live_rebuild = True
-
-    # Cold-load short-circuit: kick off the background prewarm (so fresher
-    # cells arrive), then run ONE cache-only scan immediately. scan_all
-    # reads every cell from its bundle cache — on a warm DB that returns a
-    # real matrix in ~2-3 s, which is far better than an infinite warming
-    # banner. If the scan fails for any reason, fall back to the warming
-    # response so the frontend's poll loop keeps its banner up. The
-    # live-rebuild path above lands here too (live_rebuild=True).
-    if not force:
-        try:
-            await precompute_service.enqueue_hint(
-                PrecomputeHintRequest(
-                    current_page="strategy",
-                    instrument_id="btc-usdt-perp",
-                    timeframe="1d",
-                    reason="strategy_scan_cold",
-                    visible=False,
-                    candidates=[
-                        "strategy_unified",
-                        "monitoring",
-                        "macro",
-                        "btc_derivatives",
-                    ],
-                    priority=3,
-                )
-            )
-        except Exception:
-            logger.exception("strategy/scan prewarm enqueue failed")
-
-        try:
-            instruments = await repository.list_instruments()
-            instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
-            instrument_codes = {}
-            for i in instruments:
-                code = (
-                    getattr(i, "base_ccy", None)
+            async with db_manager.session() as session:
+                repository = MarketRepository(session)
+                instruments = await repository.list_instruments()
+                instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
+                instrument_codes = {
+                    i.instrument_id: getattr(i, "base_ccy", None)
                     or getattr(i, "symbol", None)
                     or i.instrument_id
+                    for i in instruments
+                    if i.instrument_id
+                }
+                result = await OpportunityScanner(repository).scan_published(
+                    instrument_ids, instrument_codes
                 )
-                instrument_codes[i.instrument_id] = code
-
-            scanner = OpportunityScanner(repository)
-            result = await scanner.scan_all(instrument_ids, instrument_codes)
-
-            import dataclasses
-            result_dict = dataclasses.asdict(result)
-            result_dict["cache_meta"] = dict(result_dict.get("cache_meta") or {})
-            if live_rebuild:
-                result_dict["cache_meta"]["source"] = "live"
-                result_dict["cache_meta"]["message"] = (
-                    "检测到更新的策略快照，已实时重算；与各抽屉同代。"
-                )
-            else:
-                result_dict["cache_meta"]["message"] = (
-                    "基于当前缓存生成；后台正在补齐最新数据，可稍后手动刷新。"
-                )
-            result_dict["cache_meta"]["served_at"] = now.isoformat()
-            try:
+            payload = dataclasses.asdict(result)
+            published_at = datetime.now(timezone.utc)
+            expiry = expires_at_for_scan(published_at)
+            payload["cache_meta"]["fresh_until"] = expiry.isoformat()
+            async with db_manager.writer_session() as session:
+                repository = MarketRepository(session)
                 await repository.upsert_page_snapshot_cache(
                     cache_key=cache_key,
                     page_type="strategy_scan",
-                    payload_json=result_dict,
+                    payload_json=payload,
                     status="ready",
                     cache_state="fresh",
-                    snapshot_at=now,
-                    data_ts=now,
-                    expires_at=expires_at_for_scan(now),
+                    snapshot_at=published_at,
+                    data_ts=published_at,
+                    expires_at=expiry,
                     source_version=CACHE_SOURCE_VERSION,
                 )
-            except Exception:
-                logger.exception("strategy/scan cold cache write failed")
-            return result_dict
+            return payload
         except Exception:
-            logger.exception(
-                "strategy/scan cold scan failed; falling back to warming"
-            )
+            logger.exception("strategy/scan forced execution failed")
+            return _scan_unavailable(now, source="error")
 
-        warming_payload = {
-            "scanned_at": now.isoformat(),
-            "instruments": [],
-            "timeframes": list(SCAN_TIMEFRAMES),
-            "matrix": [],
-            "ranked": [],
-            "cache_meta": {
-                "fresh_until": now.isoformat(),
-                "source": "warming",
-                "instruments_scanned": 0,
-                "opportunities_found": 0,
-                "message": "首次访问，正在后台预热数据缓存，预计 5-10 秒后自动出结果。",
-            },
-        }
-        try:
-            from datetime import timedelta
-            await repository.upsert_page_snapshot_cache(
-                cache_key=cache_key,
-                page_type="strategy_scan",
-                payload_json=warming_payload,
-                status="warming",
-                cache_state="warming",
-                snapshot_at=now,
-                data_ts=now,
-                expires_at=now + timedelta(seconds=10),
-                source_version=CACHE_SOURCE_VERSION,
-            )
-        except Exception:
-            logger.exception("strategy/scan warming cache write failed")
-        return warming_payload
-
-    # force=true: do the full scan, but never let an exception escape
-    # as an HTTP 5xx.
+    stored: dict = {}
     try:
-        instruments = await repository.list_instruments()
-        instrument_ids = [i.instrument_id for i in instruments if i.instrument_id]
-        instrument_codes = {}
-        for i in instruments:
-            code = (
-                getattr(i, "base_ccy", None)
-                or getattr(i, "symbol", None)
-                or i.instrument_id
-            )
-            instrument_codes[i.instrument_id] = code
-
-        scanner = OpportunityScanner(repository)
-        result = await scanner.scan_all(instrument_ids, instrument_codes, force=force)
-
-        import dataclasses
-        result_dict = dataclasses.asdict(result)
+        async with db_manager.session() as session:
+            repository = MarketRepository(session)
+            cache = await repository.get_page_snapshot_cache(cache_key)
+            stored = cache.payload_json if cache and isinstance(cache.payload_json, dict) else {}
+            if stored and (stored.get("matrix") or stored.get("instruments")):
+                payload = dict(stored)
+                meta = dict(payload.get("cache_meta") or {})
+                needs_refresh = cache_status(cache) != "fresh" or await scan_inputs_newer_than_scan(
+                    repository, cache
+                )
+                if needs_refresh:
+                    meta["source"] = "stale_revalidating"
+                    meta["message"] = "后台正在更新扫描；当前展示上次发布的结果。"
+                    payload["matrix"] = [
+                        {**item, "cache_state": "stale", "qualified": False}
+                        if item.get("cache_state") == "fresh"
+                        else item
+                        for item in payload.get("matrix", [])
+                    ]
+                    payload["ranked"] = []
+                else:
+                    meta["source"] = "cache"
+                meta["served_at"] = now.isoformat()
+                payload["cache_meta"] = meta
+                return payload
     except Exception:
-        logger.exception("strategy/scan forced execution failed")
-        return {
-            "scanned_at": now.isoformat(),
-            "instruments": [],
-            "timeframes": [],
-            "matrix": [],
-            "ranked": [],
-            "cache_meta": {
-                "fresh_until": now.isoformat(),
-                "source": "error",
-                "instruments_scanned": 0,
-                "opportunities_found": 0,
-                "message": "扫描服务暂时不可用，请稍后重试。",
-            },
-        }
+        logger.exception("strategy/scan published snapshot read failed")
+        if stored:
+            payload = dict(stored)
+            payload["cache_meta"] = {
+                **(payload.get("cache_meta") or {}),
+                "source": "stale_revalidating",
+                "message": "扫描状态暂不可核验；当前展示上次发布的结果。",
+                "served_at": now.isoformat(),
+            }
+            payload["matrix"] = [
+                {**item, "cache_state": "stale", "qualified": False}
+                if item.get("cache_state") == "fresh"
+                else item
+                for item in payload.get("matrix", [])
+            ]
+            payload["ranked"] = []
+            return payload
+        return _scan_unavailable(now, source="error")
+    return _scan_unavailable(now, source="warming")
 
-    try:
-        await repository.upsert_page_snapshot_cache(
-            cache_key=cache_key,
-            page_type="strategy_scan",
-            payload_json=result_dict,
-            status="ready",
-            cache_state="fresh",
-            snapshot_at=now,
-            data_ts=now,
-            expires_at=expires_at_for_scan(now),
-            source_version=CACHE_SOURCE_VERSION,
-        )
-    except Exception:
-        logger.exception("strategy/scan cache write failed; returning fresh result anyway")
 
-    return result_dict
+def _scan_unavailable(now: datetime, *, source: str) -> dict:
+    message = (
+        "扫描快照尚未发布；后台会独立计算并自动更新。"
+        if source == "warming"
+        else "扫描快照暂不可用，请稍后重试。"
+    )
+    return {
+        "scanned_at": now.isoformat(),
+        "instruments": [],
+        "timeframes": ["1w", "1d", "4h"],
+        "matrix": [],
+        "ranked": [],
+        "cache_meta": {
+            "fresh_until": now.isoformat(),
+            "source": source,
+            "instruments_scanned": 0,
+            "opportunities_found": 0,
+            "message": message,
+        },
+    }

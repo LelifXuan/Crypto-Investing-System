@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,15 +25,6 @@ from app.services.precompute import precompute_service
 from app.web.router import web_router
 
 logger = logging.getLogger(__name__)
-
-MAIN_PAGE_PATHS = {
-    "/market-analysis-page",
-    "/structure-page",
-    "/monitoring-page",
-    "/strategy-page",
-    "/btc-derivatives-page",
-}
-
 
 STRATEGY_CRITICAL_WARMUP_PLAN = (
     ("strategy", ["strategy", "market_context"], ("30d", "1w", "1d", "4h", "1h", "15m")),
@@ -93,15 +83,6 @@ async def _enqueue_strategy_critical_warmup(
                 priority=priority,
             )
         )
-
-
-async def _enqueue_daily_page_prewarm() -> None:
-    await asyncio.sleep(5)
-    await _enqueue_strategy_critical_warmup(
-        ["btc-usdt-perp"],
-        reason="daily_first_page_access",
-        priority=4,
-    )
 
 
 def _should_start_worker(name: str) -> bool:
@@ -313,24 +294,6 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(web_router)
-
-    app.state.daily_prewarm_utc_day = None
-
-    @app.middleware("http")
-    async def daily_first_page_prewarm(request, call_next):
-        if (
-            settings.precompute_enabled
-            and request.method == "GET"
-            and request.url.path in MAIN_PAGE_PATHS
-        ):
-            today = datetime.now(timezone.utc).date().isoformat()
-            if app.state.daily_prewarm_utc_day != today:
-                app.state.daily_prewarm_utc_day = today
-                asyncio.create_task(
-                    _enqueue_daily_page_prewarm(),
-                    name="daily-first-page-prewarm",
-                )
-        return await call_next(request)
 
     from app.core.http_cache import revalidate_frontend
 

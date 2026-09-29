@@ -17,6 +17,7 @@ from app.services.cache_registry import (
 )
 from app.services.chip_structure import ChipStructureService
 from app.services.macro_overview import MacroOverviewService
+from app.services.market_reference_price import select_reference_price
 from app.services.onchain.feature_engine import OnchainFeatureEngine
 from app.services.strategy_unified.contracts import payload_hash
 from app.services.strategy_unified.trade_decision import _next_close_iso
@@ -86,14 +87,32 @@ class MarketContextBuilder:
                 "30d": 180,
             }
             analysis_limit = analysis_limits.get(timeframe, 420)
+            page_limits = {"1h": 1000, "4h": 500, "1d": 500, "1w": 500, "30d": 240}
+            analysis_candles: list[dict[str, Any]] = []
             try:
-                analysis_cache = await self.repository.get_page_snapshot_cache(
-                    analysis_cache_key(instrument_id, timeframe, analysis_limit)
+                candidate_limits = dict.fromkeys(
+                    (analysis_limit, page_limits.get(timeframe, analysis_limit))
+                )
+                candidates = [
+                    await self.repository.get_page_snapshot_cache(
+                        analysis_cache_key(instrument_id, timeframe, limit)
+                    )
+                    for limit in candidate_limits
+                ]
+                available = [row for row in candidates if row is not None]
+                analysis_cache = max(
+                    available,
+                    key=lambda row: (
+                        cache_status(row) == "fresh",
+                        self._parse_ts(row.snapshot_at) or datetime.min.replace(tzinfo=UTC),
+                    ),
+                    default=None,
                 )
                 analysis_payload = (
                     dict(analysis_cache.payload_json or {}) if analysis_cache else {}
                 )
                 analysis_mark = dict(analysis_payload.get("mark") or {})
+                analysis_candles = list(analysis_payload.get("candles") or [])
                 indicator_features, vwap_features = self._technical_features(
                     analysis_payload
                 )
@@ -118,6 +137,9 @@ class MarketContextBuilder:
                     "indicators", cache_state="missing", source_updated_at=None
                 )
             sources.append("technical_indicators")
+            reference_price = select_reference_price(
+                analysis_mark, analysis_candles, timeframe, now=now
+            )
             chip: dict[str, Any] = {
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
@@ -294,12 +316,9 @@ class MarketContextBuilder:
                 "instrument_id": instrument_id,
                 "timeframe": timeframe,
                 "market_data": {
-                    "current_price": (
-                        analysis_mark.get("mark_price")
-                        or chip.get("components", {}).get("latest_close")
-                    ),
-                    "price_as_of": analysis_mark.get("ts_event"),
-                    "price_source": analysis_mark.get("source") or "analysis_bundle",
+                    "current_price": reference_price["price"],
+                    "price_as_of": reference_price["price_as_of"],
+                    "price_source": reference_price["price_source"],
                     "price_change_pct": chip.get("components", {}).get("price_change_pct"),
                     "execution_score": chip.get("execution_score"),
                     "execution_label": chip.get("execution_label"),

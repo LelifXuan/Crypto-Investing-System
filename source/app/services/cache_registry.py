@@ -276,7 +276,7 @@ def knowledge_catalog_cache_key(version: str = KNOWLEDGE_CATALOG_VERSION) -> str
 
 
 def strategy_scan_cache_key(
-    source_version: str = f"{CACHE_SOURCE_VERSION}-opportunity-v2",
+    source_version: str = f"{CACHE_SOURCE_VERSION}-opportunity-v3",
 ) -> str:
     return f"strategy_scan:v{source_version}"
 

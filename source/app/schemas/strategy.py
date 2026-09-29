@@ -67,8 +67,10 @@ class StrategyDecisionRead(BaseModel):
     short_score: float
     neutral_score: float
     dominant_direction: str
-    direction_confidence: float
-    confidence_score: float
+    # Cold-cache decisions have no observed confidence; zero would imply a
+    # measured market conclusion and violates the availability contract.
+    direction_confidence: float | None
+    confidence_score: float | None
     execution_score: float
     risk_score: float
     data_quality_score: float

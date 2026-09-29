@@ -25,6 +25,7 @@ from .macro_regime import MacroRegimeEngine
 from .mtf_structure import MultiTimeframeStructureEngine
 from .narrative import NarrativeRenderer
 from .onchain_regime import OnchainRegimeEngine
+from .period_opportunity import build_period_opportunities
 from .risk_gate import UnifiedRiskGateEngine, group_risk_alerts
 from .shadow_validation import ShadowValidationService
 from .trade_decision import TradeDecisionEngine, _next_close_iso
@@ -174,6 +175,9 @@ class UnifiedStrategyService:
             position_cap=governance.position_cap,
             next_check=next_check_time,
         )
+        opportunity_decisions = build_period_opportunities(
+            instrument, nodes, bundles, risk_alerts
+        )
         unified_state["permission"] = trade_decision.permission
         unified_state["position_cap"] = trade_decision.position_cap
         unified_state["instruction"] = trade_decision.primary_reason["message"]
@@ -261,6 +265,7 @@ class UnifiedStrategyService:
                 "affects_active_decision": False,
             },
             "trade_decision": trade_decision.as_dict(),
+            "opportunity_decisions": opportunity_decisions,
             "timeframe_stack": dict_payload(nodes),
             "trade_plans": dict_payload(trade_plans),
             "risk_alerts": dict_payload(risk_alerts),
