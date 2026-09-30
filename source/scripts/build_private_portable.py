@@ -1,12 +1,15 @@
 """Build the portable application bundle from the workspace.
 
-The bundle ships application code plus the embedded Windows runtime and never
-credentials: ``source/.env`` is a local-machine artifact that this builder
-neither requires, reads, nor includes. After the archive is written it is
-re-opened and scanned again by a secret gate — any credential-like filename,
-or a non-placeholder value behind a sensitive variable name in a config-surface
-file, fails the build and deletes the artifact. Gate messages name the file,
-line, and variable only; secret values are never printed.
+Default behavior: the bundle ships application code plus the embedded Windows
+runtime and no credentials — ``source/.env`` is neither required nor included.
+For owner-authorized internal distributions the operator may pass
+``--embed-local-env`` to embed the local ``source/.env`` byte-for-byte (the
+keys are operator-created for this distribution by explicit owner decision,
+2026-09-30); the secret gate then exempts exactly that one file and still
+scans everything else. In both modes the archive is re-opened after writing
+and scanned: credential-like filenames or non-placeholder sensitive
+assignments fail the build and delete the artifact. Gate messages name the
+file, line, and variable only; secret values are never printed.
 
 Runtime caches are excluded by path, not by the word 'cache', because
 app/cache is application source.
@@ -140,10 +143,18 @@ def _should_content_scan(name: str) -> bool:
     return lower.startswith(".env") or PurePosixPath(name).suffix.lower() in SCAN_SUFFIXES
 
 
-def collect_secret_violations(names, read_text) -> list[str]:
-    """Collect gate violations for *names*; values are never included."""
+def collect_secret_violations(names, read_text, allowed_names=None) -> list[str]:
+    """Collect gate violations for *names*; values are never included.
+
+    ``allowed_names`` is the explicit owner-authorization escape hatch
+    (``--embed-local-env``): exactly those paths are exempt from the filename
+    gate and the content scan; everything else still fails the build.
+    """
+    allowed = set(allowed_names or ())
     violations: list[str] = []
     for name in sorted(names):
+        if name in allowed:
+            continue
         if _runtime_public_artifact(name):
             continue
         reason = credential_filename_violation(name)
@@ -166,8 +177,8 @@ def collect_secret_violations(names, read_text) -> list[str]:
     return violations
 
 
-def run_secret_gate(names, read_text) -> None:
-    violations = collect_secret_violations(names, read_text)
+def run_secret_gate(names, read_text, allowed_names=None) -> None:
+    violations = collect_secret_violations(names, read_text, allowed_names)
     if violations:
         raise SecretGateError(
             "secret gate failed for distribution manifest:\n" + "\n".join(violations[:20])
@@ -241,7 +252,7 @@ pause
 )
 
 
-def build(root: Path, destination: Path) -> dict:
+def build(root: Path, destination: Path, *, embed_local_env: bool = False) -> dict:
     root = root.resolve()
     runtime = root / "source/runtime_python"
     if not (runtime / "python.exe").is_file():
@@ -262,6 +273,15 @@ def build(root: Path, destination: Path) -> dict:
         if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts:
             if path.suffix not in {".pyc", ".pyo", ".log"}:
                 files[path.relative_to(root).as_posix()] = path
+    # Owner-authorized opt-in (2026-09-30): embed the operator-created local
+    # .env into this internal distribution. The file is exempted from the
+    # secret gate below by exact path; every other file still gets scanned.
+    allowed_names = {"source/.env"} if embed_local_env else None
+    if embed_local_env:
+        env_path = root / "source/.env"
+        if not env_path.is_file():
+            raise RuntimeError("--embed-local-env requested but source/.env is missing")
+        files["source/.env"] = env_path
     extras = {
         "start.bat": START.replace("\n", "\r\n").encode("ascii"),
     }
@@ -279,7 +299,8 @@ def build(root: Path, destination: Path) -> dict:
     )
     manifest = {
         "kind": "private-windows-portable",
-        "contains_secrets": False,
+        "contains_secrets": bool(embed_local_env),
+        "embeds_local_env": bool(embed_local_env),
         "secret_gate": "fail-closed scan before and after archive write",
         "encrypted": False,
         "delivery": "P1 Frozen + P2 Operator Core + Analysis/Structure Migration",
@@ -314,6 +335,7 @@ def build(root: Path, destination: Path) -> dict:
     run_secret_gate(
         files.keys(),
         lambda name: files[name].read_text(encoding="utf-8", errors="ignore"),
+        allowed_names=allowed_names,
     )
     with ZipFile(destination, "x", ZIP_DEFLATED, compresslevel=6) as archive:
         for name in sorted(files.keys() | extras.keys()):
@@ -328,6 +350,8 @@ def build(root: Path, destination: Path) -> dict:
         for name, digest in manifest["files"].items():
             assert hashlib.sha256(archive.read(PREFIX + name)).hexdigest() == digest
         assert PREFIX + "source/app/cache/market_cache.py" in archive.namelist()
+        if embed_local_env:
+            assert archive.read(PREFIX + "source/.env") == (root / "source/.env").read_bytes()
         # Gate 2: post-write rescan of the real archive manifest.
         staged = [
             name[len(PREFIX):]
@@ -338,6 +362,7 @@ def build(root: Path, destination: Path) -> dict:
             run_secret_gate(
                 staged,
                 lambda name: archive.read(PREFIX + name).decode("utf-8", errors="ignore"),
+                allowed_names=allowed_names,
             )
         except SecretGateError as error:
             raise fail_closed(str(error)) from error
@@ -357,5 +382,23 @@ def build(root: Path, destination: Path) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--embed-local-env",
+        action="store_true",
+        help=(
+            "Owner-authorized internal distributions only: embed the local "
+            "source/.env (keys created by the operator for this distribution). "
+            "Default: the package contains no .env."
+        ),
+    )
     args = parser.parse_args()
-    print(json.dumps(build(Path(__file__).resolve().parents[2], args.output), ensure_ascii=False))
+    print(
+        json.dumps(
+            build(
+                Path(__file__).resolve().parents[2],
+                args.output,
+                embed_local_env=args.embed_local_env,
+            ),
+            ensure_ascii=False,
+        )
+    )

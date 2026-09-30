@@ -11,11 +11,11 @@
 | INV-002 | 绝对正值 market metric 不得被解读为正向 flow，除非该 metric 本身表示变化 | capital flow 契约测试 Case A–E |
 | INV-003 | 启发式证据分不得被呈现为校准概率 | 静态/UI 守卫：禁「成功概率/胜率/XX% certainty」默认呈现 |
 | INV-004 | 全局健康文案必须反映可观测状态，不得是静态乐观默认 | shell 状态机测试：ready/degraded/offline/unknown/page-data-degraded |
-| INV-005 | 分发归档默认不得包含私有凭证 | 包 secret scan gate + 分发内容测试 |
+| INV-005 | 分发归档**默认**不包含私有凭证；显式所有者授权（`--embed-local-env`）除外，豁免仅限 `source/.env` 单文件 | 包 secret scan gate + 分发内容测试 + 授权通道守卫 |
 
 ## 2. Required Test Matrix
 
-- **A. Secret isolation**: distribution_without_env / archive_secret_scan / temp_secret_cleanup
+- **A. Secret isolation**（按所有者决定调整为：默认无 env / 授权嵌入守卫 / archive_secret_scan / temp_secret_cleanup）
 - **B. Cross-asset invariance**: ETH、HYPE、BNB、OKB × {bullish BTC derivatives, bearish BTC derivatives} → 核心策略结果 invariant
 - **C. BTC positive control**: BTC derivatives signal 对 BTC 策略仍然生效
 - **D. Capital flow contract**: metric dict parsing / absolute level / positive delta / negative delta / stale / missing / poor quality
@@ -24,11 +24,11 @@
 
 ## 3. P0 验收标准
 
-### Security（P0-SEC-001）
-- [x] 新构建 ZIP：无 `.env`、无嵌入 secret 值、无 credential artifact（NONSECRET-20260930 包验证）
-- [x] secret scanner：PASS（构建前后双扫描，命中即删产物）
-- [x] 历史 credential 轮换状态已登记（只记键名；15 组 MANUAL ROTATION REQUIRED + 2 组本地自管 REQUIRED，均未冒充已完成）
-- [x] verify_portable_package.py 实施；本轮验证 cleanup=clean
+### Security（P0-SEC-001 → WITHDRAWN BY OWNER，2026-09-30）
+> 所有者确认 `.env` 密钥均为其为本分发单独创建，明文嵌入内部包系授权设计，泄漏前提不成立，原轮换要求撤回（轮换登记文档已删除）。保留的工程成果：
+- [x] secret scan 门禁作为安全默认：默认构建不含 `.env`、凭证类文件名与非占位敏感赋值即 BUILD FAIL 并删产物
+- [x] 所有者授权通道：`--embed-local-env` 显式嵌入，豁免精确到 `source/.env` 单文件，manifest 如实记录 `embeds_local_env`；校验脚本对应 `--allow-embedded-env`
+- [x] 临时解压目录 try/verify/finally cleanup；cleanup 失败显式上报（`verify_portable_package.py`，本轮验证 cleanup=clean）
 
 ### Cross-Asset（P0-QNT-001）
 - [x] test_btc_derivatives_can_affect_btc_strategy PASS（bearish flip 下 BTC tactical LONG→SHORT）

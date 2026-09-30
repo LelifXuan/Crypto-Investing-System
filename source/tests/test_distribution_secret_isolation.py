@@ -27,11 +27,16 @@ BUILDER = Path(__file__).resolve().parents[1] / "scripts" / "build_private_porta
 
 def test_distribution_contains_no_env():
     source = BUILDER.read_text(encoding="utf-8")
-    assert 'files["source/.env"]' not in source
     assert "Missing authorized .env" not in source
-    assert 'PREFIX + "source/.env"' not in source
     assert "--include-authorized-env" not in source
-    assert '"contains_secrets": False' in source
+    # Default builds contain no .env: the only assignment is guarded by the
+    # owner-authorized opt-in flag and paired with the gate exemption.
+    assert 'embed_local_env: bool = False' in source
+    assert (
+        'if embed_local_env:\n        env_path = root / "source/.env"' in source
+    )
+    assert 'allowed_names = {"source/.env"} if embed_local_env else None' in source
+    assert '"contains_secrets": bool(embed_local_env)' in source
     assert not include_source("source/.env")
     assert not include_source("source/.env.local")
     assert not include_source("source/.env.production")
@@ -102,3 +107,32 @@ def test_gate_allowlist_scoped_to_embedded_runtime():
     assert not _runtime_public_artifact("source/conf/cacert.pem")
     assert not _runtime_public_artifact("source/runtime_python/Lib/site-packages/pkg/private.pem")
     assert "change[-_]?me" in BUILDER.read_text(encoding="utf-8")
+
+
+def test_embed_local_env_is_explicit_owner_opt_in():
+    """Owner decision 2026-09-30: the operator-created keys may be embedded on
+    purpose — but only via the explicit flag, and the exemption is exactly
+    source/.env. Default builds stay credential-free."""
+    source = BUILDER.read_text(encoding="utf-8")
+    assert '"source/.env"} if embed_local_env else None' in source
+    assert '"embeds_local_env": bool(embed_local_env)' in source
+    assert '"contains_secrets": bool(embed_local_env)' in source
+    assert 'embed_local_env: bool = False' in source
+
+    # With the authorization, .env itself passes; every other violation still
+    # fires — the escape hatch must not become a blanket exemption.
+    authorized = collect_secret_violations(
+        ["source/.env", "source/conf/credentials.json"],
+        lambda _: "JWT_SECRET_KEY=real-value",
+        allowed_names={"source/.env"},
+    )
+    expected = [
+        "source/conf/credentials.json: credential-like filename (credentials.json)"
+    ]
+    assert authorized == expected
+    # Without authorization the same manifest still fails on both counts.
+    unauthorized = collect_secret_violations(
+        ["source/.env", "source/conf/credentials.json"],
+        lambda _: "JWT_SECRET_KEY=real-value",
+    )
+    assert len(unauthorized) == 2

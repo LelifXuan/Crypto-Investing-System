@@ -64,9 +64,7 @@ cd ..
 - 双击根目录的 `start.bat`。
 - 浏览器打开 **http://127.0.0.1:8002/monitoring-page**。
 
-完整便携包包含 Python 运行环境和运行依赖，无需另外安装 Python，**不包含任何密钥或凭证**；需要第三方数据源时，请自行复制 `source/.env.example` 为 `source/.env` 并填写密钥（构建器带 fail-closed secret scan 门禁，含真实密钥的归档会被拒绝生成）。使用当前源码交付时需重新构建并验证便携包。
-
-> **历史敏感包**：2026-08-31 及更早的 PRIVATE ZIP 按当时协作要求包含真实 `source/.env`，仍只能通过可信渠道处理，禁止上传公开网盘、公开仓库或工单附件；涉及的凭证轮换要求见 [`docs/remediation/SECRET_ROTATION_REQUIRED.md`](./docs/remediation/SECRET_ROTATION_REQUIRED.md)。新构建的包不再包含 `.env`，本机开发用 `source/.env` 保留在本地、不入库也不入包。
+完整便携包包含 Python 运行环境和运行依赖，无需另外安装 Python。包内是否携带 `source/.env` 由构建模式决定：默认构建**不含** `.env`（secret scan 门禁作为安全默认，凭证类文件与非占位敏感赋值会被拒绝），接收方自行复制 `source/.env.example` 填写密钥；所有者授权的内部分发可加 `--embed-local-env` 按原设计嵌入运行密钥（密钥均由所有者为本分发单独创建）。使用当前源码交付时需重新构建并验证便携包（`scripts/verify_portable_package.py`，授权嵌入包加 `--allow-embedded-env`）。
 
 > 数据库、日志、缓存自动生成在运行目录，无需手动处理。
 

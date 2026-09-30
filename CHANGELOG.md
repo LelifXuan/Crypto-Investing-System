@@ -25,7 +25,7 @@
 
 ### 2026-09-30 系统完整性整改（Integrity Remediation，P0×2 + P1×3）
 
-- **P0-SEC-001 分发秘钥隔离**：便携包构建器不再读取/包含/要求 `source/.env`；新增构建前后两道 fail-closed secret scan 门禁（凭证类文件名 + 高风险变量非占位值即构建失败并删除产物；仅 `runtime_python/` 内 stdlib `secrets.py` 与 certifi 公共 CA 束路径受限豁免）；`.env.example` 示例值改显式 `CHANGE_ME`（旧示例默认值曾在历史 PRIVATE 包中分发，且与运行中 `.env` 相同，已登记轮换要求，见 `docs/remediation/SECRET_ROTATION_REQUIRED.md`）；新增 `scripts/verify_portable_package.py`（档案扫描 + 结构 + 可选解压核验，临时目录 try/verify/finally，cleanup 失败显式上报）。`dist/` 内 2026-08-31 及更早 PRIVATE ZIP 仍含密钥，按历史敏感包处理。
+- **P0-SEC-001 → 按所有者决定调整（2026-09-30）**：所有者确认 `.env` 密钥均为其为本分发单独创建，明文嵌入内部便携包系授权设计，原「分发秘钥隔离」 finding 与轮换要求撤回。保留工程成果：构建器默认不含 `.env`，并带构建前后两道 fail-closed secret scan 门禁（凭证类文件名 + 高风险变量非占位值即构建失败并删除产物；`runtime_python/` 内 stdlib `secrets.py` 与 certifi 公共 CA 束路径受限豁免）；所有者可用 `--embed-local-env` 显式嵌入本地 `.env`（豁免精确到该文件，其余照扫，manifest 记录 `embeds_local_env`），校验脚本对应 `--allow-embedded-env`；`verify_portable_package.py` 提供档案扫描 + 结构 + 可选解压核验（临时目录 try/verify/finally，cleanup 失败显式上报）。`.env.example` 示例值保持显式 `CHANGE_ME` 占位。
 - **P0-QNT-001 跨资产信号隔离**：`ModuleSignal` 增加 `instrument_id`/`asset_scope`（exact/proxy/global/unknown），删除 `btc_perp` 危险默认值，未知作用域 fail closed；`DirectionResolutionEngine.resolve` 接收 `target_instrument_id` 并在加权前执行资格门禁——exact 不匹配、proxy、unknown 一律不参与方向计算，也不得向操作卡注入他资产绝对价位（BTC 期权墙/Max Pain 不再进入非 BTC 价位体系）；生产信号全部显式声明归属（价格结构/技术指标=exact 本资产，宏观/资金流/链上=global，衍生品=BTC 数据）；非 BTC 页面将 BTC 衍生品显式标注为「BTC 市场代理上下文，不参与本资产方向判定」；risk gate 的衍生品降级警告仅对 BTC 生效。BTC 自身衍生品证据链路保持不变（positive control 测试钉住）。
 - **P1-QNT-002 资金流数据契约**：修复 `CapitalFlowEngine` 对链上指标 dict payload 的错误读取（原 isinstance 数值检查使结构化信号成为死代码）；新增共享读取器 `onchain/metric_reader.py`（按指标级 freshness 与质量门禁 fail closed）；`OnchainFeatureEngine` 由真实观测历史派生 ~1d/~7d 变化特征；资金流方向只消费变化量——绝对正 level（稳定币总量、DEX 成交额）不再等于流入；历史深度不足如实输出 `DATA_INSUFFICIENT`，不伪造 delta。
 - **P1-SEM-001 证据质量语义**：策略评分在 UI 统一呈现为「证据质量 N/100」（不再用「置信度 N%」），并附「衡量数据新鲜度、证据覆盖与信号一致性，不代表预测胜率或盈利概率」说明；`ScanItem` 与决策审计 payload 增加 `confidence_kind="evidence_quality"`、`confidence_is_probability=false` 语义字段；矩阵门禁文案改「证据质量未达门槛」；知识库词条更名并声明非校准概率。
@@ -35,7 +35,7 @@
 
 ### 验证与交付状态
 
-- 2026-09-30 完整性整改门禁：隔离实例（精简验证库 + `WORKER_PROFILE=none`）全量 `pytest` **2276 passed、4 skipped、0 failed**；整改范围 Ruff 与 `compileall` 通过；Playwright **11/11 冷启动、10/10 SPA 切换**（0 pageerror），AI 策略压力测试 **2 PASS / 0 FAIL**；新构建无密钥便携包 `verify_portable_package.py` 全 PASS + 启动冒烟 `/health/live → 200`。验证后专用实例已关闭、精简库已删除。逐项证据见 `docs/remediation/CIS_SYSTEM_INTEGRITY_REMEDIATION_REPORT.md`。
+- 2026-09-30 完整性整改门禁：隔离实例（精简验证库 + `WORKER_PROFILE=none`）全量 `pytest` **2276 passed、4 skipped、0 failed**；整改范围 Ruff 与 `compileall` 通过；Playwright **11/11 冷启动、10/10 SPA 切换**（0 pageerror），AI 策略压力测试 **2 PASS / 0 FAIL**；无密钥默认模式便携包 `verify_portable_package.py` 全 PASS + 启动冒烟 `/health/live → 200`（所有者授权分发可另用 `--embed-local-env` 构建并 `--allow-embedded-env` 校验）。验证后专用实例已关闭、精简库已删除。逐项证据见 `docs/remediation/CIS_SYSTEM_INTEGRITY_REMEDIATION_REPORT.md`。
 
 ### 验证与交付状态
 

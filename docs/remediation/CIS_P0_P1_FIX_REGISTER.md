@@ -7,20 +7,13 @@
 
 ### P0-SEC-001 — 分发包与真实 Secret 未分离
 
-- **Status**: FIXED（2026-09-30）
+- **Status**: **WITHDRAWN BY OWNER（2026-09-30）**——所有者确认 `.env` 密钥均为其为本分发单独创建，明文嵌入内部便携包系授权设计，泄漏前提不成立，配套轮换要求一并撤回（`SECRET_ROTATION_REQUIRED.md` 已删除）。保留的工程成果：secret scan 门禁作为「默认不含 `.env`」的安全默认值；所有者可用显式 `--embed-local-env` 嵌入（豁免精确到 `source/.env` 单文件，其余文件照扫，manifest 如实记录 `embeds_local_env`）。（原修复记录见 git 历史 d07d0f5 之前版本。）
 - **Current behavior**: 见 Before 证据。
 - **Root cause**: 分发边界设计把「内部授权」等同于「携带凭证」；`.gitignore` 只防 Git 入库，不防 distribution artifact 泄密。
 - **Files affected**: `source/scripts/build_private_portable.py`、`source/scripts/verify_portable_package.py`（新增）、`source/scripts/build_release.py`、`source/tests/test_distribution_secret_isolation.py`（新增）、`source/tests/test_private_portable_paths.py`、`source/tests/test_ui2_release_hardening.py`、`source/.env.example`、`source/docker-compose.yml`、`README.md`、`docs/remediation/SECRET_ROTATION_REQUIRED.md`
 - **Proposed minimal fix**: 已实施——构建器不再读取/包含/要求 `.env`；两段式 fail-closed secret scan gate（写入前列表扫描 + 写入后档案重扫，命中即删产物并 BUILD FAIL）；`runtime_python/` 路径受限豁免（stdlib `secrets.py` + certifi 公共 CA 束）；交付校验脚本（档案扫描 + 结构 + 可选解压核验 + cleanup 状态显式上报）；`.env.example` 示例值改显式 `CHANGE_ME`；轮换登记只记键名。
-- **Tests added**: `test_distribution_contains_no_env`、`test_distribution_contains_no_private_credentials`、`test_distribution_secret_scan_gate`、`test_gate_allowlist_scoped_to_embedded_runtime`（4 passed）；`test_ui2_release_hardening` 文案契约按新语义更新。
-- **Remaining limitations**: 门禁内容扫描只覆盖 config-surface 文件（.env*/yaml/toml/ini/cfg/conf/bat/cmd/ps1/json），不扫描 .py/.js 源码（避免测试 fixture 误报），源码内嵌密钥不在本门禁防御范围。
-
-#### Evidence — P0-SEC-001
-
-- **Before**: `build_private_portable.py:143` `files["source/.env"] = env_path`（原样打包）+ `:125` 缺 `.env` 即 `RuntimeError` + `:197` 断言包内有 `.env`；`dist/` 两个 2026-08-31 PRIVATE ZIP 含密钥；`.env.example:20/:25` 带示例默认值（`change-me`/`admin123` 形态），且运行中的 `source/.env` 使用相同值（masked 核验 `example==env? True`）。
-- **Change**: 见 Proposed minimal fix；gate 首次运行即拦截 4 类违规（示例默认值 ×2、stdlib `secrets.py`、`cacert.pem`），前两类促成真实修复（example 占位化 + 轮换登记升级），后两类促成路径受限豁免并配 `test_gate_allowlist_scoped_to_embedded_runtime` 防扩大。
-- **Test**: `pytest tests/test_distribution_secret_isolation.py tests/test_private_portable_paths.py tests/test_ui2_release_hardening.py` → **12 passed**；ruff（6 文件）All checks passed。
-- **After**: 真实构建 `dist/CIS-UI2-V2.3-Page-Migration-NONSECRET-20260930.zip`（6136 files, 33,888,682 bytes, sha256 `2b21f2ec…ddbb8`）→ `verify_portable_package.py --extract`：`secret_scan=pass`（档案成员仅 `.env.example`，无 `.env`）、`structure=pass`、`manifest_parse=pass`、`extraction=pass`、`sensitive_cleanup_status=clean`、`sha256_sidecar=pass`；便携启动冒烟：解压目录内嵌运行时拉起 uvicorn:8003，`GET /health/live → 200 {"status":"ok"}`，退出后临时目录清理 done。构建过程未打印任何 secret 值。
+- **Tests added**: `test_distribution_contains_no_env`（更新为「默认不含 + 显式授权守卫」契约）、`test_distribution_contains_no_private_credentials`、`test_distribution_secret_scan_gate`、`test_gate_allowlist_scoped_to_embedded_runtime`、`test_embed_local_env_is_explicit_owner_opt_in`（共 14 passed）；`test_ui2_release_hardening` 文案契约同步。
+- **Remaining limitations**: 门禁内容扫描只覆盖 config-surface 文件，不扫描 .py/.js 源码；授权通道的豁免以精确路径 `source/.env` 为限，其余凭证类文件仍会被拦截。（原 Before/After 证据随撤回一并废止，见 git 历史。）
 
 ### P0-QNT-001 — BTC derivatives 信号可污染非 BTC 策略方向
 

@@ -50,7 +50,7 @@ def _strip_prefix(name: str) -> str:
     return name[len(PREFIX):] if name.startswith(PREFIX) else name
 
 
-def verify(archive_path: Path, extract: bool) -> dict:
+def verify(archive_path: Path, extract: bool, allow_embedded_env: bool = False) -> dict:
     result: dict = {
         "archive": str(archive_path),
         "secret_scan": "not_run",
@@ -76,10 +76,22 @@ def verify(archive_path: Path, extract: bool) -> dict:
             result["manifest_parse"] = f"fail: {type(error).__name__}"
             return result
 
+        # --allow-embedded-env mirrors the builder's owner-authorized
+        # --embed-local-env opt-in: exactly source/.env is exempt; the manifest
+        # must honestly declare the embedding.
+        allowed = {"source/.env"} if allow_embedded_env else None
         violations = collect_secret_violations(
             (name for name in members.values() if name != manifest_name),
             lambda name: archive.read(PREFIX + name).decode("utf-8", errors="ignore"),
+            allowed_names=allowed,
         )
+        if allow_embedded_env:
+            manifest = json.loads(archive.read(PREFIX + "PACKAGE-MANIFEST.json"))
+            if not manifest.get("embeds_local_env"):
+                violations.append(
+                    "source/.env embedded without PACKAGE-MANIFEST.json "
+                    "declaring embeds_local_env=true"
+                )
         result["violations"] = violations
         result["secret_scan"] = "fail" if violations else "pass"
         if violations:
@@ -136,8 +148,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--extract", action="store_true", help="verify on-disk layout")
+    parser.add_argument(
+        "--allow-embedded-env",
+        action="store_true",
+        help="owner-authorized packages built with --embed-local-env",
+    )
     args = parser.parse_args()
-    result = verify(args.archive, extract=args.extract)
+    result = verify(args.archive, extract=args.extract, allow_embedded_env=args.allow_embedded_env)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["ok"] else 1
 
