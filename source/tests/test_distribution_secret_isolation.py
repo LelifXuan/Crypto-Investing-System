@@ -1,47 +1,53 @@
-"""P0-SEC-001: distribution artifacts must not carry private credentials.
+"""Private portable bundles require the operator's exact local config.
 
-INV-005 — No distributable application archive may contain private
-credentials by default. These tests pin the packaging boundary itself
-(builder source, filename gate, content-scan gate); the real-archive
-verification is run by scripts/verify_portable_package.py at delivery time.
+The exemption covers only source/.env; other credential files still fail.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
 from scripts.build_private_portable import (
     ALLOWED_ENV_BASENAMES,
+    PREFIX,
     SecretGateError,
     _runtime_public_artifact,
+    build,
     collect_secret_violations,
     credential_filename_violation,
     include_source,
     run_secret_gate,
 )
+from scripts.verify_portable_package import verify
 
 BUILDER = Path(__file__).resolve().parents[1] / "scripts" / "build_private_portable.py"
 
 
-def test_distribution_contains_no_env():
+def test_private_portable_requires_embedded_env():
     source = BUILDER.read_text(encoding="utf-8")
-    assert "Missing authorized .env" not in source
-    assert "--include-authorized-env" not in source
-    # Default builds contain no .env: the only assignment is guarded by the
-    # owner-authorized opt-in flag and paired with the gate exemption.
-    assert 'embed_local_env: bool = False' in source
-    assert (
-        'if embed_local_env:\n        env_path = root / "source/.env"' in source
-    )
-    assert 'allowed_names = {"source/.env"} if embed_local_env else None' in source
-    assert '"contains_secrets": bool(embed_local_env)' in source
+    assert 'env_path = root / "source/.env"' in source
+    assert 'files["source/.env"] = env_path' in source
+    assert 'allowed_names = {"source/.env"}' in source
+    assert '"contains_secrets": True' in source
+    assert '"embeds_local_env": True' in source
+    assert 'assert archive.read(PREFIX + "source/.env") == env_path.read_bytes()' in source
+    assert "Missing embedded source\\.env" in source
+    assert "NO CREDENTIALS INCLUDED" not in source
     assert not include_source("source/.env")
     assert not include_source("source/.env.local")
     assert not include_source("source/.env.production")
     for allowed in sorted(ALLOWED_ENV_BASENAMES):
         assert include_source(f"source/{allowed}"), allowed
+
+
+def test_private_portable_missing_env_fails_before_runtime_work(tmp_path: Path):
+    with pytest.raises(RuntimeError, match="Missing non-empty source/.env"):
+        build(tmp_path, tmp_path / "portable.zip")
 
 
 def test_distribution_contains_no_private_credentials():
@@ -100,39 +106,84 @@ def test_gate_allowlist_scoped_to_embedded_runtime():
     # Public runtime artifacts are exempt only inside runtime_python/; the same
     # basenames anywhere else (e.g. application source) must stay violations.
     assert _runtime_public_artifact("source/runtime_python/Lib/secrets.py")
-    assert _runtime_public_artifact(
-        "source/runtime_python/Lib/site-packages/certifi/cacert.pem"
-    )
+    assert _runtime_public_artifact("source/runtime_python/Lib/site-packages/certifi/cacert.pem")
     assert not _runtime_public_artifact("source/app/services/secrets.py")
     assert not _runtime_public_artifact("source/conf/cacert.pem")
     assert not _runtime_public_artifact("source/runtime_python/Lib/site-packages/pkg/private.pem")
     assert "change[-_]?me" in BUILDER.read_text(encoding="utf-8")
 
 
-def test_embed_local_env_is_explicit_owner_opt_in():
-    """Owner decision 2026-09-30: the operator-created keys may be embedded on
-    purpose — but only via the explicit flag, and the exemption is exactly
-    source/.env. Default builds stay credential-free."""
+def test_embedded_env_exemption_is_exact_path():
+    """The operator's config is allowed without exempting other credentials."""
     source = BUILDER.read_text(encoding="utf-8")
-    assert '"source/.env"} if embed_local_env else None' in source
-    assert '"embeds_local_env": bool(embed_local_env)' in source
-    assert '"contains_secrets": bool(embed_local_env)' in source
-    assert 'embed_local_env: bool = False' in source
+    assert 'allowed_names = {"source/.env"}' in source
 
-    # With the authorization, .env itself passes; every other violation still
-    # fires — the escape hatch must not become a blanket exemption.
+    # The exact path passes; every other violation still fires.
     authorized = collect_secret_violations(
         ["source/.env", "source/conf/credentials.json"],
         lambda _: "JWT_SECRET_KEY=real-value",
         allowed_names={"source/.env"},
     )
-    expected = [
-        "source/conf/credentials.json: credential-like filename (credentials.json)"
-    ]
+    expected = ["source/conf/credentials.json: credential-like filename (credentials.json)"]
     assert authorized == expected
-    # Without authorization the same manifest still fails on both counts.
+    # Without the exact exemption the same manifest fails on both counts.
     unauthorized = collect_secret_violations(
         ["source/.env", "source/conf/credentials.json"],
         lambda _: "JWT_SECRET_KEY=real-value",
     )
     assert len(unauthorized) == 2
+
+
+def _fixture_archive(
+    path: Path,
+    *,
+    include_env: bool = True,
+    bad_digest: bool = False,
+    extra_credential: bool = False,
+) -> None:
+    files = {
+        "start.bat": b"@echo off\n",
+        "source/app/main.py": b"",
+        "source/runtime_python/python.exe": b"fixture",
+        "PACKAGE-README.md": b"fixture",
+    }
+    if include_env:
+        files["source/.env"] = b"FIXTURE_API_KEY=fixture-only\n"
+    if extra_credential:
+        files["source/conf/credentials.json"] = b"{}"
+    digests = {name: hashlib.sha256(value).hexdigest() for name, value in files.items()}
+    if bad_digest:
+        digests["source/.env"] = "0" * 64
+    manifest = {
+        "contains_secrets": True,
+        "embeds_local_env": True,
+        "files": digests,
+    }
+    with ZipFile(path, "w") as archive:
+        for name, value in files.items():
+            archive.writestr(PREFIX + name, value)
+        archive.writestr(PREFIX + "PACKAGE-MANIFEST.json", json.dumps(manifest))
+
+
+def test_embedded_env_portable_extract_verification(tmp_path: Path):
+    archive = tmp_path / "valid.zip"
+    _fixture_archive(archive)
+    result = verify(archive, extract=True)
+    assert result["ok"] is True
+    assert result["secret_scan"] == "pass"
+    assert result["extraction"] == "pass"
+    assert result["sensitive_cleanup_status"] == "clean"
+
+
+@pytest.mark.parametrize("case", ["missing", "digest", "extra"])
+def test_portable_rejects_incomplete_or_extra_credentials(tmp_path: Path, case: str):
+    archive = tmp_path / f"{case}.zip"
+    _fixture_archive(
+        archive,
+        include_env=case != "missing",
+        bad_digest=case == "digest",
+        extra_credential=case == "extra",
+    )
+    result = verify(archive, extract=True)
+    assert result["ok"] is False
+    assert result["structure"] != "pass" or result["secret_scan"] == "fail"

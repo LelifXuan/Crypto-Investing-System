@@ -17,11 +17,11 @@ export function renderTimeframeFocus(model, timeframe, helpers) {
   const side = String(node.direction || "WAIT").toUpperCase();
   const directional = side === "LONG" || side === "SHORT";
   const tone = side === "LONG" ? "bullish" : side === "SHORT" ? "bearish" : "neutral";
-  const conclusion = side === "LONG" ? "做多" : side === "SHORT" ? "做空" : "等待确认";
+  const conclusion = side === "LONG" ? "偏多" : side === "SHORT" ? "偏空" : "中性，无明确方向";
   const evidence = (Array.isArray(node.evidence) ? node.evidence : [])
     .map((item) => cleanUserText(String(item || "")))
     .filter((item) => item && !item.includes("当前策略状态") && !item.includes("INVALID_PLAN_LEVELS"))
-    .slice(0, 2);
+    .slice(0, 8);
   const score = (value) => Number.isFinite(Number(value)) ? formatNumber(value, 0) : "—";
   const confidence = node.confidence == null ? "—" : `${score(node.confidence)}%`;
   const livePrice = node.current_price ?? model.unified_state?.current_price;

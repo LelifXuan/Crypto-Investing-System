@@ -9,10 +9,6 @@ import {
 } from "../core/dom.js";
 import { mountDropdown } from "../ui/dropdown.js";
 import { renderDisclosureToggle } from "../ui/disclosure.js";
-import { createWorkbenchState } from "../core/workbenchState.js?v=operator-core-1";
-import { mountWorkbenchUrlState } from "../core/workbenchUrlState.js";
-import { mountInspector } from "../ui/inspector.js?v=operator-core-1";
-import { markWorkbenchRelations } from "../ui/semanticMotion.js?v=operator-core-1";
 
 let autoSyncedEvents = false;
 let translationPollTimer = null;
@@ -30,105 +26,6 @@ let currentCalendarFilter = "all";
 let isSupplyCalendarCollapsed = true;
 // 竞态防护:进行中的 load 请求统一走一个 AbortController。
 let loadController = null;
-let workbenchState = null;
-let workbenchUrl = null;
-let workbenchUnsubscribe = null;
-let workbenchInteractionController = null;
-let inspector = null;
-let workbenchFocusTimer = null;
-const inspectionRegistry = new Map();
-
-function restoreEventsWorkbenchFocus() {
-  if (workbenchFocusTimer) window.clearTimeout(workbenchFocusTimer);
-  workbenchFocusTimer = window.setTimeout(() => {
-    workbenchFocusTimer = null;
-    const target = document.getElementById("events-refresh");
-    if (target?.isConnected && !target.disabled) target.focus({ preventScroll: true });
-  }, 0);
-}
-
-function inspectionAttrs(item) {
-  if (!item?.id) return "";
-  inspectionRegistry.set(item.id, item);
-  return `data-workbench-id="${escapeHtml(item.id)}" data-workbench-selectable tabindex="0" role="button" aria-label="查看 ${escapeHtml(item.title)} 的上下文"`;
-}
-
-function buildEventInspection(item, relatedIds = []) {
-  if (!item?.event_id) return null;
-  const id = `events:item:${item.event_id}`;
-  return {
-    id,
-    type: "market-event",
-    title: item.title || "未命名事件",
-    current: item.sentiment_label || item.impact_label ? { label: "影响", value: item.sentiment_label || item.impact_label } : null,
-    interpretation: item.summary || "",
-    evidence: item.instrument_ids?.length ? [{
-      id: `${id}:related`,
-      label: "关联品种",
-      value: item.instrument_ids.join(" · "),
-      relatedIds,
-    }] : [],
-    sources: item.source ? [{
-      name: item.source,
-      status: ["live", "stale", "degraded", "unavailable"].includes(item.source_status) ? item.source_status : "unavailable",
-      updatedAt: item.ts_event || null,
-    }] : [],
-    updatedAt: item.ts_event || null,
-    relatedIds,
-  };
-}
-
-function ensureEventsWorkbench(root) {
-  if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "market-events" });
-  inspector?.destroy();
-  inspector = mountInspector(root.querySelector("#events-inspector"), {
-    state: workbenchState,
-    returnFocus: () => root.querySelector("#events-refresh"),
-  });
-  workbenchInteractionController?.abort();
-  workbenchInteractionController = new AbortController();
-  const signal = workbenchInteractionController.signal;
-  const selectable = (target) => target instanceof Element ? target.closest("[data-workbench-selectable]") : null;
-  root.addEventListener("pointerover", (event) => {
-    const element = selectable(event.target);
-    const item = element && inspectionRegistry.get(element.dataset.workbenchId);
-    if (item) workbenchState.preview(item);
-  }, { signal });
-  root.addEventListener("pointerout", (event) => {
-    const element = selectable(event.target);
-    if (element && !element.contains(event.relatedTarget)) workbenchState.clearPreview();
-  }, { signal });
-  root.addEventListener("focusin", (event) => {
-    const element = selectable(event.target);
-    const item = element && inspectionRegistry.get(element.dataset.workbenchId);
-    if (item) workbenchState.preview(item);
-  }, { signal });
-  root.addEventListener("focusout", (event) => {
-    const element = selectable(event.target);
-    if (element && !element.contains(event.relatedTarget)) workbenchState.clearPreview();
-  }, { signal });
-  root.addEventListener("click", (event) => {
-    const element = selectable(event.target);
-    if (!element) return;
-    // Don't intercept event-freeze button — let its own handler run.
-    if (event.target.closest("[data-event-freeze]")) return;
-    const item = inspectionRegistry.get(element.dataset.workbenchId);
-    if (item) workbenchState.select(item, { trigger: element });
-  }, { signal });
-  root.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const element = selectable(event.target);
-    if (!element) return;
-    if (event.target.closest("[data-event-freeze]")) return;
-    event.preventDefault();
-    const item = inspectionRegistry.get(element.dataset.workbenchId);
-    if (item) workbenchState.select(item, { trigger: element });
-  }, { signal });
-  workbenchUnsubscribe?.();
-  workbenchUnsubscribe = workbenchState.subscribe((snapshot) => {
-    markWorkbenchRelations(root, snapshot);
-  });
-}
 
 const SUPPLY_FILTER_LABELS = {
   all: "全部解锁节点",
@@ -207,14 +104,6 @@ function translationChipMarkup(payload, item) {
 }
 
 function renderEventFeed(items) {
-  const idsByCategory = new Map();
-  items.forEach((item) => {
-    if (!item?.event_id) return;
-    const category = eventCategoryKey(item.category);
-    const ids = idsByCategory.get(category) || [];
-    ids.push(`events:item:${item.event_id}`);
-    idsByCategory.set(category, ids);
-  });
   const cards = items.length
     ? items
         .map((item) => {
@@ -236,13 +125,8 @@ function renderEventFeed(items) {
           const freezeBtn = isFrozen
             ? `<button class="event-freeze-btn is-frozen" data-event-freeze="${item.event_id}" title="解冻事件">🔒</button>`
             : `<button class="event-freeze-btn" data-event-freeze="${item.event_id}" title="冻结事件（防止管道覆盖）">🔓</button>`;
-          const categoryIds = idsByCategory.get(eventCategoryKey(item.category)) || [];
-          const inspection = buildEventInspection(
-            item,
-            categoryIds.filter((id) => id !== `events:item:${item.event_id}`),
-          );
           return `
-            <article class="event-card event-feed-item${frozenClass}" data-event-id="${item.event_id}"${inspection ? ` ${inspectionAttrs(inspection)}` : ""}>
+            <article class="event-card event-feed-item${frozenClass}" data-event-id="${escapeHtml(item.event_id || "")}">
               <div class="event-feed-meta">
                 <div class="event-feed-tags">
                   <span class="status-chip" data-event-category="${eventCategoryKey(item.category)}">${escapeHtml(eventCategoryLabel(item.category))}</span>
@@ -257,6 +141,7 @@ function renderEventFeed(items) {
               </div>
               <strong>${escapeHtml(text(title, "-"))}</strong>
               ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
+              ${item.instrument_ids?.length ? `<small class="event-feed-related">关联品种：${escapeHtml(item.instrument_ids.join(" · "))}</small>` : ""}
             </article>
           `;
         })
@@ -601,13 +486,10 @@ async function ensureCalendar(force = false, signal) {
 }
 
 export async function renderMarketEvents({ commands } = {}) {
-  if (!workbenchState) workbenchState = createWorkbenchState({ scopeId: "market-events" });
-  workbenchUrl = mountWorkbenchUrlState(workbenchState, inspectionRegistry, { fallbackId: "events-refresh" });
   const pageLifetime = new AbortController();
   let refreshInFlight = false;
   commands?.register({ id: "events:refresh", label: "刷新市场信息流", enabled: () => !refreshInFlight, run: refreshEvents });
   commands?.register({ id: "events:focus-feed", label: "聚焦事件列表", run: () => { const feed = document.getElementById("events-feed"); feed?.setAttribute("tabindex", "-1"); feed?.focus(); } });
-  commands?.register({ id: "events:close-inspector", label: "关闭当前 Inspector", enabled: () => Boolean(workbenchState?.getSnapshot().selection), run: () => workbenchState.clearSelection() });
   stopTranslationPolling();
   abortInFlightLoad();
   // The page DOM is rebuilt on every SPA entry, while module-level fingerprints
@@ -620,9 +502,8 @@ export async function renderMarketEvents({ commands } = {}) {
     <!-- The feed-card header owns translate + refresh. Keep this anchor empty
          until showContinueTranslationButton() inserts the retry control. -->
     <div class="events-actions-bar"></div>
-    <div class="workbench-page-layout events-workbench-layout">
+    <div class="events-workbench-layout">
       <section class="events-feed-shell" id="events-feed" aria-busy="true">${renderEventFeedLoading()}</section>
-      <aside class="workbench-inspector" id="events-inspector" hidden></aside>
     </div>
   `);
 
@@ -658,17 +539,7 @@ export async function renderMarketEvents({ commands } = {}) {
         (left, right) =>
           new Date(right.ts_event || 0).getTime() - new Date(left.ts_event || 0).getTime(),
       );
-      const selectedId = workbenchState?.getSnapshot().selection?.id || null;
-      inspectionRegistry.clear();
       document.getElementById("events-feed").innerHTML = renderEventFeed(orderedItemsCache);
-      if (selectedId) {
-        const updated = inspectionRegistry.get(selectedId);
-        if (updated) workbenchState.select(updated, { trigger: document.querySelector(`[data-workbench-id="${CSS.escape(selectedId)}"]`) });
-        else {
-          workbenchState.clearSelection({ restoreFocus: false });
-          restoreEventsWorkbenchFocus();
-        }
-      }
       revealStagger(document.getElementById("events-feed"), { selector: ".event-card" });
     }
 
@@ -682,7 +553,6 @@ export async function renderMarketEvents({ commands } = {}) {
       calendarRoot.innerHTML = renderSupplyCalendarCard(calendarItems, calendarCoverage, currentCalendarFilter);
       bindSupplyCalendarControls(calendarRoot, calendarItems, calendarCoverage);
     }
-    workbenchUrl?.dataReady();
     renderStatus("数据已就绪", "success");
     return orderedItemsCache;
   }
@@ -692,26 +562,15 @@ export async function renderMarketEvents({ commands } = {}) {
     const signal = loadController?.signal;
     if (force) invalidateCache("/marketevents");
     const response = await api.getMarketEvents(50, appState.translateEvents, { force, signal });
-    if (signal?.aborted || !workbenchState) return;
+    if (signal?.aborted) return;
     const items = response.items || response || [];
     lastFeedFingerprint = fingerprintFeed(items);
     orderedItemsCache = [...items].sort(
       (left, right) =>
         new Date(right.ts_event || 0).getTime() - new Date(left.ts_event || 0).getTime(),
     );
-    const selectedId = workbenchState?.getSnapshot().selection?.id || null;
-    inspectionRegistry.clear();
     document.getElementById("events-feed").innerHTML = renderEventFeed(orderedItemsCache);
-    if (selectedId) {
-      const updated = inspectionRegistry.get(selectedId);
-      if (updated) workbenchState.select(updated, { trigger: document.querySelector(`[data-workbench-id="${CSS.escape(selectedId)}"]`) });
-      else {
-        workbenchState.clearSelection({ restoreFocus: false });
-        restoreEventsWorkbenchFocus();
-      }
-    }
     revealStagger(document.getElementById("events-feed"), { selector: ".event-card" });
-    workbenchUrl?.dataReady();
     renderStatus("数据已就绪", "success");
   }
 
@@ -858,33 +717,18 @@ export async function renderMarketEvents({ commands } = {}) {
 
   const loadPromise = load().catch((error) => {
     if (error?.name === "AbortError") return; // 页面切换/卸载,静默。
-    workbenchUrl?.dataReady();
     console.error("market-events:initial-load:error", error);
     const feed = document.getElementById("events-feed");
     if (feed) feed.innerHTML = '<div class="compact-empty">信息流暂时无法连接，请稍后刷新。</div>';
   }).finally(() => {
     setFeedBusy(false);
   });
-  ensureEventsWorkbench(document);
   return {
     async unmount() {
       pageLifetime.abort();
       stopTranslationPolling();
       abortInFlightLoad();
       void loadPromise.catch(() => null);
-      workbenchUnsubscribe?.();
-      workbenchUnsubscribe = null;
-      workbenchInteractionController?.abort();
-      workbenchInteractionController = null;
-      inspector?.destroy();
-      inspector = null;
-      workbenchUrl?.destroy();
-      workbenchUrl = null;
-      workbenchState?.destroy();
-      workbenchState = null;
-      if (workbenchFocusTimer) window.clearTimeout(workbenchFocusTimer);
-      workbenchFocusTimer = null;
-      inspectionRegistry.clear();
     },
     async pause() {
       // 页面隐藏:停轮询并中止在途请求,避免后台空转。

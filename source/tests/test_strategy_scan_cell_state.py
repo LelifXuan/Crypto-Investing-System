@@ -119,7 +119,7 @@ def test_missing_warming_error_share_the_same_visible_label():
     assert labels == {"数据准备中"}, f"data states must share one word, got {labels}"
 
 
-def test_cells_without_current_permission_stay_closed():
+def test_unpublished_cells_stay_closed():
     assert _cell_state(_fresh(cache_state="missing"))["clickable"] is False
     assert _cell_state(_fresh(cache_state="warming"))["clickable"] is False
     assert _cell_state(_fresh(cache_state="error"))["clickable"] is False
@@ -139,7 +139,7 @@ def test_rejected_directional_cell_is_not_listed_as_an_opportunity():
     assert state["direction"] == ""
     assert state["label"] == "无机会"
     assert state["tone"] == "neutral"
-    assert state["clickable"] is False
+    assert state["clickable"] is True
     assert "盈亏比不足" in state["tooltip"]
 
 

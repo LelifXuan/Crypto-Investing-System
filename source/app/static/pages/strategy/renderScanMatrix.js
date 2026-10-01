@@ -8,7 +8,6 @@ const TIMEFRAME_LABELS = { "1w": "周线", "1d": "日线", "4h": "4H" };
 // stale last-known-good remains in storage but is not a current opportunity.
 const DATA_PENDING_STATES = ["missing", "warming", "error", "unknown"];
 const DATA_STALE_STATE = "stale";
-const DATA_CLOSED_STATES = ["missing", "warming", "error", "unknown"];
 const DATA_PENDING_LABEL = "数据准备中";
 const DATA_STALE_LABEL = "数据更新中";
 const DATA_PENDING_HINT = {
@@ -79,7 +78,7 @@ export function cellState(item) {
       direction: "",
       directionKey: "",
       tone: "neutral",
-      clickable: !DATA_CLOSED_STATES.includes(cacheState),
+      clickable: false,
       tooltip: `${pendingHint}${gateText ? `（${gateText}）` : ""}。${DATA_PENDING_TOOLTIP}`,
     };
   }
@@ -103,8 +102,8 @@ export function cellState(item) {
     };
   }
 
-  // A directional research result without executable levels remains a
-  // rejected scan cell. It cannot open a trade drawer.
+  // A rejected scan cell remains neutral and absent from the ranked trade
+  // list, but its published decision can still be inspected in the drawer.
   if (item.qualified !== true || !directional) {
     return {
       kind: "idle",
@@ -112,10 +111,10 @@ export function cellState(item) {
       direction: "",
       directionKey: "",
       tone: "neutral",
-      clickable: false,
+      clickable: true,
       tooltip: gateText
-        ? `本周期未形成完整交易计划：${gateText}`
-        : "数据已就绪，本周期没有通过完整交易门禁的机会",
+        ? `本周期未形成完整交易计划：${gateText}。点击查看判断依据`
+        : "数据已就绪，本周期没有通过完整交易门禁的机会；点击查看判断依据",
     };
   }
   return {
@@ -175,7 +174,7 @@ export function renderScanMatrix(matrix, instruments, onSelect) {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p class="scan-matrix-hint">每格是一个独立交易级别；仅已形成完整价位与风险计划的机会可打开。周线用日线、日线用 4H、4H 用 1H 确定执行。</p>
+    <p class="scan-matrix-hint">每格是一个独立交易级别；已计算的“无机会”也可点开查看判定依据，但不进入交易机会排序。周线用日线、日线用 4H、4H 用 1H 确定执行。</p>
   `;
 }
 

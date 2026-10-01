@@ -11,16 +11,49 @@ from test_workbench_browser_contract import BASE_URL, _json, capture_workbench
 
 def install_strategy_fixture(page, calls=None):
     calls = [] if calls is None else calls
+    snapshot_key = "operator-fixture:btc-usdt-perp"
 
     def fixture(route):
         url = route.request.url
         if "/strategy/scan" in url:
             calls.append(url)
-            _json(route, {"matrix": [], "ranked": [], "cache_meta": {"source": "cache"}})
+            _json(route, {
+                "matrix": [{
+                    "instrument_id": "btc-usdt-perp",
+                    "instrument_code": "BTC",
+                    "timeframe": "1w",
+                    "cache_state": "fresh",
+                    "qualified": False,
+                    "direction": "WAIT",
+                    "qualification_reasons": ["NO_DIRECTION"],
+                    "source_snapshot_key": snapshot_key,
+                }],
+                "ranked": [],
+                "cache_meta": {"source": "cache"},
+            })
         elif "/strategy/prewarm" in url:
             _json(route, {"status": "queued"})
         elif "/strategy/unified" in url:
-            _json(route, {"system_availability": "unavailable", "cache_state": "missing"})
+            _json(route, {
+                "snapshot_key": snapshot_key,
+                "cache_state": "fresh",
+                "status": "ready",
+                "timeframe_stack": [{
+                    "timeframe": "1w", "direction": "NEUTRAL",
+                    "long_score": 52, "short_score": 50,
+                    "evidence": ["多空分差不足，当前没有交易方向。"],
+                }],
+                "opportunity_decisions": {"1w": {
+                    "opportunity_id": "btc-usdt-perp:1w",
+                    "trade_timeframe": "1w",
+                    "execution_timeframe": "1d",
+                    "side": "NONE",
+                    "status": "NO_DIRECTION",
+                    "permission": "observe",
+                    "primary_reason": {"message": "周线暂无明确方向。"},
+                    "setup_evidence": ["多空分差不足，当前没有交易方向。"],
+                }},
+            })
         else:
             fixture_api(route)
 
@@ -66,9 +99,10 @@ def test_strategy_commands_focus_refresh_detail_and_scope(width, height):
         command("刷新策略扫描")
         expect(page.locator(".scan-cell-btn").first).to_be_visible()
         assert len(calls) == count + 1
-        page.locator(".scan-cell-btn").first.click()
+        page.locator('.scan-cell-btn[data-instrument="btc-usdt-perp"][data-timeframe="1w"]').click()
         detail = page.locator("#strategy-detail-panel")
         expect(detail).to_be_visible()
+        expect(page.locator("#strategy-detail-title")).to_contain_text("无交易机会")
         expect(detail).to_have_attribute("role", "dialog")
         expect(detail).to_have_attribute("aria-modal", "true")
         page.keyboard.press("Control+k")

@@ -1,5 +1,7 @@
 # CIS P0/P1 Fix Register
 
+> **2026-09-30 后续所有者决定**：下文 P0-SEC-001 的“默认无 `.env` + 显式开关”仅保留为当轮历史记录。当前内部 portable 每次构建都要求完整、非空的 `source/.env`，并由校验器核对归档摘要及解压结果；其它文件的凭证门禁继续生效。
+
 > 每项关闭时回填 Evidence 区块。状态枚举：`OPEN → IN_PROGRESS → FIXED(验证通过) / DEFERRED`。
 > 禁止把未经验证的问题升级进本表；P2 项只在 §2 登记 DEFERRED。
 

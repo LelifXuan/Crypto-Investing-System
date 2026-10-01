@@ -5170,6 +5170,24 @@ button:hover,
   padding: 16px 18px;
 }
 
+/* The feed card is the complete event view; frozen is a state, not a
+   different hover treatment. Keep every card on the same surface ladder. */
+body[data-page="market-events"] .event-feed-item,
+body[data-page="market-events"] .event-feed-item.is-frozen {
+  background: var(--surface-glass);
+  border-color: var(--border-glass);
+  box-shadow: var(--shadow-button);
+}
+@media (hover: hover) and (pointer: fine) {
+  body[data-page="market-events"] .event-feed-item:hover,
+  body[data-page="market-events"] .event-feed-item.is-frozen:hover {
+    background: var(--surface-glass-strong);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
+}
+
 .event-feed-meta,
 .event-feed-tags {
   display: flex;
@@ -5202,6 +5220,14 @@ button:hover,
 .event-feed-item p {
   font-size: 14px;
   line-height: 1.65;
+  display: block;
+  overflow: visible;
+}
+
+.event-feed-related {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .knowledge-section-card {
@@ -11364,6 +11390,12 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
   color: var(--muted);
 }
 
+.scan-cell-wait .scan-cell-btn:hover,
+.scan-cell-wait .scan-cell-btn:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .scan-cell-unqualified .scan-cell-btn {
   border: 1px dashed var(--border-light);
 }
@@ -11630,6 +11662,19 @@ body[data-page="btc-derivatives"] .btc-chart-toolbar .dropdown {
 .strategy-timeframe-focus-metrics span { font-size: 0.78rem; color: var(--muted); }
 .strategy-timeframe-focus-metrics strong { margin-top: 5px; }
 .strategy-timeframe-focus-evidence { margin: 16px 0 0; padding-left: 20px; color: var(--muted); }
+
+.strategy-period-gate {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+
+.strategy-period-gate span,
+.strategy-period-gate small { color: var(--muted); }
 @media (max-width: 1180px) {
   .strategy-timeframe-focus-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .strategy-timeframe-focus-head { flex-direction: column; }

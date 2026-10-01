@@ -68,6 +68,7 @@ def _cached_row(*, stale=False):
                     "direction": "LONG",
                     "cache_state": "fresh",
                     "qualified": True,
+                    "source_snapshot_key": "btc-usdt-perp:published",
                 }
             ],
             "ranked": [{"instrument_id": "btc-usdt-perp"}],
@@ -112,6 +113,18 @@ def test_cached_read_is_read_only(monkeypatch):
         response = client.get("/api/v1/strategy/scan")
     assert response.status_code == 200
     assert response.json()["cache_meta"]["source"] == "cache"
+
+
+def test_legacy_qualified_scan_without_snapshot_identity_is_not_tradeable(monkeypatch):
+    cache = _cached_row()
+    del cache.payload_json["matrix"][0]["source_snapshot_key"]
+    app = _app(monkeypatch, cache=cache)
+    with TestClient(app) as client:
+        response = client.get("/api/v1/strategy/scan")
+    body = response.json()
+    assert body["cache_meta"]["source"] == "stale_revalidating"
+    assert body["matrix"][0]["qualified"] is False
+    assert body["ranked"] == []
 
 
 def test_stale_read_keeps_last_known_good_but_disables_signal(monkeypatch):

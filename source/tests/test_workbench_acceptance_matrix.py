@@ -20,7 +20,6 @@ VIEWPORTS = [
 PAGES = [
     ("monitoring", "monitoring-page", ".macro-layer-card", "#monitoring-inspector"),
     ("btc", "btc-derivatives-page", "#btc-open-summary-evidence", "#btc-workbench-inspector"),
-    ("events", "market-events-page", ".event-card[data-workbench-selectable]", "#events-inspector"),
     ("macro", "macro-calendar-page", "tr[data-workbench-selectable]", "#macro-inspector"),
 ]
 
@@ -45,7 +44,17 @@ def four_page_fixture(route):
                     "ts_event": "2026-08-29T02:00:00Z",
                     "payload_json": {},
                     "instrument_ids": ["btc-usdt-perp"],
-                }
+                },
+                {
+                    "event_id": "acceptance-frozen-event",
+                    "category": "exchange",
+                    "title": "已冻结的交易所事件",
+                    "summary": "冻结状态仍使用一致的 hover 反馈。",
+                    "source": "fixture",
+                    "ts_event": "2026-08-29T01:00:00Z",
+                    "payload_json": {},
+                    "is_frozen": True,
+                },
             ],
         )
     elif "/macro/calendar" in url:
@@ -117,6 +126,32 @@ def test_four_page_viewports_and_layer_states(
         assert page.evaluate("document.body.style.overflow") != "hidden"
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
         assert not problems
+        browser.close()
+
+
+@pytest.mark.parametrize("width", [2560, 390])
+def test_market_events_feed_uses_full_width_and_uniform_hover(width):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": 1440})
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.route("**/api/v1/**", four_page_fixture)
+        page.goto(f"{BASE_URL}/market-events-page")
+        cards = page.locator(".event-feed-item")
+        cards.first.wait_for()
+        assert cards.count() == 2
+        assert page.locator("#events-inspector").count() == 0
+        assert page.locator(".event-feed-related").count() == 1
+        feed = page.locator(".events-feed-shell").bounding_box()
+        layout = page.locator(".events-workbench-layout").bounding_box()
+        assert feed and layout and feed["width"] >= layout["width"] - 2
+        colors = []
+        for card in (cards.first, cards.nth(1)):
+            card.hover()
+            colors.append(card.evaluate("el => getComputedStyle(el).backgroundColor"))
+        assert colors[0] == colors[1]
+        assert not errors
         browser.close()
 
 

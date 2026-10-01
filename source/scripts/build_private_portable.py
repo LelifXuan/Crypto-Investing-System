@@ -1,15 +1,10 @@
 """Build the portable application bundle from the workspace.
 
-Default behavior: the bundle ships application code plus the embedded Windows
-runtime and no credentials — ``source/.env`` is neither required nor included.
-For owner-authorized internal distributions the operator may pass
-``--embed-local-env`` to embed the local ``source/.env`` byte-for-byte (the
-keys are operator-created for this distribution by explicit owner decision,
-2026-09-30); the secret gate then exempts exactly that one file and still
-scans everything else. In both modes the archive is re-opened after writing
-and scanned: credential-like filenames or non-placeholder sensitive
-assignments fail the build and delete the artifact. Gate messages name the
-file, line, and variable only; secret values are never printed.
+Every private portable bundle includes the operator-created ``source/.env``
+byte-for-byte. Missing configuration fails the build. The secret gate exempts
+exactly that path and still scans every other file before and after writing
+the archive. Gate messages name the file, line, and variable only; secret
+values are never printed.
 
 Runtime caches are excluded by path, not by the word 'cache', because
 app/cache is application source.
@@ -146,9 +141,8 @@ def _should_content_scan(name: str) -> bool:
 def collect_secret_violations(names, read_text, allowed_names=None) -> list[str]:
     """Collect gate violations for *names*; values are never included.
 
-    ``allowed_names`` is the explicit owner-authorization escape hatch
-    (``--embed-local-env``): exactly those paths are exempt from the filename
-    gate and the content scan; everything else still fails the build.
+    ``allowed_names`` exempts the owner-authorized ``source/.env`` by exact
+    archive path. Every other file remains subject to the gate.
     """
     allowed = set(allowed_names or ())
     violations: list[str] = []
@@ -203,11 +197,10 @@ NOTES = """# CIS UI 2.0 — {delivery}（内部便携包）
 完整解压后双击 start.bat，访问 http://127.0.0.1:8002/monitoring-page。
 按 Ctrl+C 停止服务。不要直接从压缩包内部启动。
 
-不含历史数据库、运行缓存、日志、验收截图，也不含任何密钥或凭证；
+不含历史数据库、运行缓存、日志、验收截图；
 app/cache 是业务源码，已保留。
 启动器将运行目录与数据库限定在当前解压目录。没有历史数据时显示构建中或降级状态。
-需要第三方数据源时，请自行复制 source/.env.example 为 source/.env 并填写密钥；
-禁止把真实密钥放回交付目录后重新打包。
+source/.env 按所有者要求原样内嵌，接收方无需另行填写密钥。
 本包不代表外部数据源可用性认证。
 正式 Workbench 页面：{workbench_pages}；不是完整 P2 页面迁移交付。
 旧版本首次升级后请 Ctrl+Shift+R 一次；之后 HTML 与子模块自动协商缓存更新。
@@ -243,17 +236,25 @@ if not exist "runtime_python\python.exe" (
 )
 "runtime_python\python.exe" -c "import fastapi,sqlalchemy,uvicorn,httpx"
 if errorlevel 1 exit /b 1
-echo PORTABLE PACKAGE - NO CREDENTIALS INCLUDED
-if not exist ".env" echo [NOTICE] No source\.env found: key-backed sources will run degraded. """
-    r"""Copy .env.example to .env and fill in your own keys.
+if not exist ".env" (
+  echo [ERROR] Missing embedded source\.env: this bundle is incomplete.
+  pause
+  exit /b 1
+)
+echo PORTABLE PACKAGE V2.3.1 - CONFIGURATION EMBEDDED
+"""
+    r"""
 "runtime_python\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 pause
 """
 )
 
 
-def build(root: Path, destination: Path, *, embed_local_env: bool = False) -> dict:
+def build(root: Path, destination: Path) -> dict:
     root = root.resolve()
+    env_path = root / "source/.env"
+    if not env_path.is_file() or env_path.stat().st_size == 0:
+        raise RuntimeError("Missing non-empty source/.env required for private portable build")
     runtime = root / "source/runtime_python"
     if not (runtime / "python.exe").is_file():
         raise RuntimeError("Missing embedded Python runtime (source/runtime_python)")
@@ -273,15 +274,10 @@ def build(root: Path, destination: Path, *, embed_local_env: bool = False) -> di
         if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts:
             if path.suffix not in {".pyc", ".pyo", ".log"}:
                 files[path.relative_to(root).as_posix()] = path
-    # Owner-authorized opt-in (2026-09-30): embed the operator-created local
-    # .env into this internal distribution. The file is exempted from the
-    # secret gate below by exact path; every other file still gets scanned.
-    allowed_names = {"source/.env"} if embed_local_env else None
-    if embed_local_env:
-        env_path = root / "source/.env"
-        if not env_path.is_file():
-            raise RuntimeError("--embed-local-env requested but source/.env is missing")
-        files["source/.env"] = env_path
+    # Owner policy: every private portable contains this exact local config.
+    # Keep the exemption path-scoped so other credential files still fail.
+    files["source/.env"] = env_path
+    allowed_names = {"source/.env"}
     extras = {
         "start.bat": START.replace("\n", "\r\n").encode("ascii"),
     }
@@ -299,19 +295,22 @@ def build(root: Path, destination: Path, *, embed_local_env: bool = False) -> di
     )
     manifest = {
         "kind": "private-windows-portable",
-        "contains_secrets": bool(embed_local_env),
-        "embeds_local_env": bool(embed_local_env),
+        "contains_secrets": True,
+        "embeds_local_env": True,
         "secret_gate": "fail-closed scan before and after archive write",
         "encrypted": False,
-        "delivery": "P1 Frozen + P2 Operator Core + Analysis/Structure Migration",
+        "delivery": "V2.3.1 / P1 Frozen + P2 Operator Core + Analysis/Structure Migration",
         "application_version": tomllib.loads(
             (root / "source/pyproject.toml").read_text(encoding="utf-8")
         )["project"]["version"],
-        "ui_release": "V2.3",
+        "ui_release": "V2.3.1",
         "workbench_pages": ["Monitoring", "BTC", "Events", "Macro", "Analysis", "Structure"],
         "stage_acceptance": {
-            "H0": "PASS / FROZEN", "H1": "PASS / FROZEN", "H2": "PASS / FROZEN",
-            "H3": "PASS / FROZEN", "H4": "PASS / FROZEN",
+            "H0": "PASS / FROZEN",
+            "H1": "PASS / FROZEN",
+            "H2": "PASS / FROZEN",
+            "H3": "PASS / FROZEN",
+            "H4": "PASS / FROZEN",
         },
         "acceptance_record": "docs/ui2-page-migration-acceptance.md",
         "strategy": "ADR 0023: existing Detail Panel plus four commands; no Inspector",
@@ -350,11 +349,10 @@ def build(root: Path, destination: Path, *, embed_local_env: bool = False) -> di
         for name, digest in manifest["files"].items():
             assert hashlib.sha256(archive.read(PREFIX + name)).hexdigest() == digest
         assert PREFIX + "source/app/cache/market_cache.py" in archive.namelist()
-        if embed_local_env:
-            assert archive.read(PREFIX + "source/.env") == (root / "source/.env").read_bytes()
+        assert archive.read(PREFIX + "source/.env") == env_path.read_bytes()
         # Gate 2: post-write rescan of the real archive manifest.
         staged = [
-            name[len(PREFIX):]
+            name[len(PREFIX) :]
             for name in archive.namelist()
             if name != PREFIX + "PACKAGE-MANIFEST.json"
         ]
@@ -382,22 +380,12 @@ def build(root: Path, destination: Path, *, embed_local_env: bool = False) -> di
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument(
-        "--embed-local-env",
-        action="store_true",
-        help=(
-            "Owner-authorized internal distributions only: embed the local "
-            "source/.env (keys created by the operator for this distribution). "
-            "Default: the package contains no .env."
-        ),
-    )
     args = parser.parse_args()
     print(
         json.dumps(
             build(
                 Path(__file__).resolve().parents[2],
                 args.output,
-                embed_local_env=args.embed_local_env,
             ),
             ensure_ascii=False,
         )

@@ -189,12 +189,12 @@ STRESS_PAGES = {
     },
     "market-events": {
         "route": "/market-events-page",
-        "description": "市场事件 — 快速选择事件与 Inspector 生命周期",
+        "description": "市场事件 — 信息流刷新与翻译切换",
         "actions": [
             {
-                "type": "workbench-selectables",
-                "selector": ".event-card[data-workbench-selectable]",
-                "label": "event-selection",
+                "type": "buttons",
+                "selector": "#events-refresh, #events-translate-toggle",
+                "label": "event-feed-actions",
             },
         ],
         "expected_canvas": False,

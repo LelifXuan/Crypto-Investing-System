@@ -76,7 +76,6 @@ def test_url_restore_preview_popstate_and_invalid() -> None:
     "route_path,object_id,selector",
     [
         ("btc-derivatives-page", "btc:metric:funding", "#btc-workbench-inspector"),
-        ("market-events-page", "events:item:url-event", "#events-inspector"),
         ("macro-calendar-page", "macro:day:current", "#macro-inspector"),
     ],
 )

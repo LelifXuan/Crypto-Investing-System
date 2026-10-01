@@ -2,10 +2,11 @@
 
 Checks (fail-closed):
 1. the archive opens and PACKAGE-MANIFEST.json parses;
-2. the secret gate runs over the full archive manifest (credential-like
-   filenames + non-placeholder sensitive assignments in config-surface files);
-3. structure: start.bat, embedded runtime, app entry, PACKAGE-README exist;
-4. optional ``--extract``: unpacks to a temp dir (try/verify/finally), checks
+2. the archive contains a non-empty source/.env matching its manifest digest;
+3. the secret gate scans every other file (credential-like filenames and
+   non-placeholder sensitive assignments in config-surface files);
+4. structure: start.bat, embedded runtime, app entry, PACKAGE-README exist;
+5. optional ``--extract``: unpacks to a temp dir (try/verify/finally), checks
    the key files on disk, and ALWAYS cleans up. Cleanup failure is reported as
    ``sensitive_cleanup_status = "failed"`` instead of being swallowed.
 
@@ -41,16 +42,17 @@ REQUIRED_MEMBERS = (
     "start.bat",
     "source/app/main.py",
     "source/runtime_python/python.exe",
+    "source/.env",
     "PACKAGE-README.md",
     "PACKAGE-MANIFEST.json",
 )
 
 
 def _strip_prefix(name: str) -> str:
-    return name[len(PREFIX):] if name.startswith(PREFIX) else name
+    return name[len(PREFIX) :] if name.startswith(PREFIX) else name
 
 
-def verify(archive_path: Path, extract: bool, allow_embedded_env: bool = False) -> dict:
+def verify(archive_path: Path, extract: bool) -> dict:
     result: dict = {
         "archive": str(archive_path),
         "secret_scan": "not_run",
@@ -70,28 +72,32 @@ def verify(archive_path: Path, extract: bool, allow_embedded_env: bool = False) 
             (name for name in members.values() if name == "PACKAGE-MANIFEST.json"), None
         )
         try:
-            json.loads(archive.read(PREFIX + "PACKAGE-MANIFEST.json").decode("utf-8"))
+            manifest = json.loads(archive.read(PREFIX + "PACKAGE-MANIFEST.json").decode("utf-8"))
             result["manifest_parse"] = "pass"
         except (KeyError, ValueError) as error:
             result["manifest_parse"] = f"fail: {type(error).__name__}"
             return result
 
-        # --allow-embedded-env mirrors the builder's owner-authorized
-        # --embed-local-env opt-in: exactly source/.env is exempt; the manifest
-        # must honestly declare the embedding.
-        allowed = {"source/.env"} if allow_embedded_env else None
+        # The operator requires the complete local config in every private
+        # portable. Check the archived bytes against the builder's manifest.
+        env_name = PREFIX + "source/.env"
+        if not manifest.get("embeds_local_env") or not manifest.get("contains_secrets"):
+            result["structure"] = "fail: manifest does not declare embedded source/.env"
+            return result
+        if env_name not in archive.namelist():
+            result["structure"] = "fail: embedded source/.env missing"
+            return result
+        env_bytes = archive.read(env_name)
+        expected_env_hash = (manifest.get("files") or {}).get("source/.env")
+        if not env_bytes or hashlib.sha256(env_bytes).hexdigest() != expected_env_hash:
+            result["structure"] = "fail: embedded source/.env is empty or differs from manifest"
+            return result
+        allowed = {"source/.env"}
         violations = collect_secret_violations(
             (name for name in members.values() if name != manifest_name),
             lambda name: archive.read(PREFIX + name).decode("utf-8", errors="ignore"),
             allowed_names=allowed,
         )
-        if allow_embedded_env:
-            manifest = json.loads(archive.read(PREFIX + "PACKAGE-MANIFEST.json"))
-            if not manifest.get("embeds_local_env"):
-                violations.append(
-                    "source/.env embedded without PACKAGE-MANIFEST.json "
-                    "declaring embeds_local_env=true"
-                )
         result["violations"] = violations
         result["secret_scan"] = "fail" if violations else "pass"
         if violations:
@@ -110,15 +116,12 @@ def verify(archive_path: Path, extract: bool, allow_embedded_env: bool = False) 
         tmp = Path(tempfile.mkdtemp(prefix="cis_portable_verify_"))
         try:
             archive.extractall(tmp)
-            flat = {
-                path.relative_to(tmp).as_posix()
-                for path in tmp.rglob("*")
-                if path.is_file()
-            }
+            flat = {path.relative_to(tmp).as_posix() for path in tmp.rglob("*") if path.is_file()}
             credential_files = sorted(
                 name
                 for name in flat
                 if credential_filename_violation(name)
+                and name != env_name
                 and not _runtime_public_artifact(name)
             )
             if credential_files:
@@ -141,6 +144,7 @@ def verify(archive_path: Path, extract: bool, allow_embedded_env: bool = False) 
                 result["sensitive_cleanup_status"] = "clean"
             except OSError:
                 result["sensitive_cleanup_status"] = "failed"
+                result["ok"] = False
     return result
 
 
@@ -148,13 +152,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--extract", action="store_true", help="verify on-disk layout")
-    parser.add_argument(
-        "--allow-embedded-env",
-        action="store_true",
-        help="owner-authorized packages built with --embed-local-env",
-    )
     args = parser.parse_args()
-    result = verify(args.archive, extract=args.extract, allow_embedded_env=args.allow_embedded_env)
+    result = verify(args.archive, extract=args.extract)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["ok"] else 1
 

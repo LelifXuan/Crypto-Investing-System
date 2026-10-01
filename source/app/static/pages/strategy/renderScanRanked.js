@@ -93,7 +93,7 @@ export function renderScanRanked(ranked, hasPending = false, meta = {}) {
             <span>${escapeHtml(riskRewardText(item.risk_reward))}</span>
             ${item.qualified && item.first_risk_reward ? `<span>${escapeHtml(riskRewardText(item.first_risk_reward, "首目标盈亏比"))}</span>` : ""}
             ${item.qualified && item.expected_move_pct ? `<span>预期波动 ${escapeHtml(formatNumber(item.expected_move_pct, 2))}%</span>` : ""}
-            <span>${escapeHtml(item.leverage_hint === "spot" ? "现货" : item.leverage_hint)}</span>
+            <span title="模型杠杆参考，尚未计入个人账户资金、已有持仓和组合风险预算">模型杠杆 ${escapeHtml(item.leverage_hint === "spot" ? "现货" : item.leverage_hint)}</span>
             ${ageLabel ? `<span title="该评分生成时间，抽屉显示当前快照，两者可能不同代">${escapeHtml(ageLabel)}</span>` : ""}
           </div>
         </article>

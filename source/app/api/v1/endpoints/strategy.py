@@ -673,6 +673,13 @@ async def get_strategy_scan(
                 needs_refresh = cache_status(cache) != "fresh" or await scan_inputs_newer_than_scan(
                     repository, cache
                 )
+                # Pre-identity scan rows cannot be safely paired with a
+                # detail drawer when unified publication changes between reads.
+                needs_refresh = needs_refresh or any(
+                    item.get("qualified") and not item.get("source_snapshot_key")
+                    for item in payload.get("matrix", [])
+                    if isinstance(item, dict)
+                )
                 if needs_refresh:
                     meta["source"] = "stale_revalidating"
                     meta["message"] = "后台正在更新扫描；当前展示上次发布的结果。"

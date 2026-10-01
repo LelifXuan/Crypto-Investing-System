@@ -9,7 +9,11 @@ from typing import Any, Mapping
 
 from app.core.config import settings
 from app.repositories.market_repository import MarketRepository
-from app.services.cache_registry import cache_status, strategy_unified_cache_key
+from app.services.cache_registry import (
+    cache_status,
+    expires_at_for_scan,
+    strategy_unified_cache_key,
+)
 from app.services.strategy_unified.unified_service import UnifiedStrategyService
 
 logger = logging.getLogger(__name__)
@@ -121,6 +125,7 @@ class ScanItem:
     data_quality: float = 0.0  # 0-100, from payload.confidence_report.confidence_score
     qualified: bool = False
     qualification_reasons: list[str] = field(default_factory=list)
+    source_snapshot_key: str | None = None
     # Execution levels are published only after the selected period passes
     # the canonical trade gate and matches the decision's execution period.
     entry_zone: list[float] = field(default_factory=list)
@@ -285,7 +290,7 @@ class OpportunityScanner:
             matrix=items,
             ranked=ranked,
             cache_meta={
-                "fresh_until": (now.replace(second=0, microsecond=0)).isoformat(),
+                "fresh_until": expires_at_for_scan(now).isoformat(),
                 "source": source,
                 "instruments_scanned": len(instrument_ids),
                 "opportunities_found": qualified_count,
@@ -315,6 +320,7 @@ def _extract_scan_item(
 ) -> ScanItem:
     """Project exactly the decision opened by the corresponding matrix cell."""
     item = _extract_scan_item_legacy(payload, instrument_id, code, timeframe)
+    item.source_snapshot_key = str(payload.get("snapshot_key") or "") or None
     opportunity = (payload.get("opportunity_decisions") or {}).get(timeframe)
     if not isinstance(opportunity, dict):
         # Old snapshots cannot safely claim executable per-period opportunities.

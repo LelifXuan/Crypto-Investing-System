@@ -1,5 +1,7 @@
 # CIS System Integrity Acceptance
 
+> **2026-09-30 后续所有者决定**：本表 INV-005 中的“默认无密钥 + 显式开关”是当轮历史验收口径。当前内部 portable 必须原样内嵌非空 `source/.env`，校验器同时核对清单摘要和解压结果；其他凭证文件仍被拒绝。见整改报告顶部补充和 CHANGELOG 最新条目。
+
 > 关闭条件：以下每一项都有 Before/Change/Test/After 证据（见 FIX REGISTER §3）。
 > 测试矩阵覆盖不足、或只通过新增测试而未跑存量门禁，均视为未关闭。
 

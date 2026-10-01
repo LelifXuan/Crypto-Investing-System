@@ -5,6 +5,7 @@ import os
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError
@@ -36,8 +37,10 @@ def capture_workbench(page, name: str) -> None:
 
 
 def _backend_running() -> bool:
+    parsed = urlparse(BASE_URL)
     try:
-        with socket.create_connection(("127.0.0.1", 8002), timeout=0.25):
+        address = (parsed.hostname or "127.0.0.1", parsed.port or 80)
+        with socket.create_connection(address, timeout=0.25):
             return True
     except OSError:
         return False
@@ -195,7 +198,7 @@ def _json(route, payload: dict) -> None:
     route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
 
 
-@pytest.mark.skipif(not _backend_running(), reason="backend not running on :8002")
+@pytest.mark.skipif(not _backend_running(), reason="browser backend not running")
 def test_monitoring_workbench_keyboard_refresh_and_route_cleanup() -> None:
     from playwright.sync_api import sync_playwright
 
@@ -280,7 +283,7 @@ def test_monitoring_workbench_keyboard_refresh_and_route_cleanup() -> None:
         browser.close()
 
 
-@pytest.mark.skipif(not _backend_running(), reason="backend not running on :8002")
+@pytest.mark.skipif(not _backend_running(), reason="browser backend not running")
 @pytest.mark.parametrize(
     ("viewport", "role"),
     [
@@ -368,8 +371,8 @@ def test_btc_workbench_drawer_resize_and_selection_lifecycle(viewport: dict, rol
         browser.close()
 
 
-@pytest.mark.skipif(not _backend_running(), reason="backend not running on :8002")
-def test_market_events_selection_refresh_replacement_and_route_cleanup() -> None:
+@pytest.mark.skipif(not _backend_running(), reason="browser backend not running")
+def test_market_events_feed_refresh_replacement_and_route_cleanup() -> None:
     from playwright.sync_api import sync_playwright
 
     event_reads = 0
@@ -407,22 +410,18 @@ def test_market_events_selection_refresh_replacement_and_route_cleanup() -> None
 
         page.route("**/api/v1/**", route_api)
         page.goto(f"{BASE_URL}/market-events-page", wait_until="domcontentloaded")
-        target = page.locator(".event-card[data-workbench-selectable]").first
+        target = page.locator(".event-card").first
         target.wait_for(state="visible")
-        target.press("Enter")
-        inspector = page.locator("#events-inspector")
-        assert inspector.is_visible()
-        assert "btc-usdt-perp" in inspector.text_content()
-        capture_workbench(page, "events-open")
+        assert "btc-usdt-perp" in target.text_content()
+        assert page.locator("#events-inspector").count() == 0
+        capture_workbench(page, "events-feed")
 
         page.locator("#events-refresh").click()
         page.wait_for_function("document.querySelector('.event-card') === null")
-        assert inspector.is_hidden()
-        assert page.evaluate("document.activeElement?.id === 'events-refresh'")
+        assert page.locator("#events-inspector").count() == 0
 
         page.locator('[data-page-link="knowledge-base"]').click()
         page.wait_for_url("**/knowledge-page")
-        page.locator("#events-inspector").wait_for(state="detached")
         assert page.locator("#events-inspector").count() == 0
         assert not page.locator("body").evaluate(
             "el => el.classList.contains('is-workbench-inspector-open')"
@@ -432,7 +431,7 @@ def test_market_events_selection_refresh_replacement_and_route_cleanup() -> None
         browser.close()
 
 
-@pytest.mark.skipif(not _backend_running(), reason="backend not running on :8002")
+@pytest.mark.skipif(not _backend_running(), reason="browser backend not running")
 def test_macro_day_selection_refresh_replacement_and_route_cleanup() -> None:
     from playwright.sync_api import sync_playwright
 

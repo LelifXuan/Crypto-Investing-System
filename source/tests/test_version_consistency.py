@@ -10,9 +10,9 @@ from app import __version__  # noqa: I001
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_app_version_is_2_3_0() -> None:
-    """Source of truth: app.__version__ must be 2.3.0."""
-    assert __version__ == "2.3.0"
+def test_app_version_is_2_3_1() -> None:
+    """Source of truth: app.__version__ must be 2.3.1."""
+    assert __version__ == "2.3.1"
 
 
 def test_pyproject_version_matches_app_version() -> None:
@@ -28,12 +28,15 @@ def test_pyproject_version_matches_app_version() -> None:
 
 def test_current_release_labels_match_app_version() -> None:
     """Keep the active README, launcher, and sample environment in sync."""
-    release_label = f"V{__version__.rsplit('.', 1)[0]}"
+    release_label = f"V{__version__}"
     readme = (ROOT.parent / "README.md").read_text(encoding="utf-8")
     launcher = (ROOT.parent / "start.bat").read_text(encoding="utf-8")
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    from scripts.build_private_portable import START
+
     assert f"当前源码版本：**{release_label}**" in readme
     assert f"Crypto Research Terminal  {release_label}" in launcher
+    assert f"PORTABLE PACKAGE {release_label}" in START
     assert f"APP_VERSION={__version__}" in env_example.splitlines()
 
 

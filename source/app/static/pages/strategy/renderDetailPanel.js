@@ -347,7 +347,7 @@ export function openDetailPanel(instrumentId, timeframe, loadStrategy, onClose) 
     const cellDirLabel = cellDir === "LONG" ? "做多" : cellDir === "SHORT" ? "做空" : "";
     const dirLabel = pending
       ? "数据准备中"
-      : cellDirLabel || "等待确认";
+      : model.scan_item?.qualified === true ? cellDirLabel : "无交易机会 · 判断依据";
     if (title) {
       title.textContent = `${instCode} · ${timeframe} · ${dirLabel}`;
       title.removeAttribute("title");

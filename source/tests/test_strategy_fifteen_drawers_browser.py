@@ -3,7 +3,6 @@
 import os
 from dataclasses import asdict
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import sync_playwright
@@ -77,7 +76,7 @@ def _payload(instrument: str) -> dict:
     }
 
 
-def test_fifteen_scan_slots_open_only_confirmed_period_opportunities():
+def test_fifteen_published_scan_slots_open_period_reasoning(tmp_path):
     payloads = {f"{code}-usdt-perp": _payload(code) for code in INSTRUMENTS}
     matrix = [
         asdict(_extract_scan_item(payload, iid, code.upper(), tf))
@@ -91,6 +90,7 @@ def test_fifteen_scan_slots_open_only_confirmed_period_opportunities():
         "timeframes": list(EXECUTION),
         "cache_meta": {"source": "cache"},
     }
+    restored_once = False
     base_url = os.getenv("BASE_URL", "http://127.0.0.1:8002").rstrip("/")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -119,24 +119,27 @@ def test_fifteen_scan_slots_open_only_confirmed_period_opportunities():
                     f'.scan-cell-btn[data-instrument="{iid}"][data-timeframe="{tf}"]'
                 )
                 decision = payloads[iid]["opportunity_decisions"][tf]
+                assert cell.count() == 1
+                assert cell.is_enabled()
                 if decision["status"] != "READY":
-                    assert cell.count() == 0
-                    row = page.locator(
-                        ".scan-matrix-table tr",
-                        has=page.locator(".scan-matrix-code", has_text=iid.split("-")[0].upper()),
-                    )
-                    inactive_cell = row.locator(".scan-cell-btn").nth(list(EXECUTION).index(tf))
-                    assert inactive_cell.is_disabled()
-                    assert "无机会" in inactive_cell.inner_text()
-                    continue
+                    assert "无机会" in cell.inner_text()
                 cell.click()
                 opportunity = page.locator(".strategy-period-opportunity")
                 opportunity.wait_for()
+                assert page.url.endswith(f"opportunity={iid}%3A{tf}")
                 assert opportunity.get_attribute("data-opportunity-id") == f"{iid}:{tf}"
                 assert opportunity.get_attribute("data-trade-timeframe") == tf
                 assert opportunity.get_attribute("data-execution-timeframe") == execution_tf
-                assert decision["side"] in {"LONG", "SHORT"}
-                if iid == "btc-usdt-perp":
+                gate = opportunity.locator(".strategy-period-gate")
+                assert gate.get_attribute("data-trade-eligible") == str(
+                    decision["status"] == "READY"
+                ).lower()
+                if decision["status"] != "READY":
+                    assert "本周期未通过交易门槛" in gate.inner_text()
+                    assert decision["primary_reason"]["message"] in opportunity.inner_text()
+                    assert "无交易机会" in page.locator("#strategy-detail-title").inner_text()
+                    assert opportunity.locator(".strategy-collapsible[open]").count() == 1
+                if iid == "btc-usdt-perp" and decision["status"] == "READY":
                     metrics = opportunity.locator(
                         ".strategy-timeframe-focus-metrics strong"
                     ).all_text_contents()
@@ -147,14 +150,42 @@ def test_fifteen_scan_slots_open_only_confirmed_period_opportunities():
                         metrics[10],
                         metrics[11],
                     )
-                if iid == "btc-usdt-perp" and tf == "4h":
+                if iid == "hype-usdt-perp" and tf == "4h":
                     page.screenshot(
-                        path=str(Path(__file__).parent / "screenshots/strategy-period-15.png"),
+                        path=str(tmp_path / "strategy-period-15.png"),
                         full_page=True,
                     )
+                if not restored_once and decision["status"] != "READY":
+                    page.reload(wait_until="domcontentloaded")
+                    page.locator(".strategy-period-opportunity").wait_for()
+                    assert (
+                        page.locator(".strategy-period-opportunity").get_attribute(
+                            "data-opportunity-id"
+                        )
+                        == f"{iid}:{tf}"
+                    )
+                    restored_once = True
                 page.locator("#strategy-detail-close").click()
                 page.locator("#strategy-detail-panel").wait_for(state="detached")
+                assert "opportunity=" not in page.url
+        page.goto(f"{base_url}/strategy-page?opportunity=unknown-usdt-perp:4h")
+        page.locator(".scan-cell-btn").first.wait_for()
+        page.wait_for_function("!location.search.includes('opportunity=')")
+        assert page.locator("#strategy-detail-panel").count() == 0
         for field in zip(*btc_horizon_metrics.values(), strict=True):
             assert len(set(field)) == 3
+        qualified = next(item for item in matrix if item["qualified"])
+        changed_iid = qualified["instrument_id"]
+        payloads[changed_iid]["snapshot_key"] = "browser:new-publication"
+        with page.expect_response("**/strategy/unified*"):
+            page.locator(
+                f'.scan-cell-btn[data-instrument="{changed_iid}"]'
+                f'[data-timeframe="{qualified["timeframe"]}"]'
+            ).click()
+        page.wait_for_function(
+            "!document.querySelector('#strategy-detail-panel')"
+            " && !location.search.includes('opportunity=')"
+        )
+        assert "opportunity=" not in page.url
         assert not errors
         browser.close()

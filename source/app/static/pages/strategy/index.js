@@ -9,6 +9,7 @@ import { normalizeUnifiedStrategy } from "./adapter.js?v=trade-4h-v1";
 import { renderScanMatrix, bindScanMatrix } from "./renderScanMatrix.js?v=opportunity-matrix-v2";
 import { renderScanRanked, bindScanRanked } from "./renderScanRanked.js";
 import { openDetailPanel } from "./renderDetailPanel.js";
+import { readOpportunityUrl, writeOpportunityUrl, isRestorableOpportunity } from "./opportunityUrl.js";
 import { mountPageGuide } from "../../ui/pageGuideFab.js";
 
 let mounted = false;
@@ -16,6 +17,8 @@ let activeController = null;
 let detailLoadController = null; // 2026-08-11: abort previous detail panel requests
 let activeDetailPanelClose = null;
 let scanData = null; // cached ScanResult for resume
+let pendingUrlRestore = null;
+let suppressUrlWrite = false;
 // 2026-08-11: debounce matrix cell clicks to prevent rapid-fire panel opens
 let strategyDebounceTimer = null;
 
@@ -111,6 +114,18 @@ function renderScanResults(data) {
     });
     bindScanRanked(onSelectOpportunity);
   }
+  if (pendingUrlRestore) {
+    const requested = pendingUrlRestore;
+    pendingUrlRestore = null;
+    const item = visibleMatrix.find((row) =>
+      row.instrument_id === requested.instrumentId && row.timeframe === requested.timeframe
+    );
+    if (isRestorableOpportunity(item)) {
+      _openStrategyDetail(requested.instrumentId, requested.timeframe);
+    } else {
+      writeOpportunityUrl(null, null);
+    }
+  }
 }
 
 function renderScanLoading(message) {
@@ -153,6 +168,10 @@ function onSelectOpportunity(instrumentId, timeframe) {
 }
 
 function _openStrategyDetail(instrumentId, timeframe) {
+  const selectedCell = scanData?.matrix?.find((item) =>
+    item.instrument_id === instrumentId && item.timeframe === timeframe
+  );
+  const expectedSnapshotKey = selectedCell?.source_snapshot_key;
   // 2026-07-25: loadStrategy now accepts an options bag so the detail
   // panel's "立即重建" button can pass { force: true, timeoutMs: 60000 }.
   // We forward force to all four backend calls so the panel-level
@@ -185,9 +204,16 @@ function _openStrategyDetail(instrumentId, timeframe) {
 
     const code = appState.instruments.find((i) => i.id === iid)?.code || iid;
     const payload = unifiedResult.status === "fulfilled" ? unifiedResult.value : null;
+    if (expectedSnapshotKey && payload?.snapshot_key !== expectedSnapshotKey) {
+      activeDetailPanelClose?.();
+      pendingUrlRestore = null;
+      void loadScan(false, { _skipRetry: true });
+      throw new DOMException("扫描快照已更新", "AbortError");
+    }
     const model = normalizeUnifiedStrategy(payload || {}, {});
     model.instrument_code = code;
     model.selected_timeframe = tf;
+    model.scan_item = selectedCell || null;
 
     model.data_access = {
       unified: payload,
@@ -207,8 +233,9 @@ function _openStrategyDetail(instrumentId, timeframe) {
     activeDetailPanelClose = null;
     detailLoadController?.abort();
     detailLoadController = null;
-    // Panel closed — no action needed
+    if (!suppressUrlWrite) writeOpportunityUrl(null, null);
   });
+  writeOpportunityUrl(instrumentId, timeframe);
 }
 
 // A forced scan rebuilds every instrument's unified strategy serially
@@ -293,6 +320,10 @@ async function pollWhileWarming(attempt = 0) {
 
 export async function renderStrategy({ commands } = {}) {
   mounted = true;
+  pendingUrlRestore = readOpportunityUrl();
+  if (!pendingUrlRestore && new URLSearchParams(window.location.search).has("opportunity")) {
+    writeOpportunityUrl(null, null);
+  }
   renderScanShell();
   const commandDisposers = [];
   const commandLifetime = new AbortController();
@@ -386,6 +417,17 @@ export async function renderStrategy({ commands } = {}) {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && mounted && !liveRefreshTimer) scheduleLiveRefresh();
   }, { signal: commandLifetime.signal });
+  window.addEventListener("popstate", () => {
+    if (!mounted || window.location.pathname !== "/strategy-page") return;
+    suppressUrlWrite = true;
+    activeDetailPanelClose?.();
+    suppressUrlWrite = false;
+    pendingUrlRestore = readOpportunityUrl();
+    if (!pendingUrlRestore && new URLSearchParams(window.location.search).has("opportunity")) {
+      writeOpportunityUrl(null, null);
+    }
+    if (scanData && pendingUrlRestore) renderScanResults(scanData);
+  }, { signal: commandLifetime.signal });
   scheduleLiveRefresh();
   const scanPromise = (async () => {
     const first = await loadScan(false);
@@ -421,6 +463,7 @@ export async function renderStrategy({ commands } = {}) {
       commandDisposers.forEach((dispose) => dispose());
       guideFab.unmount();
       mounted = false;
+      pendingUrlRestore = null;
       if (warmingTimer) { clearTimeout(warmingTimer); warmingTimer = null; }
       if (liveRefreshTimer) { clearTimeout(liveRefreshTimer); liveRefreshTimer = null; }
       activeDetailPanelClose?.();
